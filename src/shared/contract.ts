@@ -656,7 +656,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     })
   }),
   // Plan settings (plans.ts): what happens when a plan is complete. Global
-  // with whole-object per-project overrides, same shape as defaults.*.
+  // with whole-object per-project overrides. A global follower names its home.
   z.object({
     id: z.string(),
     method: z.literal('plans.get'),
@@ -707,7 +707,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   // Review before merge (shared/review.ts): global set, whole-object
   // per-project override; get answers the override, the global set and
-  // the effective one so a dialog shows what a project inherits.
+  // the effective one so a dialog shows what a project inherits. A global follower names its home.
   z.object({
     id: z.string(),
     method: z.literal('review.get'),
@@ -1361,19 +1361,14 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
 export type RequestLane = 'ui'
 export type ClientRequest = z.infer<typeof ClientRequestSchema> & { lane?: RequestLane }
 
-/** What `review.get` answers: the scope's override, the global set, and the effective one with where it came from. */
-export interface ReviewState {
-  override: import('./review').ReviewSettings | null
-  global: import('./review').ReviewSettings | null
-  settings: import('./review').ReviewSettings
-  source: 'project' | 'global' | 'default'
-}
+/** The peer holding the one global copy, and whether it answers now. */
+export type SettingsHome = { name: string; online: boolean }
 
-/** What `plans.get` answers: the effective plan settings and whether the project overrides them. */
-export interface PlanState {
-  settings: import('./plans').PlanSettings
-  overridden: boolean
-}
+/** What `review.get` answers: the override, global set, effective set, source and optional home. */
+export type ReviewState = import('./review').ReviewScope & { home?: SettingsHome }
+
+/** What `plans.get` answers: the effective settings, override flag and optional home. */
+export type PlanState = import('./plans').PlanScope & { home?: SettingsHome }
 
 /** A thread's notes as `session.notes.get` answers and the `notes` push carries. */
 export interface ThreadNotesDoc {

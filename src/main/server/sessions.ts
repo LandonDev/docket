@@ -2691,7 +2691,7 @@ export class SessionRegistry {
     this.setSyncedSetting(key, defaults ? JSON.stringify(defaults) : null)
   }
 
-  /** Rules and defaults have one copy across hosts (remote/rulesSync.ts):
+  /** RulesSync keeps one copy of shared settings across hosts:
    *  a change re-sends the workspaces push, which a linked Mac follows. */
   private setSyncedSetting(key: string, value: string | null): void {
     if (this.store.getSetting(key) === value) return
@@ -2707,8 +2707,12 @@ export class SessionRegistry {
   }
 
   setPlanSettings(projectId: string | null, settings: PlanSettings | null): void {
-    setPlanSettings(this.store, projectId, settings)
-    if (projectId) this.touchProjectSettings(projectId)
+    if (projectId) {
+      setPlanSettings(this.store, projectId, settings)
+      this.touchProjectSettings(projectId)
+    } else {
+      setPlanSettings({ setSetting: (key, value) => this.setSyncedSetting(key, value) }, null, settings)
+    }
   }
 
   /** What applies to a project: override → global → defaults. */
@@ -2766,8 +2770,13 @@ export class SessionRegistry {
 
   setReviewSettings(projectId: string | null, settings: ReviewSettings | null): void {
     const key = projectId ? `review:project:${projectId}` : 'review'
-    this.store.setSetting(key, settings ? JSON.stringify(settings) : null)
-    if (projectId) this.touchProjectSettings(projectId)
+    const value = settings ? JSON.stringify(settings) : null
+    if (projectId) {
+      this.store.setSetting(key, value)
+      this.touchProjectSettings(projectId)
+    } else {
+      this.setSyncedSetting(key, value)
+    }
   }
 
   /** The set a project's threads run under: its override → global → defaults. */

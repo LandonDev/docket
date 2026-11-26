@@ -1,3 +1,4 @@
+import type { PlanState } from "@server/shared/contract";
 import { useEffect, useSyncExternalStore } from "react";
 import {
   DEFAULT_PLAN_SETTINGS,
@@ -7,17 +8,18 @@ import {
 import { registry } from "../connection";
 import { readWhenOpen, withDeadline } from "../connection/openRead";
 import { bridgeNewThread } from "../macBridge";
+import { readHome, useRecheckWhileOffline } from "../settingsHome";
 import { sessionStore } from "./store";
 import type { PermissionPolicy, SessionMeta, ThreadRules, WireSessionMeta } from "./types";
 
 /**
  * Plan settings (plans.ts on the server): what happens when a plan is
- * complete. One global set per host plus whole-object per-project
+ * complete. One shared global set plus whole-object per-project
  * overrides, resolved server-side; this store mirrors the scopes the UI
  * has asked for so Settings and the project dialog read one answer.
  */
 
-export type PlanScope = { settings: PlanSettings; overridden: boolean };
+export type PlanScope = PlanState;
 export const BUILT_IN_PLAN_SCOPE: PlanScope = { settings: DEFAULT_PLAN_SETTINGS, overridden: false };
 
 const scopes = new Map<string, PlanScope>();
@@ -34,9 +36,14 @@ function emit(): void {
 }
 
 function coerce(raw: unknown): PlanScope {
-  const r = (raw ?? {}) as { settings?: unknown; overridden?: unknown };
+  const r = (raw ?? {}) as { settings?: unknown; overridden?: unknown; home?: unknown };
   const parsed = PlanSettingsSchema.safeParse(r.settings);
-  return { settings: parsed.success ? parsed.data : DEFAULT_PLAN_SETTINGS, overridden: r.overridden === true };
+  const home = readHome(r.home);
+  return {
+    settings: parsed.success ? parsed.data : DEFAULT_PLAN_SETTINGS,
+    overridden: r.overridden === true,
+    ...(home ? { home } : {}),
+  };
 }
 
 /** The scopes the UI has asked for, by host: each still missing one is asked again when that host's socket opens. */
@@ -112,7 +119,12 @@ export async function savePlanSettings(
     const inherited = scopes.get(globalKey)?.settings ?? DEFAULT_PLAN_SETTINGS;
     scopes.set(key(environmentId, projectId), settings ? { settings, overridden: true } : { settings: inherited, overridden: false });
   } else {
-    scopes.set(globalKey, settings ? { settings, overridden: true } : BUILT_IN_PLAN_SCOPE);
+    const home = scopes.get(globalKey)?.home;
+    scopes.set(globalKey, {
+      settings: settings ?? DEFAULT_PLAN_SETTINGS,
+      overridden: settings !== null,
+      ...(home ? { home } : {}),
+    });
     for (const [k, scope] of scopes) {
       if (k !== globalKey && k.startsWith(`${environmentId}|`) && !scope.overridden) {
         scopes.set(k, { settings: settings ?? DEFAULT_PLAN_SETTINGS, overridden: false });
@@ -136,6 +148,9 @@ export function usePlanSettings(environmentId: string | undefined, projectId: st
   useEffect(() => {
     if (environmentId && !scope && !failed) void loadPlanSettings(environmentId, projectId).catch(() => {});
   }, [scope, failed, environmentId, projectId]);
+  useRecheckWhileOffline(scope?.home, () => {
+    if (environmentId) void loadPlanSettings(environmentId, projectId).catch(() => {});
+  });
   return scope;
 }
 

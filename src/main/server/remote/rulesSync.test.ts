@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDb, Store } from '../db'
 import { SessionRegistry } from '../sessions'
 import { PeerCatalogs } from '../peerCatalogs'
+import { HOST_FEATURES } from '@shared/capabilities'
+import { DEFAULT_PLAN_SETTINGS } from '@shared/plans'
+import { DEFAULT_REVIEW_SETTINGS } from '@shared/review'
 import { DEFAULT_RULES, type OrchestrationRules } from '@shared/rules'
 import { RulesSync, SEEDED_KEY, refusal } from './rulesSync'
 
@@ -33,11 +36,12 @@ interface World {
     env: { id: string; name: string }
     connected: boolean
     build: { platform: string; headless?: boolean } | null
+    features: readonly string[] | null
     calls: string[]
     /** Methods the box answers as an older build would: unknown. */
     unknown: Set<string>
-    /** The next rules.get is read now and answered once this resolves. */
-    hold: Promise<void> | null
+    /** The next request of this method reads now and answers after the wait. */
+    hold: { method: string; wait: Promise<void> } | null
     /** What the Mac sent with catalog.exchange. */
     sentCatalog: unknown
     request: <T>(method: string, params?: unknown) => Promise<T>
@@ -66,42 +70,60 @@ function world(opts: { macLinked?: boolean; me?: string; platform?: string; head
     env: { id: BOX, name: 'box' },
     connected: true,
     build: { platform: 'linux', headless: true },
+    features: [...HOST_FEATURES],
     calls: [],
     unknown: new Set(),
     hold: null,
     sentCatalog: null,
     async request<T>(method: string, params?: unknown): Promise<T> {
       if (!link.connected) throw new Error('box is not connected')
-      if (link.unknown.has(method)) throw new Error(`unknown method ${method}`)
       link.calls.push(method)
-      const p = (params ?? {}) as Record<string, any>
-      switch (method) {
-        case 'workspace.list':
-          return b.listWorkspaces() as T
-        case 'catalog.exchange':
-          link.sentCatalog = p.catalog
-          return { catalog: BOX_CATALOG } as T
-        case 'rules.get': {
-          const scoped = b.getOrchestrationRules(p.workspaceId)
-          const answer = { rules: scoped ?? b.getOrchestrationRules(null) ?? DEFAULT_RULES, overridden: scoped !== null }
-          const held = link.hold
-          link.hold = null
-          if (held) await held
-          return answer as T
-        }
-        case 'rules.set':
-          b.setOrchestrationRules(p.workspaceId, p.rules)
-          return null as T
-        case 'defaults.get': {
-          const scoped = b.getThreadDefaults(p.workspaceId)
-          return { defaults: scoped, overridden: scoped !== null } as T
-        }
-        case 'defaults.set':
-          b.setThreadDefaults(p.workspaceId, p.defaults)
-          return null as T
+      if (link.unknown.has(method)) throw new Error(`unknown method ${method}`)
+      const result = answer(method, (params ?? {}) as Record<string, any>)
+      if (link.hold?.method === method) {
+        const { wait } = link.hold
+        link.hold = null
+        await wait
       }
-      throw new Error(`unexpected ${method}`)
+      return result as T
     }
+  }
+
+  function answer(method: string, p: Record<string, any>): unknown {
+    switch (method) {
+      case 'workspace.list':
+        return b.listWorkspaces()
+      case 'catalog.exchange':
+        link.sentCatalog = p.catalog
+        return { catalog: BOX_CATALOG }
+      case 'rules.get': {
+        const scoped = b.getOrchestrationRules(p.workspaceId)
+        return { rules: scoped ?? b.getOrchestrationRules(null) ?? DEFAULT_RULES, overridden: scoped !== null }
+      }
+      case 'rules.set':
+        return b.setOrchestrationRules(p.workspaceId, p.rules)
+      case 'defaults.get': {
+        const scoped = b.getThreadDefaults(p.workspaceId)
+        return { defaults: scoped, overridden: scoped !== null }
+      }
+      case 'defaults.set':
+        return b.setThreadDefaults(p.workspaceId, p.defaults)
+      case 'plans.get': {
+        expect(p).toEqual({ projectId: null })
+        const settings = b.getPlanSettings(null)
+        return { settings: settings ?? DEFAULT_PLAN_SETTINGS, overridden: settings !== null }
+      }
+      case 'plans.set':
+        expect(p).toEqual({ projectId: null, settings: p.settings })
+        return b.setPlanSettings(null, p.settings)
+      case 'review.get':
+        expect(p).toEqual({ projectId: null })
+        return { override: null, global: b.getReviewSettings(null), ...b.effectiveReview(null) }
+      case 'review.set':
+        expect(p).toEqual({ projectId: null, settings: p.settings })
+        return b.setReviewSettings(null, p.settings)
+    }
+    throw new Error(`unexpected ${method}`)
   }
   const peers = { get: (id: string) => (id === BOX ? link : undefined), all: () => [link] }
   const peerCatalogs = new PeerCatalogs(mac.store)
@@ -140,7 +162,7 @@ describe('one copy on the box', () => {
     w.mac.setOrchestrationRules(null, mine)
     await w.sync.syncWith(BOX)
     expect(w.box.getOrchestrationRules(null)).toEqual(mine)
-    expect(JSON.parse(w.macStore.getSetting(`${SEEDED_KEY}${BOX}`)!)).toEqual(['global', WS_LINK])
+    expect(JSON.parse(w.macStore.getSetting(`${SEEDED_KEY}${BOX}`)!)).toEqual(['plans.get', 'review.get', 'global', WS_LINK])
     // From then on the box's edit wins.
     const theirs = withModel(mine, 'muse:muse-spark-1.3', { approved: true })
     w.box.setOrchestrationRules(null, theirs)
@@ -171,7 +193,7 @@ describe('one copy on the box', () => {
     w.mac.setOrchestrationRules(null, r1)
     await w.sync.syncWith(BOX)
     let release!: () => void
-    w.link.hold = new Promise<void>((r) => (release = r))
+    w.link.hold = { method: 'rules.get', wait: new Promise<void>((r) => (release = r)) }
     const pull = w.sync.syncWith(BOX)
     // Let the pull reach its rules.get, which reads r1 and waits.
     for (let i = 0; i < 20 && w.link.hold; i++) await new Promise((r) => setTimeout(r, 0))
@@ -209,6 +231,153 @@ describe('one copy on the box', () => {
     await w.sync.syncWith(BOX)
     expect(w.sync.homeFor(null)).toEqual({ name: 'box', online: true })
     expect(w.sync.homeFor(`w-${MAC}`)).toBeNull()
+  })
+})
+
+const plans = { ...DEFAULT_PLAN_SETTINGS, autoImplement: false }
+const review = { ...DEFAULT_REVIEW_SETTINGS, beforeMerge: true }
+
+describe.each([
+  {
+    kind: 'plans',
+    get: 'plans.get',
+    set: 'plans.set',
+    mine: plans,
+    theirs: { ...plans, archiveAfterStart: false },
+    read: (r: SessionRegistry) => r.getPlanSettings(null),
+    clear: (r: SessionRegistry) => r.setPlanSettings(null, null),
+    saveMine: (r: SessionRegistry) => r.setPlanSettings(null, plans),
+    saveTheirs: (r: SessionRegistry) => r.setPlanSettings(null, { ...plans, archiveAfterStart: false }),
+  },
+  {
+    kind: 'review',
+    get: 'review.get',
+    set: 'review.set',
+    mine: review,
+    theirs: { ...review, maxMinutes: 24 },
+    read: (r: SessionRegistry) => r.getReviewSettings(null),
+    clear: (r: SessionRegistry) => r.setReviewSettings(null, null),
+    saveMine: (r: SessionRegistry) => r.setReviewSettings(null, review),
+    saveTheirs: (r: SessionRegistry) => r.setReviewSettings(null, { ...review, maxMinutes: 24 }),
+  }
+] as const)('global $kind', ({ kind, get, set, mine, theirs, read, clear, saveMine, saveTheirs }) => {
+  it("takes the box's set on first sync and follows a later edit and clear", async () => {
+    saveMine(w.mac)
+    saveTheirs(w.box)
+    await w.sync.syncWith(BOX)
+    expect(read(w.mac)).toEqual(theirs)
+    expect(w.link.calls).not.toContain(set)
+
+    saveMine(w.box)
+    await w.sync.syncWith(BOX)
+    expect(read(w.mac)).toEqual(mine)
+    clear(w.box)
+    await w.sync.syncWith(BOX)
+    expect(read(w.mac)).toBeNull()
+  })
+
+  it('seeds an empty box once, even if rules and defaults synced before the upgrade', async () => {
+    w.macStore.setSetting(`${SEEDED_KEY}${BOX}`, JSON.stringify(['global', WS_LINK]))
+    saveMine(w.mac)
+    await w.sync.syncWith(BOX)
+    expect(read(w.box)).toEqual(mine)
+    expect(w.link.calls.filter((method) => method === set)).toHaveLength(1)
+    clear(w.box)
+    await w.sync.syncWith(BOX)
+    expect(read(w.mac)).toBeNull()
+    expect(w.link.calls.filter((method) => method === set)).toHaveLength(1)
+  })
+
+  it('pushes a global change on the same catalog channel as rules and defaults', () => {
+    const changes: string[] = []
+    const off = w.box.onCatalog((change) => changes.push(change))
+    saveMine(w.box)
+    saveMine(w.box)
+    clear(w.box)
+    off()
+    expect(changes).toEqual(['workspaces', 'workspaces'])
+  })
+
+  it('forwards a write and a clear to the box, and keeps projects out of RulesSync', async () => {
+    await w.sync.syncWith(BOX)
+    expect(await w.sync.forward(set, 'project', mine)).toBe(false)
+    expect(w.sync.homeFor('project', get)).toBeNull()
+    expect(await w.sync.forward(set, null, mine)).toBe(true)
+    expect(read(w.box)).toEqual(mine)
+    expect(read(w.mac)).toEqual(mine)
+    expect(await w.sync.forward(set, null, null)).toBe(true)
+    expect(read(w.box)).toBeNull()
+    expect(read(w.mac)).toBeNull()
+  })
+
+  it('names the box and refuses an offline write without changing the local set', async () => {
+    expect(w.sync.homeFor(null, get)).toBeNull()
+    saveMine(w.box)
+    await w.sync.syncWith(BOX)
+    expect(w.sync.homeFor(null, get)).toEqual({ name: 'box', online: true })
+    w.link.connected = false
+    w.link.features = null // The new link has not heard a hello since this host restarted.
+    expect(w.sync.homeFor(null, get)).toEqual({ name: 'box', online: false })
+    await expect(w.sync.forward(set, null, theirs)).rejects.toThrow(refusal('box', set))
+    expect(read(w.mac)).toEqual(mine)
+  })
+
+  it('drops an older pull that answers after a forwarded write', async () => {
+    saveMine(w.box)
+    await w.sync.syncWith(BOX)
+    let release!: () => void
+    w.link.hold = { method: get, wait: new Promise<void>((r) => (release = r)) }
+    const pull = w.sync.syncWith(BOX)
+    for (let i = 0; i < 20 && w.link.hold; i++) await new Promise((r) => setTimeout(r, 0))
+    expect(w.link.hold).toBeNull()
+    await w.sync.forward(set, null, theirs)
+    expect(read(w.mac)).toEqual(theirs)
+    release()
+    await pull
+    expect(read(w.mac)).toEqual(theirs)
+    expect(read(w.box)).toEqual(theirs)
+  })
+
+  it('keeps the local set on an older box, then seeds once its new hello names the feature', async () => {
+    w.link.features = HOST_FEATURES.filter((feature) => feature !== `rulesSync.${kind}`)
+    saveMine(w.mac)
+    await w.sync.syncWith(BOX)
+    expect(w.link.calls).not.toContain(get)
+    expect(w.sync.homeFor(null, get)).toBeNull()
+    w.link.connected = false
+    expect(await w.sync.forward(set, null, theirs)).toBe(false)
+    saveTheirs(w.mac)
+    expect(read(w.mac)).toEqual(theirs)
+    expect(read(w.box)).toBeNull()
+
+    w.link.connected = true
+    w.link.features = [...HOST_FEATURES]
+    await w.sync.syncWith(BOX)
+    expect(read(w.box)).toEqual(theirs)
+    expect(w.sync.homeFor(null, get)).toEqual({ name: 'box', online: true })
+  })
+
+  it.each([get, set])('keeps its own copy if the box refuses %s despite the hello', async (method) => {
+    const other = get === 'plans.get' ? 'review.get' : 'plans.get'
+    saveMine(w.mac)
+    w.link.unknown.add(method)
+    await w.sync.syncWith(BOX)
+    expect(w.sync.homeFor(null, get)).toBeNull()
+    expect(w.sync.homeFor(null, other)).toEqual({ name: 'box', online: true })
+    expect(await w.sync.forward(set, null, theirs)).toBe(false)
+    expect(read(w.mac)).toEqual(mine)
+    expect(read(w.box)).toBeNull()
+    w.link.connected = false
+    w.link.features = null
+    expect(w.sync.homeFor(null, get)).toBeNull()
+  })
+
+  it('falls back to a local write if the first forward finds an unsupported setter', async () => {
+    await w.sync.syncWith(BOX)
+    w.link.unknown.add(set)
+    expect(await w.sync.forward(set, null, mine)).toBe(false)
+    expect(w.sync.homeFor(null, get)).toBeNull()
+    expect(read(w.box)).toBeNull()
   })
 })
 

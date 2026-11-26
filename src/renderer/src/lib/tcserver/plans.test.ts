@@ -2,6 +2,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_PLAN_SETTINGS } from "@shared/plans";
+import { HOME_RECHECK_MS } from "../settingsHome";
 import { EnvLink } from "../connection/link";
 import { ConnectionLostError, type Transport } from "../connection/transport";
 import { LOAD_DEADLINE_MS, NO_ANSWER } from "../connection/openRead";
@@ -42,7 +43,7 @@ vi.mock("../connection", () => ({ registry: { linkOf: () => host.link } }));
 vi.mock("../macBridge", () => ({ bridgeNewThread: async () => {} }));
 vi.mock("./store", () => ({ sessionStore: { adopt: () => {} } }));
 
-const { loadPlanSettings, resetPlanSettingsForTests, usePlanSettings, usePlanSettingsError } = await import("./plans");
+const { loadPlanSettings, resetPlanSettingsForTests, savePlanSettings, usePlanSettings, usePlanSettingsError } = await import("./plans");
 
 const settle = async (): Promise<void> => {
   for (let i = 0; i < 10; i++) await Promise.resolve();
@@ -164,6 +165,33 @@ describe("plan settings after a reload", () => {
 });
 
 describe("plan settings store", () => {
+  it("keeps the home through a save and rechecks it only while offline", async () => {
+    const socket = new Scripted();
+    host.link.setSession(socket.asTransport());
+    const { result } = renderHook(useScope);
+    const offline = { name: "box", online: false };
+    const online = { ...offline, online: true };
+    await act(settle);
+    await act(async () => socket.calls[0].resolve({ ...answer, home: offline }));
+    expect(result.current.scope?.home).toEqual(offline);
+
+    await act(() => vi.advanceTimersByTimeAsync(HOME_RECHECK_MS));
+    expect(socket.calls[1].method).toBe("plans.get");
+    await act(async () => socket.calls[1].resolve({ ...answer, home: online }));
+    expect(result.current.scope?.home).toEqual(online);
+
+    await act(async () => {
+      const save = savePlanSettings("local", null, null);
+      await settle();
+      expect(socket.calls[2].method).toBe("plans.set");
+      socket.calls[2].resolve(null);
+      await save;
+    });
+    expect(result.current.scope).toEqual({ settings: DEFAULT_PLAN_SETTINGS, overridden: false, home: online });
+    await act(() => vi.advanceTimersByTimeAsync(HOME_RECHECK_MS));
+    expect(socket.calls).toHaveLength(3);
+  });
+
   it("shares one request between callers while it is in flight", async () => {
     const socket = new Scripted();
     host.link.setSession(socket.asTransport());

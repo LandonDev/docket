@@ -297,8 +297,8 @@ import { routeIsSecure, type CodeUpdateStatus } from '@shared/codeUpdate'
 import { KeepAwake, KEEP_AWAKE_ENV, type AwakeBlocker, type PowerSourceLike } from './keepAwake'
 import { DEFAULT_RULES, withProbedDefaults } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
-import { DEFAULT_PLAN_SETTINGS, type PlanScope } from '@shared/plans'
-import type { ReviewScope } from '@shared/review'
+import { DEFAULT_PLAN_SETTINGS } from '@shared/plans'
+import type { PlanState, ReviewState } from '@shared/contract'
 import { ensureLinked, type EnsureLinkedDeps } from './projectLinks'
 import {
   blameRange,
@@ -992,7 +992,7 @@ export async function startServer(
   // sends every settings write of such a project there.
   const projectSettings = new ProjectSettingsSync({ environmentId, platform: build.platform, headless: build.headless, registry, store, peers })
   projectSettings.start()
-  // Orchestration rules and thread defaults: one copy, on the same home
+  // Rules, thread defaults, global Plans and Reviews: one copy, on the same home
   // (remote/rulesSync.ts); and what each linked host runs, which a spawn
   // there is checked against (peerCatalogs.ts).
   const peerCatalogs = new PeerCatalogs(store)
@@ -3668,6 +3668,7 @@ export async function startServer(
             break
           case 'plans.get': {
             const scoped = registry.getPlanSettings(req.params.projectId)
+            const home = rulesSync.homeFor(req.params.projectId, req.method)
             sendFrame({
               id: req.id,
               ok: true,
@@ -3676,16 +3677,21 @@ export async function startServer(
                   scoped ??
                   (req.params.projectId ? registry.getPlanSettings(null) : null) ??
                   DEFAULT_PLAN_SETTINGS,
-                overridden: scoped !== null
-              } satisfies PlanScope
+                overridden: scoped !== null,
+                ...(home ? { home } : {})
+              } satisfies PlanState
             })
             break
           }
-          case 'plans.set':
-            if (!(await projectSettings.forward(req.params.projectId, req.method, req.params)))
-              registry.setPlanSettings(req.params.projectId, req.params.settings)
+          case 'plans.set': {
+            const { projectId, settings } = req.params
+            const forwarded = projectId === null
+              ? await rulesSync.forward(req.method, null, settings)
+              : await projectSettings.forward(projectId, req.method, req.params)
+            if (!forwarded) registry.setPlanSettings(projectId, settings)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          }
           case 'session.start':
             sendFrame({ id: req.id, ok: true, result: { started: await registry.startQueued(req.params.sessionId) } })
             break
@@ -3817,22 +3823,28 @@ export async function startServer(
             break
           case 'review.get': {
             const projectId = req.params.projectId
+            const home = rulesSync.homeFor(projectId, req.method)
             sendFrame({
               id: req.id,
               ok: true,
               result: {
                 override: projectId ? registry.getReviewSettings(projectId) : null,
                 global: registry.getReviewSettings(null),
-                ...registry.effectiveReview(projectId)
-              } satisfies ReviewScope
+                ...registry.effectiveReview(projectId),
+                ...(home ? { home } : {})
+              } satisfies ReviewState
             })
             break
           }
-          case 'review.set':
-            if (!(await projectSettings.forward(req.params.projectId, req.method, req.params)))
-              registry.setReviewSettings(req.params.projectId, req.params.settings)
+          case 'review.set': {
+            const { projectId, settings } = req.params
+            const forwarded = projectId === null
+              ? await rulesSync.forward(req.method, null, settings)
+              : await projectSettings.forward(projectId, req.method, req.params)
+            if (!forwarded) registry.setReviewSettings(projectId, settings)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          }
           case 'appshots.get':
             sendFrame({ id: req.id, ok: true, result: registry.getAppshotSettings() })
             break

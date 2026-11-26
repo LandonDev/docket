@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HOME_RECHECK_MS } from "../lib/settingsHome";
 import type { ReviewSettings } from "@server/shared/review";
 
 const state = vi.hoisted(() => ({
@@ -42,7 +43,7 @@ vi.mock("../lib/reviewScope", async (original) => ({
 }));
 
 const { ReviewsPage } = await import("./ReviewSettings");
-const { ReviewFields } = await import("../chrome/ReviewFields");
+const { ReviewFields, useReviewScope } = await import("../chrome/ReviewFields");
 
 const SETTINGS: ReviewSettings = {
   beforeMerge: false,
@@ -85,6 +86,22 @@ async function openSocket() {
 }
 
 describe("Reviews page", () => {
+  it("keeps the review set beside its home and rechecks only while offline", async () => {
+    vi.useFakeTimers();
+    const offline = { name: "box", online: false };
+    const online = { ...offline, online: true };
+    const scope = { override: null, global: SETTINGS, settings: SETTINGS, source: "global" };
+    const read = vi.fn().mockResolvedValueOnce({ ...scope, home: offline }).mockResolvedValue({ ...scope, home: online });
+    state.get = read;
+    const { result } = renderHook(() => useReviewScope("local", null));
+    await act(async () => {});
+    expect(result.current.scope).toEqual({ ...scope, home: offline });
+    await act(() => vi.advanceTimersByTimeAsync(HOME_RECHECK_MS));
+    expect(result.current.scope).toEqual({ ...scope, home: online });
+    await act(() => vi.advanceTimersByTimeAsync(HOME_RECHECK_MS));
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
   it("shows skeleton rows before review.get answers", () => {
     state.get = () => new Promise(() => {});
     render(<ReviewsPage />);

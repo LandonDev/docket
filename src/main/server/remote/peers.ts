@@ -63,6 +63,8 @@ export class PeerLink {
   lastSyncAt: number | null = null
   /** What the host said it runs in its last hello (release number, version, commit, platform). */
   build: BuildFacts | null = null
+  /** Features named by the last hello; null until this link has heard one. */
+  features: readonly string[] | null = null
   /** The route the open socket was made on; null while there is none. Code-only updates cross only a secure one (shared/codeUpdate.ts routeIsSecure). */
   route: { url: string; kind: string } | null = null
 
@@ -148,6 +150,7 @@ export class PeerLink {
             }
             this.ws = ws
             this.connected = true
+            this.features = frame.features ?? []
             if (frame.build) {
               this.build = frame.build
               rememberPlatform(this.ctx.store, this.env.id, frame.build.platform)

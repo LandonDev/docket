@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReviewSettings } from "@server/shared/review";
 import { registry } from "../lib/connection";
 import { readWhenOpen, withDeadline } from "../lib/connection/openRead";
+import { useRecheckWhileOffline } from "../lib/settingsHome";
 import type { HarnessId } from "../lib/session";
 import { EFFORT_LABELS, effortLadder, type Reasoning } from "../lib/tcserver/defaults";
 import { resolveModel } from "../lib/models";
@@ -56,7 +57,7 @@ export async function loadReviewScope(environmentId: string, projectId: string |
 export function useReviewScope(environmentId: string, projectId: string | null) {
   const [scope, setScope] = useState<ReviewScope | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Bumped by Retry and by a socket opening while the set is missing.
+  // Bumped by Retry, a socket opening during a miss or an offline-home check.
   const [attempt, setAttempt] = useState(0);
   // A load in flight waits for the open itself; only a settled miss asks again.
   const pending = useRef(false);
@@ -85,12 +86,20 @@ export function useReviewScope(environmentId: string, projectId: string | null) 
       .finally(() => {
         if (live) pending.current = false;
       });
-    withDeadline(read).catch((err) => live && setError(err instanceof Error ? err.message : String(err)));
+    withDeadline(read).catch((err) => {
+      if (!live) return;
+      pending.current = false;
+      setError(err instanceof Error ? err.message : String(err));
+    });
     return () => {
       live = false;
     };
   }, [environmentId, projectId, attempt]);
-  return { scope, setScope, error, setError, retry: () => setAttempt((n) => n + 1) };
+  const retry = () => setAttempt((n) => n + 1);
+  useRecheckWhileOffline(scope?.home, () => {
+    if (!pending.current) retry();
+  });
+  return { scope, setScope, error, setError, retry };
 }
 
 export async function saveReviewSettings(

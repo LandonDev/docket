@@ -34,8 +34,9 @@ export const CONTRACT_VERSION = 1
 /** What this host's server takes beyond the contract number, listed in its hello: a client asks for one only of a host
  *  that names it. `create.steps`: `session.create` runs a draft's first-send steps itself (`items`, `mailAdopt`,
  *  `bridge`, the first message's `attachments`), which an older host would drop unread. `defaults.list`: every
- *  scope's thread defaults in one ask. */
-export const HOST_FEATURES = ['create.steps', 'defaults.list'] as const
+ *  scope's thread defaults in one ask. The `rulesSync.*` features let a follower
+ *  move its global Plans or Reviews settings to the box. */
+export const HOST_FEATURES = ['create.steps', 'defaults.list', 'rulesSync.plans', 'rulesSync.review'] as const
 export type HostFeature = (typeof HOST_FEATURES)[number]
 
 /** Every contract method and the capability it needs. A new method without

@@ -1,12 +1,12 @@
+import type { SettingsHome } from "@server/shared/contract";
 import { useEffect, useRef } from "react";
 
 /**
  * Where a setting's one copy lives when another host holds it: the
- * orchestration rules and the thread defaults are kept on the box
- * (remote/rulesSync.ts), and the host answers `rules.get` / `defaults.get`
- * with that host's name and whether it answers now.
+ * box keeps shared rules, defaults, Plans and Reviews (remote/rulesSync.ts).
+ * Their getters name that host and say whether it answers now.
  */
-export type SettingsHome = { name: string; online: boolean };
+export type { SettingsHome };
 
 /** The host's `home` off the wire; anything else is none. */
 export function readHome(raw: unknown): SettingsHome | null {

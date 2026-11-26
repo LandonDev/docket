@@ -1,3 +1,4 @@
+import type { ReviewState } from "@server/shared/contract";
 import {
   DEFAULT_REVIEW_SETTINGS,
   ReviewSettingsSchema,
@@ -6,16 +7,11 @@ import {
 import { modelApproved } from "@server/shared/rulesValues";
 import type { HarnessId } from "./session";
 import { modelsFor, resolveModel } from "./models";
+import { readHome } from "./settingsHome";
 
 /** Review-before-merge settings as the renderer reads them (chrome/ReviewFields.tsx edits them). */
 
-export type ReviewScope = {
-  /** the scope's own set, null when it follows the one above */
-  override: ReviewSettings | null;
-  global: ReviewSettings | null;
-  settings: ReviewSettings;
-  source: "project" | "global" | "default";
-};
+export type ReviewScope = ReviewState;
 
 export function parseReviewScope(raw: unknown): ReviewScope {
   const r = (raw ?? {}) as Record<string, unknown>;
@@ -25,11 +21,13 @@ export function parseReviewScope(raw: unknown): ReviewScope {
   };
   const override = parse(r.override);
   const global = parse(r.global);
+  const home = readHome(r.home);
   return {
     override,
     global,
     settings: parse(r.settings) ?? override ?? global ?? DEFAULT_REVIEW_SETTINGS,
     source: r.source === "project" || r.source === "global" ? r.source : "default",
+    ...(home ? { home } : {}),
   };
 }
 
