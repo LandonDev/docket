@@ -7,6 +7,7 @@ import { LOCAL_ENVIRONMENT_ID, registry } from './connection/registry'
 import type { EnvLink } from './connection/link'
 import { nativePlatform } from './native'
 import { isWebMode } from './nativeWeb'
+import { afterOpen } from './tcserver/openPhase'
 
 /** The bundle id the box's browser service names its Chromium by (work/browser/box/service.ts `BOX_BROWSER_APP`). */
 export const BOX_BROWSER_BUNDLE = 'org.chromium.Chromium'
@@ -61,7 +62,7 @@ export function startComputerSessions(): void {
     link.onPush((push) => {
       if (push.push === 'computer') setRows(link.environmentId, push.sessions, push.service)
     })
-    link.onOpen(() => void load(link))
+    link.onOpen(() => afterOpen(link, () => load(link)))
     if (link.connected) void load(link)
   }
   registry.onLink((link, event) => {

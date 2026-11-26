@@ -121,10 +121,15 @@
   (scripts/mainEntryGraph.test.ts names the few helpers that are). The boot
   waits for the fixed port's listener, not for its browser endpoints'
   publish, which waits out older proofs (1.5 s, remote/restarts.ts). The
-  `[boot]` marks between server-start and the window: work-loaded, store,
-  registry, services-a to -c, work-started, listening, remote-ready,
-  server-ready, server-returned, boot-mirror and window-create. The order is
-  held by src/main/desktopBoot.test.ts; boot.ts's module set is untouched.
+  `[boot]` marks: boot-mirror (the read's ms) and window-create before
+  server-start; then db-open, store, registry, services-a to -c,
+  work-loaded, work-started, listening, remote-ready, server-ready,
+  server-returned, and ready-to-show beside them. On the scrubbed copy
+  (Nov 26, 3 launches, load about 14.5): `tc:ready` after spawn 5.0 to 6.5 s
+  before, 3.5 to 4.2 s after; server-ready 3.4 to 4.2 s before, 2.05 to
+  2.75 s after; window-create about 700 ms, ready-to-show 1.6 to 2.3 s. The
+  order is held by src/main/desktopBoot.test.ts; boot.ts's module set is
+  untouched.
 - Proof: `bun run script:e2e-launch-timing` (scripts/e2e-launch-timing.ts)
   packs an isolated copy under /private/tmp/tc-launch-timing and launches it
   four times with Chromium's startup trace on; the report shows the `index`

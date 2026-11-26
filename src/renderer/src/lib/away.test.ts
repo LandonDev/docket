@@ -4,6 +4,10 @@ import { attachAwayLink, awayKinds, awayStore, onAwayPush, resetAwayForTest, set
 import { registry } from "./connection/registry";
 import * as toaster from "../components/ui/toaster";
 import type { ServerPush } from "./tcserver/types";
+import { markUsable } from "./tcserver/openPhase";
+
+// the window is usable: a host's open runs its second phase, where Away's read is (tcserver/openPhase.ts)
+markUsable();
 
 /** A link that answers `away.get` with `snapshot` and lets the test push. */
 function fakeLink(environmentId: string, snapshot: AwaySnapshot) {
@@ -16,7 +20,8 @@ function fakeLink(environmentId: string, snapshot: AwaySnapshot) {
     onPush: (l: (p: ServerPush) => void) => ((push = l), () => {}),
     onOpen: (l: () => void) => ((open = l), () => {}),
   };
-  return { link: link as never, push: (p: AwaySnapshot) => push({ push: "away", ...p } as ServerPush), open: () => open() };
+  // a socket that opened is connected, as an EnvLink's is
+  return { link: link as never, push: (p: AwaySnapshot) => push({ push: "away", ...p } as ServerPush), open: () => ((link.connected = true), open()) };
 }
 
 const snap = (enabled: boolean, at: number, threads: { sessionId: string; count: number }[] = []): AwaySnapshot => ({

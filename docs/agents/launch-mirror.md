@@ -49,9 +49,10 @@
   workspaces and projects, accounts, the Work switch, the model catalog, the
   shown thread and its focus, and on the local host the saved hosts); the
   rest waits for `afterOpen`: the inbox, dev servers, port forwards, host
-  jobs, computer history, thread resources and the providers' doctor run in
-  an idle slot once the window is usable (`markUsable` at `tc:ready`; a
-  hidden window runs them at once), one at a time on a remote host, and only
+  jobs, computer sessions and history, thread resources, Away's state and
+  the providers' doctor run in an idle slot once the window is usable
+  (`markUsable` at `tc:rail-complete`, the rail whole; a hidden window runs
+  them at once), one at a time on a remote host, and only
   if no close came since that open. One `doctor.get` answers both the
   connect report and which CLIs are installed (`probeDoctor` shares the
   ask). lib/tcserver/openPhase.test.ts counts a host's asks on open by

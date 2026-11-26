@@ -1,8 +1,8 @@
 /**
  * A host's open in two phases (docs/agents/launch-mirror.md "The open in two phases"). What the first paint needs
  * runs the moment a socket opens: the session changes, the workspaces, the shown thread, its focus, the model
- * catalog. The rest (the inbox, dev servers, port forwards, host jobs, computer history, thread resources, the
- * providers' doctor) waits for `afterOpen`: an idle slot once the window is usable, one at a time on a remote host,
+ * catalog. The rest (the inbox, dev servers, port forwards, host jobs, computer sessions and history, thread
+ * resources, Away's state, the providers' doctor) waits for `afterOpen`: an idle slot once the window is usable, one at a time on a remote host,
  * and only while the socket that opened is still the live one, so nothing is asked twice for one open.
  */
 
@@ -19,7 +19,7 @@ type Task = () => unknown;
 let usable = false;
 const usableWaiters: (() => void)[] = [];
 
-/** The window is usable (main.tsx, at `tc:ready`): the second phase may run. */
+/** The window is usable (main.tsx, at `tc:rail-complete`: the rail whole): the second phase may run. */
 export function markUsable(): void {
   if (usable) return;
   usable = true;
