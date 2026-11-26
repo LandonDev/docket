@@ -59,9 +59,9 @@
   frame, with at most 512 KiB of parts out that the window has not acked
   (wire.ts `AnswerParts`, src/shared/answerParts.ts): a push or a small
   answer goes between parts, so the shown thread's rows never sit behind
-  more than that, however much the tunnel buffers (the host's own unsent
-  bytes stay near zero behind cloudflared, so a mark on them alone would
-  hold nothing). A list never goes in parts: the store keeps the newest
+  more than that, however much the tunnel buffers (cloudflared takes what
+  the host writes and holds it, so the host's own unsent bytes undercount
+  what is ahead of a frame). A list never goes in parts: the store keeps the newest
   meta it heard, so a push may not overtake one. The window asks with
   `#parts` when its host's hello names `answer.parts` and acks each part
   (`#ack <chars>`, transport.ts); a phone or a peer link never sees one.

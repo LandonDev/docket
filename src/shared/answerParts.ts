@@ -2,8 +2,8 @@
  * A big answer on a remote window's socket, in parts (wire.ts `AnswerParts`, lib/connection/transport.ts).
  *
  * One socket carries a window's every frame in order, so a 4 MiB file piece written whole sits in front of the
- * shown thread's next row until it has crossed the link: 3.4 s at 10 Mbit/s. The tunnel and the edge read the
- * host's socket as fast as it writes, so the host's own unsent bytes say nothing about what is in front. So a content
+ * shown thread's next row until it has crossed the link: 3.4 s at 10 Mbit/s. The tunnel and the edge take what the
+ * host writes and hold it, so the host's own unsent bytes undercount what is in front. So a content
  * answer (a file read, a transcript page, a row's body) larger than a part goes as text parts of PART_CHARS, each
  * a message of its own, with no more than UNACKED_CHARS of them out that the window has not said it holds; every
  * other frame (a push, a small answer, a list) goes at once, between parts. A part is not JSON:
