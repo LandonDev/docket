@@ -54,6 +54,31 @@ const draw = (onRun: (action: SavedAction) => void) =>
     />,
   );
 
+describe("a file header's presses", () => {
+  it("take a second row at the end where the name and its line would be cut: the name keeps 16rem", () => {
+    vi.stubGlobal("ResizeObserver", Measured);
+    width = 600;
+    draw(() => undefined);
+    const header = document.querySelector<HTMLElement>("[data-files-header]")!;
+    expect(header.className.split(" ")).toEqual(expect.arrayContaining(["flex-wrap", "min-h-12", "py-1"]));
+    expect(header.className.split(" ")).not.toContain("h-12");
+    const name = header.querySelector<HTMLElement>("[data-files-head-name]")!;
+    expect(name.className.split(" ")).toContain("flex-[1_1_16rem]");
+    // The presses are one group at the row's end, ⋯ and Ask with them, so they move to the second row together.
+    const presses = header.querySelector<HTMLElement>("[data-files-head-presses]")!;
+    expect(presses.className.split(" ")).toEqual(expect.arrayContaining(["ms-auto", "shrink-0"]));
+    for (const label of ["Reload", "Ask"]) expect(presses.contains(within(header).getByRole("button", { name: label }))).toBe(true);
+  });
+
+  it("keep one row with no line press: the name gives way first", () => {
+    vi.stubGlobal("ResizeObserver", Measured);
+    render(<FileHeader name="Notes.md" line={null} where="Events" running={null} onRun={() => undefined} rows={[]} onPick={() => undefined} ask={{ disabled: false, pressed: false, run: () => undefined }} />);
+    const name = document.querySelector<HTMLElement>("[data-files-head-name]")!;
+    expect(name.className.split(" ")).toContain("flex-1");
+    expect(name.className.split(" ")).not.toContain("flex-[1_1_16rem]");
+  });
+});
+
 describe("a narrow file header", () => {
   it("draws the second press in ⋯ and runs it from there", async () => {
     width = 400;

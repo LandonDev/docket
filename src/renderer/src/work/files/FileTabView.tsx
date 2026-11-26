@@ -12,6 +12,7 @@ import { Button } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { nameInLine } from "../../lib/hostWords";
 import { useLinkMay } from "../../lib/linkMay";
 import { shortcutFor } from "../../lib/settings";
 import { shell as appShell } from "../../stores/shell";
@@ -45,7 +46,7 @@ import { importLosses } from "../formats/importOnce";
 import { canvasFlushPort } from "../../lib/canvasFlushPort";
 import { saveKeyPort } from "../../lib/saveKey";
 import { NameField, useSideOver } from "./rowParts";
-import { cloudLine, cloudOfBack, copyBackDue, copyLine, isCopyBack, newestBack, staysLine, type CopyAsk, type HeaderLine } from "./fileText";
+import { cloudLine, cloudOfBack, copyBackDue, copyLine, isCopyBack, newestBack, offlineNamed, staysLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { HEAD_NARROW, SaveActions, SaveLine, TUCKED, tuckedRows } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
 import { dropsOf, openSaveAs } from "./saveAsPort";
@@ -80,6 +81,12 @@ export interface CopyWords {
   reload?(): Promise<void>;
   keepBoth?(): Promise<void>;
 }
+
+/** The workspace's computer as a line names it mid-sentence ("the box"); none where this window has no name for it. */
+const hostInLine = (environmentId: string): string | undefined => {
+  const name = registry.environment(environmentId)?.name;
+  return name ? nameInLine(name) : undefined;
+};
 
 /**
  * The header's line for a copy that saves back: the words `copyLine` writes, with the presses its state needs (at
@@ -218,59 +225,66 @@ export function FileHeader({
     onPick(id);
   };
   return (
-    <header ref={head} data-files-header className={`@container/file-head relative flex h-12 shrink-0 items-center gap-2.5 border-b border-border pe-2 ${leave ? "ps-20" : "ps-3"}`}>
-      <KindGlyph kind={kindOfEntry(name).kind} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        {rename?.on ? (
-          <NameField name={name} className="h-5 flex-none text-sm font-semibold" onDone={rename.done} />
-        ) : (
-          <TruncateTip text={shownName(name)}>
-            {rename ? (
-              <h2 className="min-w-0 truncate text-sm leading-5 font-semibold text-foreground">
-                <Button variant="link" data-files-rename-name className="h-5 max-w-full min-w-0 justify-start rounded-sm p-0 text-sm leading-5 font-semibold hover:no-underline" onClick={rename.start}>
-                  <span className="truncate">{shownName(name)}</span>
-                </Button>
-              </h2>
-            ) : (
-              <h2 className="min-w-0 truncate text-sm leading-5 font-semibold text-foreground">{shownName(name)}</h2>
-            )}
-          </TruncateTip>
-        )}
-        {note ? (
-          <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground">{note}</p>
-        ) : line ? (
-          <SaveLine line={line} where={where} onShowFolder={onShowFolder} />
-        ) : where ? (
-          <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground">In {where}</p>
-        ) : null}
+    // One 48px row (its least height; the name and its line are 36px). Where the line has presses the name and its
+    // line keep 16rem: past that the presses take a second row at the end, as the Beside seat's bar does, so the name
+    // and the line are read whole, not cut to stubs.
+    <header ref={head} data-files-header className={`@container/file-head relative flex min-h-12 shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-border py-1 pe-2 ${leave ? "ps-20" : "ps-3"}`}>
+      <div data-files-head-name className={`flex min-w-0 items-center gap-2.5 ${actions || end ? "flex-[1_1_16rem]" : "flex-1"}`}>
+        <KindGlyph kind={kindOfEntry(name).kind} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          {rename?.on ? (
+            <NameField name={name} className="h-5 flex-none text-sm font-semibold" onDone={rename.done} />
+          ) : (
+            <TruncateTip text={shownName(name)}>
+              {rename ? (
+                <h2 className="min-w-0 truncate text-sm leading-5 font-semibold text-foreground">
+                  <Button variant="link" data-files-rename-name className="h-5 max-w-full min-w-0 justify-start rounded-sm p-0 text-sm leading-5 font-semibold hover:no-underline" onClick={rename.start}>
+                    <span className="truncate">{shownName(name)}</span>
+                  </Button>
+                </h2>
+              ) : (
+                <h2 className="min-w-0 truncate text-sm leading-5 font-semibold text-foreground">{shownName(name)}</h2>
+              )}
+            </TruncateTip>
+          )}
+          {note ? (
+            <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground">{note}</p>
+          ) : line ? (
+            <SaveLine line={line} where={where} onShowFolder={onShowFolder} />
+          ) : where ? (
+            <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground">In {where}</p>
+          ) : null}
+        </div>
       </div>
-      {actions ? <SaveActions actions={actions} busy={running} onRun={onRun} tuck /> : null}
-      {end}
-      <RowsMenu
-        label="File"
-        align="end"
-        rows={menuRows}
-        onPick={pick}
-        tip={{ label: "More" }}
-        trigger={
-          <Button variant="ghost" size="icon-sm" aria-label={`More for ${name}`} className="shrink-0 text-muted-foreground">
-            <MoreHorizontal />
-          </Button>
-        }
-      />
-      {leave ? (
-        <Tip label="Leave Full Window" shortcut={shortcutFor("Files (Work)", "Leave Full Window")}>
-          <Button variant="ghost" size="icon-sm" aria-label="Leave Full Window" className="shrink-0 text-muted-foreground" onClick={leave}>
-            <Minimize2 />
-          </Button>
-        </Tip>
-      ) : null}
-      {/* A pressed toggle is `muted` and flat: the raised button's own layer would hide a fill under it. Under 480px of
-          header Ask is its glyph alone, so the file's name and its line keep room beside the line's presses. */}
-      <Button variant={ask.pressed ? "ghost" : "secondary"} size="sm" aria-label="Ask" className="shrink-0 aria-pressed:bg-muted" aria-pressed={ask.pressed} disabled={ask.disabled} onClick={ask.run}>
-        <Ask />
-        <span className="hidden @[480px]/file-head:inline">Ask</span>
-      </Button>
+      <div data-files-head-presses className="ms-auto flex shrink-0 items-center gap-2.5">
+        {actions ? <SaveActions actions={actions} busy={running} onRun={onRun} tuck /> : null}
+        {end}
+        <RowsMenu
+          label="File"
+          align="end"
+          rows={menuRows}
+          onPick={pick}
+          tip={{ label: "More" }}
+          trigger={
+            <Button variant="ghost" size="icon-sm" aria-label={`More for ${name}`} className="shrink-0 text-muted-foreground">
+              <MoreHorizontal />
+            </Button>
+          }
+        />
+        {leave ? (
+          <Tip label="Leave Full Window" shortcut={shortcutFor("Files (Work)", "Leave Full Window")}>
+            <Button variant="ghost" size="icon-sm" aria-label="Leave Full Window" className="shrink-0 text-muted-foreground" onClick={leave}>
+              <Minimize2 />
+            </Button>
+          </Tip>
+        ) : null}
+        {/* A pressed toggle is `muted` and flat: the raised button's own layer would hide a fill under it. Under 480px of
+            header Ask is its glyph alone, so the file's name and its line keep room beside the line's presses. */}
+        <Button variant={ask.pressed ? "ghost" : "secondary"} size="sm" aria-label="Ask" className="shrink-0 aria-pressed:bg-muted" aria-pressed={ask.pressed} disabled={ask.disabled} onClick={ask.run}>
+          <Ask />
+          <span className="hidden @[480px]/file-head:inline">Ask</span>
+        </Button>
+      </div>
       {progress != null ? <Progress aria-label={note ?? "Loading"} value={progress} className="absolute inset-x-0 -bottom-px gap-0 [&_[data-slot=progress-track]]:rounded-none" /> : null}
     </header>
   );
@@ -438,7 +452,8 @@ export function FileTabView({
     copy && word && (!kindLine || kindLine.state === "saved" || kindLine.state === "saving")
       ? { ...wordLine(word, serviceOf(tab), copy.host, Date.now(), wordSaving), ...(wordActions(word).length ? { actions: wordActions(word) } : {}) }
       : null;
-  const rawSaid: HeaderLine | null =
+  // A kind's Offline is the workspace's computer not answering: the line names it.
+  const rawSaid: HeaderLine | null = offlineNamed(
     wordSaid
       ? wordSaid
       : copy && back
@@ -447,7 +462,9 @@ export function FileTabView({
         ? kindLine && kindLine.state !== "saved" && kindLine.state !== "saving"
           ? kindLine
           : frameLine(copy, item, workspace.environmentId, tab.stays ? { ...(item?.kind === "document" && meta ? { saveAs: () => openSaveAs(item.id) } : {}) } : undefined)
-        : (kindLine ?? frameLine(null, item, workspace.environmentId));
+        : (kindLine ?? frameLine(null, item, workspace.environmentId)),
+    hostInLine(workspace.environmentId),
+  );
   // A stage the frame says itself (a copy's send to its computer) shows only once it has lasted 600 ms (canvas/calm.ts);
   // until then the line keeps the save last confirmed. The kind's own Saving… and Word's are already timed.
   const frameSaving = rawSaid?.state === "saving" && kindLine?.state !== "saving" && !wordSaid;

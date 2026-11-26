@@ -7,7 +7,7 @@ import type { FileSaved } from "@shared/contract-work-files";
 import type { SavedLine } from "../canvas/kind";
 import { DraftStore } from "../../../../main/drafts";
 import { FileSession, JOURNAL_EACH_EDIT_CHARS, JOURNAL_MS, SAVE_AFTER_MS, type DraftsPort, type FileSessionHost } from "./fileSession";
-import { decodeText, encodeText, savedWords, triedAsText, whenWords } from "./fileText";
+import { decodeText, encodeText, offlineNamed, savedWords, triedAsText, whenWords } from "./fileText";
 
 /** The file kind's session (fileSession.ts) against a stand-in host that keeps one file, and the words of the save line. */
 
@@ -517,7 +517,13 @@ describe("the words", () => {
     expect(say({ state: "conflict", detail: "Dana changed this at 2:04 PM" })).toBe("Dana changed this at 2:04 PM");
     expect(say({ state: "readonly", detail: "a mail's file" })).toBe("Read only, a mail's file");
     expect(say({ state: "copy", detail: "MacBook" })).toBe("A copy from MacBook. Changes stay here");
-    expect(say({ state: "downloading", detail: "2.1 of 8.4 MB" })).toBe("Downloading 2.1 of 8.4 MB");
+    expect(say({ state: "downloading", detail: "2.1 of 8.4 MB" })).toBe("Downloading… 2.1 of 8.4 MB");
+    // In the frame, Offline names the computer that is not answering, as its family does; unnamed, it stands.
+    expect(offlineNamed({ state: "offline", pending: 3 }, "the box")?.words).toBe("The box is not answering. 3 changes wait here");
+    expect(offlineNamed({ state: "offline", pending: 1 }, "this Mac")?.words).toBe("This Mac is not answering. 1 change waits here");
+    expect(offlineNamed({ state: "offline" }, "the box")?.words).toBe("The box is not answering. Changes wait here");
+    expect(offlineNamed({ state: "offline", pending: 2 }, undefined)?.words).toBeUndefined();
+    expect(offlineNamed({ state: "saving" }, "the box")?.words).toBeUndefined();
     expect(say({ state: "asleep", detail: "The Windows VM", at: AT(13, 40) })).toBe("The Windows VM is asleep. This is the copy from 1:40 PM");
     expect(whenWords(AT(9, 5), NOW)).toBe("9:05 AM");
   });

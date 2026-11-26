@@ -86,10 +86,23 @@ export function savedWords(line: SavedLine, where: string | null, now = Date.now
     case "copy":
       return line.detail ? `A copy from ${line.detail}. Changes stay here` : "A copy. Changes stay here";
     case "downloading":
-      return line.detail ? `Downloading ${line.detail}` : "Downloading…";
+      // As the list's row says it (busy.ts): one name a thing.
+      return line.detail ? `Downloading… ${line.detail}` : "Downloading…";
     case "asleep":
       return line.at ? `${line.detail ?? "Its computer"} is asleep. This is the copy from ${whenWords(line.at, now)}` : `${line.detail ?? "Its computer"} is asleep`;
   }
+}
+
+/**
+ * A kind's Offline, in the frame, names the computer whose link dropped (`host`, mid-line as `nameInLine` writes it):
+ * "The box is not answering. 3 changes wait here", as every other line of the family does. Any other line stands, and
+ * so does an Offline whose computer this window cannot name.
+ */
+export function offlineNamed<L extends SavedLine & { words?: string }>(line: L | null, host: string | undefined): L | null {
+  if (line?.state !== "offline" || line.words || !host) return line;
+  const n = line.pending ?? 0;
+  const who = `${host[0]!.toUpperCase()}${host.slice(1)} is not answering.`;
+  return { ...line, words: n > 0 ? `${who} ${n} ${n === 1 ? "change waits" : "changes wait"} here` : `${who} Changes wait here` };
 }
 
 /**

@@ -79,7 +79,7 @@ vi.mock("../../lib/connection", async (original) => {
     onOpen: (listener: () => void) => (disk.opens.add(listener), () => disk.opens.delete(listener)),
     onClose: () => () => undefined,
   });
-  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: (id: string) => id !== "desk", environment: () => undefined, environments: () => [], onLink: () => () => undefined } };
+  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: (id: string) => id !== "desk", environment: (id: string) => (id === "box" ? { name: "The box" } : undefined), environments: () => [], onLink: () => () => undefined } };
 });
 vi.mock("../../lib/hostPlatform", async (original) => ({ ...(await original<typeof import("../../lib/hostPlatform")>()), platformOf: () => disk.platform }));
 // Open in Drive goes to the system's browser.
@@ -210,7 +210,8 @@ describe("a text file in a tab", () => {
     await waitFor(() => expect(line()).toContain("Saved"));
     disk.down = true;
     fireEvent.change(field, { target: { value: "typed while away\n" } });
-    await waitFor(() => expect(line()).toBe("Offline. 1 change waits here"), { timeout: SAVE_AFTER_MS + 1500 });
+    // The line names the computer that is not answering, as every line of its family does.
+    await waitFor(() => expect(line()).toBe("The box is not answering. 1 change waits here"), { timeout: SAVE_AFTER_MS + 1500 });
     disk.down = false;
     act(() => disk.opens.forEach((listener) => listener()));
     await waitFor(() => expect(line()).toBe("Saved 1:53 PM in Events"));
