@@ -400,7 +400,9 @@ export class ThreadRecords {
   private readWorks(rootId: string): Promise<Works> {
     const under = this.reading.get(rootId)
     if (under) return under
-    const read = (async (): Promise<Works> => {
+    // Declared first: the read's own body asks whether it is still the read out for its root.
+    let read!: Promise<Works>
+    read = (async (): Promise<Works> => {
       const links = await this.sources.links(rootId)
       const tasks = new Map<string, TaskFacts | null>()
       const first = links.filter((l) => l.entity.table === 'tasks').slice(0, TASKS_READ)
