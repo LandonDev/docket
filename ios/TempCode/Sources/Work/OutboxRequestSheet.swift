@@ -275,15 +275,8 @@ struct OutboxRequestSheet: View {
             // read lands, so old ticks never pass for current ones.
             if let loadError {
                 Section {
-                    HStack(spacing: Layout.rowGap) {
-                        Text(loadError)
-                            .textStep(.meta, tint: Tint.destructiveText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: Layout.rowGap)
-                        PillButton("Try Again") { Task { await load() } }
-                    }
-                    .listRowInsets(EdgeInsets(top: 8, leading: Layout.textEdge, bottom: 8, trailing: Layout.textEdge))
-                    .accessibilityIdentifier("outbox-request-reread-failed")
+                    // The failed-read row of every Work place.
+                    FailedRead(words: loadError, retry: { await load() }, identifier: "outbox-request-reread-failed")
                 }
             }
             Section {

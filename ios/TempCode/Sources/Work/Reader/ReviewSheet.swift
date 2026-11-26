@@ -31,21 +31,9 @@ struct ReviewSheet: View {
                 // A read again that failed over changes on screen: the host's words and Try Again above them, kept
                 // until a read lands.
                 if !review.rows.isEmpty, let failure = review.failure {
-                    HStack(spacing: Layout.rowGap) {
-                        Text(failure)
-                            .textStep(.meta, tint: Tint.destructiveText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: Layout.rowGap)
-                        if retrying {
-                            ProgressView()
-                        } else {
-                            PillButton("Try Again") { Task { await retry() } }
-                        }
-                    }
-                    .listRowInsets(Layout.rowInsets)
-                    .listRowSeparator(.hidden, edges: .top)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("review-reread-failed")
+                    // The failed-read row of every Work place.
+                    FailedRead(words: failure, retry: { await retry() }, identifier: "review-reread-failed")
+                        .listRowSeparator(.hidden, edges: .top)
                 }
                 ForEach(review.groups) { group in
                     Section {
