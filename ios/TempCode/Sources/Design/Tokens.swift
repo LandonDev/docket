@@ -237,8 +237,9 @@ enum CardMetrics {
     static let textEdge: CGFloat = mark + glyphGap + mark + glyphGap
     /// The fold that follows the cards starts this far below them.
     static let foldGap: CGFloat = 16
-    /// The ellipsis' hit area grows this far past its glyph on every side.
-    static let menuSlop: CGFloat = 12
+    /// The ellipsis' hit area grows this far past its glyph on every side: a
+    /// 17 pt glyph reaches 45 pt.
+    static let menuSlop: CGFloat = 14
 }
 
 /// The project shell's thread strip, the desktop's title-bar strip

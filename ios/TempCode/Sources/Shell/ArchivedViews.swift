@@ -28,11 +28,7 @@ struct ArchivedThreadsView: View {
         .listStyle(.plain)
         .overlay {
             if threads.isEmpty {
-                ContentUnavailableView {
-                    Label("Nothing archived", systemImage: "archivebox")
-                } description: {
-                    Text("Threads you archive in this project are kept here.")
-                }
+                ContentUnavailableView("No Archived Threads", systemImage: "archivebox")
             }
         }
         .navigationTitle("Archived")
@@ -77,11 +73,7 @@ struct ArchivedProjectsView: View {
         .listStyle(.plain)
         .overlay {
             if groups.isEmpty {
-                ContentUnavailableView {
-                    Label("No archived projects", systemImage: "archivebox")
-                } description: {
-                    Text("Projects you archive in this workspace are kept here.")
-                }
+                ContentUnavailableView("No Archived Projects", systemImage: "archivebox")
             }
         }
         .navigationTitle("Archived projects")

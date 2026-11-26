@@ -326,6 +326,9 @@ public final class EnvironmentClient {
     /// The host; its `name` is the label the registry gave it (`relabel`).
     public private(set) var environment: PairedEnvironment
     public private(set) var status: EnvironmentStatus = .idle
+    /// When `status.transport` last changed: Home holds a reconnecting host
+    /// this long before it gets a row (`HomeSections.troubled`).
+    public private(set) var transportSince = Date()
     public private(set) var workspaces: [WorkspaceMeta] = []
     public private(set) var projects: [ProjectMeta] = []
     /// The sessions as they are now, outside observation (`SessionStore`):
@@ -541,6 +544,7 @@ public final class EnvironmentClient {
         loops = [
             Task { [weak self] in
                 for await status in socket.statuses {
+                    if self?.status.transport != status.transport { self?.transportSince = Date() }
                     self?.status = status
                     // Refused holds until a link truly opens: a Retry that only starts a connect lifts nothing.
                     if status.transport == .unauthorized { self?.work.refused() } else if status.transport == .open { self?.work.opened() }
@@ -1024,7 +1028,7 @@ public final class EnvironmentClient {
                 }
             } catch {
                 if self.historyTokens[id] == token, !Task.isCancelled {
-                    self.write(id) { $0.historyError = "Earlier board history could not be loaded. Reconnect to try again." }
+                    self.write(id) { $0.historyError = "Couldn't load earlier history" }
                 }
             }
         }

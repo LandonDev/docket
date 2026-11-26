@@ -107,7 +107,7 @@ struct AdoptThreadSheet: View {
             onAdopted(result.adopted)
             if result.refused.isEmpty { dismiss() }
         } catch {
-            self.error = (error as? ActionError)?.message ?? String(describing: error)
+            self.error = ActionError.wrap(error).message
         }
     }
 }

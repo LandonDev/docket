@@ -403,7 +403,7 @@ private struct RowActions: ViewModifier {
             do {
                 try await body()
             } catch {
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }

@@ -70,7 +70,7 @@ struct NoticeLine<Glyph: View>: View {
         let leadStyle: AnyShapeStyle = switch step ? .muted : tone {
         case .muted: AnyShapeStyle(.secondary)
         case .strong: AnyShapeStyle(.primary)
-        case .destructive: AnyShapeStyle(Tint.destructive)
+        case .destructive: AnyShapeStyle(Tint.destructiveText)
         }
         var text = Text(lead).fontWeight(!step && !run.isEmpty ? .medium : .regular).foregroundStyle(leadStyle)
         if let target { text = Text("\(text) \(Text(target).foregroundStyle(.primary))") }

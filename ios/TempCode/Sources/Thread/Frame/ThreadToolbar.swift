@@ -36,7 +36,7 @@ struct AgentsButton: View {
             .frame(minWidth: TranscriptMetrics.hitArea, minHeight: TranscriptMetrics.hitArea)
         }
         .buttonStyle(.pressableStatic)
-        .accessibilityLabel(cue?.line ?? "Subagents")
+        .accessibilityLabel(cue?.line ?? "Agents")
         .accessibilityIdentifier("thread-agents")
     }
 
@@ -199,7 +199,7 @@ struct ThreadMenu: View {
             do {
                 try await body()
             } catch {
-                onFailure((error as? ActionError)?.message ?? String(describing: error))
+                onFailure(ActionError.wrap(error).message)
             }
         }
     }

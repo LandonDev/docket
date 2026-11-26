@@ -19,12 +19,14 @@ struct InboxView: View {
     private let store = InboxStore.shared
     /// A refresh answered forbidden, so the key reads but cannot refresh.
     @State private var refreshRefused = false
+    /// Hosts whose last pull failed: a notice line each until the next pull answers.
+    @State private var refreshFailed: Set<String> = []
     @State private var opened = false
 
     var body: some View {
         let clients = model.registry.ordered
         let entries = store.entries(clients: clients)
-        let notices = InboxModel.notices(hosts: store.hosts(clients), refreshDenied: refreshDenied(clients))
+        let notices = InboxModel.notices(hosts: store.hosts(clients), refreshDenied: refreshDenied(clients), refreshFailed: refreshFailed)
         List(selection: selection) {
             ForEach(notices, id: \.self) { notice in
                 Text(notice)
@@ -82,7 +84,11 @@ struct InboxView: View {
         .overlay {
             if entries.isEmpty, notices.isEmpty {
                 if Self.settled(clients, store: store) {
-                    ContentUnavailableView("Nothing in the Inbox", systemImage: "tray")
+                    if let line = InboxModel.emptyLine(anyOpen: clients.contains { $0.status.transport == .open }) {
+                        Text(line).textStep(.meta)
+                    } else {
+                        ContentUnavailableView(InboxModel.emptyTitle, systemImage: "tray")
+                    }
                 } else {
                     ProgressView()
                 }
@@ -155,6 +161,8 @@ struct InboxView: View {
     /// stored snapshot instead; a refusal the host answers is read the same way.
     private func refresh(_ clients: [EnvironmentClient]) async {
         refreshRefused = false
+        var failed: Set<String> = []
+        defer { refreshFailed = failed }
         for client in clients where client.status.transport == .open {
             if client.operateBlock == .readOnly {
                 refreshRefused = true
@@ -168,7 +176,7 @@ struct InboxView: View {
                 refreshRefused = true
                 await readStored(client)
             } catch {
-                continue
+                failed.insert(client.environment.id)
             }
         }
     }
@@ -232,8 +240,9 @@ struct InboxRow: View {
         .padding(.vertical, 10)
         .frame(minHeight: Layout.rowHeight)
         .separatorAtTextEdge(avatarSize + gap)
+        // VoiceOver hears the whole row (title, author, repository, checks, time); unread is its value.
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(unread ? "\(item.title), new" : item.title)
+        .accessibilityValue(unread ? "New" : "")
     }
 
     /// The name after the owner: one owner is the common case, and the phone has no room for it.

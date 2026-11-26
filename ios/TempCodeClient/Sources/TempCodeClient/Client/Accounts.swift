@@ -96,9 +96,10 @@ public struct AccountScope: Sendable, Hashable {
     /// The account to show: the current one, else the pin that will apply.
     public var shown: String? { current ?? inherited?.name }
 
-    /// "From project billing-page", "From workspace cosmic-web", "Auto, picked by model".
-    public var sourceLine: String {
-        guard let inherited else { return "Auto, picked by model" }
+    /// "From project billing-page", "From workspace cosmic-web"; nil for Auto,
+    /// whose own row already says what it does.
+    public var sourceLine: String? {
+        guard let inherited else { return nil }
         return "From \(inherited.level.rawValue) \(inherited.from)"
     }
 

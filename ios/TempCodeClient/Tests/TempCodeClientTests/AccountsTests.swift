@@ -66,7 +66,7 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
         #expect(scope.inherited == nil)
         #expect(scope.current == work)
         #expect(scope.shown == work)
-        #expect(scope.sourceLine == "Auto, picked by model")
+        #expect(scope.sourceLine == nil)
     }
 
     @Test func `a project pin wins over the workspace's and names the project`() throws {

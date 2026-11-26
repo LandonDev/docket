@@ -140,6 +140,16 @@ private func entry(_ item: GithubInboxItem, host: String = "h1") -> InboxEntry {
         #expect(InboxModel.notices(hosts: quiet, refreshDenied: false).isEmpty)
         #expect(InboxModel.notices(hosts: [InboxModel.Host(environmentId: "a", name: "Mac", snapshot: nil)], refreshDenied: false).isEmpty)
     }
+
+    @Test func `a failed pull says so per host, and an inbox with every host offline says that`() {
+        let mac = InboxModel.Host(environmentId: "a", name: "Mac", snapshot: nil)
+        let box = InboxModel.Host(environmentId: "b", name: "box", snapshot: nil)
+        #expect(InboxModel.notices(hosts: [mac], refreshDenied: false, refreshFailed: ["a"]) == ["Couldn't refresh the inbox"])
+        #expect(InboxModel.notices(hosts: [mac, box], refreshDenied: false, refreshFailed: ["b"]) == ["Couldn't refresh box"])
+        #expect(InboxModel.emptyLine(anyOpen: false) == "Every computer is offline.")
+        #expect(InboxModel.emptyLine(anyOpen: true) == nil)
+        #expect(InboxModel.emptyTitle == "No Issues or Pull Requests")
+    }
 }
 
 @Suite struct InboxPatchTests {

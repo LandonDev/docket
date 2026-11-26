@@ -183,7 +183,8 @@ final class ActivityCoordinator {
     private func start(_ client: EnvironmentClient, _ session: SessionMeta, state: ThreadActivityAttributes.ContentState, registry: ClientRegistry) {
         let environmentId = client.environment.id
         guard hosts[environmentId] == nil, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        let attributes = ThreadActivityAttributes(environmentId: environmentId, sessionId: session.id, title: session.title, threadType: session.threadType ?? .chat)
+        let attributes = ThreadActivityAttributes(environmentId: environmentId, sessionId: session.id, title: session.title, threadType: session.threadType ?? .chat,
+                                                  host: registry.ordered.count > 1 ? client.environment.name : nil)
         do {
             let activity = try Activity.request(attributes: attributes, content: ActivityContent(state: state, staleDate: nil), pushType: .token)
             hosts[environmentId] = HostActivity(id: activity.id, members: [session.id])

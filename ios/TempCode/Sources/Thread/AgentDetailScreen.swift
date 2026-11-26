@@ -186,6 +186,8 @@ private struct AgentSendBar: View {
     /// The block as the field shows it (see `settleBlock`).
     @State private var block: ActionBlock?
     @FocusState private var focused: Bool
+    /// Around the send circle, toward a 44 pt touch.
+    static let hitOutset: CGFloat = 8
 
     private var live: Bool { Fleet.isLive(session?.status) }
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -229,8 +231,11 @@ private struct AgentSendBar: View {
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(Color(.systemBackground))
                     }
-                    .frame(width: 28, height: 28)
-                    .contentShape(Circle())
+                    .frame(width: TranscriptMetrics.composerControl, height: TranscriptMetrics.composerControl)
+                    // The 28 pt circle's touch is the 44 pt square around it.
+                    .padding(AgentSendBar.hitOutset)
+                    .contentShape(Rectangle())
+                    .padding(-AgentSendBar.hitOutset)
                 }
                 .buttonStyle(.pressable)
                 .disabled(!enabled)
@@ -241,7 +246,7 @@ private struct AgentSendBar: View {
             if let failure {
                 Text(failure)
                     .font(TextStep.meta.font)
-                    .foregroundStyle(Tint.destructive)
+                    .foregroundStyle(Tint.destructiveText)
                     .padding(.horizontal, 12)
                     .transition(.opacity)
             }
@@ -284,7 +289,7 @@ private struct AgentSendBar: View {
             } catch {
                 // The text comes back so nothing typed is lost.
                 text = body
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }

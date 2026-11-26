@@ -78,34 +78,77 @@ struct PillButton: View {
 /// A row-sized control that fills its width: the action at the foot of a
 /// sheet or a card, on the fill step, or filled with the label color when it
 /// is the one thing to do. Its corners are concentric with the sheet's on
-/// iOS 26, never tighter than a field's.
+/// iOS 26, never tighter than a field's; at a card's foot it takes the row
+/// corner (`corner: Radius.row`, the card's 12 less its padding). Busy, the
+/// label gives its place to a spinner on a cross-fade and the button keeps
+/// its size.
 struct WideButton: View {
     let title: String
     var systemImage: String?
     var prominent = false
+    var busy = false
+    var corner: CGFloat?
+    /// A prominent button whose act cannot be undone: the destructive fill.
+    var danger = false
     let action: () -> Void
 
-    init(_ title: String, systemImage: String? = nil, prominent: Bool = false, action: @escaping () -> Void) {
+    init(_ title: String, systemImage: String? = nil, prominent: Bool = false, busy: Bool = false, corner: CGFloat? = nil, danger: Bool = false, action: @escaping () -> Void) {
         self.title = title
         self.systemImage = systemImage
         self.prominent = prominent
+        self.busy = busy
+        self.corner = corner
+        self.danger = danger
         self.action = action
     }
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                if let systemImage {
-                    Image(systemName: systemImage)
+            ZStack {
+                HStack(spacing: 6) {
+                    if let systemImage {
+                        Image(systemName: systemImage)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    Text(title)
                         .font(.subheadline.weight(.semibold))
                 }
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
+                .opacity(busy ? 0 : 1)
+                if busy {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(prominent ? Color(.systemBackground) : .secondary)
+                }
             }
             .frame(maxWidth: .infinity, minHeight: Layout.rowHeight)
-            .foregroundStyle(prominent ? AnyShapeStyle(Color(.systemBackground)) : AnyShapeStyle(.primary))
-            .background(prominent ? Color(.label) : Surface.fill, in: .concentric(minimum: Radius.field))
+            .foregroundStyle(prominent ? AnyShapeStyle(danger ? Tint.onDestructive : Color(.systemBackground)) : AnyShapeStyle(.primary))
+            .background(prominent ? (danger ? Tint.destructive : Color(.label)) : Surface.fill, in: shape)
+            .contentShape(shape)
         }
         .buttonStyle(.pressable)
+        .animation(Motion.crossFade, value: busy)
+        .accessibilityLabel(title)
+    }
+
+    private var shape: AnyShape {
+        if let corner { AnyShape(RoundedRectangle.corner(corner)) } else { .concentric(minimum: Radius.field) }
+    }
+}
+
+extension View {
+    /// The touch reaches `top` above and `bottom` below the control while it
+    /// lays out at its own height: a small control's hit grows toward 44 pt
+    /// without moving anything around it.
+    func touchOutset(top: CGFloat, bottom: CGFloat) -> some View {
+        padding(.top, top)
+            .padding(.bottom, bottom)
+            .contentShape(Rectangle())
+            .padding(.top, -top)
+            .padding(.bottom, -bottom)
+    }
+
+    /// The same outset above and below.
+    func touchOutset(_ outset: CGFloat) -> some View {
+        touchOutset(top: outset, bottom: outset)
     }
 }

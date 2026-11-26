@@ -24,6 +24,9 @@ struct WorkingStripView: View {
     let slot: ComposerSlot
     /// The slot action out on the wire, so only its control says so.
     @State private var acting: Acting?
+    /// The block as the composer's field shows it: a read key or a halt at
+    /// once, a dropped link only past the field's grace, so the two change together.
+    @State private var block: ActionBlock?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Acting {
@@ -63,6 +66,20 @@ struct WorkingStripView: View {
         .frame(maxWidth: .infinity)
         .animation(reduceMotion ? nil : Motion.fast, value: slot)
         .accessibilityElement(children: .contain)
+        .task(id: client.operateBlock) { await settleBlock() }
+    }
+
+    /// The composer field's rule (`ComposerBar.settleBlock`): at once for a
+    /// read key or a halt, past `ComposerBar.blockGraceMs` for a dropped link.
+    private func settleBlock() async {
+        let now = client.operateBlock
+        if now == nil || now?.isTransient == false || block != nil {
+            block = now
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(ComposerBar.blockGraceMs))
+        guard !Task.isCancelled else { return }
+        block = client.operateBlock
     }
 
     /// The open turn's time from the click, then Stop.
@@ -89,28 +106,35 @@ struct WorkingStripView: View {
         }
     }
 
-    /// The words of a held state: its glyph, the title at medium weight, an
-    /// optional stamp in tertiary tabular digits, the detail in secondary.
-    private func words(_ words: StripWords, symbol: String, tint: Color, stamp: String? = nil) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: TranscriptMetrics.wordGap) {
+    /// The words of a held state: its glyph, the title at medium weight
+    /// unless the mark already says it (`StripWords.drawn`), the detail in
+    /// secondary, then an optional stamp in tertiary tabular digits.
+    /// VoiceOver hears the state word first either way.
+    private func words(_ words: StripWords, symbol: String, tint: Color, stamp: String? = nil, markSaysIt: Bool = false) -> some View {
+        let drawn = words.drawn(markSaysIt: markSaysIt)
+        return HStack(alignment: .firstTextBaseline, spacing: TranscriptMetrics.wordGap) {
             Image(systemName: symbol)
                 .transcriptFont(TranscriptType.detail, weight: .medium)
                 .foregroundStyle(tint)
-                .accessibilityHidden(true)
-            Text(words.title)
-                .transcriptType(TranscriptType.detail, weight: .medium)
-            if let stamp {
-                Text(stamp)
-                    .transcriptType(TranscriptType.detail)
-                    .monospacedDigit()
-                    .foregroundStyle(.tertiary)
+                .accessibilityLabel(words.title)
+                .accessibilityHidden(drawn.title != nil)
+            if let title = drawn.title {
+                Text(title)
+                    .transcriptType(TranscriptType.detail, weight: .medium)
             }
-            if let detail = words.detail {
+            if let detail = drawn.detail {
                 Text(detail)
                     .transcriptType(TranscriptType.detail)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+            }
+            if let stamp {
+                Text(stamp)
+                    .transcriptType(TranscriptType.detail)
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+                    .layoutPriority(1)
             }
         }
         .accessibilityElement(children: .combine)
@@ -139,7 +163,7 @@ struct WorkingStripView: View {
     /// transcript (the host's one resume path for a dead harness).
     private var stoppedRow: some View {
         row {
-            words(.stopped, symbol: "stop.fill", tint: Color.secondary, stamp: frozen)
+            words(.stopped, symbol: "stop.fill", tint: Color.secondary, stamp: frozen, markSaysIt: true)
         } actions: {
             StripButton(acting == .resume ? "Resuming…" : "Resume", systemImage: "arrow.clockwise", tint: Color.accentColor) {
                 run(.resume) { try await client.resume(sessionId) }
@@ -151,7 +175,7 @@ struct WorkingStripView: View {
     /// cap, memory) after the word; Start now runs it ahead.
     private var queuedRow: some View {
         row {
-            words(chrome.queued ?? StripWords(title: "Queued"), symbol: "clock", tint: Color.secondary)
+            words(chrome.queued ?? StripWords(title: "Queued"), symbol: "clock", tint: Color.secondary, markSaysIt: true)
         } actions: {
             StripButton(acting == .start ? "Starting…" : "Start now", systemImage: "play.fill") {
                 run(.start) { try await client.start(sessionId) }
@@ -160,15 +184,17 @@ struct WorkingStripView: View {
     }
 
     /// The words on the column's leading edge, the actions at its trailing
-    /// edge; the whole row dims and stops answering while the key cannot act.
+    /// edge. A key that can only read sees no actions; a dropped link held
+    /// past the grace leaves them disabled, which dims their glass.
     private func row<Words: View, Actions: View>(@ViewBuilder _ words: () -> Words, @ViewBuilder actions: () -> Actions) -> some View {
         HStack(spacing: TranscriptMetrics.glyphGap) {
             words()
             Spacer(minLength: 0)
-            actions()
+            if block?.isTransient != false {
+                actions()
+                    .disabled(acting != nil || block != nil)
+            }
         }
-        .disabled(acting != nil || client.operateBlock != nil)
-        .opacity(client.operateBlock == nil ? 1 : Motion.pressDim)
     }
 
     /// A refused action re-enables the control and is otherwise silent: the
@@ -185,7 +211,7 @@ struct WorkingStripView: View {
 
 /// A small glass button in the status line: a glyph and a word on the
 /// system's glass at the small control size, filled in its tint when it is
-/// the one thing to do.
+/// the one thing to do; a 44 pt touch around it.
 private struct StripButton: View {
     let title: String
     let systemImage: String
@@ -209,6 +235,8 @@ private struct StripButton: View {
         .tint(tint)
         .buttonBorderShape(.capsule)
         .controlSize(.small)
+        // The capsule lays out in the 28 pt slot; the touch reaches 44 pt.
+        .touchOutset(8)
     }
 }
 

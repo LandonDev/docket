@@ -404,6 +404,27 @@ public nonisolated enum MatchRanges {
 
 /// When a query runs: a new text waits for the typing to pause; a scope
 /// change or the same text runs at once; under two characters nothing is asked.
+/// What the Search tab shows over an empty list, before and between answers:
+/// nothing paired (the shared No Hosts view with Add a Host), a spinner
+/// while a host is still connecting or the first answer is out, "Every host
+/// is offline." once none can answer, nothing before a query (the field's
+/// prompt says what it searches), else no results.
+public nonisolated enum SearchStatus: Equatable, Sendable {
+    case noHosts
+    case spinner
+    case offline
+    case none
+    case noResults
+
+    public static func of(paired: Int, open: Int, connecting: Int, queryLength: Int, searching: Bool, answered: Bool) -> SearchStatus {
+        if paired == 0 { return .noHosts }
+        if open == 0 { return connecting > 0 ? .spinner : .offline }
+        if queryLength < SearchDebounce.minimumLength { return .none }
+        if searching { return .spinner }
+        return answered ? .noResults : .none
+    }
+}
+
 public nonisolated enum SearchDebounce {
     public static let typing: Duration = .milliseconds(250)
     public static let minimumLength = 2

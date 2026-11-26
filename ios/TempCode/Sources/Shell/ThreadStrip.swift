@@ -48,8 +48,10 @@ struct ThreadStripView: View {
                         chipRow(strip.live, onShelf: false, scopeKey: summary.key)
                     }
                     newThread(words: strip.leadsWithNewThread, lead: summary.lead)
-                    if !pose.isSplit, !strip.shelf.isEmpty || !summary.archived.isEmpty {
-                        RecentMenu(archived: summary.archived, shelf: strip.shelf) { open($0, scopeKey: summary.key) }
+                    // Split, the shelf is its own row, so the menu holds the archive alone; it stays, or the
+                    // project's archived threads would have no way in on the open Duo.
+                    if ThreadStripRules.showsRecent(split: pose.isSplit, shelf: !strip.shelf.isEmpty, archived: !summary.archived.isEmpty) {
+                        RecentMenu(archived: summary.archived, shelf: pose.isSplit ? [] : strip.shelf) { open($0, scopeKey: summary.key) }
                     }
                 }
                 .frame(height: rowHeight)

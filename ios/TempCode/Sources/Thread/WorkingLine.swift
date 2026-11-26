@@ -60,7 +60,7 @@ struct TurnLineRow: View {
         }
         .contextMenu {
             if !look.saying, !end.answer.isEmpty {
-                Button("Copy answer", systemImage: "doc.on.doc") { UIPasteboard.general.string = end.answer }
+                Button("Copy Answer", systemImage: "doc.on.doc") { UIPasteboard.general.string = end.answer }
             }
         }
     }
@@ -381,7 +381,7 @@ private struct WatchingLine: View {
                     .lineLimit(1)
                 if let age {
                     Text(age)
-                        .foregroundStyle(WatchWords.isStale(meta, nowMs: nowMs) ? AnyShapeStyle(Tint.warning) : AnyShapeStyle(.secondary))
+                        .foregroundStyle(WatchWords.isStale(meta, nowMs: nowMs) ? AnyShapeStyle(Tint.warningText) : AnyShapeStyle(.secondary))
                         .numeric(age)
                         .padding(.leading, TranscriptMetrics.wordGap)
                         .layoutPriority(1)

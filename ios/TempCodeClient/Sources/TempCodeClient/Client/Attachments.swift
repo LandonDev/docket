@@ -84,3 +84,11 @@ extension EnvironmentClient {
         }
     }
 }
+
+/// The photo strip's words.
+public enum AttachmentWords {
+    /// Under the strip while any upload failed; a tap on its chip tries again.
+    public static func failedLine(count: Int) -> String {
+        count == 1 ? "A photo didn't upload" : "\(count) photos didn't upload"
+    }
+}

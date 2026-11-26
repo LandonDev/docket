@@ -11,31 +11,33 @@ struct AccountChip: View {
     let client: EnvironmentClient
     let session: SessionMeta
     @State private var open = false
+    /// Above and below the 28 pt chip, toward a 44 pt touch.
+    static let hitOutset: CGFloat = 8
 
     var body: some View {
         if let scope = AccountScope.of(session, projects: client.projects, workspaces: client.workspaces, catalog: client.catalog) {
             let accounts = client.accounts.snapshot.map { scope.provider.accounts(in: $0) }
             let label = AccountName.chipLabel(scope: scope, accounts: accounts)
             Button { open = true } label: {
-                HStack(spacing: 5) {
+                HStack(spacing: TranscriptMetrics.wordGap) {
                     if let label {
                         Circle()
                             .fill(AccountColor.of(scope.shown, in: accounts))
-                            .frame(width: 6, height: 6)
+                            .frame(width: Layout.dotSize, height: Layout.dotSize)
                     }
                     Text(label ?? "Auto")
-                        .font(.caption.weight(label == nil ? .regular : .medium))
+                        .transcriptType(TranscriptType.detail, weight: label == nil ? .regular : .medium)
                         .foregroundStyle(label == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
                         .lineLimit(1)
                 }
-                // The header's bar sets the height; the hit area is the padding, not a frame.
-                .padding(.horizontal, 4)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
+                // The header's bar sets the height; the touch reaches 44 pt both ways around the words.
+                .padding(.horizontal, TranscriptMetrics.wordGap)
+                .frame(minWidth: Layout.rowHeight)
+                .touchOutset(top: AccountChip.hitOutset, bottom: AccountChip.hitOutset)
             }
             .buttonStyle(.pressableStatic)
             .accessibilityLabel("Account: \(label ?? "Auto")")
-            .accessibilityHint(scope.sourceLine)
+            .accessibilityHint(scope.sourceLine ?? "")
             .task(id: client.status.transport) {
                 guard client.status.transport == .open else { return }
                 // The catalog names a Meta row, whose accounts are Meta's keys.

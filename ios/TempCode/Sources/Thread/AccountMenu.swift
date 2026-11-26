@@ -64,9 +64,11 @@ struct AccountMenu: View {
         let pinOnScreen = pinned(scopeKind, provider: scope.provider, project: project, workspace: workspace)
         return VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
-                Text(scope.sourceLine)
-                    .textStep(.meta)
-                    .lineLimit(1)
+                if let source = scope.sourceLine {
+                    Text(source)
+                        .textStep(.meta)
+                        .lineLimit(1)
+                }
                 if scopes.count > 1 {
                     Picker("Scope", selection: $scopeKind) {
                         ForEach(scopes) { kind in
@@ -218,7 +220,7 @@ private struct AccountRow: View {
                         .textStep(.meta)
                         .lineLimit(1)
                 case .gone:
-                    Text("gone from this host")
+                    Text("Gone from this host")
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
                 }
@@ -262,7 +264,7 @@ private struct AccountRow: View {
         switch row.kind {
         case .automatic(let detail): detail
         case .account(_, _, _, let look): look.accessibility
-        case .gone: "gone from this host"
+        case .gone: "Gone from this host"
         }
     }
 }

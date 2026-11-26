@@ -116,7 +116,14 @@ struct ThreadScreen: View {
         let hostName = app.registry.ordered.count > 1 ? client.environment.name : nil
         VStack(spacing: 0) {
             StatusLine(client: client)
-            if let gone {
+            if let moved = client.moved[sessionId] {
+                // The host said where it went: one line that opens it there.
+                VStack {
+                    MovedLine(moved: moved)
+                        .padding(.top, Layout.rowHeight)
+                    Spacer(minLength: 0)
+                }
+            } else if let gone {
                 GoneLine(reason: gone)
             } else {
                 // The body's own width decides the pose with the size class; the size is known in the
@@ -413,7 +420,7 @@ struct ThreadScreen: View {
             do {
                 try await client.rename(sessionId, title: title)
             } catch {
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }

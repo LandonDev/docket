@@ -144,11 +144,23 @@ public enum InboxModel {
     }
 
     /// What stands between the person and a full inbox: a key that cannot
-    /// refresh first, then each host's gh problem and each repo's error,
+    /// refresh first, then each host whose last pull failed ("Couldn't
+    /// refresh box"), then each host's gh problem and each repo's error,
     /// prefixed with the host's name only when there are several hosts.
-    public static func notices(hosts: [Host], refreshDenied: Bool) -> [String] {
+    /// The empty list's words: none while any host can answer (the system's
+    /// empty view says "No Issues or Pull Requests"), else that every host is offline.
+    public static func emptyLine(anyOpen: Bool) -> String? {
+        anyOpen ? nil : "Every computer is offline."
+    }
+
+    public static let emptyTitle = "No Issues or Pull Requests"
+
+    public static func notices(hosts: [Host], refreshDenied: Bool, refreshFailed: Set<String> = []) -> [String] {
         var out: [String] = []
         if refreshDenied { out.append("This key reads the inbox but cannot refresh it.") }
+        for host in hosts where refreshFailed.contains(host.environmentId) {
+            out.append(hosts.count > 1 ? "Couldn't refresh \(host.name)" : "Couldn't refresh the inbox")
+        }
         for host in hosts {
             guard let snapshot = host.snapshot else { continue }
             let prefix = hosts.count > 1 ? "\(host.name): " : ""

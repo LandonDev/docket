@@ -86,7 +86,7 @@ private var utc: Calendar {
         for status: SessionStatus in [.starting, .running, .watching, .paused] { #expect(MasterBoard.group(of: status) == .running) }
         #expect(MasterBoard.group(of: .queued) == .queued)
         for status: SessionStatus in [.idle, .done, .stopped, .unknown("later")] { #expect(MasterBoard.group(of: status) == .done) }
-        #expect(MasterBoard.Group.allCases.map(\.label) == ["Needs you", "Running", "Queued", "Done"])
+        #expect(MasterBoard.Group.allCases.map(\.label) == ["Needs you", "Working", "Queued", "Done"])
     }
 
     @Test("sections keep the group order and drop empty ones; counts count every group") func sectionsAndCounts() {

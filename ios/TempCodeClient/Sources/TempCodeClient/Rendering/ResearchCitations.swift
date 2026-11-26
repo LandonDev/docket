@@ -239,3 +239,12 @@ public enum ReportLayout {
         return out
     }
 }
+
+/// The report's state word, on the pin and in the report's lede: "Complete"
+/// once it is (the coverage line counts the angles still out, and each has
+/// its spinner), "In progress" while the thread runs, else "Stopped".
+public enum ReportStateWord {
+    public static func of(complete: Bool, running: Bool) -> String {
+        complete ? "Complete" : running ? "In progress" : "Stopped"
+    }
+}

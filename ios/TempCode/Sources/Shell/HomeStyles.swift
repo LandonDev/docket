@@ -59,7 +59,7 @@ struct DimRow: View {
         Text(text)
             .font(TextStep.meta.font)
             .foregroundStyle(.tertiary)
-            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: Layout.rowHeight, alignment: .leading)
     }
 }
 
@@ -132,10 +132,10 @@ struct HeaderMenu<Content: View>: View {
     }
 }
 
-/// The host in one color: open green, trying orange, refused or offline
-/// red. A host the box relays follows its relay state over an open lane:
-/// locked orange (it answers, but the screen is locked), asleep the quiet
-/// gray, unreachable red.
+/// The host in one colour, the host tone (`HostTone`) every host dot shares:
+/// open green (half while not yet re-listed), trying orange, offline gray,
+/// refused red. A host the box relays follows its relay state over an open
+/// lane: locked orange, asleep the quiet gray, unreachable red.
 struct ConnectionDot: View {
     let status: EnvironmentStatus
     var relay: RelayState? = nil
@@ -144,20 +144,9 @@ struct ConnectionDot: View {
         Circle()
             .fill(color)
             .frame(width: Layout.dotSize, height: Layout.dotSize)
-            .accessibilityLabel(StatusText.text(for: status, now: .now))
+            .accessibilityLabel(ConnectionWord.text(for: status))
     }
 
-    private var color: Color {
-        switch status.transport {
-        case .open:
-            switch relay {
-            case .locked?: Tint.warning
-            case .asleep?: Tint.quiet
-            case .unreachable?: Tint.destructive
-            case .available?, nil: Tint.success
-            }
-        case .connecting, .reconnecting, .suspended: Tint.warning
-        case .offline, .unauthorized: Tint.destructive
-        }
-    }
+    /// The host tone, the thread's dot's too; a relayed host's state over an open lane.
+    private var color: Color { HostTone(status, relay: relay).color }
 }

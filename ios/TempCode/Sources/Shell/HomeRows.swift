@@ -11,12 +11,13 @@ enum HomeRows {
     /// a launch route) or follows `liveRevision` off a body (`KeptScope`).
     /// Without it, the list screens' copy, which a body may read: it trails
     /// by a quarter of a second at most while no list is on screen.
-    static func inputs(_ clients: [EnvironmentClient], notes: (EnvironmentClient) -> [HomeNote] = { _ in [] }, current: Bool = false) -> [HomeHostInput] {
+    /// `now`: a reconnecting host gets its row only once it has been away `HomeSections.holdMs`.
+    static func inputs(_ clients: [EnvironmentClient], notes: (EnvironmentClient) -> [HomeNote] = { _ in [] }, current: Bool = false, now: Date = Date()) -> [HomeHostInput] {
         clients.map { client in
             HomeHostInput(
                 environmentId: client.environment.id,
                 name: client.environment.name,
-                troubled: HomeSections.troubled(client.status),
+                troubled: HomeSections.troubled(client.status, awayMs: now.timeIntervalSince(client.transportSince) * 1000),
                 hasShell: client.hasShell,
                 floor: Int(client.environment.addedAt),
                 workspaces: client.workspaces,

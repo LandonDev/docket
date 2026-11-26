@@ -17,14 +17,14 @@ struct PreambleRow: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
+                        .transcriptType(TranscriptType.detail, weight: .semibold)
                         .foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(open ? 90 : 0))
                     Text("Project rules")
-                        .font(.footnote)
+                        .transcriptType(TranscriptType.line)
                         .foregroundStyle(.secondary)
                     Text("\(stamp.words) \(stamp.words == 1 ? "word" : "words")")
-                        .font(.footnote)
+                        .transcriptType(TranscriptType.line)
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()
                 }
@@ -36,7 +36,7 @@ struct PreambleRow: View {
             .accessibilityValue(open ? "Expanded" : "Collapsed")
             if open {
                 Text(stamp.text)
-                    .font(.footnote)
+                    .transcriptType(TranscriptType.line)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .padding(.leading, 10)

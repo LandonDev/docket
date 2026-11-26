@@ -32,7 +32,7 @@ struct FleetView: View {
                 if fleet.agents.isEmpty, thread.isLoading {
                     FleetLoading()
                 } else if fleet.agents.isEmpty {
-                    FleetEmpty(text: "No agents yet. The orchestrator's first spawn lands here.")
+                    FleetEmpty(text: "No Agents")
                 } else {
                     FleetSections(agents: fleet.agents, clients: fleet.clients, parentCwd: session?.cwd, hostLines: fleet.hostLines)
                 }

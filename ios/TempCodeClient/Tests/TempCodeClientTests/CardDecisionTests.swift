@@ -8,7 +8,7 @@ import TempCodeContract
         #expect(CardDecision.heading(allowed: nil, auto: false) == "Approve")
         #expect(CardDecision.heading(allowed: true, auto: false) == "Allowed")
         #expect(CardDecision.heading(allowed: false, auto: false) == "Denied")
-        #expect(CardDecision.heading(allowed: false, auto: true) == "Denied (timed out)")
+        #expect(CardDecision.heading(allowed: false, auto: true) == "Denied automatically")
         #expect(CardDecision.refusalLine(allow: true, reason: "This key can't approve") == "Not allowed: This key can't approve")
         #expect(CardDecision.refusalLine(allow: false, reason: "gone") == "Not denied: gone")
     }
@@ -30,7 +30,7 @@ import TempCodeContract
         #expect(CardDecision.deny(choices) == .init(title: "Deny", hint: "Refuse this"))
         #expect(CardDecision.heading(allowed: nil, auto: false, choices: choices) == "Approve")
         #expect(CardDecision.heading(allowed: true, auto: false, choices: choices) == "Allowed")
-        #expect(CardDecision.heading(allowed: false, auto: true, choices: choices) == "Denied (timed out)")
+        #expect(CardDecision.heading(allowed: false, auto: true, choices: choices) == "Denied automatically")
         #expect(CardDecision.refusalLine(allow: true, reason: "gone", choices: choices) == "Not allowed: gone")
     }
 

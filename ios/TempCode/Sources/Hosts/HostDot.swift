@@ -1,30 +1,9 @@
 import SwiftUI
 import TempCodeClient
 
-/// One tone rule for every dot that means "a host's link", the desktop's
-/// `hostTone` (src/renderer/src/lib/threadMove.ts): five tones, the kit's
-/// colors, nothing new.
-enum HostTone: Equatable {
-    /// Open and fresh.
-    case fresh
-    /// Open, not yet re-listed.
-    case stale
-    /// Connecting, reconnecting, suspended.
-    case busy
-    /// Offline.
-    case away
-    /// The key was refused.
-    case refused
-
-    init(_ status: EnvironmentStatus) {
-        switch status.transport {
-        case .open: self = status.fresh ? .fresh : .stale
-        case .connecting, .reconnecting, .suspended: self = .busy
-        case .offline: self = .away
-        case .unauthorized: self = .refused
-        }
-    }
-
+/// The host tone's colours (`HostTone`, the client package's one rule for
+/// every dot that means a host's link): the kit's colours, nothing new.
+extension HostTone {
     var color: Color {
         switch self {
         case .fresh: Tint.success
@@ -32,12 +11,15 @@ enum HostTone: Equatable {
         case .busy: Tint.warning
         case .away: Color(.tertiaryLabel)
         case .refused: Tint.destructive
+        case .locked: Tint.warning
+        case .asleep: Tint.quiet
+        case .unreachable: Tint.destructive
         }
     }
 
-    /// The static cue: the words `StatusText` would say, for accessibility values.
+    /// The static cue: the Computers row's word (`ConnectionWord`), for accessibility values.
     func label(_ status: EnvironmentStatus, now: Date) -> String {
-        StatusText.text(for: status, now: now)
+        ConnectionWord.text(for: status)
     }
 }
 

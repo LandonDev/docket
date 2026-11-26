@@ -122,10 +122,6 @@ struct ReviewCard: View {
                         Text(block.text(now: Date().timeIntervalSince1970 * 1000))
                             .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)
-                    } else {
-                        Text("Address the findings and merge again, or merge past them.")
-                            .transcriptType(TranscriptType.line)
-                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -162,7 +158,7 @@ struct ReviewCard: View {
                 try await client.mergeAnyway(sessionId, runId: review.runId)
             } catch {
                 busy = false
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }

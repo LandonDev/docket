@@ -173,7 +173,7 @@ struct RulesSheet: View {
             onSaved()
             dismiss()
         } catch {
-            self.error = (error as? ActionError)?.message ?? String(describing: error)
+            self.error = ActionError.wrap(error).message
         }
     }
 }

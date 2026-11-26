@@ -19,13 +19,21 @@ struct ModelReasoningRows: View {
     var body: some View {
         Group {
             if choice.catalog == nil {
+                // The composer's row's words: the host's wait, the spinner, else Couldn't load models with Retry.
                 LabeledContent("Model") {
-                    if choice.loading {
+                    if let wait = CatalogLoad.waitLine(hostName: client.environment.name, transport: client.status.transport, hasCatalog: false) {
+                        Text(wait)
+                            .foregroundStyle(.secondary)
+                    } else if choice.loading || choice.retrying {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Text("Unavailable")
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: Layout.tagGap) {
+                            Text(CatalogLoad.failedLine)
+                                .foregroundStyle(.secondary)
+                            Button("Retry") { Task { await choice.retry(client) } }
+                                .fontWeight(.medium)
+                        }
                     }
                 }
             } else {
@@ -36,7 +44,7 @@ struct ModelReasoningRows: View {
                 }
                 .accessibilityElement(children: .combine)
                 if choice.levels.count > 1, let level = choice.reasoning {
-                    LabeledContent("Reasoning") {
+                    LabeledContent("Effort") {
                         ReasoningMenu(choice: choice) {
                             ValueChevron(text: level.label)
                         }
@@ -177,7 +185,7 @@ struct StartBuildSheet: View {
                 Section {
                     ModelReasoningRows(client: client, choice: choice)
                 } footer: {
-                    SheetFooter(error: error, hint: "Seeded from the plan, in \(URL(fileURLWithPath: plan.cwd).lastPathComponent).")
+                    SheetFooter(error: error, hint: nil)
                 }
             }
             .navigationTitle("Start building")
@@ -212,7 +220,7 @@ struct StartBuildSheet: View {
             dismiss()
             onStarted(built)
         } catch {
-            self.error = (error as? ActionError)?.message ?? String(describing: error)
+            self.error = ActionError.wrap(error).message
         }
     }
 }
@@ -277,7 +285,7 @@ struct NewThreadSheet: View {
                     .pickerStyle(.menu)
                     ModelReasoningRows(client: client, choice: choice)
                     if client.environment.allows(.approve) {
-                        Picker("Access", selection: $permission) {
+                        Picker("Permission mode", selection: $permission) {
                             ForEach(PermissionPolicy.choices, id: \.rawValue) { policy in
                                 Text(policy.label).tag(policy)
                             }
@@ -285,7 +293,7 @@ struct NewThreadSheet: View {
                         .pickerStyle(.menu)
                     }
                 } footer: {
-                    SheetFooter(error: error, hint: projectId == nil ? "With no project the thread lives in \(workspace.name)." : nil)
+                    SheetFooter(error: error, hint: nil)
                 }
                 Section {
                     // The desktop draft row's name, in step: empty leaves the host to name it.
@@ -331,7 +339,7 @@ struct NewThreadSheet: View {
             dismiss()
             onCreated(created)
         } catch {
-            self.error = (error as? ActionError)?.message ?? String(describing: error)
+            self.error = ActionError.wrap(error).message
         }
     }
 }
@@ -404,7 +412,7 @@ struct RenameSheet: View {
             try await client.rename(session.id, title: trimmed)
             dismiss()
         } catch {
-            self.error = (error as? ActionError)?.message ?? String(describing: error)
+            self.error = ActionError.wrap(error).message
         }
     }
 }

@@ -31,6 +31,8 @@ struct MasterView: View {
     @State private var sheet: MasterSheet?
     @State private var pausing = false
     @State private var failure: String?
+    /// The alert's title: "Couldn't pause 2 threads" for a batch switch, else "Couldn't do that".
+    @State private var failureTitle = "Couldn't do that"
     /// The DEBUG open ran.
     @State private var opened = false
 
@@ -104,11 +106,15 @@ struct MasterView: View {
                     )
                 } header: {
                     SectionHeader("When the threads are done") {
-                        Button("Edit") { sheet = .rules }
-                            .font(.footnote)
-                            .buttonStyle(.pressableStatic)
-                            .frame(minHeight: 30)
-                            .accessibilityIdentifier("batch-edit")
+                        Button { sheet = .rules } label: {
+                            // The header keeps its height; the word's touch reaches 44 pt around it.
+                            Text("Edit")
+                                .font(.footnote)
+                                .frame(minWidth: Layout.rowHeight)
+                                .touchOutset(top: Layout.rowVertical * 2, bottom: Layout.rowVertical * 2)
+                        }
+                        .buttonStyle(.pressableStatic)
+                        .accessibilityIdentifier("batch-edit")
                     }
                     .listRowInsets(EdgeInsets())
                 }
@@ -136,7 +142,7 @@ struct MasterView: View {
         } message: {
             Text(pauseCopy(rows).body)
         }
-        .alert("Couldn't do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+        .alert(failureTitle, isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil; failureTitle = "Couldn't do that" } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(failure ?? "")
@@ -199,11 +205,13 @@ struct MasterView: View {
             do {
                 let result = try await client.sessionBatch(action, ids: ids)
                 if let first = result.failed.first {
-                    let title = rows.first { $0.sessionId == first.sessionId }?.title ?? "a thread"
-                    failure = "\(result.failed.count) failed: \(title) (\(first.error))"
+                    let title = rows.first { $0.sessionId == first.sessionId }?.title ?? "A thread"
+                    let words = BoardActions.failureWords(action, failed: result.failed.count, firstTitle: title, firstError: first.error)
+                    failureTitle = words.title
+                    failure = words.message
                 }
             } catch {
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }
@@ -213,7 +221,7 @@ struct MasterView: View {
             do {
                 try await client.stopBatchStep(sessionId, stepId: stepId)
             } catch {
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }
@@ -294,7 +302,8 @@ private struct MasterBar: View {
             .accessibilityIdentifier("master-menu")
         }
         .padding(.horizontal, Layout.textEdge)
-        .frame(height: MasterLayout.barHeight)
+        // A minimum: the pills grow with the text size, and the bar with them.
+        .frame(minHeight: MasterLayout.barHeight)
         .background(Surface.chrome)
     }
 }

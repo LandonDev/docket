@@ -74,7 +74,7 @@ private struct ReportLede: View {
                 .tracking(-0.5)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 12) {
-                ReportState(mark: report.isComplete ? .dot(Tint.success) : running ? .spinner : .dot(Color(.tertiaryLabel)), text: report.isComplete ? "Complete" : "In progress")
+                ReportState(mark: report.isComplete ? .dot(Tint.success) : running ? .spinner : .dot(Color(.tertiaryLabel)), text: ReportStateWord.of(complete: report.isComplete, running: running))
                 if let cited {
                     HStack(spacing: 4) {
                         MetaGlyph("link", label: "Sources")

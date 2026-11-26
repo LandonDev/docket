@@ -111,7 +111,7 @@ struct UserTurnRow: View {
             if let stamp = turn.steer, let word = stamp.word {
                 MorphText(key: word, value: word) { Text($0) }
                     .transcriptType(TranscriptType.detail)
-                    .foregroundStyle(stamp.state == .failed ? AnyShapeStyle(Tint.destructive) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(stamp.state == .failed ? AnyShapeStyle(Tint.destructiveText) : AnyShapeStyle(.secondary))
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(word)
                     .accessibilityValue(stamp.detail() ?? "")
@@ -194,7 +194,7 @@ private struct AttachmentWrap: View {
                 FlowLayout(spacing: 6) {
                     ForEach(Array(others.enumerated()), id: \.offset) { _, attachment in
                         Label(attachment.name, systemImage: attachment.kind == .thread ? "text.bubble" : "doc")
-                            .font(.footnote)
+                            .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .inlineWash()
@@ -306,7 +306,7 @@ struct EditRow: View {
                 if failed {
                     Text("failed")
                         .font(.footnote.weight(.medium))
-                        .foregroundStyle(Tint.destructive)
+                        .foregroundStyle(Tint.destructiveText)
                 } else if removed {
                     Text("deleted")
                         .font(.footnote.weight(.medium))
@@ -334,11 +334,11 @@ struct ChangeStat: View {
         HStack(spacing: 5) {
             if adds > 0 {
                 Text("+\(adds)")
-                    .foregroundStyle(Tint.success)
+                    .foregroundStyle(Tint.successText)
             }
             if dels > 0 {
                 Text("−\(dels)")
-                    .foregroundStyle(Tint.destructive)
+                    .foregroundStyle(Tint.destructiveText)
             }
         }
         .font(.footnote.weight(.semibold))
@@ -425,22 +425,22 @@ struct ApprovalCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: symbol(decided))
-                        .font(.footnote.weight(.medium))
+                        .transcriptType(TranscriptType.line, weight: .medium)
                         .foregroundStyle(tint(decided))
                         .frame(width: 18)
                         .accessibilityHidden(true)
                     Text(heading(decided))
-                        .font(.subheadline.weight(.medium))
+                        .transcriptType(TranscriptType.prose, weight: .medium)
                         .foregroundStyle(decided == nil ? .primary : .secondary)
                     Spacer(minLength: 0)
                 }
                 switch detail {
                 case .shell(let doing, let command)?:
                     Text(doing)
-                        .font(.subheadline)
+                        .transcriptType(TranscriptType.prose)
                         .foregroundStyle(decided == nil ? .primary : .secondary)
                     Text(command)
-                        .font(.system(.footnote, design: .monospaced))
+                        .transcriptType(TranscriptType.rowCode)
                         .foregroundStyle(.secondary)
                         .lineLimit(decided == nil ? 8 : 2)
                         .textSelection(.enabled)
@@ -450,11 +450,11 @@ struct ApprovalCard: View {
                         .background(TranscriptStyle.wash, in: .rowCorner)
                 case .file(let path, let added, let more)?:
                     Text("Write \(path)")
-                        .font(.subheadline)
+                        .transcriptType(TranscriptType.prose)
                         .foregroundStyle(decided == nil ? .primary : .secondary)
                     if !added.isEmpty, decided == nil {
                         Text(added.joined(separator: "\n") + (more ? "\n…" : ""))
-                            .font(.system(.footnote, design: .monospaced))
+                            .transcriptType(TranscriptType.rowCode)
                             .foregroundStyle(.secondary)
                             .lineLimit(11)
                             .padding(.horizontal, 8)
@@ -464,7 +464,7 @@ struct ApprovalCard: View {
                     }
                 case .fields(let entries)?:
                     Text(approval.request.title ?? approval.request.toolName)
-                        .font(.subheadline)
+                        .transcriptType(TranscriptType.prose)
                         .foregroundStyle(decided == nil ? .primary : .secondary)
                     if decided == nil {
                         VStack(alignment: .leading, spacing: 2) {
@@ -476,14 +476,14 @@ struct ApprovalCard: View {
                                         .foregroundStyle(.secondary)
                                         .lineLimit(2)
                                 }
-                                .font(.footnote)
+                                .transcriptType(TranscriptType.line)
                             }
                         }
                     }
                 case nil:
                     // Undecided, the title is what the person decides on: whole at every text size.
                     Text(approval.request.title ?? approval.request.toolName)
-                        .font(.subheadline)
+                        .transcriptType(TranscriptType.prose)
                         .foregroundStyle(decided == nil ? .primary : .secondary)
                         .lineLimit(decided == nil ? nil : 3)
                 }
@@ -573,12 +573,16 @@ struct QuestionCard: View {
                             .foregroundStyle(resolved ? .secondary : .primary)
                             .fixedSize(horizontal: false, vertical: true)
                         VStack(alignment: .leading, spacing: TranscriptMetrics.wordGap) {
-                            ForEach(Array(spec.options.enumerated()), id: \.offset) { _, option in
+                            ForEach(Array(spec.options.enumerated()), id: \.offset) { at, option in
                                 let picked = chosen.contains(option.label)
                                 if !resolved || picked {
                                     OptionRow(label: option.label, description: option.description, picked: picked, enabled: !readOnly) {
                                         pick(option.label, in: index, multi: spec.multiSelect == true)
                                     }
+                                    // Every point of the stack's band is the nearest option's, and the
+                                    // first and last reach 8 pt out: a 28 pt row with a 44 pt reach at the ends.
+                                    .touchOutset(top: at == 0 ? OptionRow.endOutset : OptionRow.gapOutset,
+                                                 bottom: at == spec.options.count - 1 ? OptionRow.endOutset : OptionRow.gapOutset)
                                 }
                             }
                             if resolved, let free = answers?[safe: index]?.first(where: { label in !spec.options.contains { $0.label == label } }) {
@@ -597,7 +601,12 @@ struct QuestionCard: View {
                         }
                     }
                 }
-                if !resolved {
+                if CardDecision.dismissed(resolved: resolved, answers: answers) {
+                    Text("Dismissed")
+                        .transcriptType(TranscriptType.line)
+                        .foregroundStyle(.secondary)
+                        .transition(.opacity)
+                } else if !resolved {
                     QuestionActions(question: question, client: client, sessionId: sessionId, answers: set, complete: complete)
                         .transition(.opacity)
                 }
@@ -640,6 +649,11 @@ struct QuestionCard: View {
 /// prose type and its description muted under it, on the fill step when
 /// picked; a full-width target.
 private struct OptionRow: View {
+    /// Half the gap between two options: neither steals the other's face.
+    static let gapOutset = TranscriptMetrics.wordGap / 2
+    /// Past the first and the last option, toward a 44 pt hit.
+    static let endOutset: CGFloat = 8
+
     let label: String
     let description: String?
     let picked: Bool
@@ -673,24 +687,25 @@ private struct OptionRow: View {
 
 // MARK: - quiet lines
 
-/// One quiet line: glyph and text in the secondary step; errors in destructive.
+/// One quiet line in the transcript's line type: glyph and text in the
+/// secondary step; errors in the destructive text tint.
 struct QuietLine: View {
     let symbol: String
     let text: String
     var tint: Color = Color(.secondaryLabel)
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: TranscriptMetrics.glyphGap) {
             Image(systemName: symbol)
-                .font(.footnote)
-                .frame(width: 18)
+                .transcriptFont(TranscriptType.line)
+                .frame(width: TranscriptMetrics.glyphSlot)
                 .accessibilityHidden(true)
             Text(text)
-                .font(.footnote)
+                .transcriptType(TranscriptType.line)
                 .lineLimit(4)
         }
         .foregroundStyle(tint)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, TranscriptMetrics.glyphGap)
         .frame(minHeight: TranscriptMetrics.line)
         .accessibilityElement(children: .combine)
     }
@@ -716,23 +731,24 @@ struct SystemRow: View {
             } else if line.stopped {
                 NoticeLine(lead: "Stopped") { StepStateMark(state: .stopped) }
             } else {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: TranscriptMetrics.glyphGap) {
                     Image(systemName: "exclamationmark.circle")
-                        .font(.footnote)
-                        .frame(width: 18)
+                        .transcriptFont(TranscriptType.line)
+                        .foregroundStyle(Tint.destructive)
+                        .frame(width: TranscriptMetrics.glyphSlot)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Failed")
-                            .fontWeight(.medium)
+                            .transcriptType(TranscriptType.line, weight: .medium)
+                            .foregroundStyle(Tint.destructiveText)
                         if !line.text.isEmpty {
                             Text(Board.firstLine(line.text))
-                                .opacity(0.8)
+                                .transcriptType(TranscriptType.line)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
-                .font(.footnote)
-                .foregroundStyle(Tint.destructive)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, TranscriptMetrics.glyphGap)
                 .frame(minHeight: TranscriptMetrics.line)
                 .textSelection(.enabled)
                 .accessibilityElement(children: .combine)

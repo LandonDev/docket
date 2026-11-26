@@ -172,7 +172,7 @@ struct ActionTests {
         let create = actions.first { $0["kind"] as? String == "create" }
         #expect(create?["sessionId"] as? String == built.id)
         #expect(create?["planPath"] as? String == plan.planPath)
-        #expect(create?["goal"] as? String == "Every task in the plan's checklist is checked off and typecheck passes")
+        #expect(create?["goal"] as? String == "Every task in the plan is done")
         #expect(create?["agentType"] as? String == "implementer")
         #expect(actions.contains { $0["kind"] as? String == "send" && $0["sessionId"] as? String == built.id && $0["text"] as? String == "Implement the plan \"\(plan.title)\"." })
         #expect(await LiveServer.until { client.session(built.id)?.status == .running }, "the brief started the turn")

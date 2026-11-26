@@ -34,11 +34,11 @@ struct ApprovalActions: View {
             if let block, !block.isTransient {
                 blockLine(block)
             } else {
-                CardButton(allow.title, role: .prominent, busy: busy == true) { decide(true) }
+                WideButton(allow.title, prominent: true, busy: busy == true, corner: Radius.row) { decide(true) }
                     .disabled(busy != nil || block != nil)
                     .opacity(block == nil ? 1 : 0.5)
                     .accessibilityHint(allow.hint)
-                CardButton(deny.title, role: .quiet, busy: busy == false) { decide(false) }
+                WideButton(deny.title, busy: busy == false, corner: Radius.row) { decide(false) }
                     .disabled(busy != nil || block != nil)
                     .opacity(block == nil ? 1 : 0.5)
                     .accessibilityHint(deny.hint)
@@ -97,7 +97,7 @@ struct QuestionActions: View {
             if let block, !block.isTransient {
                 blockLine(block)
             } else {
-                CardButton("Answer", role: .prominent, busy: busy) { submit() }
+                WideButton("Answer", prominent: true, busy: busy, corner: Radius.row) { submit() }
                     .disabled(busy || block != nil || !complete)
                     .opacity((complete || busy) && block == nil ? 1 : 0.5)
                     .animation(Motion.crossFade, value: complete)
@@ -133,8 +133,7 @@ struct QuestionActions: View {
             do {
                 try await client.answer(sessionId, requestId: question.request.requestId, answers: set)
             } catch {
-                let reason = (error as? ActionError)?.message ?? String(describing: error)
-                failure = "Not answered: \(reason)"
+                failure = "Couldn't send the answer"
             }
         }
     }

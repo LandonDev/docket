@@ -209,13 +209,22 @@ public enum HomeSections {
     /// Settled children shown under a row before the "n more" row.
     public static let settledShown = 3
 
-    /// A host that gets a status row: refused, offline, between retries, or
-    /// one that could not be reached since launch (connecting with a retry pending).
-    public nonisolated static func troubled(_ status: EnvironmentStatus) -> Bool {
+    /// How long a reconnecting host waits before it gets a row: the thread's
+    /// status line and the desktop's `DEGRADED_GRACE_MS` alike, so a blink
+    /// changes nothing on screen.
+    public nonisolated static let holdMs: Double = 1_500
+
+    /// A host that gets a status row: refused or offline at once; between
+    /// retries, or unreachable since launch (connecting with a retry pending),
+    /// once it has been so for `holdMs` (`awayMs`, how long the transport has
+    /// been in its state; nil counts as long enough).
+    public nonisolated static func troubled(_ status: EnvironmentStatus, awayMs: Double? = nil) -> Bool {
+        let held = (awayMs ?? holdMs) >= holdMs
         switch status.transport {
-        case .unauthorized, .offline, .reconnecting: true
-        case .connecting: status.nextRetryAt != nil && status.attempts > 0
-        case .open, .suspended: false
+        case .unauthorized, .offline: return true
+        case .reconnecting: return held
+        case .connecting: return held && status.nextRetryAt != nil && status.attempts > 0
+        case .open, .suspended: return false
         }
     }
 

@@ -182,8 +182,10 @@ struct ProjectPlanChip: View {
                 await states.refresh(client, projectId: project.id)
             }
         }
-        .alert(failure ?? "", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+        .alert("Couldn't do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK", role: .cancel) {}
+        } message: {
+            Text(failure ?? "")
         }
     }
 
@@ -206,13 +208,13 @@ struct ProjectPlanChip: View {
         Button {
             start(.planning, state)
         } label: {
-            Label(next.map { "Plan the next milestone: \($0.index). \($0.title)" } ?? "Plan the next milestone", systemImage: "map")
+            Label(ProjectPlan.planLabel(next: next?.index), systemImage: "map")
         }
         .disabled(locked || next == nil || plan == nil)
         Button {
             start(.orchestration, state)
         } label: {
-            Label(next.map { "Start an orchestration thread for milestone \($0.index)" } ?? "Start an orchestration thread", systemImage: "arrow.triangle.branch")
+            Label(ProjectPlan.orchestrateLabel(next: next?.index), systemImage: "arrow.triangle.branch")
         }
         .disabled(locked || next == nil || plan == nil)
         Button {

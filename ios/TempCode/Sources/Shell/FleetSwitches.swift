@@ -79,7 +79,7 @@ final class FleetSwitches {
         do {
             toast = try await client.batch(action, selection: client.batchSelection(scope), cleanup: cleanup)
         } catch {
-            let message = (error as? ActionError)?.message ?? String(describing: error)
+            let message = ActionError.wrap(error).message
             toast = BatchToast(headline: message, succeeded: 0, failed: [])
         }
         FleetToastCenter.shared.post(toast)
@@ -189,9 +189,11 @@ struct FleetConfirmSheet: View {
                 .contentTransition(.numericText())
                 .animation(Motion.numeric, value: targets.count)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(copy.body)
-                .textStep(.meta)
-                .fixedSize(horizontal: false, vertical: true)
+            if let body = copy.body {
+                Text(body)
+                    .textStep(.meta)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let clause = copy.cleanup {
                 Toggle(isOn: $cleanup) {
                     Text(clause)
@@ -201,22 +203,16 @@ struct FleetConfirmSheet: View {
                 .groupCard()
                 .padding(.top, 8)
             }
-            Button {
-                confirmedAt += 1
-                let cleanup = copy.cleanup != nil && cleanup
-                dismiss()
-                Task { await FleetSwitches.shared.run(pending.action, client: client, scope: pending.scope, cleanup: cleanup) }
-            } label: {
-                Text(copy.confirmLabel)
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: Layout.rowHeight)
-                    .foregroundStyle(Color(.systemBackground))
-                    .background(copy.danger ? Tint.destructive : Color(.label), in: RoundedRectangle.fieldCorner)
+            // Nothing to act on: the title says so, and Cancel is the one way out.
+            if !targets.isEmpty {
+                WideButton(copy.confirmLabel, prominent: true, danger: copy.danger) {
+                    confirmedAt += 1
+                    let cleanup = copy.cleanup != nil && cleanup
+                    dismiss()
+                    Task { await FleetSwitches.shared.run(pending.action, client: client, scope: pending.scope, cleanup: cleanup) }
+                }
+                .padding(.top, 16)
             }
-            .buttonStyle(.pressable)
-            .disabled(targets.isEmpty)
-            .opacity(targets.isEmpty ? 0.5 : 1)
-            .padding(.top, 16)
         }
         .padding(Layout.textEdge)
         .frame(maxWidth: .infinity, alignment: .top)
@@ -447,7 +443,7 @@ struct RowStateActions: View {
             do {
                 try await body()
             } catch {
-                let message = (error as? ActionError)?.message ?? String(describing: error)
+                let message = ActionError.wrap(error).message
                 if let onFailure { onFailure(message) } else { FleetToastCenter.shared.post(message: message) }
             }
         }

@@ -12,6 +12,8 @@ import TempCodeContract
 public final class ResourceLedger {
     /// Every row the host has sent for each thread, removed ones included (the sheet filters).
     public private(set) var bySession: [String: [ThreadResource]] = [:]
+    /// Threads whose last list ask came back with nothing: the sheet says so instead of an empty list.
+    public private(set) var failedLoads: Set<String> = []
     /// Rows a removal is in flight for from this device, until the push answers.
     public private(set) var removing: Set<String> = []
 
@@ -49,7 +51,11 @@ public final class ResourceLedger {
 
     /// One thread's rows, removed ones included; the sheet calls it on appear.
     public func load(_ client: EnvironmentClient, sessionId: String) async {
-        guard let answer = try? await client.request(Methods.ResourcesList.self, .init(sessionId: sessionId, includeRemoved: true)) else { return }
+        guard let answer = try? await client.request(Methods.ResourcesList.self, .init(sessionId: sessionId, includeRemoved: true)) else {
+            if bySession[sessionId] == nil { failedLoads.insert(sessionId) }
+            return
+        }
+        failedLoads.remove(sessionId)
         bySession[sessionId] = answer.resources
     }
 
@@ -126,16 +132,24 @@ public enum ResourceWords {
     }
 
     /// One row's state word, when it has one: the note or "removed" once
-    /// removed, the note or "removing…" while requested, else the note.
-    public static func rowState(_ row: ThreadResource) -> String? {
+    /// removed, the note or "removing…" while requested (nothing more while
+    /// it waits for its host: the trailing line says that), else the note.
+    public static func rowState(_ row: ThreadResource, waiting: Bool = false) -> String? {
         if row.removedAt != nil { return row.note ?? "removed" }
-        if row.removeRequestedAt != nil { return row.note ?? "removing…" }
+        if row.removeRequestedAt != nil { return row.note ?? (waiting ? nil : "removing…") }
         return row.note
     }
 
     /// A row waits for an offline host: requested and not removed.
     public static func isWaiting(_ row: ThreadResource) -> Bool {
         row.removeRequestedAt != nil && row.removedAt == nil
+    }
+
+    /// A requested removal waits on its host only while that host is away;
+    /// "Waiting for box", the host by its name.
+    public static func waitingLine(_ row: ThreadResource, host: String, hostOpen: Bool) -> String? {
+        guard isWaiting(row), !hostOpen else { return nil }
+        return "Waiting for \(host)"
     }
 
     /// The host a row lives on, by name: this client's host by its paired

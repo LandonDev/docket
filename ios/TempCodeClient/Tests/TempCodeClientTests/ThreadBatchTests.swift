@@ -115,7 +115,7 @@ private func ids(_ action: BatchAction, _ metas: [SessionMeta], _ sel: BatchSele
     @Test func `the confirm names the count and the host`() {
         let copy = ThreadBatch.confirm(.pause, count: 15, scope: host)
         #expect(copy.title == "Pause 15 running threads on the box?")
-        #expect(copy.body == "Each thread keeps its place and picks up where it was when you resume it.")
+        #expect(copy.body == nil)
         #expect(copy.confirmLabel == "Pause 15")
         #expect(copy.danger == false)
         #expect(copy.cleanup == nil)
@@ -129,7 +129,7 @@ private func ids(_ action: BatchAction, _ metas: [SessionMeta], _ sel: BatchSele
         #expect(stop.confirmLabel == "Stop 1")
         let archive = ThreadBatch.confirm(.archiveDone, count: 6, scope: project)
         #expect(archive.title == "Archive 6 finished threads in temp-code?")
-        #expect(archive.body == "Idle for more than ten minutes, read, and waiting on nothing. Archived threads stay in the archive list.")
+        #expect(archive.body == "Idle 10 minutes, read, waiting on nothing.")
         #expect(archive.danger)
         #expect(archive.confirmLabel == "Archive 6")
     }
@@ -137,7 +137,7 @@ private func ids(_ action: BatchAction, _ metas: [SessionMeta], _ sel: BatchSele
     @Test func `queued threads are removed from the queue, alone or beside the stopped ones`() {
         let mixed = ThreadBatch.confirm(.stop, count: 5, scope: host, queued: 2)
         #expect(mixed.title == "Stop 3 running threads and remove 2 from the queue on the box?")
-        #expect(mixed.body.hasSuffix("A queued thread leaves the queue for the archive list."))
+        #expect(mixed.body?.hasSuffix("A queued thread leaves the queue for the archive list.") == true)
         #expect(mixed.confirmLabel == "Stop 5")
         let alone = ThreadBatch.confirm(.stop, count: 2, scope: host, queued: 2)
         #expect(alone.title == "Remove 2 threads from the queue on the box?")
@@ -148,7 +148,7 @@ private func ids(_ action: BatchAction, _ metas: [SessionMeta], _ sel: BatchSele
         #expect(one.confirmLabel == "Remove 1")
         let archive = ThreadBatch.confirm(.archiveDone, count: 4, scope: host, queued: 1)
         #expect(archive.title == "Archive 3 finished threads and remove 1 from the queue on the box?")
-        #expect(archive.body.hasSuffix("A queued thread leaves the queue with them."))
+        #expect(archive.body?.hasSuffix("A queued thread leaves the queue with them.") == true)
     }
 
     @Test func `the cleanup clause appears only for archive done with resources to release`() {
@@ -162,7 +162,7 @@ private func ids(_ action: BatchAction, _ metas: [SessionMeta], _ sel: BatchSele
     @Test func `nothing to do says so and is never dangerous`() {
         let copy = ThreadBatch.confirm(.pause, count: 0, scope: host)
         #expect(copy.title == "Nothing to pause on the box")
-        #expect(copy.body == "No running threads on the box right now.")
+        #expect(copy.body == nil)
         #expect(copy.confirmLabel == "Pause")
         #expect(copy.danger == false)
         #expect(copy.cleanup == nil)

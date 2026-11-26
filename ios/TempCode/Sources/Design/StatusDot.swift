@@ -1,4 +1,5 @@
 import SwiftUI
+import TempCodeClient
 import TempCodeContract
 
 /// What leads a thread row, in a 14 pt column. The desktop's `StatusDot`
@@ -76,7 +77,7 @@ struct StatusDot: View {
 
     private var accessibilityLabel: String {
         switch mark {
-        case .spinner: "Running"
+        case .spinner: StatusWord.working
         case .paused: "Paused"
         case .stopped: "Stopped"
         case .empty: ""

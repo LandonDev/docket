@@ -15,8 +15,8 @@ struct PushTargetTests {
         #expect(PushTarget(userInfo: held)?.held == "lifeos:outbox:ob_1")
         #expect(PushTarget(userInfo: ["tc": ["environmentId": "env_box", "threadId": "s1", "held": ["at": "host", "id": "h2"]]])?.held == "host:h2")
         #expect(PushTarget(userInfo: ["tc": ["environmentId": "env_box", "threadId": "s1", "held": ["at": "mars", "id": "x"]]])?.held == nil)
-        // A host-down notice names no thread: nothing to open.
-        #expect(PushTarget(userInfo: ["tc": ["event": "host_down", "hostId": "box", "environmentId": "env_box"]]) == nil)
+        // A host-down notice names no thread: it opens Hosts.
+        #expect(PushTarget(userInfo: ["tc": ["event": "host_down", "hostId": "box", "environmentId": "env_box"]])?.route == .hosts)
         #expect(PushTarget(userInfo: [:]) == nil)
         #expect(PushTarget(url: URL(string: "tempcode://thread/env_box/s1?seq=12")!) == PushTarget(environmentId: "env_box", sessionId: "s1", seq: 12))
         #expect(PushTarget(url: URL(string: "tempcode://thread/env_box/s1")!) == PushTarget(environmentId: "env_box", sessionId: "s1", seq: nil))

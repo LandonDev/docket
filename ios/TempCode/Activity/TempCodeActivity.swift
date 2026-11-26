@@ -76,7 +76,7 @@ struct ThreadActivityWidget: Widget {
     private static func group(attributes: ThreadActivityAttributes, state: ThreadActivityAttributes.ContentState) -> DynamicIsland {
         DynamicIsland {
             DynamicIslandExpandedRegion(.leading) {
-                ActivityGroupHeadline(state: state)
+                ActivityGroupHeadline(state: state, host: attributes.host)
                     .padding(.leading, 4)
                     .padding(.top, 3)
             }

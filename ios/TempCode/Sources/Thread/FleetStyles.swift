@@ -197,7 +197,7 @@ struct AgentStatusMark: View {
 
     private var label: String {
         switch status {
-        case .running, .starting: "Running"
+        case .running, .starting: StatusWord.working
         case .watching: "Watching"
         case .waiting: "Needs you"
         case .error: "Failed"
@@ -270,7 +270,7 @@ struct ActivityLine: View {
 
     private var text: String {
         if let overridden { return overridden }
-        return starting ? "starting up" : line.text
+        return starting ? StatusWord.starting : line.text
     }
 
     private var tone: Color {

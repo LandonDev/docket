@@ -77,13 +77,10 @@ enum DiffMotion {
     }
 }
 
-/// The desktop's line tints: success and destructive at 10 % behind the
-/// line, a 2 pt bar of the full color on the leading edge, the sign bold in
-/// the color, context text at 70 %.
+/// The desktop's line tints (FilePreview.tsx): success and destructive at
+/// 10 % behind the line and the sign at medium in the color.
 enum DiffPalette {
     static let tint: Double = 0.10
-    static let bar: CGFloat = 2
-    static let contextOpacity: Double = 0.7
 
     static func color(_ kind: DiffLine.Kind) -> Color? {
         switch kind {

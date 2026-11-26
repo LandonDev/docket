@@ -84,15 +84,15 @@ struct StepCounts: View {
         if tally != nil || adds > 0 || dels > 0 || failed > 0 {
             HStack(spacing: TranscriptMetrics.wordGap) {
                 if let tally { Text(tally).foregroundStyle(.secondary) }
-                if adds > 0 { Text("+\(adds)").foregroundStyle(Tint.success) }
-                if dels > 0 { Text("−\(dels)").foregroundStyle(Tint.destructive) }
+                if adds > 0 { Text("+\(adds)").foregroundStyle(Tint.successText) }
+                if dels > 0 { Text("−\(dels)").foregroundStyle(Tint.destructiveText) }
                 if failed > 0 {
                     HStack(spacing: TranscriptMetrics.wordGap) {
                         Image(systemName: "xmark.circle.fill")
                             .imageScale(.small)
                         Text("\(failed)")
                     }
-                    .foregroundStyle(Tint.destructive)
+                    .foregroundStyle(Tint.destructiveText)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(failed) failed")
                 }

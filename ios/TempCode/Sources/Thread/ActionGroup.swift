@@ -265,6 +265,9 @@ private struct ToolStep: View {
     @Environment(\.transcriptFollow) private var follow
     @State private var whole: EventRow?
     @State private var loading = false
+    /// The omitted body's fetch came back with nothing (offline, or the host lost it): a quiet line that retries on a tap.
+    @State private var failed = false
+    @State private var attempt = 0
 
     init(tool: ToolItem, inTable: Bool, settled: Bool, client: EnvironmentClient, sessionId: String, onHand: @escaping () -> Void) {
         self.tool = tool
@@ -309,17 +312,19 @@ private struct ToolStep: View {
                     HeldInline(n: held.n, act: held.act, client: client, inTable: inTable)
                 }
                 if open {
-                    StepBody(tool: tool, whole: whole, loading: loading, command: row.opens == .command)
+                    StepBody(tool: tool, whole: whole, loading: loading, failed: failed, command: row.opens == .command) { attempt += 1 }
                         .modifier(BodyFrame(inTable: inTable))
                         .transition(.asymmetric(insertion: .opacity.animation(Motion.expandContent), removal: .opacity.animation(Motion.collapse)))
                 }
             }
         }
-        .task(id: open) {
+        .task(id: BodyAsk(open: open, attempt: attempt)) {
             guard open, whole == nil, case .omitted(_, let seq) = tool.output else { return }
             loading = true
+            failed = false
             whole = await client.body(sessionId: sessionId, seq: seq)
             loading = false
+            failed = whole == nil && !Task.isCancelled
         }
     }
 
@@ -406,11 +411,19 @@ private struct BodyFrame: ViewModifier {
 /// `TranscriptMetrics.outputCap` that scrolls inside itself; Copy is in its
 /// menu. Failed output reads destructive; a connector whose grant lapsed
 /// says so.
+/// What an omitted body's fetch runs on: opening the step, and each Retry.
+private struct BodyAsk: Hashable {
+    let open: Bool
+    let attempt: Int
+}
+
 private struct StepBody: View {
     let tool: ToolItem
     let whole: EventRow?
     let loading: Bool
+    var failed = false
     let command: Bool
+    var retry: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: TranscriptMetrics.bodyGap) {
@@ -430,7 +443,22 @@ private struct StepBody: View {
                     noOutput
                 }
             case .omitted(let omitted, _):
-                if loading || whole == nil {
+                if failed, !loading {
+                    Button(action: retry) {
+                        HStack(spacing: TranscriptMetrics.wordGap) {
+                            Text("Couldn't load the output")
+                                .foregroundStyle(.secondary)
+                            Text("Retry")
+                                .fontWeight(.medium)
+                                .foregroundStyle(Color.accentColor)
+                        }
+                        .transcriptType(TranscriptType.line)
+                        .frame(maxWidth: .infinity, minHeight: TranscriptMetrics.line, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.pressable)
+                    .transition(.opacity)
+                } else if loading || whole == nil {
                     Shimmer(height: min(CGFloat(omitted.lines) * TranscriptMetrics.line, TranscriptMetrics.outputCap))
                 }
             case .none:
@@ -439,7 +467,7 @@ private struct StepBody: View {
             if let reauth = tool.reauth {
                 Label("Reconnect \(reauth.app)", systemImage: "arrow.clockwise")
                     .transcriptType(TranscriptType.line, weight: .medium)
-                    .foregroundStyle(Tint.warning)
+                    .foregroundStyle(Tint.warningText)
             }
         }
     }

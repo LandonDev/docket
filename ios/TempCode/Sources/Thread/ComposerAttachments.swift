@@ -76,7 +76,7 @@ final class PhotoUpload: Identifiable {
         } catch {
             // A cancelled upload is a removed chip: nothing to say.
             guard !Task.isCancelled else { return }
-            failed = (error as? ActionError)?.message ?? (error as? PhotoError)?.message ?? String(describing: error)
+            failed = (error as? PhotoError)?.message ?? ActionError.wrap(error).message
         }
     }
 
@@ -97,16 +97,27 @@ struct AttachmentStrip: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(Array(uploads.enumerated()), id: \.element.id) { index, upload in
-                    AttachmentChip(thumbnail: upload.thumbnail, bar: upload.committed == nil ? upload.fraction : nil, sent: upload.sent, failed: upload.failed, position: index + 1, count: uploads.count, onRemove: { onRemove(upload) }, onRetry: { onRetry(upload) })
-                        .transition(Motion.appear(reduced: reduceMotion))
+        let failed = uploads.filter { $0.failed != nil }.count
+        VStack(alignment: .leading, spacing: TranscriptMetrics.wordGap) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(Array(uploads.enumerated()), id: \.element.id) { index, upload in
+                        AttachmentChip(thumbnail: upload.thumbnail, bar: upload.committed == nil ? upload.fraction : nil, sent: upload.sent, failed: upload.failed, position: index + 1, count: uploads.count, onRemove: { onRemove(upload) }, onRetry: { onRetry(upload) })
+                            .transition(Motion.appear(reduced: reduceMotion))
+                    }
                 }
             }
+            .scrollIndicators(.hidden)
+            // A failed upload says so in words; a tap on its chip tries again.
+            if failed > 0 {
+                Text(AttachmentWords.failedLine(count: failed))
+                    .transcriptType(TranscriptType.detail)
+                    .foregroundStyle(Tint.destructiveText)
+                    .transition(.opacity)
+            }
         }
-        .scrollIndicators(.hidden)
         .animation(Motion.crossFade, value: uploads.map(\.id))
+        .animation(Motion.crossFade, value: failed)
     }
 }
 
@@ -132,8 +143,8 @@ struct DraftPhotoStrip: View {
 
 /// One photo: the thumbnail (the fill step until it is decoded), the bar in
 /// the accent while it travels and in the destructive tint once it failed
-/// (`bar` nil: none), the remove control, and Retry in the context menu of a
-/// failed one.
+/// (`bar` nil: none), the remove control with a 44 pt touch, and Retry on a
+/// tap of a failed one (its context menu too).
 private struct AttachmentChip: View {
     let thumbnail: UIImage?
     /// The upload's fraction while it travels; nil once the host has it, or before it goes.
@@ -173,15 +184,19 @@ private struct AttachmentChip: View {
             }
             .clipShape(RoundedRectangle.rowCorner)
             .hairlineBorder(RoundedRectangle.rowCorner, color: outline)
+            .onTapGesture { if failed != nil { onRetry() } }
             Button(action: onRemove) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 18))
+                    .font(.body)
                     .foregroundStyle(Color(.label))
                     .padding(2)
                     .background(Surface.chrome, in: Circle())
+                    .padding(4)
+                    // The glyph sits in the corner; its touch is the corner's 44 pt square.
+                    .frame(minWidth: Layout.rowHeight, minHeight: Layout.rowHeight, alignment: .topTrailing)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.pressable)
-            .padding(4)
             .accessibilityLabel("Remove photo \(position)")
         }
         .contextMenu {
@@ -196,8 +211,8 @@ private struct AttachmentChip: View {
 
     private var label: String {
         let base = "Photo \(position) of \(count)"
-        if let failed { return "\(base), failed: \(failed)" }
+        if let failed { return "\(base), failed: \(failed). Double-tap to retry" }
         guard let bar else { return base }
-        return "\(base), uploading \(Int((bar * 100).rounded())) %"
+        return "\(base), uploading \(Int((bar * 100).rounded()))%"
     }
 }

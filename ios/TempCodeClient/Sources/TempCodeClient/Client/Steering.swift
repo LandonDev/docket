@@ -17,9 +17,18 @@ public struct StripWords: Hashable, Sendable {
     /// A stopped thread: the harness is gone, Resume brings it back.
     public static let stopped = StripWords(title: "Stopped", detail: "The harness is gone")
 
-    /// A paused thread; on a master, how many of its batch threads paused with it.
+    /// A paused thread; on a master, how many of its batch threads paused
+    /// with it, the desktop's words ("and 3 batch threads with it").
     public static func paused(batch: Int) -> StripWords {
-        StripWords(title: "Paused", detail: batch > 0 ? "\(batch) batch \(batch == 1 ? "thread" : "threads") with it" : nil)
+        StripWords(title: "Paused", detail: batch > 0 ? "and \(batch) batch \(batch == 1 ? "thread" : "threads") with it" : nil)
+    }
+
+    /// What the slot draws beside its mark: when the mark already says the
+    /// state (the stopped square, the queued clock), the detail alone if
+    /// there is one; else the title, then the detail. The stamp goes last.
+    public func drawn(markSaysIt: Bool) -> (title: String?, detail: String?) {
+        if markSaysIt, let detail { return (nil, detail) }
+        return (title, detail)
     }
 
     /// A queued thread from an older host's activity line alone ("Queued

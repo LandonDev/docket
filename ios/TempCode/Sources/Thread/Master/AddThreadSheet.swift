@@ -106,7 +106,7 @@ struct AddThreadSheet: View {
             dismiss()
             onCreated(created)
         } catch {
-            self.error = (error as? ActionError)?.message ?? String(describing: error)
+            self.error = ActionError.wrap(error).message
         }
     }
 }

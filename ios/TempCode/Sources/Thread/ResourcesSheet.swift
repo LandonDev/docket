@@ -29,19 +29,31 @@ struct ResourcesSheet: View {
                             .padding(.top, 12)
                     }
                     if rows.isEmpty {
-                        Text("This thread created no worktrees, simulators or dev instances.")
-                            .textStep(.meta)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 40)
-                            .padding(.horizontal, Layout.textEdge)
+                        // Nothing listed yet: the spinner until the host answers, then the fact.
+                        Group {
+                            if client.resources.bySession[sessionId] != nil {
+                                ContentUnavailableView("No Resources", systemImage: "shippingbox")
+                            } else if client.resources.failedLoads.contains(sessionId) {
+                                ContentUnavailableView {
+                                    Label("Couldn't Load Resources", systemImage: "shippingbox")
+                                } actions: {
+                                    Button("Retry") { Task { await client.resources.load(client, sessionId: sessionId) } }
+                                }
+                            } else {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .padding(.vertical, Layout.rowHeight)
                     } else {
                         ForEach(groups(rows), id: \.environmentId) { group in
                             GroupHeader(ResourceWords.hostHeading(group.environmentId, here: client.environment, paired: app.registry.ordered.map(\.environment)))
                             VStack(spacing: 0) {
                                 ForEach(Array(group.rows.enumerated()), id: \.element.id) { index, row in
                                     if index > 0 { Hairline(inset: Layout.textEdge) }
-                                    ResourceRow(row: row, removing: client.resources.removing.contains(row.id), canRemove: client.operateBlock == nil) {
+                                    ResourceRow(row: row, removing: client.resources.removing.contains(row.id), canRemove: client.operateBlock == nil,
+                                                host: ResourceWords.hostName(group.environmentId, here: client.environment, paired: app.registry.ordered.map(\.environment)),
+                                                hostOpen: app.registry.client(group.environmentId)?.status.transport == .open) {
                                         confirming = row
                                     }
                                     .transition(.opacity)
@@ -132,7 +144,7 @@ struct ResourcesSheet: View {
                     failure = failed.note ?? "The host could not remove it."
                 }
             } catch {
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }
@@ -140,11 +152,13 @@ struct ResourcesSheet: View {
 
 /// One resource: the kind's glyph, the label, the identifier in mono, the
 /// state word, and the trailing slot that is Remove, a spinner while a
-/// removal is out, or "Waiting for the Mac" when the host is offline.
+/// removal is out, or "Waiting for box" while the row's host is away.
 struct ResourceRow: View {
     let row: ThreadResource
     let removing: Bool
     let canRemove: Bool
+    var host = "the Mac"
+    var hostOpen = false
     let remove: () -> Void
 
     private enum Trailing: Hashable {
@@ -154,7 +168,7 @@ struct ResourceRow: View {
     private var trailing: Trailing {
         if row.removedAt != nil { return .removed }
         if removing { return .removing }
-        if ResourceWords.isWaiting(row) { return .waiting }
+        if ResourceWords.waitingLine(row, host: host, hostOpen: hostOpen) != nil { return .waiting }
         return .remove
     }
 
@@ -172,7 +186,7 @@ struct ResourceRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if let state = ResourceWords.rowState(row) {
+                if let state = ResourceWords.rowState(row, waiting: trailing == .waiting) {
                     Text(state)
                         .textStep(.stamp)
                         .lineLimit(2)
@@ -194,7 +208,7 @@ struct ResourceRow: View {
                         .controlSize(.mini)
                         .transition(.opacity)
                 case .waiting:
-                    Text("Waiting for the Mac")
+                    Text(ResourceWords.waitingLine(row, host: host, hostOpen: hostOpen) ?? "")
                         .textStep(.stamp)
                         .transition(.opacity)
                 case .removed:
@@ -303,7 +317,7 @@ struct ArchiveWithResourcesSheet: View {
                 try await target.client.archive(target.meta.id, removeResources: remove)
                 dismiss()
             } catch {
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }

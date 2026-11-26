@@ -28,9 +28,9 @@ public enum ConnectionWord {
 }
 
 /// A computer's connection as one sentence, in the desktop's words
-/// (src/renderer/src/lib/connection/degraded.ts `degradedText`): "the box
-/// dropped; retrying in 5 s", "the box no longer accepts this key", "the box
-/// is offline". `now` keeps the countdown honest. The host's own error text
+/// (src/renderer/src/lib/connection/degraded.ts `linkWords`): "Reconnecting
+/// to the box in 5 s", "The box no longer accepts this key", "The box is
+/// offline", the name raised at a sentence's start. `now` keeps the countdown honest. The host's own error text
 /// never shows: the phone says what it knows, not what the socket printed.
 public enum ConnectionSentence {
     public static func text(name: String, status: EnvironmentStatus, now: Date) -> String {
@@ -43,12 +43,12 @@ public enum ConnectionSentence {
         case .connecting:
             return status.attempts > 0 && wait > 0 ? "\(start) did not answer; retrying in \(wait) s" : "Connecting to \(inLine)…"
         case .reconnecting:
-            return wait > 0 ? "\(start) dropped; retrying in \(wait) s" : "Reconnecting to \(inLine)…"
+            return wait > 0 ? "Reconnecting to \(inLine) in \(wait) s" : "Reconnecting to \(inLine)…"
         case .suspended:
             return "Reconnecting to \(inLine)…"
         case .offline:
             switch status.halt {
-            case .identityChanged?: return "\(start)’s address answers as another computer"
+            case .identityChanged?: return "\(start) is not the host this computer paired with"
             case .contractMismatch(let app, let host)?: return host > app ? "\(start) is newer than this app" : "\(start) is older than this app"
             case nil: return "\(start) is offline"
             }
@@ -74,6 +74,49 @@ public func nameInLine(_ name: String) -> String {
 public func nameAtStart(_ name: String) -> String {
     guard let first = name.first else { return name }
     return first.uppercased() + name.dropFirst()
+}
+
+/// One tone rule for every dot that means "a host's link", the desktop's
+/// `hostTone` (src/renderer/src/lib/threadMove.ts): five tones, then the
+/// relay's three over an open lane for a host the box relays (Home's and the
+/// Hosts list's dot). The app gives each its colour (Hosts/HostDot.swift).
+public enum HostTone: Sendable, Equatable {
+    /// Open and fresh.
+    case fresh
+    /// Open, not yet re-listed.
+    case stale
+    /// Connecting, reconnecting, suspended.
+    case busy
+    /// Offline.
+    case away
+    /// The key was refused.
+    case refused
+    /// Relayed and open: its screen is locked.
+    case locked
+    /// Relayed and open: it sleeps.
+    case asleep
+    /// Relayed and open: the box cannot reach it.
+    case unreachable
+
+    public init(_ status: EnvironmentStatus) {
+        switch status.transport {
+        case .open: self = status.fresh ? .fresh : .stale
+        case .connecting, .reconnecting, .suspended: self = .busy
+        case .offline: self = .away
+        case .unauthorized: self = .refused
+        }
+    }
+
+    /// The link's own tone, overridden by the relay's state only while the lane to the box is open.
+    public init(_ status: EnvironmentStatus, relay: RelayState?) {
+        guard status.transport == .open, let relay else { self.init(status); return }
+        switch relay {
+        case .locked: self = .locked
+        case .asleep: self = .asleep
+        case .unreachable: self = .unreachable
+        case .available: self.init(status)
+        }
+    }
 }
 
 /// `env_Ab3k…9xQz`: the id's prefix, its first four and last four characters.

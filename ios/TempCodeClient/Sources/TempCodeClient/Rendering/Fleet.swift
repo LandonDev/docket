@@ -78,19 +78,19 @@ public enum Fleet {
 
     // MARK: - groups
 
-    /// How the phone's list groups a fleet: what runs, what needs the user,
+    /// How the phone's list groups a fleet: what needs the user, what runs,
     /// what is queued behind a sibling, what has settled (done, idle, paused,
     /// stopped and failed alike; a failed or stopped agent keeps its mark and
     /// its rank puts it first in the group).
     public enum Group: Int, CaseIterable, Sendable, Hashable {
-        case running, waiting, queued, done
+        case waiting, running, queued, done
 
         public var title: String {
             switch self {
-            case .running: "Running"
-            case .waiting: "Waiting"
-            case .queued: "Queued"
-            case .done: "Done"
+            case .waiting: StatusWord.needsYou
+            case .running: StatusWord.working
+            case .queued: StatusWord.queued
+            case .done: StatusWord.done
             }
         }
     }
@@ -221,7 +221,7 @@ public enum Fleet {
     public static func orchestratorLine(status: SessionStatus?, counts: Counts) -> String {
         switch status {
         case .running?, .starting?: return "Orchestrating"
-        case .waiting?: return "Waiting on you"
+        case .waiting?: return StatusWord.needsYou
         case .error?: return "Failed"
         case .paused?: return "Paused"
         case .stopped?: return "Stopped"
@@ -335,7 +335,7 @@ public enum Fleet {
     /// agent's subject after "Watching", and a working agent's line while
     /// its transcript is not loaded.
     public static func line(status: SessionStatus?, items: [ThreadEntry], compacting: Bool = false, activity: String? = nil, statusDetail: String? = nil) -> Line {
-        if isLive(status), compacting { return Line("Compacting the context…", tone: .muted) }
+        if isLive(status), compacting { return Line(StatusWord.compacting, tone: .muted) }
         let said = StatusDetail.of(status: status, statusDetail: statusDetail, activity: activity)
         switch status {
         case .queued?:

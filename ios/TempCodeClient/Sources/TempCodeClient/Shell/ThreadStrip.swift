@@ -443,3 +443,11 @@ public enum ProjectLanding {
         }
     }
 }
+
+/// When the strip draws its Recent menu: compact, for the shelf or the
+/// archive; split, where the shelf is its own row, for the archive alone.
+public enum ThreadStripRules {
+    public static func showsRecent(split: Bool, shelf: Bool, archived: Bool) -> Bool {
+        archived || (!split && shelf)
+    }
+}

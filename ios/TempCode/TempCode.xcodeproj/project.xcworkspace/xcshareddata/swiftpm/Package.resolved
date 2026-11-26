@@ -1,0 +1,23 @@
+{
+  "originHash" : "b37b8b931008f9d32279c20ed56c725cfe4576f24728d8a0e12a6473c10d1cc5",
+  "pins" : [
+    {
+      "identity" : "convex-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/get-convex/convex-swift",
+      "state" : {
+        "revision" : "1c69cdd9723ffb5857f48aa360d079ed09d614fd",
+        "version" : "0.8.2"
+      }
+    },
+    {
+      "identity" : "work-kit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/LandonDev/work-kit",
+      "state" : {
+        "revision" : "b475436d93034483edde8aad91301a2bbba3ae26"
+      }
+    }
+  ],
+  "version" : 3
+}

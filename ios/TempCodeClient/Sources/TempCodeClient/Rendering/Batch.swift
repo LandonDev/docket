@@ -135,7 +135,7 @@ public enum MasterBoard {
         public var label: String {
             switch self {
             case .needsYou: "Needs you"
-            case .running: "Running"
+            case .running: StatusWord.working
             case .queued: "Queued"
             case .done: "Done"
             }
@@ -792,6 +792,20 @@ public enum RulesEdit {
 // MARK: - the board's switches
 
 public enum BoardActions {
+    /// A batch switch some threads refused: the alert's title says what did
+    /// not happen to how many ("Couldn't pause 2 threads"), its message why
+    /// (the first refusal, with its thread's title).
+    public static func failureWords(_ action: Methods.SessionBatch.Params.Action, failed: Int, firstTitle: String, firstError: String) -> (title: String, message: String) {
+        let verb = switch action {
+        case .pause: "pause"
+        case .resume: "resume"
+        case .stop: "stop"
+        case .archive: "archive"
+        case .unknown: "change"
+        }
+        return ("Couldn't \(verb) \(failed) \(failed == 1 ? "thread" : "threads")", "\(firstTitle): \(firstError)")
+    }
+
     public enum Which: String, Sendable {
         case done, all
 

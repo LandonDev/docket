@@ -80,7 +80,13 @@ public enum ActionError: Error, Hashable, Sendable {
         }
     }
 
-    /// Any thrown error as the line a screen shows (the Work screens wrap what WorkHost throws).
+    /// What a screen says when an error has no words of its own for him: a
+    /// cancelled call, an answer this build could not read, an error with no
+    /// sentence. Never a Swift dump.
+    public static let plainFallback = "That didn't go through"
+
+    /// Any thrown error as the line a screen shows (every screen's catch, and
+    /// the Work screens wrap what WorkHost throws).
     public static func wrap(_ error: any Error) -> ActionError {
         if let action = error as? ActionError { return action }
         if let transport = error as? TransportError {
@@ -92,11 +98,24 @@ public enum ActionError: Error, Hashable, Sendable {
             case .notConnected: return .blocked(.reconnecting(retryAt: nil))
             case .closed: return .blocked(.reconnecting(retryAt: nil))
             case .server(_, let message): return .refused(message: Self.plain(message), forbidden: transport.isForbidden)
-            case .decoding(_, let detail): return .refused(message: detail, forbidden: false)
-            case .cancelled: return .refused(message: "cancelled", forbidden: false)
+            case .decoding, .cancelled: return .refused(message: plainFallback, forbidden: false)
             }
         }
-        return .refused(message: String(describing: error), forbidden: false)
+        return .refused(message: words(of: error) ?? plainFallback, forbidden: false)
+    }
+
+    /// An error's own sentence, when it has one: a `LocalizedError`'s
+    /// description (the system's errors say "The request timed out."), or a
+    /// type that describes itself on purpose (the Work hosts' refusals). An
+    /// `NSError`'s description is a dump, and a bare enum has no words.
+    static func words(of error: any Error) -> String? {
+        if let localized = error as? LocalizedError, let text = localized.errorDescription, !text.isEmpty { return text }
+        if type(of: error as Any) is NSError.Type { return nil }
+        if let described = error as? CustomStringConvertible {
+            let text = described.description
+            return text.isEmpty ? nil : text
+        }
+        return nil
     }
 
     /// `forbidden: session.send needs operate` reads better as what to do.
@@ -274,8 +293,8 @@ public struct ThreadDraft: Sendable, Hashable {
     public static func build(from plan: SessionMeta, type: ThreadType, provider: ProviderId, model: String, reasoning: Reasoning?, tasks: Int, permission: PermissionPolicy? = nil) -> ThreadDraft {
         let base = plan.title.replacingOccurrences(of: "^Plan:?\\s*", with: "", options: [.regularExpression, .caseInsensitive])
         let goal = tasks > 0
-            ? "Every task in the plan's checklist is checked off and typecheck passes"
-            : "The plan is fully implemented and typecheck passes"
+            ? "Every task in the plan is done"
+            : "The plan is built"
         let brief = type == .orchestration
             ? "Orchestrate implementation of the plan across subagents."
             : base.isEmpty ? "Implement the plan." : "Implement the plan \"\(base)\"."

@@ -20,4 +20,15 @@ nonisolated enum HostDirectory {
     static func names() -> [String: String] {
         (UserDefaults(suiteName: suite)?.dictionary(forKey: key) as? [String: String]) ?? [:]
     }
+
+    /// A notice's subtitle with its host: "temp-code on box", the host under
+    /// the name the person gave it (the directory's, by the notice's
+    /// `tc.environmentId`), else the name the host sent (`tc.host`). Nil
+    /// leaves the subtitle as it came: one host paired, or no host named.
+    static func subtitle(_ subtitle: String, tc: [AnyHashable: Any], hosts: [String: String]) -> String? {
+        guard hosts.count >= 2 else { return nil }
+        let named = (tc["environmentId"] as? String).flatMap { hosts[$0] }
+        guard let host = named ?? (tc["host"] as? String), !host.isEmpty else { return nil }
+        return subtitle.isEmpty ? host : "\(subtitle) on \(host)"
+    }
 }

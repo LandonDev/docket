@@ -85,6 +85,12 @@ private func kinds(_ card: ProjectCard) -> [String] {
         #expect(out.counts.isEmpty, "every root has a line")
     }
 
+    @Test func `a line the host said nothing about has no subline, the mark says it`() throws {
+        let out = try card([meta("q", status: .waiting, updatedAt: 400), meta("f", status: .error, updatedAt: 300)])
+        #expect(out.lines[0].thread.detail == nil)
+        #expect(out.lines[1].thread.detail == nil)
+    }
+
     @Test func `a needs-you or failed detail reads as plain words, never markdown`() throws {
         let out = try card([
             meta("q", status: .waiting, updatedAt: 400, statusDetail: "Done: `Theme.ts` and **two** [files](https://x.dev/a)"),

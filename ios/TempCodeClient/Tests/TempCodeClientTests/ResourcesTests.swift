@@ -72,6 +72,11 @@ private func paired(_ id: String, name: String) -> PairedEnvironment {
         #expect(ResourceWords.isWaiting(row("a", removeRequestedAt: 1)))
         #expect(ResourceWords.isWaiting(row("a", removeRequestedAt: 1, removedAt: 2)) == false)
         #expect(ResourceWords.isWaiting(row("a")) == false)
+        // The wait is said only while the row's host is away, by its name, and the stamp does not say removing too.
+        #expect(ResourceWords.waitingLine(row("a", removeRequestedAt: 1), host: "box", hostOpen: false) == "Waiting for box")
+        #expect(ResourceWords.waitingLine(row("a", removeRequestedAt: 1), host: "box", hostOpen: true) == nil)
+        #expect(ResourceWords.rowState(row("a", removeRequestedAt: 1), waiting: true) == nil)
+        #expect(ResourceWords.rowState(row("a", removeRequestedAt: 1)) == "removing…")
     }
 
     @Test func `the host's name: this host, a paired host, else the Mac`() {

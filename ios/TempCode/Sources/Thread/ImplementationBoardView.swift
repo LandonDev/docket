@@ -228,6 +228,7 @@ private struct EmptyBoard: View {
 }
 
 private struct RoundSection: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let round: RoundData
     let roundIndex: Int
     let showsPass: Bool
@@ -266,7 +267,7 @@ private struct RoundSection: View {
                         ms: todo.status == .pending ? nil : Board.activeMs(taskItems, liveNow: live ? Int(now.timeIntervalSince1970 * 1_000) : nil),
                         renderedAt: now
                     ) {
-                        withAnimation(open ? Motion.collapse : Motion.expand) {
+                        withAnimation(open ? Motion.collapse : (reduceMotion ? Motion.crossFade : Motion.expand)) {
                             choice = open ? .closed : .open(round: roundIndex, todo: index)
                         }
                     }

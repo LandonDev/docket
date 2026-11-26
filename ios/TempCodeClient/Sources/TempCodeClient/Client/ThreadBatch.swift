@@ -50,7 +50,8 @@ public struct BatchSelection: Sendable, Hashable {
 /// The confirm sheet's words for a count computed live.
 public struct BatchConfirmCopy: Sendable, Hashable {
     public var title: String
-    public var body: String
+    /// What the count does not already say; nil when the title says it all.
+    public var body: String?
     public var confirmLabel: String
     public var danger: Bool
     /// The Archive done clause with its switch; nil when there is nothing to release.
@@ -227,7 +228,7 @@ public enum ThreadBatch {
         if count == 0 {
             return BatchConfirmCopy(
                 title: "Nothing to \(v.imperative.lowercased()) \(whereClause)",
-                body: "No \(v.noun) \(threads(2)) \(whereClause) right now.",
+                body: nil,
                 confirmLabel: v.imperative,
                 danger: false,
                 cleanup: nil
@@ -243,17 +244,17 @@ public enum ThreadBatch {
         } else {
             title = "\(v.imperative) \(count) \(v.noun) \(threads(count)) \(whereClause)?"
         }
-        let body: String
+        let body: String?
         if removal != nil, acting == 0 {
             body = "They have not started, so nothing is lost. Removed threads stay in the archive list."
         } else {
             switch action {
             case .pause:
-                body = "Each thread keeps its place and picks up where it was when you resume it."
+                body = nil
             case .stop:
                 body = "Their turns end now. A stopped thread keeps its history and takes a new message." + (removal != nil ? " A queued thread leaves the queue for the archive list." : "")
             case .archiveDone, .resume:
-                body = "Idle for more than ten minutes, read, and waiting on nothing. Archived threads stay in the archive list." + (removal != nil ? " A queued thread leaves the queue with them." : "")
+                body = "Idle 10 minutes, read, waiting on nothing." + (removal != nil ? " A queued thread leaves the queue with them." : "")
             }
         }
         var cleanup: String?

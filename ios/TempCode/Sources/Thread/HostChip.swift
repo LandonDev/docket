@@ -58,7 +58,7 @@ struct HostStatePopover: View {
                     .textStep(.title, weight: .semibold)
                     .lineLimit(1)
             }
-            StatusText(status: status)
+            ConnectionStatusText(name: client.environment.name, status: status)
                 .textStep(.meta)
             if retryHelps(status) {
                 PillButton("Retry") { Task { await client.retry() } }

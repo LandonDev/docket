@@ -141,7 +141,7 @@ struct DraftComposer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let failure {
-                QuietLine(symbol: "exclamationmark.circle", text: failure, tint: Tint.destructive)
+                QuietLine(symbol: "exclamationmark.circle", text: failure, tint: Tint.destructiveText)
                     .transition(.opacity)
             }
             if !photos.isEmpty {
@@ -278,7 +278,7 @@ struct DraftComposer: View {
                     failure = result.note ?? "No checkout of this project on \(client.environment.name)"
                 }
             } catch {
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }
@@ -326,7 +326,7 @@ struct DraftComposer: View {
                 store.endSending(key)
                 store.restore(key, draft: sent, photos: sentPhotos)
                 show(store.draft(key) ?? sent)
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }

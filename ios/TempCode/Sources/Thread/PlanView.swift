@@ -256,6 +256,7 @@ struct PlanBlockView: View {
 /// numbers, folded past 40 lines, copied from the context menu. The fold
 /// is the one thing in the page that animates.
 struct PlanCodeView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let text: String
     @State private var expanded = false
 
@@ -276,7 +277,7 @@ struct PlanCodeView: View {
             .contentMargins(.horizontal, PlanType.codePadding, for: .scrollContent)
             if folds {
                 Button(expanded ? "Show less" : "Show all \(lines.count) lines") {
-                    withAnimation(expanded ? Motion.collapse : Motion.expand) { expanded.toggle() }
+                    withAnimation(expanded ? Motion.collapse : (reduceMotion ? Motion.crossFade : Motion.expand)) { expanded.toggle() }
                 }
                 .font(.footnote.weight(.medium))
                 .foregroundStyle(.secondary)

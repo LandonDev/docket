@@ -190,7 +190,7 @@ struct ComposerBar: View {
         let _ = PerfCounters.bump(.composerBarBody)
         VStack(alignment: .leading, spacing: 6) {
             if let failure {
-                QuietLine(symbol: "exclamationmark.circle", text: failure, tint: Tint.destructive)
+                QuietLine(symbol: "exclamationmark.circle", text: failure, tint: Tint.destructiveText)
                     .transition(.opacity)
             } else if holding {
                 QuietLine(symbol: ComposerButton.symbol(.queue), text: ComposerIntent.queue.label)
@@ -417,7 +417,7 @@ struct ComposerBar: View {
                 if !typed.isEmpty { draft.restore(typed) }
                 chipBox.restore(chips)
                 uploads = photos + uploads
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }
@@ -430,7 +430,7 @@ struct ComposerBar: View {
             do {
                 try await client.pause(sessionId)
             } catch {
-                failure = (error as? ActionError)?.message ?? String(describing: error)
+                failure = ActionError.wrap(error).message
             }
         }
     }
@@ -511,6 +511,8 @@ struct ComposerButton: View {
         .accessibilityElement()
         .accessibilityLabel(busy ? "Sending" : intent.label)
         .accessibilityAddTraits(.isButton)
+        // Off (no text, an upload pending), VoiceOver says dimmed.
+        .disabled(!enabled)
         .accessibilityAction { if enabled { onTap() } }
         .accessibilityActions {
             if offersQueue { Button(ComposerIntent.queue.label, action: onQueue) }

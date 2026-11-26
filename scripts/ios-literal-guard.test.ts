@@ -5,31 +5,34 @@ import { describe, expect, it } from "vitest";
 /* The phone writes every duration, curve, font size and row height once:
  * type and lengths in Design/Tokens.swift (over the client package's
  * TranscriptScale), motion in Design/Motion.swift (over MotionValues). A
- * view under Thread, Shell, Design or Work names a token. These counted files
+ * view under Thread, Shell, Design, Work, Hosts or Push, or a file at the root
+ * of Sources, names a token. These counted files
  * are what the tree held when the guard landed (docs/IOS-DESIGN.md "Visual
  * system"; Work joined at M6 of the Work-on-the-iPhone build); the counts only
  * shrink as each slice retypes its views.
  * IOS_LITERAL_GUARD_PRINT=1 prints the current tally. */
 const ROOT = resolve(__dirname, "../ios/TempCode/Sources");
-const DIRS = ["Thread", "Shell", "Design", "Work"];
+const DIRS = ["Thread", "Shell", "Design", "Work", "Hosts", "Push"];
 const HOME = new Set(["Design/Tokens.swift", "Design/Motion.swift"]);
 const ALLOWED: Record<string, number> = {
+  "MediaImage.swift": 2,
+  "Push/ActivityGallery.swift": 2,
+  "StatusLine.swift": 1,
   "Design/SectionHeader.swift": 1,
   "Shell/FleetSwitches.swift": 1,
-  "Shell/HomeStyles.swift": 4,
+  "Shell/HomeStyles.swift": 3,
   "Shell/Hosts/DeployLogSheet.swift": 1,
   "Shell/Hosts/HostActivitySections.swift": 1,
   "Shell/InboxItemView.swift": 2,
   "Shell/InboxStore.swift": 1,
   "Shell/InboxView.swift": 1,
   "Shell/SearchRowViews.swift": 2,
-  "Thread/AccountChip.swift": 1,
   "Thread/AccountMenu.swift": 5,
-  "Thread/AgentDetailScreen.swift": 2,
+  "Thread/AgentDetailScreen.swift": 1,
   "Thread/BoardOutcomes.swift": 2,
   "Thread/BoardStyles.swift": 1,
-  "Thread/ComposerAttachments.swift": 2,
-  "Thread/ComposerStyles.swift": 2,
+  "Thread/ComposerAttachments.swift": 1,
+  "Thread/ComposerStyles.swift": 1,
   "Thread/DiffScreen.swift": 1,
   "Thread/DiffStyles.swift": 3,
   "Thread/Frame/ThreadToolbar.swift": 1,
@@ -37,7 +40,7 @@ const ALLOWED: Record<string, number> = {
   "Thread/ImplementationBoardView.swift": 1,
   "Thread/Master/BatchFoot.swift": 1,
   "Thread/Master/MasterRows.swift": 5,
-  "Thread/Master/MasterView.swift": 3,
+  "Thread/Master/MasterView.swift": 2,
   "Thread/Master/StepConsole.swift": 3,
   "Thread/NotesSheet.swift": 1,
   "Thread/PreambleRow.swift": 1,
@@ -88,8 +91,9 @@ export function literals(text: string): number {
 
 function tally(): Record<string, number> {
   const found: Record<string, number> = {};
-  for (const dir of DIRS) {
-    for (const path of walk(join(ROOT, dir))) {
+  const top = readdirSync(ROOT).filter((name) => name.endsWith(".swift")).map((name) => join(ROOT, name));
+  for (const path of [...top, ...DIRS.flatMap((dir) => walk(join(ROOT, dir)))]) {
+    {
       const file = relative(ROOT, path);
       if (HOME.has(file)) continue;
       const count = literals(readFileSync(path, "utf8"));
@@ -126,5 +130,25 @@ describe("the phone's literal guard", () => {
     expect(literals(".timingCurve(0.2, 0, 0, 1, duration: d)")).toBe(1);
     expect(literals(".frame(minHeight: TranscriptMetrics.line).animation(Motion.fast)")).toBe(0);
     expect(literals("// .frame(minHeight: 28)")).toBe(0);
+  });
+});
+
+// A raw Swift error on screen: every catch goes through `ActionError.wrap(error).message` (its plain fallback,
+// "That didn't go through"), so nothing lands as a dump or a lower-case "cancelled". Work's own screens are
+// counted; the count only shrinks.
+const RAW_ERROR = /String\(describing: error\)|\(error as\? ActionError\)\?\.message \?\? error\.localizedDescription/g;
+const RAW_ALLOWED: Record<string, number> = {
+  "Work/Items/ItemPage.swift": 1,
+};
+
+describe("the phone's raw-error guard", () => {
+  it("finds no raw error text beyond the counted files", () => {
+    const found: Record<string, number> = {};
+    const top = readdirSync(ROOT).filter((name) => name.endsWith(".swift")).map((name) => join(ROOT, name));
+    for (const path of [...top, ...DIRS.flatMap((dir) => walk(join(ROOT, dir)))]) {
+      const count = [...readFileSync(path, "utf8").matchAll(RAW_ERROR)].length;
+      if (count) found[relative(ROOT, path)] = count;
+    }
+    expect(found).toEqual(RAW_ALLOWED);
   });
 });

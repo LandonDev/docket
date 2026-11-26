@@ -7,9 +7,15 @@ import Testing
 /// that a state from an older host, or a newer one, still decodes.
 @Suite struct ThreadActivityStateTests {
     @Test func `the status word spells every phase, and only working hides it behind the spinner`() {
-        #expect(ThreadActivityPhase.allCases.map(\.word) == ["Working", "Paused", "Waiting", "Done", "Failed", "Stopped"])
+        #expect(ThreadActivityPhase.allCases.map(\.word) == ["Working", "Paused", "Needs you", "Done", "Failed", "Stopped"])
         #expect(ThreadActivityPhase.allCases.filter(\.isLive) == [.working, .paused])
         #expect(ThreadActivityPhase.allCases.filter(\.isSettled) == [.finished, .failed, .stopped])
+    }
+
+    @Test func `a group names its host when two or more are paired`() {
+        #expect(ThreadActivityText.groupHeadline(total: 3, host: nil) == "3 threads")
+        #expect(ThreadActivityText.groupHeadline(total: 1, host: "box") == "1 thread on box")
+        #expect(ThreadActivityText.groupLabel(ThreadActivityCounts([]), total: 2, host: "Mac") == "2 threads on Mac")
     }
 
     @Test func `the tally reads done of total for either unit and never past the total`() {

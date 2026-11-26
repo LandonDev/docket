@@ -29,6 +29,8 @@ final class CatalogChoice {
     private(set) var loading = false
     /// The catalog's asks failed over an open link, the retry too (`CatalogLoad.failed`).
     private(set) var failed = false
+    /// The person's Retry is out: the failed line holds, a spinner in Retry's place.
+    private(set) var retrying = false
     /// The person picked a model or a level: the choice stops following the thread until `follow`.
     private(set) var picked = false
     @ObservationIgnored private var source = CatalogLoad()
@@ -86,8 +88,15 @@ final class CatalogChoice {
 
     /// The row's Retry after "Couldn't load models".
     func retry(_ client: EnvironmentClient) async {
+        retrying = true
+        defer { retrying = false }
         source.retry()
         await load(client)
+    }
+
+    /// What the row's model slot draws (`CatalogLoad.slot`).
+    var slot: CatalogLoad.Slot {
+        CatalogLoad.slot(hasCatalog: catalog != nil, modelKnown: !key.model.isEmpty, failed: failed, retrying: retrying)
     }
 
     /// The choice stays on a model the host has; the reasoning on a level the model offers.
@@ -235,52 +244,6 @@ struct MenuChip: View {
         .frame(minHeight: 26)
         .background(Surface.fill, in: RoundedRectangle.rowCorner)
         .contentShape(RoundedRectangle.rowCorner)
-    }
-}
-
-/// A full-width action at the bottom of a card: the prominent one in the
-/// accent with a white label, the quiet one on the fill step. Row radius
-/// (the card's 12 less its 12 of padding leaves no room for more, so the
-/// chip step is the next one down), 40 pt tall (taller only when the text
-/// size asks), the same press scale as
-/// every button. A busy prominent button shows its spinner in place of the
-/// label without changing size.
-struct CardButton: View {
-    enum Role { case prominent, quiet }
-
-    let title: String
-    let role: Role
-    var busy = false
-    let action: () -> Void
-
-    init(_ title: String, role: Role, busy: Bool = false, action: @escaping () -> Void) {
-        self.title = title
-        self.role = role
-        self.busy = busy
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Text(title)
-                    .opacity(busy ? 0 : 1)
-                if busy {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(role == .prominent ? .white : .secondary)
-                }
-            }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(role == .prominent ? Tint.onAccent : Color.primary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .frame(minHeight: 40)
-            .background(role == .prominent ? Color.accentColor : Surface.fill, in: RoundedRectangle.rowCorner)
-            .contentShape(RoundedRectangle.rowCorner)
-        }
-        .buttonStyle(.pressable)
-        .animation(Motion.crossFade, value: busy)
     }
 }
 

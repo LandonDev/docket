@@ -304,6 +304,16 @@ public enum ProjectPlan {
     public static let reviseDefault = "Revise the project plan: re-read the project and the milestone ticks, bring Current state up to date, adjust the remaining milestones, and call plan_complete again when the revision is settled."
 
     /// The turn "Revise the plan" sends into the plan thread.
+    /// The card's and the chip's start rows, the desktop's words (ProjectPlanCard.tsx): "Plan milestone 3",
+    /// "Orchestrate milestone 3"; with no milestone left, the verb alone.
+    public static func planLabel(next index: Int?) -> String {
+        index.map { "Plan milestone \($0)" } ?? "Plan the next milestone"
+    }
+
+    public static func orchestrateLabel(next index: Int?) -> String {
+        index.map { "Orchestrate milestone \($0)" } ?? "Orchestrate the next milestone"
+    }
+
     public static func reviseText(_ ask: String) -> String {
         let trimmed = ask.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return reviseDefault }

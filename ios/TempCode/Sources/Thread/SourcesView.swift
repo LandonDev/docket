@@ -167,10 +167,7 @@ private struct ReportPin: View {
     }
 
     private var stateText: String {
-        if report.isComplete {
-            return liveAngles > 0 ? "Complete, \(liveAngles) angle\(liveAngles == 1 ? "" : "s") still running" : "Complete"
-        }
-        return "In progress"
+        ReportStateWord.of(complete: report.isComplete, running: running)
     }
 }
 

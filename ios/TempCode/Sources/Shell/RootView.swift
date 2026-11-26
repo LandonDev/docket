@@ -441,6 +441,9 @@ struct RootView: View {
         case .thread(let environmentId, let sessionId, let seq):
             if let client = model.registry.client(environmentId) {
                 ThreadScreen(client: client, sessionId: sessionId, targetSeq: seq)
+            } else {
+                // A tap for a host forgotten since: say so, never a blank column.
+                ContentUnavailableView("Thread Not Here", systemImage: "bubble.left")
             }
         case .workspace(let key):
             WorkspaceScreen(key: key, slots: shellSlots)
@@ -533,6 +536,12 @@ struct RootView: View {
         for _ in 0..<600 {
             if client.hasShell || !client.currentSessions.isEmpty { break }
             try? await Task.sleep(for: .milliseconds(100))
+        }
+        // A shell listed before its threads would leave a thread route on Home: wait up to 5 s for the named one.
+        if route == "thread", let needle = model.launchThread {
+            for _ in 0..<50 where !client.currentSessions.contains(where: { $0.parentId == nil && $0.title.localizedCaseInsensitiveContains(needle) }) {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
         }
         routed = true
         let environmentId = client.environment.id

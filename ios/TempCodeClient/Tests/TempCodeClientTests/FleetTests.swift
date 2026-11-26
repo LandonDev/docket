@@ -24,7 +24,7 @@ import TempCodeContract
         let counts = Fleet.counts([.queued, .queued, .stopped, .running, .done])
         #expect(counts == Fleet.Counts(working: 1, done: 1, queued: 2, stopped: 1))
         #expect(!Fleet.counts([.queued, .stopped]).active)
-        #expect(Fleet.Group.allCases.map(\.title) == ["Running", "Waiting", "Queued", "Done"])
+        #expect(Fleet.Group.allCases.map(\.title) == ["Needs you", "Working", "Queued", "Done"])
     }
 
     @Test func `sorts by rank then age and keeps unarchived children only`() {
@@ -76,7 +76,7 @@ import TempCodeContract
         let tool = item(toolItem(2, name: "Grep", input: ["pattern": .string("foo")]))
         #expect(Fleet.line(status: .running, items: [item(textItem(1, "hi")), tool]) == Fleet.Line("Grep: foo", tone: .muted))
         #expect(Fleet.line(status: .idle, items: [item(textItem(1, "Done.")), tool]) == Fleet.Line("Done.", tone: .muted))
-        #expect(Fleet.line(status: .running, items: [tool], compacting: true) == Fleet.Line("Compacting the context…", tone: .muted))
+        #expect(Fleet.line(status: .running, items: [tool], compacting: true) == Fleet.Line("Compacting context", tone: .muted))
     }
 
     @Test func `stats sum edit previews and read tasks, context and cost`() {
@@ -120,9 +120,9 @@ import TempCodeContract
             meta("idle", status: .idle, createdAt: 6)
         ]
         let sections = Fleet.sections(agents)
-        #expect(sections.map(\.group) == [.running, .waiting, .done])
-        #expect(sections[0].agents.map(\.id) == ["run1", "run2", "watch"])
-        #expect(sections[1].agents.map(\.id) == ["wait"])
+        #expect(sections.map(\.group) == [.waiting, .running, .done])
+        #expect(sections[0].agents.map(\.id) == ["wait"])
+        #expect(sections[1].agents.map(\.id) == ["run1", "run2", "watch"])
         #expect(sections[2].agents.map(\.id) == ["fail", "done", "idle"])
         #expect(Fleet.sections([SessionMeta]()).isEmpty)
         #expect(Fleet.sections([meta("a", status: .waiting)]).map(\.group) == [.waiting])
@@ -130,7 +130,7 @@ import TempCodeContract
         #expect(Fleet.group(nil) == .done)
     }
 
-    @Test func `sections put queued between waiting and done, and a stopped agent first in done`() {
+    @Test func `sections put needs-you first and queued between working and done, and a stopped agent first in done`() {
         let agents = [
             meta("done", status: .done, createdAt: 1),
             meta("stop", status: .stopped, createdAt: 9),
@@ -141,7 +141,7 @@ import TempCodeContract
             meta("fail", status: .error, createdAt: 5)
         ]
         let sections = Fleet.sections(agents)
-        #expect(sections.map(\.group) == [.running, .waiting, .queued, .done])
+        #expect(sections.map(\.group) == [.waiting, .running, .queued, .done])
         #expect(sections[2].agents.map(\.id) == ["q1", "q2"])
         #expect(sections[3].agents.map(\.id) == ["fail", "stop", "done"])
         #expect(Fleet.sections([meta("a", status: .queued), meta("b", status: .stopped)]).map(\.group) == [.queued, .done])
@@ -232,8 +232,8 @@ import TempCodeContract
         // A root host not in the list still works: everything is remote.
         #expect(Fleet.gather(rootId: "root", rootHost: "phone", hosts: [box]).map(\.remote) == [true, true])
         let sections = Fleet.sections(agents)
-        #expect(sections.map(\.group) == [.running, .waiting, .done])
-        #expect(sections[0].agents.map(\.id) == ["box:b2"])
+        #expect(sections.map(\.group) == [.waiting, .running, .done])
+        #expect(sections[1].agents.map(\.id) == ["box:b2"])
         #expect(sections[2].agents.map(\.id) == ["box:b1", "mac:b1"])
         #expect(Fleet.sections([Fleet.Agent]()).isEmpty)
     }
@@ -254,7 +254,7 @@ import TempCodeContract
 
     @Test func `the orchestrator line follows its status, then its fleet`() {
         #expect(Fleet.orchestratorLine(status: .running, counts: Fleet.Counts()) == "Orchestrating")
-        #expect(Fleet.orchestratorLine(status: .waiting, counts: Fleet.Counts(working: 2)) == "Waiting on you")
+        #expect(Fleet.orchestratorLine(status: .waiting, counts: Fleet.Counts(working: 2)) == "Needs you")
         #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(working: 1)) == "Waiting on its subagents")
         #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(working: 3, waiting: 1)) == "Waiting on its subagents")
         #expect(Fleet.orchestratorLine(status: .done, counts: Fleet.Counts(waiting: 1)) == "A subagent needs you")

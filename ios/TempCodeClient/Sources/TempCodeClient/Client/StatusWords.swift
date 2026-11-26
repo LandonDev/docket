@@ -1,6 +1,26 @@
 import Foundation
 import TempCodeContract
 
+/// The desktop's word for a thread's state, held once: `STATUS_WORD` in
+/// src/renderer/src/components/ui/status.tsx, and src/shared/statusWords.ts.
+/// scripts/ios-status-parity.test.ts reads this enum and fails when a word
+/// differs, so a desktop change the phone has not taken shows there.
+public enum StatusWord {
+    public static let working = "Working"
+    public static let needsYou = "Needs you"
+    public static let paused = "Paused"
+    public static let failed = "Failed"
+    public static let queued = "Queued"
+    public static let stopped = "Stopped"
+    public static let watching = "Watching"
+    public static let done = "Done"
+    public static let idle = "Idle"
+    /// A thread booting (statusWords.ts, a service's `starting`).
+    public static let starting = "Starting"
+    /// A compaction in progress (statusWords.ts `COMPACTING_WORDS`).
+    public static let compacting = "Compacting context"
+}
+
 /// The words for the statuses the phone draws beside its dots: a queued
 /// root's line, a stopped thread's, the paused master's batch clause and the
 /// once-per-boot restart note. The host owns the facts; these are the

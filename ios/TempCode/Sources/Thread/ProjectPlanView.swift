@@ -250,9 +250,7 @@ final class ProjectPlanModel {
     }
 
     static func message(of error: any Error) -> String {
-        if let action = error as? ActionError { return action.message }
-        if let transport = error as? TransportError, case .server(_, let message) = transport { return message }
-        return String(describing: error)
+        ActionError.wrap(error).message
     }
 }
 
@@ -479,9 +477,6 @@ private struct ProjectPlanCard: View {
                 Text("The plan is complete")
                     .textStep(.title, weight: .semibold)
                 Spacer(minLength: 12)
-                Text("\(done) of \(total) done")
-                    .textStep(.stamp)
-                    .numeric(done)
             }
             .padding(.horizontal, ProjectPlanType.cardInset)
             .frame(minHeight: ProjectPlanType.cardRowMinHeight)
@@ -489,8 +484,7 @@ private struct ProjectPlanCard: View {
             CardAction(
                 systemName: "map",
                 tint: Tint.violet,
-                title: "Plan the next milestone",
-                detail: next.map { "\($0.index). \($0.title)" } ?? "Every milestone is done",
+                title: ProjectPlan.planLabel(next: next?.index),
                 busy: busy == .plan,
                 disabled: locked || next == nil || !canStart
             ) { if let next { onPlan(next) } }
@@ -498,8 +492,7 @@ private struct ProjectPlanCard: View {
             CardAction(
                 systemName: "arrow.triangle.branch",
                 tint: Tint.warning,
-                title: next.map { "Start an orchestration thread for milestone \($0.index)" } ?? "Start an orchestration thread",
-                detail: "Split the milestone across subagents",
+                title: ProjectPlan.orchestrateLabel(next: next?.index),
                 busy: busy == .orchestrate,
                 disabled: locked || next == nil || !canStart
             ) { if let next { onOrchestrate(next) } }
@@ -508,7 +501,6 @@ private struct ProjectPlanCard: View {
                 systemName: "pencil",
                 tint: Color(.secondaryLabel),
                 title: "Revise the plan",
-                detail: "A new turn in this thread",
                 busy: busy == .revise,
                 disabled: locked,
                 action: onRevise
@@ -518,7 +510,6 @@ private struct ProjectPlanCard: View {
                 systemName: pinned ? "pin.slash" : "pin",
                 tint: pinned ? Color(.secondaryLabel) : Tint.info,
                 title: pinned ? "Stop keeping as the project's plan" : "Keep as the project's plan",
-                detail: pinned ? "The project header shows its milestones" : "Shown in the project header, ticked as builds land",
                 busy: busy == .pin,
                 disabled: locked || !canPin,
                 action: onPin
@@ -542,7 +533,6 @@ private struct CardAction: View {
     let systemName: String
     let tint: Color
     let title: String
-    let detail: String
     let busy: Bool
     let disabled: Bool
     let action: () -> Void
@@ -565,13 +555,8 @@ private struct CardAction: View {
                 }
                 .animation(Motion.iconSwap, value: busy)
                 .frame(width: ProjectPlanType.glyphColumn)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .textStep(.title)
-                    Text(detail)
-                        .textStep(.meta)
-                        .lineLimit(1)
-                }
+                Text(title)
+                    .textStep(.title)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, ProjectPlanType.cardInset)

@@ -68,7 +68,7 @@ struct ComposerRowView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .onChange(of: chrome?.permission) { asked = nil }
         .animation(Motion.crossFade, value: waiting)
-        .animation(Motion.crossFade, value: choice.failed)
+        .animation(Motion.crossFade, value: choice.slot)
     }
 
     private func content(_ fit: ComposerRow.Fit, truncates: Bool) -> some View {
@@ -100,33 +100,53 @@ struct ComposerRowView: View {
                 .truncationMode(.tail)
                 .fixedSize(horizontal: !truncates, vertical: false)
                 .transition(.opacity)
-        } else if choice.failed {
-            failedLine(truncates: truncates)
-                .transition(.opacity)
         } else {
-            pickedModel(fit, truncates: truncates)
+            switch choice.slot {
+            case .failed(let retrying):
+                failedLine(truncates: truncates, retrying: retrying)
+                    .transition(.opacity)
+            case .spinner:
+                ProgressView()
+                    .controlSize(.mini)
+                    .accessibilityLabel("Loading models")
+                    .rowHit()
+                    .transition(.opacity)
+            case .picked:
+                pickedModel(fit, truncates: truncates)
+            }
         }
     }
 
     /// The catalog's asks failed over an open link, the retry after 2 s too
     /// (`CatalogLoad.failed`): the words in the row's detail type, then Retry,
-    /// the one action, in the accent; its touch reaches 44 pt.
-    private func failedLine(truncates: Bool) -> some View {
+    /// the one action, in the accent; its touch reaches 44 pt. While its ask
+    /// is out the line holds and a spinner takes Retry's place.
+    private func failedLine(truncates: Bool, retrying: Bool) -> some View {
         HStack(spacing: TranscriptMetrics.wordGap) {
             Text(CatalogLoad.failedLine)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .fixedSize(horizontal: !truncates, vertical: false)
-            Button("Retry") { Task { await choice.retry(client) } }
-                .fontWeight(.medium)
-                .foregroundStyle(Color.accentColor)
-                .fixedSize()
-                .rowHit()
-                .padding(.horizontal, ComposerMetrics.rowHitOutset)
-                .contentShape(Rectangle())
-                .padding(.horizontal, -ComposerMetrics.rowHitOutset)
-                .buttonStyle(.pressableStatic)
+            ZStack {
+                Button("Retry") { Task { await choice.retry(client) } }
+                    .fontWeight(.medium)
+                    .foregroundStyle(Color.accentColor)
+                    .fixedSize()
+                    .rowHit()
+                    .padding(.horizontal, ComposerMetrics.rowHitOutset)
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, -ComposerMetrics.rowHitOutset)
+                    .buttonStyle(.pressableStatic)
+                    .opacity(retrying ? 0 : 1)
+                    .disabled(retrying)
+                if retrying {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .accessibilityLabel("Retrying")
+                }
+            }
+            .animation(Motion.crossFade, value: retrying)
         }
         .transcriptType(TranscriptType.detail)
     }
@@ -258,7 +278,7 @@ private struct MeterView: View {
         }
         .frame(minHeight: ComposerMetrics.row)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Context \(meter.percent) percent used")
+        .accessibilityLabel("Context \(meter.percent)% full")
         .accessibilityValue(meter.label)
     }
 }

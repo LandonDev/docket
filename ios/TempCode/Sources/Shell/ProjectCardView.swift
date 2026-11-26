@@ -149,12 +149,12 @@ private struct CardLineView: View {
         case .needsYou(let t):
             open(t, seq: cue?.seq) {
                 CardThreadLine(thread: t, mark: .waiting)
-                CardSubline(text: ProjectCards.subline(cue: cue, thread: t), tint: Tint.warningText)
+                if let subline = ProjectCards.subline(cue: cue, thread: t) { CardSubline(text: subline, tint: Tint.warningText) }
             }
         case .failed(let t):
             open(t, seq: cue?.seq) {
                 CardThreadLine(thread: t, mark: .failed)
-                CardSubline(text: ProjectCards.subline(cue: cue, thread: t), tint: Tint.destructiveText)
+                if let subline = ProjectCards.subline(cue: cue, thread: t) { CardSubline(text: subline, tint: Tint.destructiveText) }
             }
         case .working(let t):
             open(t) {

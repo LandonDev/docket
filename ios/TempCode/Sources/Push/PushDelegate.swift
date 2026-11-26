@@ -45,7 +45,7 @@ extension PushHandler {
         do {
             try await client.approve(target.sessionId, requestId: decision.requestId, allow: decision.allow, choices: decision.choices)
         } catch {
-            PushDelegate.explain(decision, (error as? ActionError)?.message ?? error.localizedDescription)
+            PushDelegate.explain(decision, ActionError.wrap(error).message)
         }
         if UIApplication.shared.applicationState != .active { await registry.setForeground(false) }
     }

@@ -17,11 +17,12 @@ struct HomeView: View {
     @Environment(ProjectSettingsPresenter.self) private var projectSettings
     @Environment(ShellNavigator.self) private var navigator
     var slots = HomeSlots()
-    @State private var adding = false
     /// The proofs' share sheet (`TC_TEST_SHARE`); a release build never sets it.
     @State private var sharing = false
     @State private var pairingAgain: PairedEnvironment?
     @State private var launched = false
+    /// Bumped once a host's transport has held its state past `HomeSections.holdMs`.
+    @State private var holdTick = 0
     /// The first body has been on screen: from here on, event rows animate in.
     @State private var painted = false
     #if DEBUG
@@ -31,12 +32,14 @@ struct HomeView: View {
 
     var body: some View {
         let clients = model.registry.ordered
+        // Read so the hold's end draws again: a reconnecting host gets its row once `HomeSections.holdMs` has passed.
+        let _ = holdTick
         let home = HomeSections.home(hosts: HomeRows.inputs(clients, notes: slots.hostNotes))
         Group {
             if !model.ready {
                 Color.clear
             } else if clients.isEmpty {
-                NoHostsView { adding = true }
+                NoHostsView()
             } else {
                 List {
                     hostLines(home.hosts)
@@ -92,7 +95,11 @@ struct HomeView: View {
             .highVisibility()
         }
         .listOnScreen("home")
-        .sheet(isPresented: $adding) { AddEnvironmentSheet() }
+        .task(id: clients.map { "\($0.environment.id):\($0.status.transport)" }) {
+            try? await Task.sleep(for: .milliseconds(HomeSections.holdMs + 50))
+            guard !Task.isCancelled else { return }
+            holdTick += 1
+        }
         #if DEBUG
         .task { if let state = TestHooks.clicker { clicker = ClickerFake.model(state) } }
         .fullScreenCover(item: $clicker) { shown in NavigationStack { ClickerScreen(model: shown) { clicker = nil } } }
@@ -266,7 +273,7 @@ private struct NothingRow: View {
     var body: some View {
         Group {
             if host.listed {
-                QuietNote(text: "No workspaces on \(host.name) yet. Open a folder there and it appears here.", action: ("Hosts", { navigator.open(.hosts) }))
+                QuietNote(text: "No workspaces on \(host.name) yet.", action: ("Computers", { navigator.open(.hosts) }))
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: Layout.rowHeight)
@@ -319,18 +326,19 @@ private struct HostFootRow: View {
     }
 }
 
-/// The first run: one tap to pair.
-private struct NoHostsView: View {
-    let add: () -> Void
+/// Nothing paired, on Home and Search alike: one tap to pair, the sheet its own.
+struct NoHostsView: View {
+    @State private var adding = false
 
     var body: some View {
         ContentUnavailableView {
-            Label("Nothing Paired Yet", systemImage: "desktopcomputer")
+            Label("No Computers", systemImage: "desktopcomputer")
         } description: {
-            Text("Pair your Mac or the agent host to see its threads here.")
+            Text("Pair a Mac or the box to see its threads.")
         } actions: {
-            Button("Pair a Host", action: add)
+            Button("Add a Computer") { adding = true }
                 .buttonStyle(.borderedProminent)
         }
+        .sheet(isPresented: $adding) { AddEnvironmentSheet() }
     }
 }

@@ -104,7 +104,7 @@ struct ActivityStatusLine: View {
             }
             Spacer(minLength: 0)
         }
-        .frame(height: ActivityMetrics.lineHeight)
+        .frame(minHeight: ActivityMetrics.lineHeight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(ThreadActivityText.statusLabel(phase: state.phase, task: state.task, reason: state.reason))
     }
@@ -330,7 +330,7 @@ struct ThreadActivityGroupCard: View {
         .activityBackgroundTint(nil)
         .activitySystemActionForegroundColor(state.groupTint)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(ThreadActivityText.groupLabel(state.counts, total: total))
+        .accessibilityLabel(ThreadActivityText.groupLabel(state.counts, total: total, host: attributes.host))
     }
 }
 
@@ -448,15 +448,16 @@ struct ActivityGroupMinimal: View {
 /// Expanded leading for a group: how many threads the card covers, beside the camera.
 struct ActivityGroupHeadline: View {
     let state: ThreadActivityAttributes.ContentState
+    var host: String? = nil
 
     var body: some View {
         let total = (state.threads?.count ?? 0) + (state.more ?? 0)
-        Text("\(total) threads")
+        Text(ThreadActivityText.groupHeadline(total: total, host: host))
             .font(.subheadline.weight(.semibold))
             .monospacedDigit()
             .lineLimit(1)
             .contentTransition(.numericText())
-            .accessibilityLabel(ThreadActivityText.groupLabel(state.counts, total: total))
+            .accessibilityLabel(ThreadActivityText.groupLabel(state.counts, total: total, host: host))
     }
 }
 
@@ -511,7 +512,7 @@ struct ActivityGroupIslandRow: View {
                     .contentTransition(.opacity)
             }
         }
-        .frame(height: ActivityMetrics.lineHeight)
+        .frame(minHeight: ActivityMetrics.lineHeight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(row.title ?? ""), \(ThreadActivityText.statusLabel(phase: row.phase, task: row.task, reason: row.reason))")
     }

@@ -38,7 +38,8 @@ struct TranscriptView: View {
     /// The row the window starts at, once shown: rows arriving below never push it out.
     @State private var windowTop: TranscriptRowID?
     @State private var scrollState = TranscriptScrollState()
-    @State private var targetStatus: String?
+    /// A search hit's landing: out (a spinner; the window holds still) or missed ("Not in this thread", gone after 2 s or the first scroll).
+    @State private var landing: SearchLanding?
     /// Groups opened by the view itself (a search landing inside one, the
     /// proof's `group` hook); a tap toggles the row's own state.
     @State private var openGroups: Set<TranscriptRowID> = []
@@ -206,14 +207,13 @@ struct TranscriptView: View {
                 }
             }
             .overlay(alignment: .top) {
-                if let targetStatus {
-                    Text(targetStatus)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(8)
-                        .background(Surface.raised)
-                        .accessibilityIdentifier("search-target-status")
-                }
+                LandingPill(landing: landing)
+                    .padding(.top, TranscriptMetrics.Gap.block)
+                    .animation(Motion.jump, value: landing)
+            }
+            .onChange(of: scrollState.readerMoving) {
+                // The reader moved on: a missed hit's line has said its piece.
+                if scrollState.readerMoving, landing == .missed { landing = nil }
             }
             .onChange(of: content.lastSeq) {
                 pinTail(proxy: proxy)
@@ -337,7 +337,7 @@ struct TranscriptView: View {
     /// (`holdPlace`), and nothing writes the offset. A reader at the bottom
     /// with nothing moving grows nothing above them (`SentinelReach`).
     private func grow(from start: Int) {
-        guard targetStatus == nil, !extending else { return }
+        guard landing != .loading, !extending else { return }
         let fills = listScroll.scroll.map { $0.contentSize.height > $0.bounds.height } ?? true
         guard SentinelReach.of(atBottom: scrollState.atBottom, readerMoving: scrollState.readerMoving, contentFills: fills) != .pin else { return }
         let shownCount = model.rows.count - start
@@ -377,7 +377,7 @@ struct TranscriptView: View {
     /// already captured), hold `atBottom`, and restore at each delay with
     /// no animation. Nothing runs while a landing or an extend is in flight.
     private func reflow(proxy: ScrollViewProxy) {
-        guard targetStatus == nil, !extending else { return }
+        guard landing != .loading, !extending else { return }
         let anchor: TranscriptReflow.Anchor
         if scrollState.reflowHeld, let held = scrollState.reflowAnchor {
             anchor = held
@@ -791,7 +791,7 @@ struct TranscriptView: View {
     /// still decelerates (`FollowRule`).
     private func pinTail(proxy: ScrollViewProxy) {
         func follows() -> Bool {
-            FollowRule.write(for: .rowsChanged, atBottom: scrollState.atBottom, landing: targetStatus != nil,
+            FollowRule.write(for: .rowsChanged, atBottom: scrollState.atBottom, landing: landing == .loading,
                              reflowHeld: scrollState.reflowHeld, readerMoving: scrollState.readerMoving,
                              gliding: scrollState.glide.active(at: TranscriptView.now)) == .pin
         }
@@ -815,7 +815,7 @@ struct TranscriptView: View {
     /// glides (`HandGlide`); its end asks for one pin. Reduced motion
     /// changes it at once and pins.
     private func handResize(proxy: ScrollViewProxy, _ change: () -> Void) {
-        let write = FollowRule.write(for: .handResize, atBottom: scrollState.atBottom, landing: targetStatus != nil,
+        let write = FollowRule.write(for: .handResize, atBottom: scrollState.atBottom, landing: landing == .loading,
                                      reflowHeld: scrollState.reflowHeld, readerMoving: scrollState.readerMoving)
         if reduceMotion {
             Motion.withoutAnimation { change() }
@@ -844,19 +844,21 @@ struct TranscriptView: View {
     /// and the row lands centred.
     private func land(proxy: ScrollViewProxy) async {
         guard let targetSeq else { return }
-        targetStatus = "Loading search result…"
+        landing = .loading
         guard let seq = await client.reveal(sessionId, seq: targetSeq),
               case let rows = currentRows(),
               let id = model.rowID(containing: seq),
               let index = model.index(of: id) else {
             if !Task.isCancelled {
-                targetStatus = "Search result could not be found."
+                landing = .missed
                 TestHooks.recordNavigation(target: targetSeq, item: nil, oldest: thread.value.rows.first?.seq)
+                try? await Task.sleep(for: SearchLanding.missedHold)
+                if landing == .missed { landing = nil }
             }
             return
         }
         guard !Task.isCancelled else { return }
-        targetStatus = nil
+        landing = nil
         TestHooks.recordNavigation(target: targetSeq, item: seq, oldest: thread.value.rows.first?.seq)
         resize(max(window, rows.count - index + 8))
         if case .group = rows[index] { Motion.withoutAnimation { openGroups.insert(id) } }
@@ -1092,6 +1094,47 @@ private struct EmptyTranscript: View {
 /// The one floating control in the transcript: a glass capsule (36 pt, its
 /// hit area 44) over the rows, the arrow 2 pt closer to its edge than the
 /// text is to the other, so the pair reads centered.
+/// A search hit's landing over the top of the list: a spinner while the
+/// row is fetched, "Not in this thread" when it never came, on the jump
+/// pill's glass and motion.
+private struct LandingPill: View {
+    let landing: SearchLanding?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack {
+            if let landing {
+                Group {
+                    switch landing {
+                    case .loading:
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Finding the result")
+                    case .missed:
+                        Text("Not in this thread")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .tcGlass(in: Capsule())
+                .transition(Motion.jump(reduced: reduceMotion))
+                .accessibilityIdentifier("search-target-status")
+            }
+        }
+    }
+}
+
+/// Where a search hit's landing stands (`LandingPill`).
+enum SearchLanding: Equatable {
+    case loading
+    case missed
+
+    /// How long a missed hit's line stays when the reader does not scroll.
+    static let missedHold: Duration = .seconds(2)
+}
+
 private struct JumpPill: View {
     let jump: () -> Void
 

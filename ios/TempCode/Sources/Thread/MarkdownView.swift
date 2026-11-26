@@ -145,6 +145,7 @@ struct MarkdownBlocksView: View {
 /// counted and numbered at the parse (`CodeText`): the body splits and joins
 /// nothing, and a block within its fold draws the parse's strings as they are.
 struct CodeBlock: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let code: CodeText
     var language: String? = nil
     var type: TypeSpec = TranscriptType.rowCode
@@ -188,7 +189,7 @@ struct CodeBlock: View {
             .contentMargins(.horizontal, TranscriptMetrics.tableInset, for: .scrollContent)
             if folds {
                 Button {
-                    withAnimation(expanded ? Motion.collapse : Motion.expand) { expanded.toggle() }
+                    withAnimation(expanded ? Motion.collapse : (reduceMotion ? Motion.crossFade : Motion.expand)) { expanded.toggle() }
                 } label: {
                     Text(expanded ? "Show less" : "Show all \(code.lineCount) lines")
                         .transcriptType(TranscriptType.line, weight: .medium)

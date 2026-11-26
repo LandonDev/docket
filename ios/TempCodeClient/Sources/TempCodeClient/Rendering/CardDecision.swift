@@ -48,8 +48,15 @@ public enum CardDecision {
         switch allowed {
         case nil: return "Approve"
         case true?: return "Allowed"
-        case false?: return auto ? "Denied (timed out)" : "Denied"
+        case false?: return auto ? "Denied automatically" : "Denied"
         }
+    }
+
+    /// A question resolved with no answer given (dismissed on the desktop,
+    /// or settled by the host): the card says so instead of standing empty.
+    public static func dismissed(resolved: Bool, answers: [[String]]?) -> Bool {
+        guard resolved else { return false }
+        return answers?.allSatisfy { set in set.allSatisfy { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } } ?? true
     }
 
     /// The line a refused decision leaves under the buttons, and the

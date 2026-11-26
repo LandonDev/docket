@@ -259,7 +259,7 @@ struct PreambleEditor: View {
             try await client.setPreamble(scope, text: draft.normalized, enabled: draft.enabled)
             dismiss()
         } catch {
-            self.error = (error as? ActionError)?.message ?? String(describing: error)
+            self.error = ActionError.wrap(error).message
         }
     }
 }

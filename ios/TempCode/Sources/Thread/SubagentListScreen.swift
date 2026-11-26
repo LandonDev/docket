@@ -21,7 +21,7 @@ struct SubagentListScreen: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if fleet.agents.isEmpty {
-                    FleetEmpty(text: "No subagents yet. They appear here the moment the thread spawns one.")
+                    FleetEmpty(text: "No Agents")
                 } else {
                     FleetSections(agents: fleet.agents, clients: fleet.clients, parentCwd: root?.cwd, hostLines: fleet.hostLines)
                 }
@@ -33,12 +33,12 @@ struct SubagentListScreen: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .background(Surface.background)
-        .navigationTitle("Subagents")
+        .navigationTitle("Agents")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
-                    Text("Subagents")
+                    Text("Agents")
                         .font(.headline)
                     if let root, !root.title.isEmpty {
                         Text(root.title)

@@ -23,6 +23,8 @@ public struct PushTarget: Sendable, Hashable {
     public var tell: Route?
     /// A thread's request for his press (a tell keyed `request:<id>`): the tap opens its sheet over the Outbox.
     public var request: String?
+    /// A host went down or came back (`host_down`, `host_up`): no thread, so the tap opens Hosts.
+    public var hostEvent = false
 
     public init(environmentId: String, sessionId: String, seq: Int? = nil, held: String? = nil, work: Bool = false, tell: Route? = nil) {
         self.environmentId = environmentId
@@ -33,15 +35,21 @@ public struct PushTarget: Sendable, Hashable {
         self.tell = tell
     }
 
-    /// The `tc` object of a hub notification; a payload without a thread (a host down) is nil, unless it is Work's.
+    /// The `tc` object of a hub notification; a host's own notice (`host_down`, `host_up`) opens Hosts; any
+    /// other payload without a thread is nil, unless it is Work's.
     public init?(userInfo: [AnyHashable: Any]) {
         guard let tc = userInfo["tc"] as? [AnyHashable: Any] else { return nil }
         if let work = tc["work"] as? [AnyHashable: Any] {
             self.init(work: work, environmentId: tc["environmentId"] as? String ?? "")
             return
         }
-        guard let environmentId = tc["environmentId"] as? String, !environmentId.isEmpty,
-              let sessionId = tc["threadId"] as? String, !sessionId.isEmpty else { return nil }
+        guard let environmentId = tc["environmentId"] as? String, !environmentId.isEmpty else { return nil }
+        guard let sessionId = tc["threadId"] as? String, !sessionId.isEmpty else {
+            guard let event = tc["event"] as? String, event == "host_down" || event == "host_up" else { return nil }
+            self.init(environmentId: environmentId, sessionId: "")
+            hostEvent = true
+            return
+        }
         self.init(environmentId: environmentId, sessionId: sessionId, seq: PushTarget.int(tc["seq"]), held: PushTarget.held(tc["held"]))
     }
 
@@ -74,6 +82,7 @@ public struct PushTarget: Sendable, Hashable {
     public var route: Route {
         if request != nil, !environmentId.isEmpty { return .place(.outbox) }
         if let tell { return tell }
+        if hostEvent { return .hosts }
         if !environmentId.isEmpty {
             if let held { return .outboxItem(environmentId: environmentId, ref: held) }
             if !sessionId.isEmpty { return .thread(environmentId: environmentId, sessionId: sessionId, seq: seq) }

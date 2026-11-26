@@ -17,7 +17,7 @@ no workspace, no thread type, no status, generic chevrons.
 
 | Before (L2) | After | Why |
 | --- | --- | --- |
-| Root screen is Hosts | Root is Home: needs-you and running threads first, then workspaces | A host is plumbing; the user picks the phone up to see work, not servers |
+| Root screen is Hosts | Root is Home: Chats and the workspaces, each row's mark saying where work needs you | A host is plumbing; the user picks the phone up to see work, not servers |
 | Inset grouped lists (white cards on gray) | Plain lists, hairline separators, one gray step for section chrome | Cards within cards; the desktop's chrome is one gray step and hairlines |
 | Thread row: title, "now", chevron | Status dot, type glyph tinted, title, project, elapsed or relative time, tasks `3/7`; no chevron | The row must say what the thread is and whether it needs you |
 | No thread type anywhere | Type glyph and tint on every row and header; type decides the thread screen | Five thread types are the product |
@@ -146,9 +146,13 @@ appears only in Settings and a status line. With two or more, each host
 is one row at Home's foot, as the desktop's host rows sit above Settings:
 its glyph, its name in the meta step with the relay line under it, its
 connection dot, the deploy drift mark; a tap opens its menu. A row whose
-every host is down sits at 50 % opacity. An unauthorized or offline host
-shows one status row at the top of Home with the action (Retry, Pair
-again), never a blank screen; a host reached through the box folds under
+every host is down sits at 50 % opacity. An unauthorized or offline host,
+or one reconnecting for longer than the 1.5 s hold (`HomeSections.troubled`,
+the status line's and the desktop's `DEGRADED_GRACE_MS`), shows one status
+row at the top of Home with the action (Retry, Sign In Again), never a
+blank screen; its words are the computer's page's sentence
+(`ConnectionStatusText`, `ConnectionSentence`), never the socket's raw error
+(Diagnostics shows that); a host reached through the box folds under
 the box's row while the box is in trouble (`HomeHostInput.via`). A host's
 one-off notes ("3 threads resumed after restart") are quiet lines at the
 top. Adding a computer lives in Settings → Computers.
@@ -262,7 +266,10 @@ search hit opens the same shell in Search's own detail, so Search keeps
 its place. A second hit in a thread already open keeps its screen (the
 shell keys it by thread) and lands on the new row
 (`TranscriptLanding.onRetarget`; the transcript's landing is keyed by the
-row it names). Collapsed, the detail sits on top of
+row it names). While the row is fetched a small spinner sits on glass at
+the list's top; a row the host cannot find reads "Not in this thread" there
+until the reader scrolls or 2 s pass, and the window grows and reflows as
+before meanwhile (`SearchLanding`). Collapsed, the detail sits on top of
 the sidebar's stack and Back from it clears it. The Inbox keeps its own
 split over one typed path (`InboxScreen`, "iPhone Duo" below).
 
@@ -417,10 +424,10 @@ read-only with the same line. The drafts and words are the client package's
 **Hosts on Home.** With one host there is no host header; its menu (the fleet
 switches), when a slot fills it, is the More glyph in the navigation
 bar (`GlassMetrics.moreSymbol`: the bare `ellipsis` on iOS 26, where the
-toolbar's glass draws the circle, `ellipsis.circle` before) before Settings. With several, each host's workspaces sit under a header
-with the connection dot, the name, a sibling's trailing mark (the deploy
-drift) and the menu. A host's one-off lines (the boot-resume note) are quiet
-rows under its header with the event motion and no action.
+toolbar's glass draws the circle, `ellipsis.circle` before) before Settings. With several, each host is one row at Home's foot
+("Hosts" above): the connection dot, the name, the deploy drift mark and the
+menu. A host's one-off lines (the boot-resume note) are quiet rows with the
+event motion and no action.
 
 **A host's name.** Every host shows once, under the name it gives itself
 without the network's domain ("Mac", not "Mac.attlocal.net"), whole only
@@ -524,8 +531,9 @@ since the inbox is a poll, not a live push), shows the system indicator, and
 is the only time the rows reorder under the default animation. A read-only
 key is known from `operateBlock` before the pull and reads the stored
 snapshot instead; it, a signed-out gh and a repository that failed each get
-one meta line at the top. Empty: one calm meta line, shown once every host has
-answered or cannot; the system `ProgressView` until then, never on a paint
+one meta line at the top. Empty: `ContentUnavailableView` "No Issues or Pull
+Requests" with `tray` (see "Empty screens"), shown once every host has
+answered or cannot; "Every computer is offline." when none could answer; the system `ProgressView` until then, never on a paint
 from disk.
 
 **The fleet switches** (ios/TempCode/Sources/Shell/FleetSwitches.swift over
@@ -567,8 +575,11 @@ of Home for fifteen seconds. Resources… in a thread's menu opens the
 Resources sheet (ios/TempCode/Sources/Thread/ResourcesSheet.swift): one
 group per host the rows live on, each row the label, its path or UDID in
 mono, the state word, and Remove (a spinner while the removal is out,
-"Waiting for the Mac" when that host is offline); the row leaves when the
-host's push says it is gone. Archiving a thread that holds resources, from
+"Waiting for box", the row's host by name, only while that host is away,
+and then no "removing…" beside it); the row leaves when the host's push
+says it is gone. Until the list answers the sheet shows the spinner; then
+`ContentUnavailableView` "No Resources", or "Couldn't Load Resources" with
+Retry when the ask failed. Archiving a thread that holds resources, from
 a swipe, a context menu or the thread menu, asks first: "Archive <title>?"
 with "and remove 2 resources on the Mac" switched on by default.
 
@@ -622,11 +633,12 @@ name, when the selector supplies one), is a fact, not a push. The host is
 a dim `.stamp` word trailing a head only when several hosts are paired,
 and then a foot line names what each host took ("Mac 320 ms, box 1.2 s",
 "box offline", "box failed"); "More matches than shown" closes a cut
-answer. Over the empty list one calm `.meta` line: "No host is
-connected.", "Every host is offline.", the hint ("Threads and project
-files on every host." or "Every thread on every host."), a small spinner
-while the first answer is out, or "No results for X"; Cancel clears the
-field and returns to the hint. Nothing animates on a keystroke or a scope
+answer. Over the empty list (`SearchStatus`): the shared No Computers view
+with Add a Computer when nothing is paired; a small spinner while a host is
+still connecting or the first answer is out; one calm `.meta` line, "Every
+computer is offline.", once none can answer; nothing before a query (the
+field's prompt says what it searches); `ContentUnavailableView.search` for
+no results (see "Empty screens"). Cancel clears the field. Nothing animates on a keystroke or a scope
 tap; the press scale and the ticking time are the only motion. DEBUG
 hooks: `TC_TEST_SEARCH` is the query, `TC_TEST_SEARCH_SCOPE=files` opens
 the Files scope.
@@ -1053,8 +1065,10 @@ one chunk at a time, `commit`; the client package's `upload`) and shows in a
 strip above the box: a 56 pt thumbnail at the row radius with a 10 %
 outline, a 2 pt bar in the accent along its foot while it travels (its width
 rolls on the 150 ms numeric curve), gone once the host has it, and a remove
-control at the top trailing corner. A failed upload keeps its chip with the
-bar in the destructive tint and Retry in its menu; Send waits until every
+control at the top trailing corner (its touch the corner's 44 pt square). A
+failed upload keeps its chip with the bar in the destructive tint, a line
+under the strip ("A photo didn't upload"), and a tap on the chip (or its
+menu's Retry) tries again; Send waits until every
 photo is on the host or removed (Pause never waits). The turn names the
 committed photos, and a refused send gives the text and the photos back.
 
@@ -1067,8 +1081,11 @@ step with the second and do not roll (from a second on), counted from the
 click (`ThreadState.sentAt`, which the
 optimistic send stamps when no turn is open; the host's later `busySince`
 never steps it back), and Stop, which reads "Stopping…" while it is out.
-Paused: the pause glyph in the warning tint, "Paused", the frozen time, on a
-master "3 batch threads with it", then Stop and Continue (warning). Stopped:
+Paused: the pause glyph in the warning tint, "Paused", on a master "and 3
+batch threads with it", the frozen time last, then Stop and Continue
+(warning). The actions follow the composer field's block: a read key sees
+none, a dropped link leaves them disabled only past the field's 1.5 s grace,
+and the row's words never dim. Stopped:
 the stop square, "The harness is gone", the frozen time and Resume (accent).
 Queued: the clock glyph, the host's reason ("Waiting for <sibling>", "120 of
 120 running") and Start now. Nothing for watching, failed, idle or done (the
@@ -1360,7 +1377,7 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   4s" ("Worked" until the time lands) and slide 22 pt to the prose edge.
   A turn's end ends every text still streaming (`ThreadFold`), so a block
   whose final row never came cannot hold the line open. A settled turn
-  that mounts draws its closing line at once, still; Copy answer is in its
+  that mounts draws its closing line at once, still; Copy Answer is in its
   context menu. No clock time.
 - **The Watching line**: under the thread's last closing line while the
   thread watches (`WatchWords.isWatching`: watching, or idle or done with
@@ -1452,7 +1469,9 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   whole output in a box capped at 320 pt that scrolls inside itself (no
   "N more lines"; Copy in its menu); any other call's is its input as key
   and value lines over its output. An omitted body is fetched on open
-  behind a shimmer. An edit keeps its counts on its line and its caret
+  behind a shimmer; a fetch that comes back with nothing (offline, or the
+  host lost it) ends the shimmer in one quiet line, "Couldn't load the
+  output" with Retry. An edit keeps its counts on its line and its caret
   pushes the diff screen (unified, mono, line numbers dim; no side-by-side
   on a phone).
 - **The shimmer** (`WorkingText`, the desktop's): the words muted, and
@@ -1465,7 +1484,7 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   while the scene is not active.
 - **Edits**: the desktop's bordered card: the icon in a 20 pt box, the file
   name medium, the directory dim, a live verb while the call runs, `+n −m`
-  in success and destructive, semibold and tabular; deleted and failed say
+  in the success and destructive text tints, semibold and tabular; deleted and failed say
   so. Tap opens the diff full screen (unified, mono, line numbers dim; no
   side-by-side on a phone).
 - **Agent pages** (`html_render`, the desktop's `HtmlRenderRow`;
@@ -1493,11 +1512,12 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   gray step once decided. An approval says what the agent wants in plain
   words with the command in a mono well (a file write shows the lines it
   adds), then the steering thread's Allow and Deny (`CardActions.swift`,
-  full width); decided it reads Approved, Denied or Denied (timed out). A question shows
-  its header small and dim, the question, the options as wash chips that
-  wrap (the picked one near-black), an Other field when the question takes
+  full width); decided it reads Approved, Denied or Denied automatically. A question shows
+  its header small and dim, the question, the options as rows (28 pt, a 44 pt
+  hit; the picked one on the fill step), an Other field when the question takes
   free text, then the steering thread's Answer (`CardActions.swift`);
-  answered, the chosen chips stay on and the rest fall away.
+  answered, the chosen rows stay on and the rest fall away; resolved with no
+  answer it reads Dismissed.
 - **Notices** draw on one `NoticeLine` (Thread/AgentSteps.swift, the
   desktop's NoticeLine): 28 pt, the 14 pt glyph slot, 8 pt to the lead,
   the details 4 pt after it as one muted comma run that truncates once;
@@ -1549,9 +1569,9 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   line is the transcript's one moving mark.
 - **Failure**: the host's verdict on a failed turn as a card: the summary,
   the cause, a note naming what only the desktop can do (sign in, pick an
-  account or a model), and the actions this key can take as full-width
-  buttons side by side while every label fits on one line, stacked when one
-  would wrap, Retry last; needs-you tint while live, chrome once the thread
+  account or a model), and the actions this key can take, each sized to its
+  label and wrapping from the text edge (see "The failure card" above), Retry
+  last; needs-you tint while live, chrome once the thread
   moves on. An error without a verdict, and a Stop, stay one quiet line.
 - **Review**: the merge review's outcome: lead and detail, held in
   destructive, merged in success, the rest secondary; blocking findings as
@@ -1574,7 +1594,7 @@ Streaming: new text appends to the last assistant row without re-laying the
 rows above (rows compare by value and keep their identity by the row
 model's ids); the list stays pinned to the bottom while the user is at the
 bottom and shows a "Jump to latest" pill (one, a glass capsule that answers the
-touch, 36 pt with a 44 pt hit area, 150 ms opacity and 8 pt of travel) once they scroll up. Turn completion turns the working
+touch, 36 pt with a 44 pt hit area, `fast` opacity and 4 pt of travel) once they scroll up. Turn completion turns the working
 line into the closing line and adds nothing. Nothing animates on first paint from cache. Images reach
 the phone through `fs.media` and the `/asset` GET; the host an image lives
 on is `MediaImage.hostOf(_:)` (the media-host thread's seam).
@@ -1590,7 +1610,7 @@ part) in `caption` medium secondary, or "Auto" one step dimmer with no dot
 when the host picks. A 44 pt hit area; press dims (`pressableStatic`), no
 scale in the dense bar. Tap opens the system sheet (16 pt, medium and large
 detents), titled "Account", with the source line under it ("From project
-billing-page", "From workspace cosmic-web", "Auto, picked by model").
+billing-page", "From workspace cosmic-web"; nothing for Auto, whose row says it).
 
 Three scopes in a segmented row, only those the thread has: **This thread**
 reads the route (the account checked is the one it spends from; a "Route
@@ -1870,8 +1890,8 @@ fails, is paused, stopped or queued; else what it waits on: "Waiting on
 its subagents", also while a child is only queued, "A subagent needs you",
 "Done", "Done, one agent stopped"; the line never counts), then the
 fleet in four groups under the design's section headers, each its word
-alone as the desktop's board sections read: **Running**, **Waiting**, **Queued**,
-**Done** (failed and stopped agents sit first in Done with their marks).
+alone as the desktop's board sections read: **Needs you**, **Working**,
+**Queued**, **Done** (failed and stopped agents sit first in Done with their marks).
 Empty groups are left out. Log is the orchestrator's own transcript.
 
 The agent row (`Thread/FleetStyles.swift`, `AgentRow`), shared by the
@@ -1913,7 +1933,7 @@ phone is not paired with"), not tappable: pairing is in Settings.
 **Subagent list** (`Thread/SubagentListScreen.swift`,
 `SubagentListScreen(client:rootSessionId:)`): the desktop's right-side
 subagent panel as a screen, pushed from a thread's toolbar button. Title
-"Subagents" over the thread's name, then the same grouped rows across
+"Agents" over the thread's name, then the same grouped rows across
 hosts, live, nothing to pull. Fleets of twelve read as four short lists.
 
 **Agent detail** (`Thread/AgentDetailScreen.swift`), pushed from any
@@ -1951,8 +1971,9 @@ Safari's reading list crossed with a research notebook
 - **The report pin** on top is the board's only raised surface (`.raised` at
   `Radius.field`): the `doc.text` glyph in cyan at the title's semibold, the
   title step semibold in two lines, the state line (a `Layout.dotSize` dot,
-  green "Complete"; the mini spinner "In progress" while the thread runs, or
-  "Complete, 2 angles still running"; a tertiary dot when stopped early;
+  green "Complete" (the mini spinner while angles still run; the coverage
+  line counts them); the mini spinner "In progress" while the thread runs; a
+  tertiary dot and "Stopped" when stopped early (`ReportStateWord`);
   cross-fading on `Motion.crossFade`), the summary in two meta lines, a
   chevron. Tap opens the report as a document sheet (a page sheet unfolded).
 - **The coverage line** under it in meta: "15 sources, 4 searches, 2 of 3
@@ -1977,8 +1998,8 @@ Safari's reading list crossed with a research notebook
   the `binoculars` glyph, then "Searching" with a spinner while the thread
   runs, "Loading" while history loads, else "No sources yet".
 
-The report (`Sources/Thread/ResearchReportScreen.swift`) is a full-screen
-cover set as a document at a 640 pt measure: the title once, at `title` bold
+The report (`Sources/Thread/ResearchReportScreen.swift`) is a document sheet
+set as a document at a 640 pt measure: the title once, at `title` bold
 with −0.5 tracking, the state line and "3 sources" behind a link glyph, the summary at
 `callout` as the lede over a hairline; then the body through the transcript's
 `MarkdownBlocksView` after a pure citation pass (`ReportCitations.decorate`
@@ -2005,7 +2026,7 @@ package's `Rendering/Batch.swift` (`MasterBoard`, `BatchSteps`, `RulesEdit`,
   nothing to act on is disabled, never hidden; a key that cannot operate
   reads the reason as each menu's last line.
 - **The rows**, one plain list in four groups under the kit's section
-  headers with counts: Needs you (waiting, failed), Running (starting,
+  headers with counts: Needs you (waiting, failed), Working (starting,
   running, watching, paused), Queued, Done. Each row: the fleet's status
   mark in the 14 pt column, the type glyph, the title in the title step with
   the type word muted after it and the task tally at the right (a chevron
@@ -2300,11 +2321,13 @@ measurements (`DiffMetrics`) and the palette.
   files, the hunk's own `+n −m` trailing, a hairline under it.
 - **Lines**: mono one step down from the rows (`footnote`, Dynamic Type
   honored, the gutter and row height measured from the same font), the
-  number `tertiary` right-aligned in the gutter, the sign bold in the line's
-  color in the gutter and never in the text, the row tinted success or
-  destructive at 10 % with a 2 pt bar of the full color on the leading
-  edge, context text at 70 %: the desktop's `DiffBody` values. No
-  intra-line emphasis, as on the desktop.
+  number `tertiary` right-aligned in the gutter, the sign at medium in the
+  line's color in the gutter and never in the text, the row tinted success
+  or destructive at 10 %, no bar on the leading edge, context text in the
+  label colour: the desktop's `FilePreview` values. No intra-line emphasis,
+  as on the desktop. A diff that could not load reads "The diff is gone from
+  Mac." while the host is open, and the link's own line ("Mac is offline")
+  while it is away, each with Retry.
 - **Sideways**: each hunk scrolls horizontally on its own, under the pinned
   gutter, by a sideways drag on any of its rows; the first change decides
   the axis for the gesture's life and a vertical start is the scroll
@@ -3741,7 +3764,7 @@ it in its own area on these names.
 | Cyan | `systemCyan` | research type | `Tint.cyan` |
 | Quiet | `systemGray2` | a state with no urgency: the queued dot, the stopped square | `Tint.quiet` |
 | Radius | the ladder: four chosen steps, 4 pt an inline token, 8 pt chips and rows, 12 pt fields and cards, 16 pt sheets; derived: 10 pt a transcript block (row + 2), 6 pt a wash or icon box inside one (block − 4), a quarter of the side for an icon tile, half the one-line height for the chat bar; a real `Capsule` for anything round at both ends; on iOS 26 the full-width buttons at a sheet's foot are concentric with the sheet (`ConcentricRectangle`, never tighter than 12 pt) | outer = inner + padding, always; no literal radius outside Tokens.swift | `Radius.inline / .row / .field / .sheet / .block / .inner / .mark`, `Radius.tile(side)`, `Radius.capsuleEnds(height)`, `Radius.around(inner, padding:)`, `Radius.inside(outer, padding:)`, `.rowCorner / .fieldCorner / .sheetCorner / .blockCorner / .inlineCorner` (continuous), `.concentric(minimum:)` |
-| Type | lists: `subheadline` rows, `footnote` meta, `caption2` timestamps. The transcript: the desktop's ladder on iOS text styles, prose 15 on 22 (`subheadline`), lines 13 on 20 (`footnote`: actions, the working and closing line, notices, a group's line and cells), details 12 on 16 (`caption`: the steer word, the slot, the composer's row, a card's lines), code 14 on 20 and a command or diff 12 on 20 in mono, headings 17/24 semibold −0.01em, 16/22 and 15/22 semibold, a document (plan, report, notes) 16 on 24 (`callout`) with headings 20/26, 17/24 and 16/24 medium; each size scales relative to its style and its line box keeps its ratio, so a row height is a minimum and never a clip | Dynamic Type honored up to accessibility sizes; no view writes a font size (scripts/ios-literal-guard.test.ts counts what is left, and the count only shrinks) | `TextStep.title` (subheadline, label), `.meta` (footnote, secondary), `.stamp` (caption2, tertiary, tabular); `.transcriptType(TranscriptType.prose / .line / .detail / .code / .rowCode / .proseH1–3 / .document / .documentH1–3, weight:)`, `.transcriptFont(_:)` for a glyph beside the text; the numbers are the client package's `TranscriptScale` |
+| Type | lists: `subheadline` rows, `footnote` meta, `caption2` timestamps. The transcript: the desktop's ladder on iOS text styles, prose 15 on 22 (`subheadline`), lines 13 on 20 (`footnote`: actions, the working and closing line, notices, a group's line and cells), details 12 on 16 (`caption`: the steer word, the slot, the composer's row, a card's lines), code 14 on 20 and a command or diff 12 on 20 in mono, headings 17/24 semibold −0.01em, 16/22 and 15/22 semibold, a document (report, notes; the plan page keeps its own ladder, "Planning") 16 on 24 (`callout`) with headings 20/26, 17/24 and 16/24 medium; each size scales relative to its style and its line box keeps its ratio, so a row height is a minimum and never a clip | Dynamic Type honored up to accessibility sizes; no view writes a font size (scripts/ios-literal-guard.test.ts counts what is left, and the count only shrinks) | `TextStep.title` (subheadline, label), `.meta` (footnote, secondary), `.stamp` (caption2, tertiary, tabular); `.transcriptType(TranscriptType.prose / .line / .detail / .code / .rowCode / .proseH1–3 / .document / .documentH1–3, weight:)`, `.transcriptFont(_:)` for a glyph beside the text; the numbers are the client package's `TranscriptScale` |
 | Transcript lengths | a lone row 28 pt, a table row 32; the glyph slot 14, 8 to the words, 4 between words, 8 after a value, a table's words 12 in; radii 12 a table, 8 a body, 12 a bubble; gaps 16 first, 32 between turns, 16 bubble to reply, 12 between blocks, 4 between lines, 8 to the closing line, 16 under the last; a bubble at most 85 % of the column, 12 × 8 in; the column 768, a document 640; the slot 28, the composer's row 24, its controls 28 (44 hit), the empty box 46 | the desktop's numbers; a full-width row is its own hit area | `TranscriptMetrics` (`Gap.*`), over the client package's `TranscriptLengths` |
 | Numbers | `monospacedDigit()` on every elapsed, count and cost | nothing jitters as it ticks | `.numeric(value)`, `CountText`, `ElapsedText`, `AgoText` |
 | Lengths | 16 pt text edge, 44 pt rows with 6 pt vertical padding, 10 pt gaps, 14 pt mark, 7 pt dot, 20 pt glyph, 16 pt subagent indent, 6 pt before a title's tag | rows, headers and separators meet on the same edges | `Layout.textEdge / .rowHeight / .rowVertical / .rowGap / .markWidth / .dotSize / .glyphWidth / .indent / .tagGap / .rowTextEdge / .rowInsets` |
@@ -3760,11 +3783,13 @@ beside semibold); outline default, fill marks the active state
 The status mark (`StatusDot(status:running:weight:)`) leads every row in a
 14 pt column that scales with the title; the marks cross-fade and the column
 never moves. Each is a static cue VoiceOver reads; an empty column is hidden
-from it.
+from it. The words are the desktop's `STATUS_WORD` (status.tsx), held once in
+the client package's `StatusWord` and checked by
+scripts/ios-status-parity.test.ts.
 
 | Status | Mark | VoiceOver |
 | --- | --- | --- |
-| `running`, or a settled root whose subagents still work (`running: true`) | the mini spinner | Running |
+| `running`, or a settled root whose subagents still work (`running: true`) | the mini spinner | Working |
 | `starting`, `watching` | dot, `Tint.info` | Starting, Watching |
 | `waiting` | dot, `Tint.warning` | Needs you |
 | `error` | dot, `Tint.destructive` | Failed |
@@ -3990,8 +4015,12 @@ keyboard action. Every animated change has a static cue as well.
   the mark leaves the phone's own marks the answer. The
   status line (`StatusLine`) is one line of footnote text over the content,
   never in it: it exists only after the transport has been away 1.5 s,
-  fades in and out over 150 ms, and is gone the frame the socket opens; the
-  background's own `suspended` state never shows. Elapsed timers run from
+  fades in and out on `Motion.fast`, and is gone the frame the socket opens; the
+  background's own `suspended` state never shows. Its words are the desktop's
+  `linkWords` (`ConnectionSentence`: "Reconnecting to Mac in 5 s", "Mac is
+  offline", "Mac no longer accepts this key"), one sentence with Home's row,
+  the host chip and the computer's page, and it offers Retry only where a
+  retry can help (`HostFix.fix` is `.retry`). Elapsed timers run from
   the host's `busySince`, so they are right on the first frame back and
   after a kill. The tab, each tab's stack, the thread's segment, the
   new-thread and Start sheets (`SheetMemory`) survive a cold launch
@@ -4518,7 +4547,8 @@ else; the host sends what that row needs and the clock ticks on the device.
 | Island minimal | the status dot (8 pt): the type's tint while working, warning paused and waiting, success done, destructive failed; a 6 pt still square for stopped |
 | Island expanded | glyph, title, timer on the top row; the status line and the tally below; keyline in the type's tint; every presentation deep-links to the thread and the row |
 | Notification | title the thread's title, subtitle the project (else the workspace), body one line: "Run bun test?", "Which database?", "Plan ready to approve", "Needs you", "Done in 12m, 2 tasks left", "Ready to build", "Batch done: 3 landed, gate passed in 4m 12s", "Batch stopped: gate failed at vitest", "Failed: <the host's summary, else the first line>", "Stopped unexpectedly", "No output for 12m"; nothing for a thread the person is looking at on the Mac, a batch thread's finish or a plan whose build started. Grouped per thread; relevance needs-you 1, failed 0.8, stuck 0.6, finished 0.4; sound only for needs-you and failed; time-sensitive only for needs-you; Approve and Deny on an approval (Approve asks for the unlock; category `tc.approval`), Run now and Skip on a computer step held for the Mac (`tc.run-skip`, the same two actions, Run now asking for the unlock, a refusal "Not run: …"; the categories are the client package's `PushCategories`); a refusal answers one notice saying why. No emoji, no exclamation marks |
-| The host in the subtitle | the host does not know how many hosts a phone pairs with, so the phone decides: the alert is `mutable-content` with the host's name under `tc.host`, and the notification service extension appends it ("temp-code · box") only when two or more hosts are paired, from the App Group directory the app publishes |
+| A host's own notice | `host_down` and `host_up` name no thread: a tap opens Hosts, where the host's row says its state (`PushTarget.hostEvent`); a tap for a thread on a host forgotten since opens "Thread Not Here" in the detail, never a blank column |
+| The host in the subtitle | the host does not know how many hosts a phone pairs with, so the phone decides: the alert is `mutable-content` with the host's name under `tc.host`, and the notification service extension appends it ("temp-code on box", under the name he gave the host when the directory holds one for the notice's `tc.environmentId`) only when two or more hosts are paired, from the App Group directory the app publishes (`HostDirectory.subtitle`) |
 | In the foreground | nothing for the thread on screen; a thread whose Live Activity is live gets the list only, unless it needs you |
 | In the background | an alert and the activity's end for the same settle both show: the alert is the persistent record, the activity leaves after two minutes, and the shared collapse id folds repeats |
 | The clock | runs on the device from `since` while working; paused and every end freeze it at the state's time, so the final card reads the work time as it was. A waiting end shows the work time, not the time spent waiting: that count belongs to the app's Needs-you row |

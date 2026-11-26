@@ -69,6 +69,9 @@ struct DiffScreen: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// The computer's own name in the screen's words; "host" is not a word on screen.
+    private var hostName: String { client?.environment.name ?? "the computer" }
+
     init(client: EnvironmentClient, route: DiffRoute) {
         self.client = client
         let source = Source.card(sessionId: route.sessionId, card: route.card)
@@ -98,7 +101,7 @@ struct DiffScreen: View {
             case .ready(let document, let partial):
                 VStack(spacing: 0) {
                     if partial {
-                        DiffNotice(text: "Part of this diff is gone from the host.", error: true) { reload() }
+                        DiffNotice(text: "Part of this diff is gone from \(hostName).", error: true) { reload() }
                             .background(Surface.chrome)
                     }
                     DiffBody(document: document, metrics: metrics, current: $current, position: $position)
@@ -108,8 +111,15 @@ struct DiffScreen: View {
                 DiffNotice(text: emptyText, error: false)
                     .transition(.opacity)
             case .failed:
-                DiffNotice(text: "The diff is gone from the host.", error: true) { reload() }
-                    .transition(.opacity)
+                // A host that is away has not lost the diff: its link's own line, the desktop's words.
+                if let client, client.status.transport != .open, client.status.transport != .suspended {
+                    let away = ConnectionSentence.text(name: hostName, status: client.status, now: .now)
+                    DiffNotice(text: away, error: false) { reload() }
+                        .transition(.opacity)
+                } else {
+                    DiffNotice(text: "The diff is gone from \(hostName).", error: true) { reload() }
+                        .transition(.opacity)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -573,8 +583,9 @@ private struct DiffHunkHeader: View {
 
 /// One line: the number dim and right-aligned, the sign bold in the line's
 /// color, then the text in the pinned-gutter column, clipped and shifted by
-/// the hunk's offset. The tint sits behind the whole row with a 2 pt bar on
-/// the leading edge, as on the desktop.
+/// the hunk's offset. The tint sits behind the whole row, as on the desktop
+/// (FilePreview.tsx): no bar on the leading edge, the sign at medium,
+/// context text in the label colour.
 private struct DiffLineRow: View, Equatable {
     let line: DiffLine
     let metrics: DiffMetrics
@@ -590,12 +601,11 @@ private struct DiffLineRow: View, Equatable {
                 .frame(width: numberWidth, alignment: .trailing)
                 .padding(.leading, 8)
             Text(DiffPalette.sign(line.kind))
-                .fontWeight(.bold)
+                .fontWeight(.medium)
                 .foregroundStyle(color ?? .clear)
                 .frame(width: metrics.charWidth + 12)
             Text(line.text)
                 .foregroundStyle(.primary)
-                .opacity(line.kind == .context ? DiffPalette.contextOpacity : 1)
                 .fixedSize(horizontal: true, vertical: false)
                 .offset(x: -offset)
                 .frame(width: textWidth, alignment: .leading)
@@ -609,11 +619,6 @@ private struct DiffLineRow: View, Equatable {
         .background {
             if let color {
                 Rectangle().fill(color.opacity(DiffPalette.tint))
-            }
-        }
-        .overlay(alignment: .leading) {
-            if let color {
-                Rectangle().fill(color).frame(width: DiffPalette.bar)
             }
         }
         .contentShape(Rectangle())

@@ -251,12 +251,19 @@ nonisolated enum ThreadActivityGroup {
 
 /// The words and numbers of the card, as functions of plain values.
 nonisolated enum ThreadActivityText {
+    /// A group card's headline: "3 threads", and "on box" after it when two or more hosts are paired.
+    static func groupHeadline(total: Int, host: String?) -> String {
+        let count = "\(total) \(total == 1 ? "thread" : "threads")"
+        guard let host, !host.isEmpty else { return count }
+        return "\(count) on \(host)"
+    }
+
     /// The status word. Working has one for accessibility only: the row shows the spinner and the task.
     static func word(phase: ThreadActivityPhase) -> String {
         switch phase {
         case .working: "Working"
         case .paused: "Paused"
-        case .waiting: "Waiting"
+        case .waiting: "Needs you"
         case .finished: "Done"
         case .failed: "Failed"
         case .stopped: "Stopped"
@@ -316,9 +323,9 @@ nonisolated enum ThreadActivityText {
     /// "and 2 more": the threads past a group card's rows.
     static func more(_ count: Int) -> String { "and \(count) more" }
 
-    /// What VoiceOver reads for a group: "3 threads, 1 needs you".
-    static func groupLabel(_ counts: ThreadActivityCounts, total: Int) -> String {
-        var parts = ["\(total) \(total == 1 ? "thread" : "threads")"]
+    /// What VoiceOver reads for a group: "3 threads, 1 needs you"; "3 threads on box, …" with two hosts.
+    static func groupLabel(_ counts: ThreadActivityCounts, total: Int, host: String? = nil) -> String {
+        var parts = [groupHeadline(total: total, host: host)]
         if counts.waiting > 0 { parts.append("\(counts.waiting) \(counts.waiting == 1 ? "needs" : "need") you") }
         if counts.working > 0 { parts.append("\(counts.working) working") }
         if counts.paused > 0 { parts.append("\(counts.paused) paused") }

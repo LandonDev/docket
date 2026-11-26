@@ -81,6 +81,24 @@ public struct CatalogLoad: Sendable, Hashable {
         if !loaded, trigger.open { failures += 1 }
     }
 
+    /// What the row's model slot draws once no host wait is shown.
+    public enum Slot: Sendable, Equatable {
+        /// No catalog and no model of the thread's own yet: a spinner, never a guessed provider.
+        case spinner
+        /// "Couldn't load models" with Retry; while the Retry's ask is out, its spinner in Retry's place.
+        case failed(retrying: Bool)
+        /// The model's glyph and name.
+        case picked
+    }
+
+    /// The slot: the failed line holds through a Retry until the ask answers;
+    /// a fresh draft (no model named yet) spins until the catalog lands.
+    public static func slot(hasCatalog: Bool, modelKnown: Bool, failed: Bool, retrying: Bool) -> Slot {
+        if failed || retrying { return .failed(retrying: retrying) }
+        if !hasCatalog, !modelKnown { return .spinner }
+        return .picked
+    }
+
     /// The row's one line while the catalog waits on its host's link, in the
     /// row's words: "Waiting for box"; nil once a catalog is held or while
     /// the link is open (the ask is out, or came back with nothing to say).

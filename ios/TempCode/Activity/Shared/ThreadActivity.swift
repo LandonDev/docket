@@ -24,6 +24,9 @@ nonisolated struct ThreadActivityAttributes: ActivityAttributes {
     var sessionId: String
     var title: String
     var threadType: ThreadType
+    /// The host's name when the phone pairs two or more, so two hosts' cards
+    /// tell themselves apart ("3 threads on box"); nil with one host.
+    var host: String? = nil
 
     /// `tempcode://thread/<environment>/<session>?seq=<n>`: the app routes a tap
     /// the way a notification tap routes, to the thread and its card.
@@ -46,7 +49,7 @@ nonisolated struct ThreadActivityAttributes: ActivityAttributes {
     /// (another thread than the one that started the activity, with its own type, title and link).
     func single(_ state: ContentState) -> (attributes: ThreadActivityAttributes, state: ContentState) {
         guard let row = state.soloRow else { return (self, state) }
-        let attributes = ThreadActivityAttributes(environmentId: environmentId, sessionId: row.id, title: row.title ?? title, threadType: row.type.map(ThreadType.init(rawValue:)) ?? threadType)
+        let attributes = ThreadActivityAttributes(environmentId: environmentId, sessionId: row.id, title: row.title ?? title, threadType: row.type.map(ThreadType.init(rawValue:)) ?? threadType, host: host)
         return (attributes, state.state(of: row))
     }
 }

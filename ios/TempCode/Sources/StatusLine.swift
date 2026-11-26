@@ -16,8 +16,8 @@ struct StatusLine: View {
 
     /// How long the transport may be away before the line appears.
     static let hold: Duration = .milliseconds(1_500)
-    /// The one motion: opacity, 150 ms ease-out, both ways.
-    static let fade: Animation = .easeOut(duration: 0.15)
+    /// The one motion: opacity on `Motion.fast`, both ways.
+    static let fade: Animation = Motion.fast
 
     var body: some View {
         let status = client.status
@@ -74,38 +74,16 @@ struct StatusLine: View {
             }
     }
 
-    /// What the line says; nil when there is nothing to say (open, or away in the background).
+    /// What the line says (`ConnectionSentence`, the desktop's words); nil when there is nothing to say (open, or away in the background).
     static func text(for status: EnvironmentStatus, host: String, now: Date) -> String? {
         switch status.transport {
-        case .open, .suspended:
-            return nil
-        case .connecting:
-            return "Connecting…"
-        case .reconnecting:
-            guard let at = status.nextRetryAt else { return "Reconnecting…" }
-            let seconds = max(0, Int((at / 1000 - now.timeIntervalSince1970).rounded()))
-            if status.attempts >= 2, !host.isEmpty {
-                return seconds > 0 ? "Can’t reach \(host). Retrying in \(seconds) s" : "Can’t reach \(host). Retrying…"
-            }
-            return seconds > 0 ? "Reconnecting in \(seconds) s" : "Reconnecting…"
-        case .offline:
-            switch status.halt {
-            case .identityChanged?:
-                return "This host is not the one that was paired."
-            case .contractMismatch(let app, let host)?:
-                return host > app ? "The host is newer than this app. Update the app." : "The host is older than this app. Update the host."
-            case nil:
-                return "No connection"
-            }
-        case .unauthorized:
-            return "The key was refused. Remove the host and pair again."
+        case .open, .suspended: nil
+        default: ConnectionSentence.text(name: host, status: status, now: now)
         }
     }
 
+    /// Retry only where it can help (`HostFix`): never for a refused key, another computer at the address or a version this app cannot speak.
     static func showsRetry(_ status: EnvironmentStatus) -> Bool {
-        switch status.transport {
-        case .reconnecting, .offline, .unauthorized: true
-        default: false
-        }
+        HostFix.fix(for: status) == .retry
     }
 }

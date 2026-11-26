@@ -38,8 +38,8 @@ import TempCodeContract
 
     @Test func `paused names the batch only on a master with paused threads, stopped names the harness`() {
         #expect(StripWords.paused(batch: 0) == StripWords(title: "Paused"))
-        #expect(StripWords.paused(batch: 1) == StripWords(title: "Paused", detail: "1 batch thread with it"))
-        #expect(StripWords.paused(batch: 3) == StripWords(title: "Paused", detail: "3 batch threads with it"))
+        #expect(StripWords.paused(batch: 1) == StripWords(title: "Paused", detail: "and 1 batch thread with it"))
+        #expect(StripWords.paused(batch: 3) == StripWords(title: "Paused", detail: "and 3 batch threads with it"))
         #expect(StripWords.stopped == StripWords(title: "Stopped", detail: "The harness is gone"))
     }
 }

@@ -33,6 +33,7 @@ struct OutcomeRows: View {
 /// failed step. A failed run opens its last 20 lines on a tap, the shape of
 /// a tool chip's body; a passed one never expands.
 struct GateRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let gate: GateNotice
     @State private var open: Bool
 
@@ -48,7 +49,7 @@ struct GateRow: View {
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 Button {
-                    withAnimation(open ? Motion.collapse : Motion.expand) { open.toggle() }
+                    withAnimation(open ? Motion.collapse : (reduceMotion ? Motion.crossFade : Motion.expand)) { open.toggle() }
                 } label: {
                     line
                 }

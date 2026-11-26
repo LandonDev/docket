@@ -215,21 +215,20 @@ struct SearchView: View {
         .task(id: SearchKey(query: trimmed, scope: scope, hosts: openHosts.map(\.environment.id))) { await run() }
     }
 
-    /// One calm line over the empty list; nothing while an older answer is still showing.
+    /// What sits over the empty list (`SearchStatus`); nothing while an older answer is still showing.
     @ViewBuilder private var status: some View {
         if answer.isEmpty {
-            if paired.isEmpty {
-                SearchStatusLine("No host is connected.")
-            } else if openHosts.isEmpty {
-                SearchStatusLine("Every host is offline.")
-            } else if trimmed.count < SearchDebounce.minimumLength {
-                SearchStatusLine(offersFiles ? "Threads and project files on every host." : "Every thread on every host.")
-            } else if searching {
+            let connecting = paired.count { [.connecting, .reconnecting].contains($0.status.transport) }
+            switch SearchStatus.of(paired: paired.count, open: openHosts.count, connecting: connecting, queryLength: trimmed.count,
+                                   searching: searching, answered: answer.query == trimmed && answer.scope == scope) {
+            case .noHosts: NoHostsView()
+            case .offline: SearchStatusLine("Every computer is offline.")
+            case .spinner:
                 ProgressView()
                     .controlSize(.small)
-                    .accessibilityLabel("Searching")
-            } else if answer.query == trimmed, answer.scope == scope {
-                ContentUnavailableView.search(text: answer.query)
+                    .accessibilityLabel(openHosts.isEmpty ? "Connecting" : "Searching")
+            case .noResults: ContentUnavailableView.search(text: answer.query)
+            case .none: EmptyView()
             }
         }
     }

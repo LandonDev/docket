@@ -2,8 +2,9 @@ import UserNotifications
 
 /// The notification service extension: every alert the host sends is
 /// `mutable-content`, and this adds one thing before it shows: the host's
-/// name after the subtitle, when the phone pairs with two or more hosts
-/// (`HostDirectory`, the App Group's defaults the app keeps current). With
+/// name after the subtitle ("temp-code on box"), when the phone pairs with
+/// two or more hosts (`HostDirectory`, the App Group's defaults the app keeps
+/// current, which also hold the name he gave each host). With
 /// one host, or no name on the notice, the content is delivered untouched.
 /// Nothing else is read, fetched or changed.
 final class NotificationService: UNNotificationServiceExtension {
@@ -26,11 +27,10 @@ final class NotificationService: UNNotificationServiceExtension {
         if let handler, let content { handler(content) }
     }
 
-    /// "temp-code · box": the host joins the subtitle only when several hosts are paired and the notice names one.
+    /// "temp-code on box": the host joins the subtitle only when several hosts are paired and the notice names one.
     static func addHost(to content: UNMutableNotificationContent, hosts: [String: String]) {
-        guard hosts.count >= 2,
-              let tc = content.userInfo["tc"] as? [AnyHashable: Any],
-              let host = tc["host"] as? String, !host.isEmpty else { return }
-        content.subtitle = content.subtitle.isEmpty ? host : "\(content.subtitle) · \(host)"
+        guard let tc = content.userInfo["tc"] as? [AnyHashable: Any],
+              let subtitle = HostDirectory.subtitle(content.subtitle, tc: tc, hosts: hosts) else { return }
+        content.subtitle = subtitle
     }
 }

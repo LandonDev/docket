@@ -117,7 +117,7 @@ struct MasterPinButton: View {
                     do {
                         try await client.setMaster(session.id, !pinned)
                     } catch {
-                        onFailure?((error as? ActionError)?.message ?? String(describing: error))
+                        onFailure?(ActionError.wrap(error).message)
                     }
                 }
             } label: {
