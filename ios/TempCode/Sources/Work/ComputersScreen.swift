@@ -61,7 +61,16 @@ struct ComputersScreen: View {
         .listStyle(.insetGrouped)
         .overlay {
             if tiles.isEmpty, machines.isEmpty {
-                ContentUnavailableView("No Computer in Use", systemImage: ComputersGlyph.row, description: Text("A browser or an app an agent is using shows here, live."))
+                // A first read waits, hosts all away are named, and an idle list names the ones away (`ComputersState`).
+                switch ComputersState.of(clients.map { .init(name: $0.environment.name, linked: $0.work.linked, read: $0.computersRead) }) {
+                case .reading:
+                    ProgressView()
+                case .away(let names):
+                    ContentUnavailableView("Not Connected to \(WorkSearch.nameInLine(ComputersState.names(names)))", systemImage: ComputersGlyph.row)
+                case .idle(let away):
+                    ContentUnavailableView("No Computer in Use", systemImage: ComputersGlyph.row,
+                                           description: Text(away.isEmpty ? "A browser or an app an agent is using shows here, live." : "Not connected to \(WorkSearch.nameInLine(ComputersState.names(away)))."))
+                }
             }
         }
         .navigationTitle("Computers")

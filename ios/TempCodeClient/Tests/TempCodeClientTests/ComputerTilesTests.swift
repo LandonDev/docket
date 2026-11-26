@@ -83,4 +83,15 @@ import TempCodeContract
         #expect(ComputerTiles.find(after, host: "box", threadId: "child", pane: "root")?.threadId == "root")
         #expect(ComputerTiles.find(after, host: "mac", threadId: "child", pane: "root") == nil)
     }
+
+    /// With no computer in use, the list tells a first read, hosts all away and an idle host apart (`ComputersState`).
+    @Test func aFirstReadHostsAwayAndIdleAreThreeStates() {
+        #expect(ComputersState.of([.init(name: "The box", linked: true, read: false)]) == .reading)
+        #expect(ComputersState.of([.init(name: "The box", linked: false, read: false), .init(name: "Mac", linked: false, read: true)]) == .away(["The box", "Mac"]))
+        #expect(ComputersState.of([.init(name: "The box", linked: true, read: true)]) == .idle(away: []))
+        #expect(ComputersState.of([.init(name: "The box", linked: true, read: true), .init(name: "Mac", linked: false, read: false)]) == .idle(away: ["Mac"]))
+        // A host still reading holds the list in its wait even while another is away.
+        #expect(ComputersState.of([.init(name: "The box", linked: true, read: false), .init(name: "Mac", linked: false, read: false)]) == .reading)
+        #expect(ComputersState.names(["The box", "Mac", "PC"]) == "The box, Mac and PC")
+    }
 }

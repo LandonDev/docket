@@ -91,3 +91,42 @@ public enum ComputerTiles {
         tiles.first { $0.id == tileId(host, threadId) } ?? tiles.first { $0.browser && $0.host == host && $0.pane == pane }
     }
 }
+
+/// What the Computers list says with no computer in use, by its hosts (docs/IOS-DESIGN.md "A job's small places"): a
+/// first read is a wait, hosts that are all away are named, and the rest is idle, naming the ones away.
+public enum ComputersState: Equatable, Sendable {
+    /// A connected host has not said yet.
+    case reading
+    /// No Work host is connected: these, by name.
+    case away([String])
+    /// Every connected host said none is in use; the hosts away, by name, if any.
+    case idle(away: [String])
+
+    /// One Work host as the list reads it.
+    public struct Host: Sendable {
+        public var name: String
+        /// a live socket to it
+        public var linked: Bool
+        /// it answered or pushed its computers this run
+        public var read: Bool
+        public init(name: String, linked: Bool, read: Bool) {
+            self.name = name
+            self.linked = linked
+            self.read = read
+        }
+    }
+
+    public static func of(_ hosts: [Host]) -> ComputersState {
+        let away = hosts.filter { !$0.linked }.map(\.name)
+        let linked = hosts.filter(\.linked)
+        if linked.isEmpty, !away.isEmpty { return .away(away) }
+        if linked.contains(where: { !$0.read }) { return .reading }
+        return .idle(away: away)
+    }
+
+    /// "The box", "The box and Mac": the hosts named in one line.
+    public static func names(_ hosts: [String]) -> String {
+        guard let last = hosts.last else { return "" }
+        return hosts.count == 1 ? last : "\(hosts.dropLast().joined(separator: ", ")) and \(last)"
+    }
+}

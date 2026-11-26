@@ -10,40 +10,65 @@ final class ConnectionsFeed {
     static let shared = ConnectionsFeed()
 
     private(set) var hosts: [Connections.Host] = []
-    /// A host whose read failed, in its words.
-    private(set) var failed: [String: String] = [:]
+    /// Each Work host whose checks are not fresh on screen, and why: away, its read failed, or its ends did not come.
+    private(set) var missed: [String: Connections.Missed] = [:]
+    /// When each host's rows were read: a host missed since keeps them, said with this time.
+    private(set) var readAtOf: [String: Date] = [:]
     private(set) var reading = false
     /// A read has ended once: before it the place draws its rows' shape, never "Nothing to Check".
     private(set) var hasRead = false
     @ObservationIgnored private var readAt: Date?
+    /// The hosts the last read could ask: one whose link opens after it is read then, whatever the time.
+    @ObservationIgnored private var askedLast: Set<String> = []
     /// How long a read stands before the Work list asks again: each check runs every pillar's own.
     @ObservationIgnored private let stands: TimeInterval = 5 * 60
 
     var needsHim: Bool { Connections.needsHim(hosts) }
 
-    /// Each host with Work on whose key may read it; `fresh` is his own Check Again, which the hosts check anew.
+    /// Each host with Work on whose key may read it; `fresh` is his own Check Again, which the hosts check anew. A host
+    /// not connected is missed, never left out: the place names it and keeps what it said last.
     func read(_ clients: [EnvironmentClient], fresh: Bool = false) async {
-        if !fresh, let readAt, Date().timeIntervalSince(readAt) < stands { return }
+        let work = clients.filter { $0.work.isOn && $0.work.may(.health) }
+        let linked = Set(work.filter(\.work.linked).map(\.environment.id))
+        if !fresh, let readAt, Date().timeIntervalSince(readAt) < stands, linked.isSubset(of: askedLast) { return }
         guard !reading else { return }
         reading = true
         defer { reading = false }
         readAt = Date()
-        let asked = clients.filter { $0.work.isOn && $0.work.linked && $0.work.may(.health) }
+        askedLast = linked
         var next: [Connections.Host] = []
-        var failures: [String: String] = [:]
-        for client in asked {
+        var misses: [String: Connections.Missed] = [:]
+        for client in work {
+            let id = client.environment.id
+            let kept = hosts.first(where: { $0.id == id })
+            guard client.work.linked else {
+                misses[id] = .away
+                if let kept { next.append(kept) }
+                continue
+            }
             do {
                 let report = try await client.work.health(fresh: fresh)
-                let lapses = client.work.may(.lapses) ? (try? await client.work.lapses()) ?? [] : []
-                next.append(.init(id: client.environment.id, name: client.environment.name, report: report, lapses: lapses))
+                var lapses: [LapsePhone] = []
+                if client.work.may(.lapses) {
+                    do {
+                        lapses = try await client.work.lapses()
+                    } catch {
+                        // The ends it said last stay, and the line says they did not come this time.
+                        misses[id] = .lapses
+                        lapses = kept?.lapses ?? []
+                    }
+                }
+                next.append(.init(id: id, name: client.environment.name, report: report, lapses: lapses))
+                readAtOf[id] = Date()
             } catch {
                 // A host that did not answer keeps the rows it last gave, with its words above them.
-                failures[client.environment.id] = ActionError.wrap(error).message
-                if let kept = hosts.first(where: { $0.id == client.environment.id }) { next.append(kept) }
+                // In Work's words, never the host's raw text (`WorkErrorWords`); none says only that it did not answer.
+                misses[id] = .failed(WorkErrorWords.say(ActionError.wrap(error).message, host: client.environment.name))
+                if let kept { next.append(kept) }
             }
         }
         hosts = next
-        failed = failures
+        missed = misses
         hasRead = true
     }
 }
@@ -97,13 +122,18 @@ struct ConnectionsScreen: View {
                 }
             }
         }
-        .task { await feed.read(clients) }
+        // Read again when a host's link opens: a read made before it said nothing of that host.
+        .task(id: clients.filter(\.work.linked).map(\.environment.id)) { await feed.read(clients) }
     }
 
+    /// Every host missed, in one line (`Connections.missedLine`), with when the rows kept for it were read.
     private var failure: String? {
-        guard !feed.failed.isEmpty else { return nil }
-        let names = feed.failed.keys.compactMap { model.registry.client($0)?.environment.name }
-        return names.count == 1 ? "\(names[0]) did not answer: \(feed.failed.values.first ?? "")" : "\(names.joined(separator: ", ")) did not answer"
+        let missed = feed.missed.compactMap { id, why -> (name: String, why: Connections.Missed, keptAt: String?)? in
+            guard let name = model.registry.client(id)?.environment.name else { return nil }
+            let kept = feed.hosts.contains { $0.id == id } && why != .lapses ? feed.readAtOf[id]?.formatted(date: .omitted, time: .shortened) : nil
+            return (name, why, kept)
+        }
+        return Connections.missedLine(missed.sorted { $0.name < $1.name })
     }
 
     @ViewBuilder private func revealButton(_ row: Connections.Row, _ clients: [EnvironmentClient]) -> some View {

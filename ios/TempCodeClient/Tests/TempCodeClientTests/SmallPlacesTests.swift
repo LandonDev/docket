@@ -212,4 +212,17 @@ import TempCodeContract
         #expect(ItemBody.of(sheet) == .hosted(.object(.init(at: "lifeos", table: .sheets, id: "s1"))))
         #expect(doc.id != sheet.id)
     }
+
+    /// A Work host whose checks did not come back is named, never read as "Nothing to Check": away, its read failed
+    /// with the time of the rows kept for it, its ends did not come, or several by name.
+    @Test func connectionsNameEveryHostTheyMissed() {
+        #expect(Connections.missedLine([]) == nil)
+        #expect(Connections.missedLine([(name: "The box", why: .away, keptAt: nil)]) == "Not connected to the box.")
+        #expect(Connections.missedLine([(name: "The box", why: .failed("It did not answer in time"), keptAt: "2:10 PM")])
+                == "The box did not answer: It did not answer in time. Showing what it said at 2:10 PM.")
+        #expect(Connections.missedLine([(name: "Mac", why: .lapses, keptAt: nil)]) == "Mac did not say what ends soon.")
+        // A failure Work has no words for (the host's raw text) says only that the host did not answer.
+        #expect(Connections.missedLine([(name: "Mac", why: .failed(""), keptAt: nil)]) == "Mac did not answer.")
+        #expect(Connections.missedLine([(name: "Mac", why: .away, keptAt: nil), (name: "The box", why: .lapses, keptAt: nil)]) == "Mac and The box were not checked.")
+    }
 }

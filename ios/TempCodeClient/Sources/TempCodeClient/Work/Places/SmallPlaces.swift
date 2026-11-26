@@ -208,6 +208,34 @@ public enum FormsList {
 /// sign-in, a consent, the VM's OneDrive), so on the phone a row that is not working offers "Open on <computer>"
 /// (`work.reveal`, Settings → Connections there) and no fix of its own.
 public enum Connections {
+    /// Why a Work host's checks are not on screen as fresh.
+    public enum Missed: Equatable, Sendable {
+        /// no live link to it
+        case away
+        /// its health read failed, in Work's words
+        case failed(String)
+        /// its health came back, its known ends did not
+        case lapses
+    }
+
+    /// One line for every host whose checks did not come back (`ConnectionsFeed`), never "Nothing to Check": one host
+    /// in its own words, with when the rows kept under it were read ("The box did not answer: … Showing 2:10 PM's.");
+    /// several by name. Nil for none.
+    public static func missedLine(_ missed: [(name: String, why: Missed, keptAt: String?)]) -> String? {
+        guard let one = missed.first else { return nil }
+        guard missed.count == 1 else {
+            let names = missed.map(\.name)
+            return "\(names.dropLast().joined(separator: ", ")) and \(names.last!) were not checked."
+        }
+        let line = switch one.why {
+        case .away: "Not connected to \(WorkSearch.nameInLine(one.name))."
+        case .failed(let words) where words.isEmpty: "\(one.name) did not answer."
+        case .failed(let words): "\(one.name) did not answer: \(words.hasSuffix(".") ? words : words + ".")"
+        case .lapses: "\(one.name) did not say what ends soon."
+        }
+        return one.keptAt.map { "\(line) Showing what it said at \($0)." } ?? line
+    }
+
     public struct Host: Sendable {
         public var id: String
         public var name: String
