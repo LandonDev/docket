@@ -207,35 +207,69 @@ export interface Walked {
  * walk (two slots for every peer), and a transfer reads later still: a file swapped for a link in between would
  * otherwise send bytes from outside the memory set. Undefined when it is another file or is gone.
  */
+type Opened = Awaited<ReturnType<typeof open>>
+type Version = { dev: number; ino: number; size: number; mtimeMs: number }
+
+/** At most the set's size read from an open file, and only if it is still the version it was before the read. */
+async function readBounded(handle: Opened, before: Version): Promise<Buffer | undefined> {
+  if (before.size > MEMORY_MAX_BYTES) return undefined
+  const buf = Buffer.alloc(MEMORY_MAX_BYTES + 1)
+  let got = 0
+  for (;;) {
+    const { bytesRead } = await handle.read(buf, got, buf.length - got, got)
+    if (bytesRead === 0) break
+    got += bytesRead
+    if (got > MEMORY_MAX_BYTES) return undefined
+  }
+  const after = await handle.stat()
+  if (after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeMs !== before.mtimeMs || got !== before.size) return undefined
+  return buf.subarray(0, got)
+}
+
+/** Not a refusal: the file is not there. */
+export class MissingFile extends Error {}
+
 /**
  * A file at a landing's destination, read before it is replaced or kept beside (no walk checked it): never through a
- * link, only a regular file whose real path is under `root` and is the file opened, at most the set's size.
+ * link, only a regular file whose real path is under the root as it sits under the real home, the file opened, at most
+ * the set's size and unchanged through the read. Throws `MissingFile` when it is not there, another error when it is
+ * refused (the caller then leaves it as it is).
  */
-export async function readInRoot(path: string, root: string): Promise<Buffer> {
-  const [link, real, realRoot] = await Promise.all([lstat(path), realpath(path), realpath(root)])
+export async function readInRoot(path: string, root: string, home: string): Promise<Buffer> {
+  const link = await lstat(path).catch((err: NodeJS.ErrnoException) => {
+    throw err.code === 'ENOENT' ? new MissingFile(path) : err
+  })
   if (!link.isFile()) throw new Error('not a regular file')
-  if (!within(real, realRoot)) throw new Error('outside the memory set')
+  const [real, realHome] = await Promise.all([realpath(path), realpath(home)])
+  // The root as it lies under the real home, never resolved again: a root swapped for a link fails here.
+  if (!within(real, join(realHome, relative(home, root)))) throw new Error('outside the memory set')
   const handle = await open(path, 'r')
   try {
     const st = await handle.stat()
-    if (st.dev !== link.dev || st.ino !== link.ino) throw new Error('changed while it was read')
-    if (st.size > MEMORY_MAX_BYTES) throw new Error('too large for the memory set')
-    return await handle.readFile()
+    if (!st.isFile() || st.dev !== link.dev || st.ino !== link.ino) throw new Error('changed while it was read')
+    const data = await readBounded(handle, st)
+    if (!data) throw new Error('too large for the memory set, or written while it was read')
+    return data
   } finally {
     await handle.close().catch(() => {})
   }
 }
 
+/**
+ * The bytes at `path`, only if the file opened there is the one the walk checked, as it was then: the same device and
+ * inode (that binds the bytes to the checked file, whatever path led to it), size and time, unchanged through the
+ * read. A read waits its turn after the walk (two slots for every peer), and a transfer reads later still: a file
+ * swapped for a link in between would otherwise send bytes from outside the memory set. Undefined when it is another
+ * file, another version, or gone.
+ */
 export async function readWalked(path: string, walked: Walked | undefined): Promise<Buffer | undefined> {
   if (!walked) return undefined
   const handle = await open(path, 'r').catch(() => undefined)
   if (!handle) return undefined
   try {
     const st = await handle.stat()
-    // Another file, or this one written since the walk (it goes next round, with its new manifest line).
     if (!st.isFile() || st.dev !== walked.dev || st.ino !== walked.ino || st.size !== walked.size || st.mtimeMs !== walked.mtimeMs) return undefined
-    if (st.size > MEMORY_MAX_BYTES) return undefined
-    return await handle.readFile()
+    return await readBounded(handle, st)
   } catch {
     return undefined
   } finally {
@@ -247,8 +281,6 @@ export class MemorySync {
   private cache = new Map<string, HashEntry>()
   /** Each walk's files by relPath, kept with the manifest it made: a round's transfer reads by its own walk. */
   private readonly walkOf = new WeakMap<object, Map<string, Walked>>()
-  /** Files this sync wrote itself (a conflict copy may go back in the same round), by relPath. */
-  private readonly ownWrites = new Map<string, Walked>()
   private cacheVersion = 0
   private scanQueue: Promise<unknown> = Promise.resolve()
   // Reads and digests share two slots across all peers and scans on this host.
@@ -578,7 +610,8 @@ export class MemorySync {
   }
 
   /** Write bytes into place with the sender's mtime; false when the path is in the way. */
-  private land(dest: string, data: Buffer, mode: number, mtime: number): boolean {
+  /** `own` learns what was written, for a round that sends it back (a conflict copy). */
+  private land(dest: string, data: Buffer, mode: number, mtime: number, own?: Map<string, Walked>): boolean {
     const tmp = join(dirname(dest), `.${basename(dest)}.tc-sync-${randomBytes(4).toString('hex')}`)
     try {
       mkdirSync(dirname(dest), { recursive: true, mode: 0o755 })
@@ -586,12 +619,12 @@ export class MemorySync {
       chmodSync(tmp, mode)
       const t = new Date(mtime)
       utimesSync(tmp, t, t)
-      // A file this sync writes is one it may send in the same round (a conflict copy): it counts as walked.
+      // A conflict copy this round writes and sends counts as walked, for this round alone.
       const { dev, ino, size, mtimeMs } = statSync(tmp)
       renameSync(tmp, dest)
       this.dropHash(dest)
       const rel = relative(this.home(), dest).split(sep).join('/')
-      if (!rel.startsWith('..')) this.ownWrites.set(rel, { dev, ino, size, mtimeMs })
+      if (own && !rel.startsWith('..')) own.set(rel, { dev, ino, size, mtimeMs })
       return true
     } catch (err) {
       rmSync(tmp, { force: true })
@@ -645,13 +678,13 @@ export class MemorySync {
   }
 
   private readContent(path: string, root: string, timings: MemoryTimings): Promise<Buffer> {
-    return timings.hashWork(() => this.content(() => readInRoot(path, root)))
+    return timings.hashWork(() => this.content(() => readInRoot(path, root, this.home())))
   }
 
   /** The file to send, or undefined when it is no longer the file the walk checked (it goes next round). */
   private async fileOf(relPath: string, entry: MemoryEntry, walked: ReadonlyMap<string, Walked> | undefined, timings?: MemoryTimings): Promise<MemoryFile | undefined> {
     const run = () => this.content(async () => {
-      const data = await readWalked(join(this.home(), relPath), this.ownWrites.get(relPath) ?? walked?.get(relPath))
+      const data = await readWalked(join(this.home(), relPath), walked?.get(relPath))
       if (!data) {
         this.log(`${JSON.stringify(relPath)} changed after the walk; it goes next round`)
         return undefined
@@ -702,8 +735,6 @@ export class MemorySync {
       // hashes read before that write. The next scan rebuilds the table.
       if (version === this.cacheVersion) this.cache = next
       this.walkOf.set(manifest, walked)
-      // A walk sees this sync's own writes as it sees any file.
-      this.ownWrites.clear()
       if (timings) {
         timings.statMs += performance.now() - started - (timings.hashMs - hashBefore)
         timings.files += manifest.entries.length
@@ -848,7 +879,9 @@ export class MemorySync {
     this.generation = null
     const home = this.home()
     const myManifest = await this.manifest(home, timings)
-    const walked = this.walkOf.get(myManifest)
+    // This round's walk, and the conflict copies it writes itself (sent back in the same round).
+    const walked = new Map(this.walkOf.get(myManifest) ?? [])
+    const own = new Map<string, Walked>()
     const mine = new Map(myManifest.entries.map((e) => [e.relPath, e]))
     const state = await this.loadState()
     this.notePeerHome(params.from, params.home, params.workRoot)
@@ -926,11 +959,22 @@ export class MemorySync {
           if ('refused' in dest) break
           if (d.keep === 'conflict') {
             const copy = conflictName(localRel, this.hostName(), now)
-            const data = await this.readContent(dest.path, dest.root, timings)
+            let data: Buffer | null = null
+            try {
+              data = await this.readContent(dest.path, dest.root, timings)
+            } catch (err) {
+              // Refused (a link, outside the set, too large, changing): no copy can be kept, so the file stays as it is.
+              if (!(err instanceof MissingFile)) {
+                this.log(`kept ${JSON.stringify(localRel)}: its copy could not be read (${(err as Error).message})`)
+                break
+              }
+            }
             dest = this.destination(localRel)
             if ('refused' in dest) break
-            if (this.land(join(home, copy), data, local!.mode & 0o777, local!.mtime)) {
+            if (data && this.land(join(home, copy), data, local!.mode & 0o777, local!.mtime, own)) {
               g.conflicts++
+              const mine = own.get(copy)
+              if (mine && !walked.has(copy)) walked.set(copy, mine)
               await sendMine(copy, { ...local!, relPath: copy })
             }
           }
@@ -999,7 +1043,12 @@ export class MemorySync {
       let current: Buffer | null = null
       try {
         current = await this.readContent(dest.path, dest.root, timings)
-      } catch {
+      } catch (err) {
+        // Not there: nothing to keep. Refused (a link, outside the set, too large, changing): left as it is.
+        if (!(err instanceof MissingFile)) {
+          this.log(`left ${JSON.stringify(landing.localRel)} as it is: it could not be read (${(err as Error).message})`)
+          continue
+        }
         current = null
       }
       if (landing.as === 'conflict') {

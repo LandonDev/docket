@@ -8,7 +8,7 @@ import { ClientRequestSchema } from '@shared/contract'
 import { requiredCapability } from '@shared/capabilities'
 import { parseMapping } from '../pathMap'
 import { flushStallLog, recordSlowRequest, setStallLog, withRequestNotes } from '../stalls'
-import { MEMORY_NO_WINDOWS, MemorySync, PEER_HOMES_KEY, SETTLE_GAP_MS, handleMemory, readInRoot, readWalked } from './memorySync'
+import { MEMORY_NO_WINDOWS, MemorySync, PEER_HOMES_KEY, SETTLE_GAP_MS, handleMemory, MissingFile, readInRoot, readWalked } from './memorySync'
 import { encodeProjectDir } from './memorySet'
 import { TOMBSTONE_MS } from './memoryMerge'
 
@@ -294,11 +294,11 @@ describe('manifest hashes', () => {
     writeFileSync(path, 'a longer memory')
     expect(await readWalked(path, walked)).toBeUndefined()
     const root = join(mac, `.claude/projects/${MAC_SHOP()}/memory`)
-    expect((await readInRoot(path, root)).toString()).toBe('a longer memory')
+    expect((await readInRoot(path, root, mac)).toString()).toBe('a longer memory')
     // A link at the destination, even to a file inside the set, is not read.
     rmSync(path)
     symlinkSync(join(mac, 'outside.txt'), path)
-    await expect(readInRoot(path, root)).rejects.toThrow(/not a regular file/)
+    await expect(readInRoot(path, root, mac)).rejects.toThrow(/not a regular file/)
     // A parent swapped for a link out of the root: the real path is outside it.
     rmSync(path)
     const elsewhere = join(mac, 'elsewhere')
@@ -306,7 +306,25 @@ describe('manifest hashes', () => {
     writeFileSync(join(elsewhere, 'note.md'), 'NOT A MEMORY')
     rmSync(root, { recursive: true })
     symlinkSync(elsewhere, root)
-    await expect(readInRoot(join(root, 'note.md'), join(mac, '.claude/projects'))).rejects.toThrow(/outside the memory set/)
+    // The root itself swapped for a link: its place under the real home is fixed, so the file is outside it.
+    await expect(readInRoot(join(root, 'note.md'), root, mac)).rejects.toThrow(/outside the memory set/)
+    await expect(readInRoot(join(mac, 'gone.md'), mac, mac)).rejects.toBeInstanceOf(MissingFile)
+    // Past the set's size: not read.
+    rmSync(root)
+    mkdirSync(root, { recursive: true })
+    writeFileSync(path, Buffer.alloc(1024 * 1024 + 1, 97))
+    await expect(readInRoot(path, root, mac)).rejects.toThrow(/too large/)
+    expect(await readWalked(path, await lstat(path))).toBeUndefined()
+  })
+
+  it('a landing over a local file it may not read leaves that file as it is', async () => {
+    const { sender, boxLog } = pair()
+    const big = Buffer.alloc(1024 * 1024 + 1, 98)
+    put(box, boxMem('big.md'), big, T0 + 5000)
+    put(mac, macMem('big.md'), 'the mac copy', T0)
+    await sender.syncWith('env_box')
+    expect(readFileSync(join(box, boxMem('big.md'))).equals(big)).toBe(true)
+    expect(boxLog.some((line) => line.includes('as it is'))).toBe(true)
   })
 
   it('reads a file only when it is the one the walk checked: one swapped for a link out of the set is not read or sent', async () => {
