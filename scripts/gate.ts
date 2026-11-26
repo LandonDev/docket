@@ -209,7 +209,7 @@ const BRIDGE_PATHS = [...COMPUTER_PATHS, 'src/main/server/remote/**', 'src/main/
 
 /** The tests that hold a repo rule rather than a behaviour: the renderer's
  *  guards, the dark theme and the token contrast, the CLAUDE.md budget, the
- *  work-kit pin, the docs' citations. Cheap, and the plain commit tier runs
+ *  work-kit pin, the docs' citations, the shown name. Cheap, and the plain commit tier runs
  *  no other test, so the `guards` row runs these beside the build. A new
  *  `src/renderer/src/lib/*Guard.test.ts` or `scripts/*guard*.test.ts` must
  *  join the list (gate.test.ts). */
@@ -240,6 +240,7 @@ export const GUARD_TESTS = [
   'src/renderer/src/lib/darkHeld.test.ts',
   'src/renderer/src/lib/scrollbarRule.test.ts',
   'src/main/server/work/pillarReach.test.ts',
+  'src/shared/appName.test.ts',
   'scripts/claudeMdBudget.test.ts',
   'scripts/workKitPin.test.ts',
   'scripts/docsGuard.test.ts',

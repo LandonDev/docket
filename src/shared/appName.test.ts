@@ -22,7 +22,7 @@ const HELD: Record<string, [string, string][]> = {
   'src/main/server/work/sheets/spawnWorker.ts': [["'TempCode Sheets'", 'a process name']],
   'src/main/server/projectPreamble.ts': [['/Applications/TempCode.app', 'the bundle on disk']],
   'src/main/server/tls.ts': [["'TempCode Local CA'", 'a certificate trusted by name']],
-  'src/main/server/threadResourcesRemove.ts': [["new Set(['TempCode', 'temp-code'])", 'userData folder names']],
+  'src/main/server/threadResourcesRemove.ts': [["new Set(['TempCode', 'temp-code', 'Docket'])", 'data folder names an old install wrote']],
   'src/main/server/remote/macBridge.ts': [
     ["'Library/Application Support/TempCode'", 'a data folder'],
     ["'AppData/Local/TempCode'", 'a data folder']

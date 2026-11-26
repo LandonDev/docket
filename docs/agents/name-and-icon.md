@@ -26,7 +26,7 @@ src/renderer/src, src/hosted and ios. It fails on any line outside a comment
 that says TempCode (in Swift, inside a string literal), unless its `HELD`
 map lists that file and text with a reason. It also fails when a held entry
 no longer matches anything. Tests, previews, fixtures and proof scripts are
-not scanned.
+not scanned. The gate's `guards` row runs it (`GUARD_TESTS` in scripts/gate.ts).
 
 These are held:
 
