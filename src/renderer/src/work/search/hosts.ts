@@ -4,6 +4,7 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { workHome, workSwitch } from "../../lib/workSwitch";
 import type { SearchHost } from "./model";
+import { linkDownWords } from "../shell/hostLinkDown";
 
 /**
  * Who a search asks (docs/agents/work-search.md "The window"): every
@@ -48,6 +49,8 @@ export interface HostsDeps {
   /** the Work home among them */
   home(): string | null;
   workspaces(): readonly WorkspaceMeta[];
+  /** a host that cannot be asked, in its link's one wording ("The box is offline", "Reconnecting to the box…") */
+  downWords(id: string, name: string): string;
 }
 
 const live: HostsDeps = {
@@ -56,10 +59,11 @@ const live: HostsDeps = {
   on: () => workSwitch.hosts(),
   home: () => workHome(registry.environments(), registry.primaryEnvironmentId),
   workspaces: () => workspaceStore.getSnapshot().workspaces,
+  downWords: (id, name) => linkDownWords(name, registry.statusOf(id)),
 };
 
 /**
- * The hosts a search asks, the Work home first, and the ones it cannot.
+ * The hosts a search asks, the Work home first, and the ones it cannot, each as its link's words (`offline`).
  * Held to one job, only the hosts that have a workspace of it are asked,
  * each for its own. When the Work home is not connected the first host
  * that is stands in for it, so what LifeOS holds is still found.
@@ -76,7 +80,7 @@ export function searchHosts(job: Job | null, deps: Partial<HostsDeps> = {}): { h
     const workspaceId = job ? workspaces.find((w) => w.environmentId === env.id && job.ids.includes(w.id))?.id : undefined;
     if (job && !workspaceId) continue;
     if (!d.connected(env.id)) {
-      offline.push(env.name);
+      offline.push(d.downWords(env.id, env.name));
       continue;
     }
     hosts.push({ id: env.id, name: env.name, home: env.id === home, ...(workspaceId ? { workspaceId } : {}) });

@@ -308,7 +308,7 @@ describe("nothing found, and what could not be searched", () => {
     expect(activeOf(m, rowsOf(m, { scoped: true }))).toBe("widen");
   });
   it("says one quiet line a cause at the foot: LifeOS once in its own words, a source, a host that did not answer, a host that is offline", () => {
-    let m = begin(emptyModel(), { text: "budget", kind: null, hosts: [box, mac], offline: ["Studio"] });
+    let m = begin(emptyModel(), { text: "budget", kind: null, hosts: [box, mac], offline: ["Studio is offline"] });
     m = landInstant(m, m.gen, "box", answer([group("thread", ["t1"])], ["search.mail"], [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }])).model;
     m = landSource(m, m.gen, "box", "search.mail", answer([], [], [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }, { cause: "source:search.mail", line: "Mail did not answer." }]));
     m = failed(m, m.gen, "mac", null);
@@ -340,8 +340,10 @@ describe("nothing found, and what could not be searched", () => {
 
 describe("nothing could be asked", () => {
   it("says only why: never that nothing was found, when no host answered or none could be asked", () => {
-    let none = begin(emptyModel(), { text: "budget", kind: null, hosts: [], offline: ["The box"] });
+    let none = begin(emptyModel(), { text: "budget", kind: null, hosts: [], offline: ["The box is offline"] });
     expect(shape(rowsOf(none))).toEqual(["(The box is offline.)"]);
+    // A link still trying is said as the wait it is, with no second stop (council R1-A28).
+    expect(shape(rowsOf(begin(emptyModel(), { text: "budget", kind: null, hosts: [], offline: ["Reconnecting to the box…"] })))).toEqual(["(Reconnecting to the box…)"]);
     none = typed("budget", [box, mac]);
     none = failed(failed(none, none.gen, "box", null), none.gen, "mac", null);
     expect(shape(rowsOf(none))).toEqual(["(The box did not answer.)", "(MacBook did not answer.)"]);

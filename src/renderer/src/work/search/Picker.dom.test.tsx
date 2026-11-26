@@ -158,6 +158,8 @@ describe("Work search", () => {
     expect(document.querySelector("[data-work-search-busy]")).toBeNull();
     expect([...list().children].map((el) => (el.getAttribute("role") === "option" ? el.getAttribute("data-row") : `# ${el.textContent}`))).toEqual(["# Mail", "hit:m1", "hit:m2", "# Threads", "hit:thread:t1"]);
     expect([...list().querySelectorAll("[data-job]")].map((el) => el.textContent)).toEqual(["Purdue", "Cosmic", "Purdue"]);
+    // The dot is drawn at its own 8px, not in a 16px box, so the 80px column keeps its room for the name (council R1-A27).
+    for (const dot of list().querySelectorAll("[data-job] [data-sector]")) expect(dot.className).toContain("size-2");
     expect(list().querySelector('[data-row="hit:m1"] [data-sector="purdue"]')).not.toBeNull();
     expect(list().querySelector('[data-row="hit:m1"]')!.textContent).toContain("Dana Kim");
     // the words he typed are marked in the title by weight

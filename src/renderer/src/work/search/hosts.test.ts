@@ -18,6 +18,7 @@ const deps = (over: Partial<HostsDeps> = {}): Partial<HostsDeps> => ({
   on: () => new Set(["mac", "box", "studio"]),
   home: () => "box",
   workspaces: () => workspaces,
+  downWords: (id, name) => (id === "box" ? `Reconnecting to ${name.replace(/^The /, "the ")}…` : `${name} is offline`),
   ...over,
 });
 
@@ -49,7 +50,7 @@ describe("the hosts a search asks", () => {
       { id: "box", name: "The box", home: true },
       { id: "mac", name: "MacBook", home: false },
     ]);
-    expect(offline).toEqual(["Studio"]);
+    expect(offline).toEqual(["Studio is offline"]);
   });
   it("held to one job, are the hosts that have a workspace of it, each asked for its own", () => {
     const jobs = jobsOf(workspaces);
@@ -65,7 +66,7 @@ describe("the hosts a search asks", () => {
   it("lets the first connected host stand in for a Work home that is not connected, so LifeOS is still asked", () => {
     const { hosts, offline } = searchHosts(null, deps({ connected: (id) => id === "mac" }));
     expect(hosts).toEqual([{ id: "mac", name: "MacBook", home: true }]);
-    expect(offline).toEqual(["The box", "Studio"]);
+    expect(offline).toEqual(["Reconnecting to the box…", "Studio is offline"]);
   });
   it("is nobody with Work off everywhere", () => {
     expect(searchHosts(null, deps({ on: () => new Set() }))).toEqual({ hosts: [], offline: [] });

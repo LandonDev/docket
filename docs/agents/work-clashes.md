@@ -99,7 +99,10 @@ Every call runs on the owner session, so it reads every job.
   (`useHostLive`, ClashDialog.tsx): while it is down or still connecting, no
   way out and no This is fine, one `HostLine` in their place ("LifeOS is
   still connecting on the box" with no press), and an open step keeps what he
-  typed and holds Send until the host says connected. A move of an event
+  typed and holds Send until the host says connected. The link to the host
+  comes first (`useHostLinkDown`): while it is down the same presses are
+  held under one muted line in the link's words ("The box is offline"),
+  whatever LifeOS last said. A move of an event
   that lives only in LifeOS moves a leave-by he set by hand by as much, as
   LifeOS's own event sheet does, and its arrive-by too: the lead the offer
   left is kept, and LifeOS does not refuse the move for a leave-by after

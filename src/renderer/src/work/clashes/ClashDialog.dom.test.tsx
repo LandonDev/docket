@@ -828,6 +828,37 @@ describe("the Clash dialog", () => {
     expect(document.querySelector("[data-host-down]")).toBeNull();
   });
 
+  it("offers none of the host's writes while its link is down, though LifeOS last said connected: the link's line in their place (council R1-A25)", async () => {
+    const { registry: links } = await import("../../lib/connection/registry");
+    const { IDLE_STATUS } = await import("../../lib/connection/types");
+    let transport: "open" | "offline" = "open";
+    const status = vi.spyOn(links, "statusOf").mockImplementation(() => ({ ...IDLE_STATUS, transport, attempts: 1 }));
+    const named = vi.spyOn(links, "environment").mockReturnValue({ name: "The box" } as never);
+    try {
+      show(overlap());
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+      fireEvent.change(screen.getByLabelText("Note"), { target: { value: "At a game then" } });
+      transport = "offline";
+      act(() => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] } as never));
+      // An open step keeps his words, says the link's state, and holds Send.
+      expect(document.querySelector("[data-clash-step] [data-link-down]")?.textContent).toBe("The box is offline");
+      expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe("At a game then");
+      expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+      // Back on the pair: no way out and no This is fine, one line.
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      for (const name of ["Decline", "Propose new time…", "Move…", "Running late…", "This is fine"]) expect(screen.queryByRole("button", { name })).toBeNull();
+      expect(document.querySelectorAll("[data-link-down]")).toHaveLength(1);
+      transport = "open";
+      act(() => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] } as never));
+      expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
+      expect(document.querySelector("[data-link-down]")).toBeNull();
+    } finally {
+      status.mockRestore();
+      named.mockRestore();
+    }
+  });
+
   it("keeps an open step's note when the host's LifeOS drops, says the line and holds Send until it is back", async () => {
     show(overlap());
     await settle();

@@ -27,6 +27,7 @@ import { connectingWords } from "../shell/lifeosWords";
 import { downOf } from "../shell/lifeosDown";
 import { DownLine, HostLine } from "../shell/DownLine";
 import { useHostLive } from "../shell/lifeosLive";
+import { useHostLinkDown } from "../shell/hostLinkDown";
 import { useClashes } from "./mark";
 import { doneWords, fieldOf, formOf, freeAfter, hintsOf, lateDraft, pairStamp, WAY_LABEL, wayWords, whenOf, type TimeForm } from "./model";
 import type { ClashAsk } from "./open";
@@ -238,9 +239,17 @@ function Body({
 }) {
   const close = useModalClose();
   const session = useLifeosSession(environmentId, null);
-  // The host's own LifeOS runs every way out: down, or still connecting, each is held under its one line.
+  // The host's own LifeOS runs every way out: down, or still connecting, each is held under its one line. A link to
+  // the host that is down holds them first, said in the link's own words: the last LifeOS status heard is not news.
   const hostLive = useHostLive(environmentId);
-  const hostLine = hostLive.down || hostLive.waits ? <HostLine data-host-down live={hostLive} className="text-xs" /> : null;
+  const linkDown = useHostLinkDown(environmentId);
+  const hostLine = linkDown ? (
+    <p data-link-down role="status" className="text-xs leading-5 text-muted-foreground">
+      {linkDown}
+    </p>
+  ) : hostLive.down || hostLive.waits ? (
+    <HostLine data-host-down live={hostLive} className="text-xs" />
+  ) : null;
   const [step, setStepState] = useState<Step | null>(null);
   const setStep = (next: Step | null) => {
     setStepState(next);

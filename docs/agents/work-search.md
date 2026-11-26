@@ -297,7 +297,10 @@ method can be given a small source here on `ask.ts`, as Files is.
 - `hosts.ts`: every connected host with Work on is asked, the Work home for
   what LifeOS holds and the rest with `own: true`. A job is a sector's Work
   workspaces on every host (one a sector a host). A host with Work on that
-  is not connected is one quiet line.
+  is not connected is one quiet line, in its link's one wording
+  (`linkDownWords`: "The box is offline.", "Reconnecting to the box…").
+  A job's dot in the 80px job column is drawn at its own 8px, leaving the
+  rest to the name.
 - `Picker.tsx` draws the model's rows in `PickerDialog` and decides no
   order. The key pressed while it is open reaches it through the port by
   two roads at once (the field, the menu's accelerator): two bare asks

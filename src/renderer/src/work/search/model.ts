@@ -108,7 +108,7 @@ export const asksNetwork = (text: string): boolean => text.trim().length >= NETW
  * row of a job the search no longer reads must not stand there, unlabelled,
  * for a Return to take; widened, every row stays. A change of words, kind
  * or scope puts the highlight back on the first row; `offline` are hosts
- * with Work on that cannot be asked, each one quiet line; `unsearched` is
+ * with Work on that cannot be asked, each one quiet line in its link's words; `unsearched` is
  * the one line for his other computers' folders nobody could search.
  */
 export function begin(model: SearchModel, ask: { text: string; kind: string | null; scope?: string | null; within?: readonly string[] | null; hosts: SearchHost[]; offline?: readonly string[]; unsearched?: string | null }): SearchModel {
@@ -131,7 +131,8 @@ export function begin(model: SearchModel, ask: { text: string; kind: string | nu
     ),
     out: new Set(ask.hosts.map((h) => outKey(h.id))),
     quiet: [
-      ...(ask.offline ?? []).map((name) => ({ key: `offline:${name}`, line: `${name} is offline.` })),
+      // A wait's "…" ("Reconnecting to the box…") takes no second stop.
+      ...(ask.offline ?? []).map((words) => ({ key: `offline:${words}`, line: words.endsWith("…") ? words : `${words}.` })),
       // What a search of files alone could not look in (search/desktops.ts): said once, under the list.
       ...(ask.unsearched ? [{ key: "unsearched", line: ask.unsearched }] : []),
     ],
