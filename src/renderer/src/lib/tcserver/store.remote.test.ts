@@ -757,6 +757,22 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2"]);
   });
 
+  it("a resync whose list fails before any replay starts keeps every hold: the cursor never crosses the gap (Sol S7)", async () => {
+    link.pages = [[wireMeta({ id: "s" })]];
+    link.events.set("s", turns("s", 2));
+    await boot(link);
+    sessionStore.setMounted(["s"]);
+    await sessionStore.ensureLoaded("s");
+    const late = turns("s", 2, 5).map((r, i) => ({ ...r, event: { ...r.event, text: `late ${i}` } as EventRow["event"] }));
+    const real = link.request.bind(link);
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> =>
+      method === "session.list" || method === "session.changes" ? Promise.reject(new ConnectionLostError("connection closed")) : real<T>(method, params)) as typeof link.request;
+    link.push({ push: "resync" });
+    link.push({ push: "event", row: late[2]! });
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2"]);
+  });
+
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
   async function masterWithChild(): Promise<{ asked: () => string[] }> {
     link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];

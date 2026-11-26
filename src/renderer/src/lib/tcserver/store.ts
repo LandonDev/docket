@@ -2367,8 +2367,9 @@ class SessionStore {
             .then(() => {
               if (this.attached.get(environmentId) === attached && attached.link.connected) return this.resync(attached.link);
             })
-            .catch(() => undefined)
-            .then(() => this.releaseResyncHolds(environmentId, socket));
+            // No release here: a hold ends only when that transcript's replay works (its `end`), never because the
+            // list failed first; a newer socket's replay drops it (`heldOn`).
+            .catch(() => undefined);
         }
         break;
       }
