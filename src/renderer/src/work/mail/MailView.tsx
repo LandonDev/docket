@@ -227,18 +227,22 @@ export function MailScreen({
   const about = page.chatAt ?? live;
   const subject = useMemo(() => mailChatSubject(id, about), [id, about.box, about.threadId, about.subject, about.query, about.picked.join(",")]);
 
-  // ⌘L opens and closes the chat anywhere in Mail; a canvas selection's Ask takes it first.
+  // Focus to hand back to Mail once the chat closes from inside itself (its Esc, Close chat, ⌘L).
+  const giveBack = useRef(false);
+  // ⌘L opens and closes the chat anywhere in Mail; a canvas selection's Ask takes it first. Closing it from inside
+  // takes the focused control away: focus goes where Esc sends it.
   useEffect(() => {
     if (!chat) return;
     const onKey = (event: KeyboardEvent): void => {
       if (event.defaultPrevented || event.key.toLowerCase() !== "l" || event.altKey || event.shiftKey || !modKey(event)) return;
       if (!root.current?.isConnected) return;
       event.preventDefault();
+      if (pageOf(id).chat && document.activeElement?.closest("[data-mail-dock-seat]")) giveBack.current = true;
       toggleChat();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [chat, toggleChat]);
+  }, [chat, toggleChat, id]);
   // While the chat is open, Mention in a thread puts a mail in its composer.
   useEffect(() => {
     if (!open) return;
@@ -246,13 +250,15 @@ export function MailScreen({
     return () => mailDockPort.set(null);
   }, [open, id]);
   // Esc in the chat's composer gives the keys back to Mail: to the list beside it, and, where the chat lies over Mail
-  // (which is inert under it, so nothing there can take focus), by closing the chat first. An Esc the composer took for
-  // its own menu is not ours.
-  const giveBack = useRef(false);
+  // (which is inert under it, so nothing there can take focus), by closing the chat first; there an Esc from any of the
+  // chat's own controls (a starter, Close chat) closes it the same way, as the top layer. An Esc the composer or a menu
+  // took for its own is not ours, nor one from a popup the chat opened (portalled outside the seat).
   const toMail = (): void => root.current?.querySelector<HTMLElement>("[data-mail-list] [tabindex='0'], [data-mail-list] button")?.focus();
   const onDockKey = (event: ReactKeyboardEvent): void => {
-    if (event.key !== "Escape" || event.defaultPrevented || !(event.target as HTMLElement).closest("[data-composer-input]")) return;
-    (event.target as HTMLElement).blur();
+    const target = event.target as HTMLElement;
+    if (event.key !== "Escape" || event.defaultPrevented || !event.currentTarget.contains(target)) return;
+    if (!room.over && !target.closest("[data-composer-input]")) return;
+    target.blur();
     if (!room.over) return toMail();
     giveBack.current = true;
     patch(id, { chat: false, chatAt: null });

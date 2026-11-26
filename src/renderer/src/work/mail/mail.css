@@ -134,3 +134,10 @@
   height: 12px;
   margin-block: 4px 12px;
 }
+
+/* One ring a stop (docs/agents/ui-standard.md "Focus"): work-kit's buttons add a ring shadow beside the
+   outline every button takes (index.css); in Mail's kit chrome the outline alone stands (Filter, Cc). */
+.tc-mail[data-mail-kit] button:focus-visible,
+.tc-mail [data-mail-kit] button:focus-visible {
+  --tw-ring-shadow: 0 0 transparent;
+}

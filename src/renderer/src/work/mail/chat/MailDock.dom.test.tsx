@@ -306,6 +306,42 @@ describe("the chat beside the mail", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Ask" }));
   });
 
+  // Council round 5, sitting B (Opus, Mail 1): ⌘L closed the chat from inside and dropped focus on the page.
+  it("⌘L from inside the chat closes it and puts focus on the press that opens it", async () => {
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 800 });
+    mount();
+    act(() => patch(ID(), { chat: true, threadId: threads[0].id }));
+    await waitFor(() => expect(dock()).not.toBeNull());
+    const input = document.querySelector<HTMLElement>("[data-composer-input]")!;
+    input.focus();
+    act(() => void fireEvent.keyDown(input, { key: "l", metaKey: IS_MAC, ctrlKey: !IS_MAC }));
+    expect(dock()).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Ask" }));
+  });
+
+  // Council round 5, sitting B (Sol, Mail 1): an Esc from a starter left the covering chat open.
+  it("Escape from any control of a chat that lies over Mail closes it and puts focus on Ask", async () => {
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 800 });
+    mount();
+    act(() => patch(ID(), { chat: true, threadId: threads[0].id }));
+    await waitFor(() => expect(dock()).not.toBeNull());
+    const close = screen.getByRole("button", { name: "Close chat" });
+    close.focus();
+    act(() => void fireEvent.keyDown(close, { key: "Escape" }));
+    expect(dock()).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Ask" }));
+  });
+
+  it("Escape from a control of a chat beside Mail that is not the composer leaves the chat", async () => {
+    mount();
+    act(() => patch(ID(), { chat: true }));
+    await waitFor(() => expect(dock()).not.toBeNull());
+    const close = screen.getByRole("button", { name: "Close chat" });
+    close.focus();
+    act(() => void fireEvent.keyDown(close, { key: "Escape" }));
+    expect(dock()).not.toBeNull();
+  });
+
   it("Escape in the composer of a chat beside Mail keeps the chat and gives the keys to the list", async () => {
     mount();
     act(() => patch(ID(), { chat: true }));

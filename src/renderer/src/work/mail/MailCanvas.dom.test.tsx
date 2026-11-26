@@ -199,6 +199,15 @@ describe("a waiting rewrite", () => {
   });
 });
 
+describe("mail.css's focus", () => {
+  // Council round 5, sitting B (Sol, Mail 2): work-kit's buttons (Filter, Cc) drew their ring shadow beside the outline
+  // every button takes, two rings on one stop.
+  it("leaves work-kit's buttons in Mail's kit chrome the one outline, their ring shadow off", () => {
+    const rule = /\.tc-mail\[data-mail-kit\] button:focus-visible,\s*\.tc-mail \[data-mail-kit\] button:focus-visible\s*\{\s*--tw-ring-shadow: 0 0 transparent;\s*\}/;
+    expect(MAIL_CSS).toMatch(rule);
+  });
+});
+
 describe("mail.css outside Mail", () => {
   it("steps work-kit's own popups to 13px and leaves TempCode's dialogs at their own size, whatever was opened first", async () => {
     const { Dialog: TcDialog, DialogContent: TcContent, DialogTitle: TcTitle } = await import("../../components/ui/dialog");
