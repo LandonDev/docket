@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { ServerFrame } from '@shared/contract'
@@ -47,7 +48,7 @@ export function offerHead(raw: unknown): CodeOfferHead | null {
   if (typeof m.commit !== 'string' || !/^[0-9a-f]{40}$/.test(m.commit)) return null
   if (typeof m.release !== 'number' || !Number.isInteger(m.release) || m.release < 1) return null
   const bytes = m.tar?.bytes
-  if (typeof bytes !== 'number' || !(bytes > 0) || bytes > CODE_MAX_BYTES) return null
+  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || !(bytes > 0) || bytes > CODE_MAX_BYTES) return null
   return { commit: m.commit, release: m.release, subject: typeof m.subject === 'string' ? m.subject : '', bytes }
 }
 
@@ -87,9 +88,11 @@ export class CodeOffers {
   }
 
   /** `code.chunk`: bytes of that commit's packed tree from `offset`. A commit that is no longer the newest is gone. */
-  chunk(commit: string, offset: number, length: number): CodeChunk {
+  chunk(commit: string, offset: number, length: number, packSha256?: string): CodeChunk {
     const pack = this.pack()
     if (!pack || pack.head.commit !== commit) throw new Error(`code ${commit.slice(0, 7)} is gone: a newer pack took its place`)
+    if (packSha256 !== undefined && (pack.manifest as { tar?: { sha256?: string } }).tar?.sha256 !== packSha256)
+      throw new Error('the code pack manifest changed')
     if (offset > pack.head.bytes) throw new Error('offset past the end')
     const want = Math.min(length, CODE_CHUNK_BYTES, pack.head.bytes - offset)
     const buffer = Buffer.alloc(want)
@@ -105,6 +108,6 @@ export class CodeOffers {
       closeSync(fd)
     }
     if (bytes !== want) throw new Error('the pack changed while it was read')
-    return { data: buffer.toString('base64'), bytes, done: offset + bytes >= pack.head.bytes }
+    return { data: buffer.toString('base64'), bytes, done: offset + bytes >= pack.head.bytes, sha256: createHash('sha256').update(buffer).digest('hex') }
   }
 }

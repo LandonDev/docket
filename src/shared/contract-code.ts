@@ -16,6 +16,8 @@ export interface CodeChunk {
   data: string
   bytes: number
   done: boolean
+  /** Absent on older hosts, which are checked against the whole pack hash. */
+  sha256?: string
 }
 
 /** `code.settings.get` and `.set`: the host this Mac takes code from, the hosts it could, and whether this build can take code at all. */
@@ -34,7 +36,7 @@ export const CodeRequestSchemas = [
   /** → the newest pack's manifest, or null. */
   request('code.latest', z.object({}).optional()),
   /** → CodeChunk of that commit's packed tree. */
-  request('code.chunk', z.object({ commit: Commit, offset: z.number().int().min(0), length: z.number().int().min(1).max(CODE_CHUNK_BYTES) })),
+  request('code.chunk', z.object({ commit: Commit, offset: z.number().int().min(0), length: z.number().int().min(1).max(CODE_CHUNK_BYTES), packSha256: z.string().regex(/^[0-9a-f]{64}$/).optional() })),
   /** → CodeSettings. */
   request('code.settings.get', z.object({}).optional()),
   /** → CodeSettings. */

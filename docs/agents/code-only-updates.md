@@ -107,8 +107,9 @@ socket, the path `release-available` takes. The push names the commit and
 carries nothing to trust. The Mac then asks over the link it dialed:
 
 - `code.latest` → the manifest as written, or null (admin);
-- `code.chunk { commit, offset, length }` → up to 2 MiB of the tarball,
-  base64 (admin). A commit that is no longer the newest is gone.
+- `code.chunk { commit, offset, length, packSha256? }` → up to 2 MiB of
+  the tarball, base64, with the chunk's byte count and sha256 (admin). The
+  host refuses a commit or pack hash that no longer matches its offer.
 
 A Mac that was asleep asks `code.latest` when its link comes up.
 
@@ -168,11 +169,15 @@ socket the Mac already authenticated with its saved key.
    commit older than either are skipped. A commit that did not start here is
    not taken twice. A pack that failed a check below is not fetched again
    until the host has another.
-4. **The bytes.** Chunks are appended to
-   `<userData>/code/incoming/<commit>.tar.gz.part`. A link that breaks off
-   leaves the part file, and the next offer goes on from its size. The whole
-   file must have the manifest's size and sha256, and must unpack to no more
-   than 1 GiB, counted before anything is written.
+4. **The bytes.** The Mac asks for up to two chunks at once, naming the
+   same commit and pack hash in each ask. It checks each chunk's size and
+   hash before appending in offset order to
+   `<userData>/code/incoming/<commit>.<sha256>.tar.gz.part`. A broken link
+   leaves the part file so the same pack can resume. The Mac checks the
+   offer again after transfer and starts from offset zero if it changed.
+   Older hosts can omit the chunk hash. The whole file still has to match
+   the manifest's size and sha256 and unpack to at most 1 GiB, counted before
+   extraction.
 5. **The tree.** The system tar unpacks it into an empty folder, its modes
    are opened (`chmod -R u+rwX`), and it may hold one `out/` of plain files
    and folders and nothing else. The manifest is written beside it and the

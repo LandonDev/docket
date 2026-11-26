@@ -4469,7 +4469,7 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: codeOffers.latest() })
             break
           case 'code.chunk':
-            sendFrame({ id: req.id, ok: true, result: codeOffers.chunk(req.params.commit, req.params.offset, req.params.length) })
+            sendFrame({ id: req.id, ok: true, result: codeOffers.chunk(req.params.commit, req.params.offset, req.params.length, req.params.packSha256) })
             break
           case 'code.settings.get':
             sendFrame({ id: req.id, ok: true, result: codeUpdates.settings() })

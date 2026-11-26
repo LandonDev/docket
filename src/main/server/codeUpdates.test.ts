@@ -1,8 +1,9 @@
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { CodeChunk } from '@shared/contract-code'
 import type { ServerFrame } from '@shared/contract'
 import { CODE_CHUNK_BYTES, CODE_UPDATES_SETTING, type CodeHost, type CodeUpdateStatus } from '@shared/codeUpdate'
 import { packCode } from '../../../scripts/lib/codePack'
@@ -50,9 +51,9 @@ function host(): { offers: CodeOffers; frames: ServerFrame[]; request: LinkReque
   const offers = new CodeOffers({ environmentId: 'box', notify: (f) => frames.push(f), getSetting: settings.get, setSetting: settings.set })
   const request: LinkRequest = async (method, params) => {
     calls.push(method)
-    const p = params as { commit: string; offset: number; length: number }
+    const p = params as { commit: string; offset: number; length: number; packSha256?: string }
     if (method === 'code.latest') return offers.latest()
-    if (method === 'code.chunk') return offers.chunk(p.commit, p.offset, p.length)
+    if (method === 'code.chunk') return offers.chunk(p.commit, p.offset, p.length, p.packSha256)
     throw new Error(`unknown method ${method}`)
   }
   return { offers, frames, request, calls, settings }
@@ -109,7 +110,11 @@ describe('the host', () => {
     expect(h.offers.latest()).toEqual(manifest)
     const whole = readFileSync(join(dir, 'code.tar.gz'))
     const first = h.offers.chunk(A, 0, 10)
-    expect(first).toEqual({ data: whole.subarray(0, 10).toString('base64'), bytes: 10, done: false })
+    expect(first).toEqual({
+      data: whole.subarray(0, 10).toString('base64'), bytes: 10, done: false,
+      sha256: createHash('sha256').update(whole.subarray(0, 10)).digest('hex')
+    })
+    expect(() => h.offers.chunk(A, 0, 10, '0'.repeat(64))).toThrow('manifest changed')
     const rest = h.offers.chunk(A, 10, CODE_CHUNK_BYTES)
     expect(rest.bytes).toBe(whole.length - 10)
     expect(rest.done).toBe(true)
@@ -344,7 +349,7 @@ describe('the Mac', () => {
     const m = mac(tampered)
     m.updates.linkUp(BOX)
     await m.updates.idle()
-    expect(m.lines.join('\n')).toMatch(/the pack's sha256 is .*, not the manifest's/)
+    expect(m.lines.join('\n')).toMatch(/the code chunk at 0 failed its sha256 check/)
     expect(m.boot.staged()).toBeNull()
     expect(m.statuses.at(-1)?.offer).toBeUndefined()
     expect(readdirSync(join(userData, CODE_DIR, INCOMING_DIR))).toEqual([])
@@ -421,7 +426,7 @@ describe('the Mac', () => {
     const m = mac(flaky)
     m.updates.linkUp(BOX)
     await m.updates.idle()
-    const part = join(userData, CODE_DIR, INCOMING_DIR, `${A}.tar.gz.part`)
+    const part = join(userData, CODE_DIR, INCOMING_DIR, `${A}.${manifest.tar.sha256}.tar.gz.part`)
     expect(statSync(part).size).toBe(CODE_CHUNK_BYTES)
     expect(m.statuses.at(-1)?.offer).toBeUndefined()
     const before = h.calls.filter((c) => c === 'code.chunk').length
@@ -430,6 +435,126 @@ describe('the Mac', () => {
     expect(m.boot.staged()?.commit).toBe(A)
     // the second pass asked only for what was missing
     expect(h.calls.filter((c) => c === 'code.chunk').length - before).toBe(Math.ceil((manifest.tar.bytes - CODE_CHUNK_BYTES) / CODE_CHUNK_BYTES))
+  })
+
+  it('keeps two asks in flight and writes an out-of-order 36 MB pack in offset order', async () => {
+    build('large', BASE, 36_000_000)
+    const { dir, manifest } = packCode({ root: source, commit: A, release: 11, subject: 'Large', to: packs, trustOut: true })
+    const h = host()
+    h.offers.announce(dir)
+    const asked: number[] = []
+    const answered: number[] = []
+    let active = 0
+    let peak = 0
+    let secondAnswered!: () => void
+    const second = new Promise<void>((resolve) => { secondAnswered = resolve })
+    const part = join(userData, CODE_DIR, INCOMING_DIR, `${A}.${manifest.tar.sha256}.tar.gz.part`)
+    const request: LinkRequest = async (method, params) => {
+      if (method !== 'code.chunk') return h.request(method, params)
+      const { offset, packSha256 } = params as { offset: number; packSha256: string }
+      expect(packSha256).toBe(manifest.tar.sha256)
+      asked.push(offset)
+      peak = Math.max(peak, ++active)
+      try {
+        if (offset === 0) await second
+        const result = await h.request(method, params)
+        if (offset === CODE_CHUNK_BYTES) {
+          expect(existsSync(part)).toBe(false)
+          secondAnswered()
+        }
+        answered.push(offset)
+        return result
+      } finally {
+        active--
+      }
+    }
+    const m = mac(request)
+    m.updates.linkUp(BOX)
+    await m.updates.idle()
+    expect(peak).toBe(2)
+    expect(answered.slice(0, 2)).toEqual([CODE_CHUNK_BYTES, 0])
+    expect(asked).toEqual(Array.from({ length: 18 }, (_, i) => i * CODE_CHUNK_BYTES))
+    expect(m.boot.staged()?.commit).toBe(A)
+    const staged = readFileSync(join(userData, CODE_DIR, A, 'out/renderer/bulk.bin'))
+    expect(staged.equals(readFileSync(join(source, 'out/renderer/bulk.bin')))).toBe(true)
+  }, 15_000)
+
+  it('restarts from offset zero when the manifest changes mid-pack, even at the same commit', async () => {
+    build('first', BASE, 5 * 1024 * 1024)
+    const first = packCode({ root: source, commit: A, release: 11, subject: 'First', to: packs, trustOut: true })
+    build('second', BASE, 3 * 1024 * 1024)
+    const second = packCode({ root: source, commit: A, release: 11, subject: 'Second', to: join(packs, 'second'), trustOut: true })
+    const h = host()
+    h.offers.announce(first.dir)
+    const asked: [string, number][] = []
+    const request: LinkRequest = async (method, params) => {
+      if (method === 'code.chunk') {
+        const { offset, packSha256 } = params as { offset: number; packSha256: string }
+        asked.push([packSha256, offset])
+        if (asked.length === 2) h.offers.announce(second.dir)
+      }
+      return h.request(method, params)
+    }
+    const m = mac(request)
+    m.updates.linkUp(BOX)
+    await m.updates.idle()
+    const a = first.manifest.tar.sha256
+    const b = second.manifest.tar.sha256
+    expect(asked).toEqual([[a, 0], [a, CODE_CHUNK_BYTES], [a, 2 * CODE_CHUNK_BYTES], [b, 0], [b, CODE_CHUNK_BYTES]])
+    expect(m.boot.staged()).toEqual(second.manifest)
+    expect(m.statuses.filter((status) => status.offer?.phase === 'ready').map((status) => status.offer?.subject)).toEqual(['Second'])
+    expect(readdirSync(join(userData, CODE_DIR, INCOMING_DIR))).toEqual([])
+  })
+
+  it('keeps the newly chosen host queued when the old host changes its manifest at the final check', async () => {
+    build('first')
+    const first = packCode({ root: source, commit: A, release: 11, subject: 'First', to: packs, trustOut: true })
+    build('second')
+    const second = packCode({ root: source, commit: B, release: 12, subject: 'Second', to: join(packs, 'other'), trustOut: true })
+    const oldHost = host()
+    const newHost = host()
+    oldHost.offers.announce(first.dir)
+    newHost.offers.announce(second.dir)
+    const { boot, settings } = mac(null)
+    const other = { id: 'other', name: 'Other host' }
+    let reads = 0
+    const checking: LinkRequest = async (method, params) => {
+      if (method === 'code.latest' && ++reads === 2) {
+        updates.setHost(other.id)
+        oldHost.offers.announce(second.dir)
+      }
+      return oldHost.request(method, params)
+    }
+    const updates = new CodeUpdates({
+      boot, getSetting: settings.get, setSetting: settings.set, adminHosts: () => [THE_BOX, other],
+      link: (id) => id === BOX ? checking : newHost.request, secure: () => true, log: () => {}
+    })
+    updates.setHost(BOX)
+    await updates.idle()
+    expect(updates.settings().host).toBe(other.id)
+    expect(boot.staged()?.commit).toBe(B)
+    expect(newHost.calls).toContain('code.chunk')
+    expect(existsSync(join(userData, CODE_DIR, A))).toBe(false)
+  })
+
+  it('still checks the whole hash for a host that omits the chunk hash', async () => {
+    build('legacy')
+    const { dir } = packCode({ root: source, commit: A, release: 11, subject: 'Legacy', to: packs, trustOut: true })
+    const h = host()
+    h.offers.announce(dir)
+    const request: LinkRequest = async (method, params) => {
+      const answer = await h.request(method, params)
+      if (method !== 'code.chunk') return answer
+      const chunk = answer as CodeChunk
+      const bytes = Buffer.from(chunk.data, 'base64')
+      bytes[0] ^= 0xff
+      return { ...chunk, sha256: undefined, data: bytes.toString('base64') }
+    }
+    const m = mac(request)
+    m.updates.linkUp(BOX)
+    await m.updates.idle()
+    expect(m.lines.join('\n')).toMatch(/the pack's sha256 is .*, not the manifest's/)
+    expect(m.boot.staged()).toBeNull()
   })
 
   it('a newer offer takes the place of a staged one', async () => {

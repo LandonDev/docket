@@ -2,6 +2,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { appendFileSync, createReadStream, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { createGunzip } from 'node:zlib'
 import type { ServerPush } from '@shared/contract'
 import type { CodeChunk, CodeSettings } from '@shared/contract-code'
@@ -48,6 +49,7 @@ import type { LinkRequest } from './remote/peerCalls'
  */
 
 export const INCOMING_DIR = 'incoming'
+const CODE_CHUNK_WINDOW = 2
 const CHUNK_TIMEOUT_MS = 120_000
 
 export interface CodeUpdatesDeps {
@@ -286,8 +288,8 @@ export class CodeUpdates {
     const started = Date.now()
     const tree = await this.fetch(envId, request, boot.dir!, manifest, head)
     // The choice may have changed while the bytes came.
-    if (this.chosen() !== envId) {
-      remove(tree)
+    if (!tree || this.chosen() !== envId) {
+      if (tree) remove(tree)
       this.set({ offer: undefined })
       return
     }
@@ -308,14 +310,19 @@ export class CodeUpdates {
     this.log(`${head.commit.slice(0, 7)} (1.0.${head.release}) from ${envId} staged in ${Date.now() - started} ms`)
   }
 
+  private mayFetch(envId: string): boolean {
+    return this.chosen() === envId && this.deps.secure(envId)
+  }
+
   /** The packed tree fetched, checked and unpacked: the folder that holds its `out/` and its manifest. */
-  private async fetch(envId: string, request: LinkRequest, dir: string, manifest: unknown, head: CodeOfferHead): Promise<string> {
+  private async fetch(envId: string, request: LinkRequest, dir: string, manifest: unknown, head: CodeOfferHead): Promise<string | null> {
     const sha256 = (manifest as { tar: { sha256: string } }).tar.sha256
     const incoming = join(dir, INCOMING_DIR)
     mkdirSync(incoming, { recursive: true })
-    const part = join(incoming, `${head.commit}.tar.gz.part`)
-    // Only this commit's part file is worth keeping.
-    for (const name of readdirSync(incoming)) if (name !== `${head.commit}.tar.gz.part`) remove(join(incoming, name))
+    const partName = `${head.commit}.${sha256}.tar.gz.part`
+    const part = join(incoming, partName)
+    // Only a part file for these exact bytes can be resumed.
+    for (const name of readdirSync(incoming)) if (name !== partName) remove(join(incoming, name))
     /** The pack is not what its manifest says: dropped, and not fetched again. */
     const reject = (why: string): Error => {
       rmSync(part, { force: true })
@@ -333,17 +340,56 @@ export class CodeUpdates {
       offset = 0
     }
     const offer = { commit: head.commit, release: head.release, subject: head.subject, phase: 'downloading' as const }
-    this.set({ offer: { ...offer, percent: Math.floor((offset / head.bytes) * 100) } })
-    while (offset < head.bytes) {
-      // The choice turned off or moved to another host: the part file stays for a later offer.
-      if (this.chosen() !== envId) throw new Error('no longer the host code is taken from')
-      const chunk = (await request('code.chunk', { commit: head.commit, offset, length: CODE_CHUNK_BYTES }, { timeoutMs: CHUNK_TIMEOUT_MS })) as CodeChunk
-      const data = Buffer.from(typeof chunk?.data === 'string' ? chunk.data : '', 'base64')
-      if (data.length === 0 || data.length > CODE_CHUNK_BYTES || offset + data.length > head.bytes) throw new Error('the host sent a chunk of the wrong size')
-      appendFileSync(part, data)
-      offset += data.length
-      this.set({ offer: { ...offer, percent: Math.floor((offset / head.bytes) * 100) } })
+    const progress = (written: number): void => this.set({ offer: { ...offer, percent: Math.floor((written / head.bytes) * 100) } })
+    const checkHost = (): void => {
+      if (!this.mayFetch(envId)) throw new Error('the chosen code host or its secure link changed')
     }
+    const replaced = async (): Promise<boolean> => {
+      checkHost()
+      // This read covers offers already heard on this link. A push while it is in flight still gets a turn.
+      const offered = this.again === envId
+      if (offered) this.again = null
+      const latest = await request('code.latest').catch((err: unknown) => {
+        if (offered) this.again ??= envId
+        throw err
+      })
+      checkHost()
+      if (isDeepStrictEqual(latest, manifest)) return false
+      rmSync(part, { force: true })
+      if (latest != null) this.again ??= envId
+      return true
+    }
+    const pending = new Map<number, Promise<unknown>>()
+    let asked = offset
+    progress(offset)
+    try {
+      try {
+        while (offset < head.bytes) {
+          while (pending.size < CODE_CHUNK_WINDOW && asked < head.bytes) {
+            checkHost()
+            const length = Math.min(CODE_CHUNK_BYTES, head.bytes - asked)
+            const chunk = request('code.chunk', { commit: head.commit, offset: asked, length, packSha256: sha256 }, { timeoutMs: CHUNK_TIMEOUT_MS })
+            chunk.catch(() => undefined)
+            pending.set(asked, chunk)
+            asked += length
+          }
+          const chunk = (await pending.get(offset)!) as CodeChunk
+          checkHost()
+          const data = this.decodeChunk(chunk, offset, Math.min(CODE_CHUNK_BYTES, head.bytes - offset), reject)
+          appendFileSync(part, data)
+          pending.delete(offset)
+          offset += data.length
+          progress(offset)
+        }
+      } finally {
+        // Finish the old manifest's requests before asking for another one.
+        await Promise.allSettled(pending.values())
+      }
+    } catch (err) {
+      if (await replaced().catch(() => false)) return null
+      throw err
+    }
+    if (await replaced()) return null
     const got = await sha256OfFile(part)
     if (got !== sha256) throw reject(`the pack's sha256 is ${got.slice(0, 12)}, not the manifest's ${sha256.slice(0, 12)}`)
     try {
@@ -370,5 +416,13 @@ export class CodeUpdates {
     writeFileSync(join(tree, PACK_MANIFEST), JSON.stringify(manifest, null, 2) + '\n')
     rmSync(part, { force: true })
     return tree
+  }
+
+  private decodeChunk(chunk: CodeChunk, offset: number, length: number, reject: (why: string) => Error): Buffer {
+    const data = Buffer.from(typeof chunk?.data === 'string' ? chunk.data : '', 'base64')
+    if (data.length !== length || chunk.bytes !== length) throw new Error('the host sent a chunk of the wrong size')
+    if (chunk.sha256 !== undefined && chunk.sha256 !== createHash('sha256').update(data).digest('hex'))
+      throw reject(`the code chunk at ${offset} failed its sha256 check`)
+    return data
   }
 }
