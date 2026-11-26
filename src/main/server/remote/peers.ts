@@ -28,6 +28,8 @@ export interface PeerEvents {
 }
 
 export const PEER_BACKOFF_MS = [2_000, 5_000, 15_000, 60_000, 300_000]
+// After an established link drops, probe twice before returning to the usual backoff.
+const PEER_RECOVERY_MS = [250, 1_000]
 export const PEER_REQUEST_TIMEOUT_MS = 30_000
 const HELLO_TIMEOUT_MS = 10_000
 /** The listener's close code for a revoked key: no retry until the environment is saved again. */
@@ -56,6 +58,7 @@ export class PeerLink {
   private seq = 0
   private timer: NodeJS.Timeout | null = null
   private closed = false
+  private recovering = false
   private connecting: Promise<void> | null = null
   attempts = 0
   connected = false
@@ -100,6 +103,7 @@ export class PeerLink {
         if (this.closed || this.ws) return
         const extensions = await this.open(`${route.url}?ticket=${encodeURIComponent(ticket)}`)
         this.attempts = 0
+        this.recovering = false
         this.lastError = null
         this.route = { url: route.url, kind: route.kind }
         this.log(connectedLine(this.env.name, route.kind, extensions))
@@ -192,7 +196,10 @@ export class PeerLink {
         this.log(`${this.env.name}: closed (${code})`)
         this.events.onClose?.(this.env.id, code)
         if (code === KEY_REVOKED) this.lastError = 'key revoked'
-        else this.scheduleRetry()
+        else {
+          this.recovering = true
+          this.scheduleRetry()
+        }
       })
     })
   }
@@ -231,14 +238,17 @@ export class PeerLink {
 
   private scheduleRetry(): void {
     if (this.closed || this.timer) return
-    const delay = PEER_BACKOFF_MS[Math.min(this.attempts, PEER_BACKOFF_MS.length - 1)]
+    const recovery = this.recovering ? PEER_RECOVERY_MS[this.attempts] : undefined
+    const failures = this.recovering ? this.attempts - PEER_RECOVERY_MS.length : this.attempts
+    const delay = recovery ?? PEER_BACKOFF_MS[Math.min(failures, PEER_BACKOFF_MS.length - 1)]
+    const jitter = this.recovering && failures <= 0 ? 250 : 1_000
     this.attempts++
     this.timer = setTimeout(
       () => {
         this.timer = null
         void this.connect()
       },
-      delay + Math.random() * 1_000
+      delay + Math.random() * jitter
     )
     this.timer.unref()
   }
@@ -250,6 +260,7 @@ export class PeerLink {
       this.timer = null
     }
     this.attempts = 0
+    this.recovering = false
     void this.connect()
   }
 

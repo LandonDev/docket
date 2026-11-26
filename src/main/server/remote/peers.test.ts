@@ -5,7 +5,7 @@ import { ENVIRONMENTS_PREFIX } from './environments'
 import { PeerLink, Peers, connectedLine } from './peers'
 
 /** A host: hello first, then every request echoed back as its result, plus whatever the test pushes. */
-async function fakeHost(environmentId: string) {
+async function fakeHost(environmentId: string, onRequest?: (method: string) => boolean | void) {
   const server = createServer()
   const wss = new WebSocketServer({ server })
   const sockets = new Set<WebSocket>()
@@ -19,6 +19,7 @@ async function fakeHost(environmentId: string) {
     ws.send(JSON.stringify({ push: 'hello', environmentId, contract: 1, caps: ['admin'], build: { release: 270, version: '1.0.270', sha: 'f'.repeat(40), platform: 'linux' } }))
     ws.on('message', (data) => {
       const req = JSON.parse(String(data)) as { id: string; method: string; params?: unknown }
+      if (onRequest?.(req.method) === false) return
       if (req.method === 'fail') ws.send(JSON.stringify({ id: req.id, ok: false, error: 'nope' }))
       else ws.send(JSON.stringify({ id: req.id, ok: true, result: { method: req.method, params: req.params } }))
     })
@@ -65,6 +66,8 @@ afterEach(async () => {
   for (const c of cleanup.reverse()) await c()
   cleanup = []
   ticketFetch.mockClear()
+  vi.useRealTimers()
+  vi.restoreAllMocks()
 })
 
 describe('PeerLink', () => {
@@ -97,6 +100,67 @@ describe('PeerLink', () => {
     link.retry()
     await vi.waitFor(() => expect(link.connected).toBe(true), { timeout: 5_000 })
     expect(hostA.tickets).toEqual(['t-1', 't-2'])
+  })
+
+  it('reconnects after a three-second cut without replaying a held call', async () => {
+    const methods: string[] = []
+    let heldReceived!: () => void
+    const held = new Promise<void>((resolve) => { heldReceived = resolve })
+    const host = await fakeHost('env_a', (method) => {
+      methods.push(method)
+      if (method === 'work.outbox.send') {
+        heldReceived()
+        return false
+      }
+      return true
+    })
+    cleanup.push(host.close)
+    const env = { id: 'env_a', name: 'A', routes: [{ url: `ws://127.0.0.1:${host.port}/ws`, kind: 'loopback' as const }], addedAt: 1, caps: ['admin' as const], keyName: 'k' }
+    const store = storeWith({ [`${ENVIRONMENTS_PREFIX}env_a`]: JSON.stringify({ ...env, key: 'tc_x.secret' }) })
+    vi.useFakeTimers({ now: 0, toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.spyOn(Math, 'random').mockReturnValue(0.8)
+    const stamps: [string, number][] = []
+    const stamp = (name: string) => stamps.push([name, Date.now()])
+    const fetch = vi.fn(async (url: string) => {
+      stamp('ticket start')
+      if (Date.now() > 0) await new Promise((resolve) => setTimeout(resolve, 60))
+      if (Date.now() < 3_000 && Date.now() > 0) throw new Error('link cut')
+      stamp('ticket end')
+      return ticketFetch(url)
+    })
+    let markDown!: () => void
+    const down = new Promise<void>((resolve) => { markDown = resolve })
+    let markRegistered!: () => void
+    const registered = new Promise<void>((resolve) => { markRegistered = resolve })
+    const link = new PeerLink(env, { store, environmentId: 'env_me', fetch: fetch as unknown as typeof globalThis.fetch }, {
+      onOpen: () => {
+        stamp('hello')
+        void link.request('peer.register').then(() => {
+          stamp('registered')
+          markRegistered()
+        })
+      },
+      onClose: () => { stamp('close'); markDown() }
+    })
+    cleanup.push(async () => link.close())
+    await link.connect()
+    await registered
+    const reregistered = new Promise<void>((resolve) => { markRegistered = resolve })
+    const call = expect(link.request('work.outbox.send')).rejects.toThrow('closed the socket')
+    await held
+    host.dropAll()
+    await down
+    await call
+    await vi.advanceTimersByTimeAsync(3_000)
+    stamp('carrier restored')
+    expect(fetch).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(1_030)
+    await reregistered
+    expect(stamps.map(([phase]) => phase)).toEqual([
+      'ticket start', 'ticket end', 'hello', 'registered', 'close',
+      'ticket start', 'ticket start', 'carrier restored', 'ticket start', 'ticket end', 'hello', 'registered'
+    ])
+    expect(methods).toEqual(['peer.register', 'work.outbox.send', 'peer.register'])
   })
 
   it('names the negotiated extensions on its connect line', async () => {

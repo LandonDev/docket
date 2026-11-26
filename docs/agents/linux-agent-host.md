@@ -237,6 +237,11 @@
   waiting until it re-registers. RPCs `resources.list/listAll/remove` take
   ids only. docs/box.md "Thread resources"; the e2e-mac-bridge proof covers
   a bridged worktree's record and removal.
+- A dropped peer link tries again after 250 ms, then after 1 s if the
+  first try fails, with up to 250 ms of jitter on each. The usual capped
+  backoff follows if the link stays down. Each dial gets a fresh ticket
+  and checks the host's hello. Registration goes out before background
+  sync starts. A cut rejects pending calls, including held sends.
 - Dev servers on the box reach the Mac's browser over the Mac's peer link.
   A dev server a thread opens is a `port` row on the ledger (pid, the call
   that opened it, and `what`, the listening process in plain words from

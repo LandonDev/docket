@@ -876,6 +876,7 @@ export async function startServer(
   )
   // Everything a link coming up starts; `bridge`: the Mac bridge's peer.register too (a given computer's box link sent it first).
   function linkOpened(id: string, bridge: boolean): void {
+    if (bridge) void macBridge.linkUp(id)
     // The Mac claims the giver before its first sync after the upgrade, so its pushes are the giver's (devices/giver.ts).
     void claimGiverOn(id).finally(() => void accountSync.syncWith(id))
     void accountSync.pushHeadroom(id)
@@ -889,7 +890,6 @@ export async function startServer(
     void awaySync.linkUp(id)
     void sessionMover.settleWith(id)
     relayServer.linkUp(id)
-    if (bridge) void macBridge.linkUp(id)
     peerDeploy.linkUp(id)
     codeUpdates.linkUp(id)
     accounts.nudge()
