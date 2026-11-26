@@ -182,7 +182,8 @@ export function View({ env, workspace }: WorkViewProps) {
 
   return (
     <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
-      {load.missed ? <p role="status" className="mx-auto max-w-[672px] px-4 pt-3 text-[13px] text-muted-foreground">{load.missed}</p> : null}
+      {/* On the rows' words: the list's 16px and a row's own 8px. */}
+      {load.missed ? <p role="status" className="mx-auto max-w-[672px] px-6 pt-3 text-[13px] text-muted-foreground">{load.missed}</p> : null}
       <RowsContextMenu label="Form actions" lazyMount rowsFor={(id) => (id && load.ms.some((f) => f.formId === id) ? [{ kind: "item", id: "forget", label: "Remove from List" }] : null)} onPick={(pick, id) => void (pick === "forget" && id && forget(id))}>
         <ul aria-label="Forms" className="mx-auto flex max-w-[672px] flex-col gap-px px-4 py-4">
           {load.rows.map((row) => (

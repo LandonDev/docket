@@ -28,7 +28,7 @@ import { addOffer, offerWhole } from "./TripDialog";
  * A row's words on one line: the name cuts only when it stands alone; the facts after it (a day, miles) drop whole to a
  * second line the box hides, the least first, never a name cut to nothing beside a whole date.
  */
-const WORDS = "flex h-5 min-w-0 flex-wrap items-baseline gap-x-1 overflow-hidden";
+const WORDS = "flex h-5 min-w-0 flex-wrap items-baseline gap-x-1 overflow-hidden leading-5";
 const ROW = cn("grid min-h-12 items-center gap-3 border-b border-border text-[13px] last:border-0", TO_CONFIRM_GRID);
 
 /** "Nov 20", or "Nov 20, 2025" when it is not this year's. */
