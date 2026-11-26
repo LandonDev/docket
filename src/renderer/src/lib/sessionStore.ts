@@ -1,4 +1,4 @@
-import { invokeOn, windowSlot } from "./native";
+import { invokeOn, whenServerPort, windowSlot } from "./native";
 import { LOCAL_ENVIRONMENT_ID, registry } from "./connection";
 import type { HarnessId, RuntimeMode, Session } from "./session";
 import { normalizeProjectPath, sameProjectPath } from "./recents";
@@ -331,7 +331,18 @@ export async function setSessionPinned(
  */
 let workspaceWrite: Promise<unknown> = Promise.resolve();
 
+/** This window's read of its saved layout: a failed read is not an empty slot, and no save may replace what it
+ *  could not read. "unread" (a moved window, a test) saves as before. */
+let snapshotRead: "unread" | "ok" | "failed" = "unread";
+
+/** Whether the saved layout could not be read this launch: the slot's saves are held (saveWorkspaceSnapshot). */
+export function workspaceSnapshotReadFailed(): boolean {
+  return snapshotRead === "failed";
+}
+
 export async function saveWorkspaceSnapshot(snapshot: unknown): Promise<void> {
+  // The slot's layout was never read: writing over it could lose his tabs, panes and docks.
+  if (snapshotRead === "failed") return;
   const run = workspaceWrite
     .catch(() => undefined)
     // The window's layout lives on this machine's own server.
@@ -341,8 +352,24 @@ export async function saveWorkspaceSnapshot(snapshot: unknown): Promise<void> {
 }
 
 export async function loadWorkspaceSnapshot(): Promise<unknown | null> {
-  const raw = await invokeOn<unknown | null>(registry.primary().environmentId, "workspace_get_snapshot", {
-    window: windowSlot(),
-  });
+  // The read's socket deadline (native.ts, 15 s) starts only once this machine's server has answered its port:
+  // a window made before the server waits for it, however long it boots.
+  await whenServerPort();
+  let raw: unknown | null;
+  try {
+    raw = await invokeOn<unknown | null>(registry.primary().environmentId, "workspace_get_snapshot", {
+      window: windowSlot(),
+    });
+  } catch (err) {
+    snapshotRead = "failed";
+    console.error("[workspace] saved layout not read; its saves are held this launch:", err);
+    throw err;
+  }
+  snapshotRead = "ok";
   return raw ?? null;
+}
+
+/** Test seam. */
+export function resetWorkspaceSnapshotRead(): void {
+  snapshotRead = "unread";
 }

@@ -394,11 +394,28 @@ export function thisDesktopInLine(): "this PC" | "this Mac" {
   return thisDesktopName() === "This PC" ? "this PC" : "this Mac";
 }
 
-/** The in-process server's port, straight from preload; never opens a socket. */
-export async function getServerPort(): Promise<number> {
-  const port = await api().getServerPort();
-  if (port == null) throw new Error("server port unavailable");
-  return port;
+let portAsk: Promise<number> | null = null;
+
+/** The in-process server's port, straight from preload; never opens a socket. One ask a window: main answers it
+ *  once the server is up (src/main/index.ts `server-port`), and every caller shares it. */
+export function getServerPort(): Promise<number> {
+  portAsk ??= api()
+    .getServerPort()
+    .then((port) => {
+      if (port == null) throw new Error("server port unavailable");
+      return port;
+    })
+    .catch((err: unknown) => {
+      portAsk = null;
+      throw err;
+    });
+  return portAsk;
+}
+
+/** This machine's server is up: its port has answered. At /ui there is no such wait. */
+export function whenServerPort(): Promise<void> {
+  if (isWebMode()) return Promise.resolve();
+  return getServerPort().then(() => undefined);
 }
 
 /** The launch mirror at boot (src/shared/launchMirror.ts), one async ask (never a
