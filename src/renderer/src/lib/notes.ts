@@ -69,9 +69,18 @@ export function invalidateNotes(environmentId?: string) {
   else cache.delete(environmentId);
 }
 
+/** A host's notes for a picker or a search: a failed read is the last good list, or none. */
 export async function loadNotes(environmentId: string, refresh = false): Promise<Note[]> {
+  return readNotes(environmentId, refresh).catch(() => {
+    if (!cache.has(environmentId)) cache.set(environmentId, []);
+    return cache.get(environmentId) ?? [];
+  });
+}
+
+/** A host's notes for the Notes page, which says a failed read: it rejects, and the cache keeps its last good list. */
+export function readNotes(environmentId: string, refresh = false): Promise<Note[]> {
   const cached = cache.get(environmentId);
-  if (!refresh && cached) return cached;
+  if (!refresh && cached) return Promise.resolve(cached);
   const pending = inflight.get(environmentId);
   if (!refresh && pending) return pending;
 
@@ -79,10 +88,6 @@ export async function loadNotes(environmentId: string, refresh = false): Promise
     .then((notes) => {
       cache.set(environmentId, notes);
       return notes;
-    })
-    .catch(() => {
-      if (!cache.has(environmentId)) cache.set(environmentId, []);
-      return cache.get(environmentId) ?? [];
     })
     .finally(() => {
       if (inflight.get(environmentId) === promise) inflight.delete(environmentId);

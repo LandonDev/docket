@@ -702,7 +702,7 @@ export function ProjectRail({
   return (
     <nav
       ref={attachPane}
-      aria-label="Workspaces"
+      aria-label="Main"
       className="sidebar-glass relative flex shrink-0 flex-col border-r border-border"
     >
       <div

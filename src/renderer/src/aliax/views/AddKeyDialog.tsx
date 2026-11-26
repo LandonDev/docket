@@ -4,6 +4,7 @@ import { DialogFooter } from "@renderer/chrome/ConfirmDialog";
 import { ModalBody, ModalPanel } from "@renderer/chrome/Modal";
 import { Dialog } from "@renderer/components/ui/dialog";
 import { Input } from "@renderer/components/ui/input";
+import { KEY_NOT_SAVED } from "@shared/signInWords";
 
 export type AddKeyResult = { ok: true; name?: string } | { ok: false; error: string };
 
@@ -53,7 +54,8 @@ export function AddKeyDialog({
     setVerifying(true);
     setError(null);
     const result = await submit({ name: name.trim() || undefined, key: key.trim() }).catch(
-      (e: Error): AddKeyResult => ({ ok: false, error: e.message || "The key was not saved" }),
+      // A request that rejected says the one plain line, never its own text (a path, a code) under Key.
+      (): AddKeyResult => ({ ok: false, error: KEY_NOT_SAVED }),
     );
     if (n !== attempt.current) return;
     setVerifying(false);

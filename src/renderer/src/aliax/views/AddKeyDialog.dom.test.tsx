@@ -79,6 +79,21 @@ describe("AddKeyDialog", () => {
     expect(within(dialog).queryByText("That key was refused by Meta")).toBeNull();
   });
 
+  // council 5 S F8.2: a request that rejected is one plain line, never its own text under Key.
+  it("says Couldn't save the key for a request that rejected, never its path or code", async () => {
+    const submit = vi.fn(async (): Promise<AddKeyResult> => {
+      throw new Error("Error invoking remote method 'aliax:profiles:addKey': EACCES: permission denied, open '/Users/me/.aliax/keys.json'");
+    });
+    const { dialog, key, add } = setup(submit);
+    fireEvent.change(key, { target: { value: "LLM_1607_abc" } });
+    await act(async () => {
+      fireEvent.click(add);
+    });
+    expect(within(dialog).getByText("Couldn't save the key").className).toContain("text-destructive");
+    expect(dialog.textContent).not.toContain("EACCES");
+    expect(dialog.textContent).not.toContain(".aliax");
+  });
+
   it("never shows the key back: closing and reopening starts empty", () => {
     const submit = vi.fn();
     const { view, key } = setup(submit);

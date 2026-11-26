@@ -34,7 +34,7 @@ import { usePageEscape } from "../lib/pageEscape";
 import {
   createNote,
   deleteNote,
-  loadNotes,
+  readNotes,
   notePreview,
   noteSourceProject,
   noteTitle,
@@ -133,7 +133,7 @@ export function NotesView({
 
   const refresh = useCallback(async () => {
     try {
-      const next = await loadNotes(environmentId, true);
+      const next = await readNotes(environmentId, true);
       setNotes(next);
       setError(null);
       setSelectedId((current) => {
@@ -153,6 +153,11 @@ export function NotesView({
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const retry = (): void => {
+    setRetrying(true);
+    void refresh().finally(() => setRetrying(false));
+  };
 
   useEffect(() => {
     rememberedNoteId = selectedId;
@@ -186,18 +191,26 @@ export function NotesView({
   const onCreate = async () => {
     if (creating) return;
     setCreating(true);
+    let note: Note;
     try {
-      const note = await createNote(environmentId, {
+      note = await createNote(environmentId, {
         title: "Untitled",
         body: "",
         ...(cwd && looksLikeProject(cwd) ? { sourceCwd: cwd } : {}),
       });
-      setNotes(await loadNotes(environmentId, true));
+    } catch (err: unknown) {
+      setError({ words: "Couldn't make a note", raw: rawError(err) });
+      setCreating(false);
+      return;
+    }
+    try {
+      // The note is made; a list that fails to read after it keeps the rows on screen and says so, with Retry.
+      setNotes(await readNotes(environmentId, true));
       setError(null);
       setSelectedId(note.id);
       setQuery("");
     } catch (err: unknown) {
-      setError({ words: "Couldn't make a note", raw: rawError(err) });
+      setError({ words: notesLoadWords(environmentId), raw: rawError(err), load: true });
     } finally {
       setCreating(false);
     }
@@ -219,7 +232,7 @@ export function NotesView({
   const onDelete = (id: string) => deleteNote(environmentId, id);
   const onDeleted = async (id: string) => {
     try {
-      const next = await loadNotes(environmentId, true);
+      const next = await readNotes(environmentId, true);
       setNotes(next);
       setSelectedId((current) => {
         if (current !== id) return current;
@@ -269,18 +282,26 @@ export function NotesView({
         ref={listLock}
         className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none"
       >
-        {/* With no note to show, a failed load is the list's one empty state with Retry; over notes, one red line under the head. */}
-        {error && !(error.load && notes.length === 0) ? <FailLine words={error.words} detail={error.raw} className="px-3 py-2" /> : null}
+        {/* With no note to show, a failed load is the list's one empty state with Retry; over notes, one red line under the head, a failed load's with its Retry. */}
+        {error && !(error.load && notes.length === 0) ? (
+          error.load ? (
+            <div className="flex items-center gap-2 py-1 pr-2 pl-3">
+              <FailLine words={error.words} detail={error.raw} className="min-w-0 flex-1" />
+              <Button variant="ghost" size="xs" disabled={retrying} aria-busy={retrying || undefined} onClick={retry}>
+                <BusyLabel busy={retrying} label="Retry" />
+              </Button>
+            </div>
+          ) : (
+            <FailLine words={error.words} detail={error.raw} className="px-3 py-2" />
+          )
+        ) : null}
         {error?.load && notes.length === 0 ? (
           <EmptyState
             title={error.words}
             action={{
               label: "Retry",
               busy: retrying,
-              onClick: () => {
-                setRetrying(true);
-                void refresh().finally(() => setRetrying(false));
-              },
+              onClick: retry,
             }}
           />
         ) : loading && notes.length === 0 ? (

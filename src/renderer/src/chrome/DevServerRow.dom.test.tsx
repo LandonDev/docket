@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { registry } from "../lib/connection";
 import type { LiveServer } from "../lib/devServers";
 
 const h = vi.hoisted(() => ({ stop: vi.fn(() => Promise.resolve()), open: vi.fn() }));
@@ -25,9 +26,33 @@ const server: LiveServer = {
   startedAt: 1,
 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("DevServerRow", () => {
+  // D5: Stop asks the row's host. A key that may not stop it is offered no Stop; a host away holds it in place.
+  it("draws no Stop for a key that may only read, and holds it while the host is away", () => {
+    const read = { transport: "open", lastHello: { environmentId: "env_box", contract: 3, caps: ["read"], key: { id: "k", name: "Laptop" } } };
+    const status = vi.spyOn(registry, "statusOf").mockReturnValue(read as never);
+    render(<DevServerRow server={server} />);
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    cleanup();
+    render(<DevServerRow server={{ ...server, runId: "run1", resource: null }} />);
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    cleanup();
+    status.mockReturnValue({ transport: "offline", lastHello: null, lastError: null, nextRetryAt: null } as never);
+    vi.spyOn(registry, "statuses").mockReturnValue(new Map([["env_box", { transport: "offline" } as never]]));
+    vi.spyOn(registry, "environmentsSnapshot").mockReturnValue([{ id: "env_box", name: "box", routes: [], credentialRef: null }]);
+    render(<DevServerRow server={server} />);
+    const held = screen.getByRole("button", { name: "Stop" }) as HTMLButtonElement;
+    expect(held.disabled).toBe(true);
+    expect(held.closest("[data-held]")).not.toBeNull();
+    fireEvent.click(held);
+    expect(h.stop).not.toHaveBeenCalled();
+  });
+
   it("Stop is a button that says its word, with no tooltip, and stops the server", async () => {
     render(<DevServerRow server={server} />);
     const stop = screen.getByRole("button", { name: "Stop" });

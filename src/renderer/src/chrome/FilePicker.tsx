@@ -18,6 +18,7 @@ import { useRankQuery } from "../lib/rankQuery";
 import { looksLikeProject } from "../lib/recents";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { usePointerHighlight } from "../hooks/usePointerHighlight";
+import { Button } from "../components/ui/button";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { MatchText } from "./MatchText";
 import { PickerDialog, PickerNote, pickerRowClass } from "./PickerDialog";
@@ -42,7 +43,9 @@ export function FilePicker({
   const [active, setActive] = useState(0);
   const [files, setFiles] = useState(() => peekProjectFiles(cwd) ?? []);
   const [loading, setLoading] = useState(() => peekProjectFiles(cwd) == null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  // The open picker's own read, asked again by Retry without clearing his words.
+  const reload = useRef<() => void>(() => {});
 
   const recents = useMemo(() => {
     const out: string[] = [];
@@ -66,7 +69,7 @@ export function FilePicker({
     if (!open) return;
     setQuery("");
     setActive(0);
-    setError(null);
+    setError(false);
     const cached = peekProjectFiles(cwd);
     if (cached) {
       setFiles(cached);
@@ -87,18 +90,25 @@ export function FilePicker({
           setFiles(next);
           setLoading(false);
         })
-        .catch((err: unknown) => {
+        .catch(() => {
           if (cancelled) return;
-          setError(err instanceof Error ? err.message : String(err));
+          // The host's own text stays in its log; the line says what did not happen.
+          setError(true);
           setLoading(false);
         });
     load();
+    reload.current = () => {
+      if (cancelled) return;
+      setError(false);
+      setLoading(true);
+      load();
+    };
     // The host's key changed or the host left while the picker is open: its names were another key's
     // (lib/fileIndex.ts). They go, the loading state shows, and the list is asked again.
     const offDropped = subscribeProjectFilesDropped(cwd, () => {
       if (cancelled) return;
       setFiles([]);
-      setError(null);
+      setError(false);
       setLoading(true);
       load();
     });
@@ -139,14 +149,14 @@ export function FilePicker({
       if (file) pick(file);
       return;
     }
-    if (e.key === "Tab") e.preventDefault();
+    // The field keeps the keys; a failed read's Retry is the one other stop.
+    if (e.key === "Tab" && !error) e.preventDefault();
   };
 
   const empty = emptyLabel({
     cwd,
     query,
     loading,
-    error,
     fileCount: files.length,
     matchCount: results.length,
   });
@@ -168,8 +178,17 @@ export function FilePicker({
       listId={empty ? undefined : listId}
       activeId={results[active] ? `${listId}-${active}` : null}
     >
+      {/* A failed read keeps the last good rows under one red line with Retry; no empty note stands in for it. */}
+      {error ? (
+        <p role="alert" data-file-picker-failed className="flex h-7 items-center gap-2 pl-3 text-xs text-destructive">
+          <span className="min-w-0 flex-1 truncate">Couldn't list this project's files</span>
+          <Button variant="ghost" size="xs" onClick={() => reload.current()}>
+            Retry
+          </Button>
+        </p>
+      ) : null}
       {empty ? (
-        <PickerNote>{empty}</PickerNote>
+        error ? null : <PickerNote>{empty}</PickerNote>
       ) : (
         <FileList id={listId} files={results} active={active} query={query} onActive={setActive} onPick={pick} />
       )}
@@ -181,19 +200,15 @@ function emptyLabel({
   cwd,
   query,
   loading,
-  error,
   fileCount,
   matchCount,
 }: {
   cwd: string;
   query: string;
   loading: boolean;
-  error: string | null;
   fileCount: number;
   matchCount: number;
 }): string | null {
-  // The host's own text stays in its log; the note says what did not happen.
-  if (error && fileCount === 0) return "Couldn't list this project's files";
   if (!looksLikeProject(cwd)) return "Open a project to search files";
   if (loading && fileCount === 0) return "Indexing files…";
   if (fileCount === 0) return "No files found";

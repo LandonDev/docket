@@ -1,9 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const native = vi.hoisted(() => ({ fail: false }));
+vi.mock("./native", () => ({
+  invokeOn: vi.fn(async () => {
+    if (native.fail) throw new Error("connect ECONNREFUSED 127.0.0.1:8787");
+    return [{ id: "a", slug: "a", title: "A", body: "", createdAt: 1, updatedAt: 1 }];
+  }),
+}));
 import {
   appendNoteReference,
   composeNoteMessage,
   injectNotePrompt,
+  invalidateNotes,
   isNoteMentionPath,
+  loadNotes,
   noteCardMeta,
   noteMentionLabel,
   notePreview,
@@ -12,6 +22,7 @@ import {
   notesAsProjectFiles,
   noteTitle,
   rankNoteFiles,
+  readNotes,
   type Note,
 } from "./notes";
 
@@ -178,5 +189,25 @@ describe("noteMentionLabel", () => {
     expect(noteMentionLabel(note({ id: "n", slug: "auth", title: "Auth" }))).toBe(
       "note/auth",
     );
+  });
+});
+
+// council 5 S F7.1: the Notes page learns a read failed; a picker still gets the last good list.
+describe("readNotes and loadNotes", () => {
+  it("readNotes rejects a failed read, loadNotes answers the last good list or none", async () => {
+    invalidateNotes();
+    native.fail = true;
+    try {
+      await expect(readNotes("h1", true)).rejects.toThrow("ECONNREFUSED");
+      await expect(loadNotes("h1", true)).resolves.toEqual([]);
+      native.fail = false;
+      expect((await readNotes("h2", true)).map((n) => n.id)).toEqual(["a"]);
+      native.fail = true;
+      await expect(readNotes("h2", true)).rejects.toThrow();
+      expect((await loadNotes("h2", true)).map((n) => n.id)).toEqual(["a"]);
+    } finally {
+      native.fail = false;
+      invalidateNotes();
+    }
   });
 });

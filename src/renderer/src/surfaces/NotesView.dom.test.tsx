@@ -19,7 +19,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("../lib/notes", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/notes")>()),
-  loadNotes: () => h.pending ?? Promise.resolve(h.notes),
+  readNotes: () => h.pending ?? Promise.resolve(h.notes),
   upsertNote: vi.fn((_env: string, note: { id: string }) => Promise.resolve({ ...h.notes[0], ...note })),
   deleteNote: vi.fn(() => Promise.resolve()),
   createNote: vi.fn((_env: string, note: object) => Promise.resolve({ id: "n3", slug: "untitled", createdAt: 3, updatedAt: 3, ...note })),
@@ -296,6 +296,31 @@ describe("the notes view", () => {
     expect(view.container.textContent).not.toContain("SQLITE_FULL");
     // The notes stay listed under it.
     expect(view.getByRole("button", { name: /Deploy/ })).toBeTruthy();
+  });
+
+  // council 5 S F7.1: a later read that fails keeps the rows on screen and offers Retry on its red line.
+  it("over listed notes, a failed read keeps them and says so in one red line with Retry", async () => {
+    const view = await mount();
+    vi.mocked(createNote).mockResolvedValueOnce({ id: "n3", slug: "untitled", title: "Untitled", body: "", createdAt: 3, updatedAt: 3 });
+    const failed = Promise.reject(new Error("connect ECONNREFUSED 127.0.0.1:8787"));
+    failed.catch(() => {});
+    h.pending = failed;
+    try {
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "New note" }));
+      });
+      expect(view.getByRole("alert").textContent).toBe("Couldn't load notes on the box");
+      expect(view.container.textContent).not.toContain("ECONNREFUSED");
+      expect(view.queryByText("No notes yet")).toBeNull();
+      expect(view.getByRole("button", { name: /Deploy/ })).toBeTruthy();
+      h.pending = null;
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Retry" }));
+      });
+      expect(view.queryByRole("alert")).toBeNull();
+    } finally {
+      h.pending = null;
+    }
   });
 
   it("with no note to show, a failed load is the list's one empty state, the host named, with Retry", async () => {

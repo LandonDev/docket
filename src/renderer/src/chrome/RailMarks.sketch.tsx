@@ -77,7 +77,7 @@ const alpha = [
 export function RailMarksSketch() {
   return (
     <div className="flex gap-6 bg-background p-4">
-      <nav aria-label="Workspaces" className="flex w-[260px] flex-col bg-sidebar py-2">
+      <nav aria-label="Main" className="flex w-[260px] flex-col bg-sidebar py-2">
         <div className="flex flex-col gap-1 px-2">
           <RailHeading>Workspaces</RailHeading>
           <Workspace name="temp-code" selected mark={markOf([row("t1", "Fix the login flow", { status: "running", updatedAt: 90 }), row("t2", "Typecheck", { status: "running" }), row("t3", "Bundle check", { status: "starting" })])} />

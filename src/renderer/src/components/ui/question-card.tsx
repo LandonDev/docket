@@ -144,8 +144,9 @@ export function QuestionCard({
   const hasAnswer = (index: number) => {
     const choices = picked[index] ?? [];
     if (choices.length === 0) return false;
+    // A checked Other needs its words, whatever else is checked beside it: a blank one would send "".
     const freeform = choices.some((choice) => questions[index]?.options[choice]?.freeform === true);
-    return !freeform || choices.length > 1 || (typed[index]?.trim() ?? "") !== "";
+    return !freeform || (typed[index]?.trim() ?? "") !== "";
   };
   // Read only, Next just turns the page: it waits on no pick.
   const answered = hasAnswer(at) || (!!whoCan && at < questions.length - 1);

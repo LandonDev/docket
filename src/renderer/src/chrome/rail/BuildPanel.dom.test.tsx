@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
   /** D5: whether the window's key may build on the host. */
   mayBuild: true,
   held: null as string | null,
+  /** reads of build.effective left to refuse before one answers */
+  effectiveFails: 0,
 }));
 vi.mock("../../lib/linkMayCore", () => ({ useLinkMay: () => state.mayBuild }));
 vi.mock("../../lib/connection/degraded", () => ({ useHostHeld: () => state.held }));
@@ -28,7 +30,13 @@ vi.mock("../../lib/connection", () => ({
     linkOf: () => ({
       request: (method: string) => {
         if (method === "build.targets") return Promise.resolve([{ branch: "master", cwd: "/w/plugin", kind: "project" }] satisfies BuildTarget[]);
-        if (method === "build.effective") return Promise.resolve(state.effective);
+        if (method === "build.effective") {
+          if (state.effectiveFails > 0) {
+            state.effectiveFails--;
+            return Promise.reject(new Error("build.effective: ENOENT: no such file or directory, open '/w/plugin/.temp-code/build.json'"));
+          }
+          return Promise.resolve(state.effective);
+        }
         if (method === "build.remote") return Promise.resolve(state.remote);
         return Promise.reject(new Error(method));
       },
@@ -104,6 +112,7 @@ beforeEach(() => {
   state.build = undefined;
   state.effective = { command: "./gradlew shadowJar", outputs: "", source: "project" };
   state.remote = { branch: "master", upstream: true, ahead: 0, behind: 0, stale: false };
+  state.effectiveFails = 0;
   for (const fn of [state.cancel, state.run, state.pull, state.settings, state.invoke]) fn.mockClear();
 });
 afterEach(cleanup);
@@ -255,6 +264,43 @@ describe("BuildPanel", () => {
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Set one" }));
     expect(state.settings).toHaveBeenCalledWith("w1");
+  });
+
+  // council 5 S F5.1: a failed read is its own line with Retry, never "No build command" and Set one.
+  it("says a failed read of the command apart from no command, and Retry reads again", async () => {
+    state.effectiveFails = 1;
+    render(<BuildPanel projectId="p1" />);
+    await flush();
+    expect(screen.getByRole("alert").textContent).toBe("Couldn't read the build commandRetry");
+    expect(screen.queryByText("No build command")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Set one" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Build" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await flush();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(document.querySelector("[data-build-command]")?.textContent).toBe("./gradlew shadowJar");
+    expect(screen.getByRole("button", { name: "Build" })).toBeTruthy();
+  });
+
+  // council 5 S F5.2: a refused Build or Fetch is worded once (lib/dialogErrorWords), never the raw rejection.
+  it("words a refused Build and a refused Fetch, never the raw rejection", async () => {
+    state.run.mockRejectedValueOnce(new Error("build.run: forbidden: build.run needs admin"));
+    render(<BuildPanel projectId="p1" />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
+    await flush();
+    expect(screen.getByText("This computer's key may not do that on its host.")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("build.run");
+    cleanup();
+    state.remote = { branch: "master", upstream: true, ahead: 0, behind: 3, stale: false };
+    state.pull.mockRejectedValueOnce(new Error("build.pull: fatal: Not possible to fast-forward, aborting.\n"));
+    render(<BuildPanel projectId="p1" />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Fetch" }));
+    await flush();
+    expect(screen.getByText("Not possible to fast-forward, aborting.")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("fatal");
+    expect(document.body.textContent).not.toContain("build.pull");
   });
 
   it("builds, and cancels a running build", async () => {

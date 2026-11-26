@@ -21,7 +21,7 @@ export type ScrollMode = 'wheel' | 'fling'
 export const SCROLLERS: Record<ScrollSurface, { selector: string; source: string; marker: string }> = {
   transcript: { selector: '.agent-transcript', source: 'src/renderer/src/surfaces/AgentTranscript.tsx', marker: '"agent-transcript ' },
   board: { selector: '[data-board-scroller]', source: 'src/renderer/src/surfaces/threads/MasterView.tsx', marker: 'data-board-scroller' },
-  rail: { selector: 'nav[aria-label="Workspaces"] .overflow-y-auto', source: 'src/renderer/src/chrome/ProjectRail.tsx', marker: 'aria-label="Workspaces"' },
+  rail: { selector: 'nav[aria-label="Main"] .overflow-y-auto', source: 'src/renderer/src/chrome/ProjectRail.tsx', marker: 'aria-label="Main"' },
   column: { selector: '[data-project-row]', source: 'src/renderer/src/chrome/WorkspaceSessions.tsx', marker: 'data-project-row' }
 }
 

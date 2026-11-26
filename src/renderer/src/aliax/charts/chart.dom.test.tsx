@@ -49,6 +49,35 @@ describe("the chart module", () => {
     expect(container.querySelector("[data-slot=chart-legend]")?.textContent).toBe("OneTwo");
   });
 
+  // council 5 S F8.1: a day chart spaces its labels by the frame's width, so the frame hands it on as it resizes.
+  it("hands a function child the frame's measured width, and its new width on a resize", async () => {
+    let fire: (width: number) => void = () => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private cb: ResizeObserverCallback) {
+          fire = (width) => this.cb([{ contentRect: { width } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+        }
+        observe(): void {}
+        disconnect(): void {}
+      },
+    );
+    const seen: number[] = [];
+    const { container } = render(
+      <ChartFrame label="Days">
+        {(width) => {
+          seen.push(width);
+          return <div data-width={width} />;
+        }}
+      </ChartFrame>,
+    );
+    await act(async () => fire(296));
+    expect(container.querySelector("[data-width]")?.getAttribute("data-width")).toBe("296");
+    await act(async () => fire(700));
+    expect(container.querySelector("[data-width]")?.getAttribute("data-width")).toBe("700");
+    expect(seen[0]).toBe(0);
+  });
+
   it("frames the plot and paints series with the chart tokens", async () => {
     const { container } = render(
       <ChartFrame label="Two lines">

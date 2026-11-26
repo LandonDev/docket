@@ -23,7 +23,8 @@ import { hostOf, stepReasonWords, writeSeedsOnce } from "./setupFlow";
  * only until the setup starts.
  */
 
-type Phase = { at: "paste" } | { at: "confirm"; link: string; peek: SetupPeek } | { at: "steps"; state: SetupState };
+/** `readFailed`: the last read of the steps did not answer (the setup still runs on its host); a Retry asks again. */
+type Phase = { at: "paste" } | { at: "confirm"; link: string; peek: SetupPeek } | { at: "steps"; state: SetupState; readFailed?: boolean };
 
 export interface UseSetupLinkProps {
   onClose: () => void;
@@ -58,13 +59,18 @@ export function useSetupLink({ onClose, first = false, phase: initial }: UseSetu
   const ready = phase.at === "steps" && (phase.state.done || allDone(steps));
 
   // Once under way: each step as it moves, and the state read again on a push it cannot place.
+  // A read that fails is said over the steps with Retry, never as a refused Start: the link is claimed by then.
   const reread = useCallback(async () => {
-    const state = await readSetupState().catch(() => null);
-    if (state) setPhase({ at: "steps", state });
+    try {
+      const state = await readSetupState();
+      setPhase((p) => (p.at === "steps" ? { at: "steps", state: state ?? p.state } : p));
+    } catch {
+      setPhase((p) => (p.at === "steps" ? { ...p, readFailed: true } : p));
+    }
   }, []);
   useEffect(() => {
     if (phase.at !== "steps") return;
-    return onDevicesPush({ step: (step) => setPhase((p) => (p.at === "steps" ? { at: "steps", state: land(p.state, step) } : p)) });
+    return onDevicesPush({ step: (step) => setPhase((p) => (p.at === "steps" ? { ...p, state: land(p.state, step) } : p)) });
   }, [phase.at]);
   // The seeds land once, the first time the state carries them.
   const seeds = phase.at === "steps" ? phase.state.seeds : null;
@@ -91,12 +97,15 @@ export function useSetupLink({ onClose, first = false, phase: initial }: UseSetu
         pending={pending}
         setPending={setPending}
         verb={`Set up ${thisDesktopInLine()}`}
-        onStarted={(state) => setPhase({ at: "steps", state })}
+        onStarted={(state) => {
+          setPhase({ at: "steps", state });
+          void reread();
+        }}
       />
     ) : ready ? (
       <Ready line={`${here} has everything ${phase.state.giver} gave it.`} onClose={onClose} />
     ) : (
-      <Steps state={phase.state} steps={steps} onClose={onClose} onReread={reread} />
+      <Steps state={phase.state} steps={steps} readFailed={phase.readFailed === true} onClose={onClose} onReread={reread} />
     );
   return { title, pending, at: phase.at, body };
 }
@@ -184,13 +193,14 @@ function Confirm({
     setError(null);
     try {
       await startSetup(link);
-      // The steps begin from what the host has; before its first word, from the peek.
-      onStarted((await readSetupState()) ?? { giver: peek.giver, origin: peek.origin, steps: [{ step: "link", state: "working" }], words: null, seeds: null, done: false });
     } catch (err) {
       setError(dialogErrorWords(err));
+      return;
     } finally {
       setPending(false);
     }
+    // Started, so the link is claimed and Allow is awaited: the steps, from the peek until the host's first answer lands.
+    onStarted({ giver: peek.giver, origin: peek.origin, steps: [{ step: "link", state: "done" }, { step: "allow", state: "working" }], words: null, seeds: null, done: false });
   };
   return (
     <>
@@ -214,9 +224,26 @@ function StepMark({ step }: { step: SetupStepRow }) {
   return <StatusMark state={step.step === "allow" ? "waiting" : "queued"} word={false} />;
 }
 
-function Steps({ state, steps, onClose, onReread }: { state: SetupState; steps: SetupStepRow[]; onClose: () => void; onReread: () => Promise<void> }) {
-  const [busy, setBusy] = useState<SetupStep | null>(null);
+function Steps({
+  state,
+  steps,
+  readFailed,
+  onClose,
+  onReread,
+}: {
+  state: SetupState;
+  steps: SetupStepRow[];
+  readFailed: boolean;
+  onClose: () => void;
+  onReread: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState<SetupStep | "read" | null>(null);
   const [errors, setErrors] = useState<Partial<Record<SetupStep, string>>>({});
+  const reread = async (): Promise<void> => {
+    setBusy("read");
+    await onReread();
+    setBusy(null);
+  };
   const run = async (step: SetupStep, work: () => Promise<unknown>): Promise<void> => {
     setBusy(step);
     setErrors(({ [step]: _gone, ...rest }) => rest);
@@ -238,6 +265,15 @@ function Steps({ state, steps, onClose, onReread }: { state: SetupState; steps: 
   return (
     <>
       <ModalBody className="gap-0 py-1">
+        {/* The host's answer did not come: one red line over the steps there are, with the list's one button weight. */}
+        {readFailed ? (
+          <p role="alert" data-setup-read-failed className="flex items-center gap-2 py-2 text-xs text-destructive">
+            <span className="min-w-0 flex-1 text-pretty">Couldn't read the steps</span>
+            <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => void reread()}>
+              <BusyLabel busy={busy === "read"} label="Retry" />
+            </Button>
+          </p>
+        ) : null}
         {steps.map((step) => (
           <PageRow
             key={step.step}

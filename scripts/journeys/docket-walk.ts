@@ -198,7 +198,10 @@ async function walk(page: Window, pass: Pass, theme: Theme, f: Fixtures, keyId?:
     ? click(`nav button[aria-label^=${js(label)}]`)
     : click('nav button', label)
   const panel = async (tab?: string) => {
-    if (!await page.eval(`!!document.querySelector(${js(PANEL)})?.getClientRects().length`)) await click('button', 'Panel')
+    // The toggle says whether the panel is open: a panel kept open across the reload may still be loading its
+    // chunk, and a click then would close it.
+    const pressed = `[...document.querySelectorAll('button[aria-label="Panel"]')].some(b => b.getClientRects().length && b.getAttribute('aria-pressed') === 'true')`
+    if (!await page.eval(pressed)) await click('button', 'Panel')
     await visible(PANEL, 'the right panel')
     if (!tab) return
     const trigger = `${PANEL} [role="tab"]`

@@ -46,6 +46,20 @@ describe("the time's words and what he types", () => {
     expect(timesFor("6:3").map(timeWords)).toEqual(["6:30 AM", "6:30 PM"]);
     expect(timesFor("soon")).toEqual([]);
   });
+
+  // Council 5 S F11.1: on a 24-hour clock "6p" offered nothing, though Enter took it: the match read the words "18:00".
+  it("matches the value, not his clock's words, so a 24-hour clock offers 6p's quarters and its own hours", () => {
+    expect(timesFor("6p", true)).toEqual(["18:00", "18:15", "18:30", "18:45"]);
+    expect(timesFor("6:3 pm", true)).toEqual(["18:30"]);
+    expect(timesFor("12a", true)).toEqual(["00:00", "00:15", "00:30", "00:45"]);
+    expect(timesFor("6", true)).toEqual(["06:00", "06:15", "06:30", "06:45"]);
+    expect(timesFor("06", true)).toEqual(["06:00", "06:15", "06:30", "06:45"]);
+    expect(timesFor("18", true)).toEqual(["18:00", "18:15", "18:30", "18:45"]);
+    expect(timesFor("183", true)).toEqual(["18:30"]);
+    // Each offer is a value Enter would set the same: what is offered for "6p" is what parseTime reads.
+    expect(timesFor("6p", true)[0]).toBe(parseTime("6p"));
+    expect(timesFor("6p", false)).toEqual(["18:00", "18:15", "18:30", "18:45"]);
+  });
 });
 
 function Held({ initial = "18:00", onChange, required }: { initial?: string; onChange?: (value: string) => void; required?: boolean }) {

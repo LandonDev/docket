@@ -102,6 +102,29 @@ describe("QuestionCard", () => {
     expect(onSubmitAnswers).toHaveBeenCalledWith([["Beta"]]);
   });
 
+  // Council 5 S F3.1: a named pick beside a checked, blank Other enabled Continue and sent "".
+  it("a several-pick question with a checked Other holds Next and Continue until the field has words", () => {
+    const onSubmitAnswers = vi.fn();
+    const many: Question[] = [
+      { prompt: "Which?", multiSelect: true, options: [{ label: "Alpha" }, { label: "Beta" }, { label: "Other", freeform: true }] },
+      { prompt: "And?", options: [{ label: "Yes" }, { label: "No" }] },
+    ];
+    render(<QuestionCard questions={many} onSubmitAnswers={onSubmitAnswers} />);
+    const next = () => screen.getByRole("button", { name: /Next|Continue/ }) as HTMLButtonElement;
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Alpha" })[0]);
+    expect(next().disabled).toBe(false);
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Other" })[0]);
+    expect(next().disabled).toBe(true);
+    fireEvent.change(screen.getAllByRole("textbox", { name: "Other" })[0], { target: { value: "  " } });
+    expect(next().disabled).toBe(true);
+    fireEvent.change(screen.getAllByRole("textbox", { name: "Other" })[0], { target: { value: "Gamma" } });
+    expect(next().disabled).toBe(false);
+    fireEvent.click(next());
+    fireEvent.click(screen.getByRole("radio", { name: "Yes" }));
+    fireEvent.click(next());
+    expect(onSubmitAnswers).toHaveBeenCalledWith([["Alpha", "Gamma"], ["Yes"]]);
+  });
+
   it("typing in the free-form field, Space and Enter included, never unpicks its row", () => {
     const onSubmitAnswers = vi.fn();
     const { container } = render(<QuestionCard questions={one} onSubmitAnswers={onSubmitAnswers} />);

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { DUR } from "../../lib/ease";
 import type { PanelMotion, RightPanelProps } from "../RightPanel";
 import type { OpenFileFn } from "../../lib/search";
@@ -21,8 +21,15 @@ const ResearchView = threadViewsChunk.surface("ResearchView", skeleton);
 // A Work thread's view sits in the canvas seat (work/canvas), which holds its open items beside it. Its chunk is asked
 // for by a Work thread alone, so a code thread loads nothing of Work.
 const CanvasSeat = workCanvasChunk.surface("CanvasSeat", skeleton);
+// The panel's place while it loads: its own frame at the width the row gives it (`--pane-width`, set on the row), so
+// the thread keeps its column and nothing moves when the panel lands.
+const panelLoading = (
+  <aside aria-label="Thread panel" className="flex w-(--pane-width) shrink-0 flex-col border-l border-border bg-sidebar">
+    <SurfaceSkeleton kind="pane" label="Loading panel" />
+  </aside>
+);
 // The panel rides its own chunk and mounts only while open, so a closed panel costs nothing.
-const RightPanel = rightPanelChunk.surface("RightPanel", <SurfaceSkeleton kind="pane" label="Loading panel" />);
+const RightPanel = rightPanelChunk.surface("RightPanel", panelLoading);
 import { panelFit, rightPanel, THREAD_MIN, useRightPanel, useShownThread } from "../../lib/rightPanel";
 import { rightPanelChunk } from "../chunks";
 import { useSessionById } from "../../lib/threads/agents";
@@ -92,7 +99,11 @@ export function ThreadView(props: ThreadViewProps) {
   if (!root) return view;
   return (
     // Clipped on x alone: the arriving pane never paints over a split's neighbour, and popovers still overflow up.
-    <div ref={setRow} className="relative flex min-h-0 min-w-0 flex-1 overflow-x-clip">
+    <div
+      ref={setRow}
+      className="relative flex min-h-0 min-w-0 flex-1 overflow-x-clip"
+      style={pane.drawn ? ({ "--pane-width": `${pane.width ?? panel.width}px` } as CSSProperties) : undefined}
+    >
       {view}
       {pane.drawn ? (
         <PaneRightPanel
@@ -126,13 +137,7 @@ function PaneRightPanel({ pane: streamed, ...props }: Omit<RightPanelProps, "ses
   const shown = useShownThread(pane.id);
   const child = useKept(useSessionById(shown?.id ?? null), sameChromeOrNone);
   if (!shown) return <RightPanel session={pane} paneId={pane.id} {...props} />;
-  if (!child || child.environmentId !== shown.environmentId) {
-    return (
-      <aside aria-label="Thread panel" className="flex shrink-0 flex-col border-l border-border bg-sidebar" style={{ width: props.width ?? rightPanel.get(pane.id).width }}>
-        <SurfaceSkeleton kind="pane" label="Loading panel" />
-      </aside>
-    );
-  }
+  if (!child || child.environmentId !== shown.environmentId) return panelLoading;
   return <RightPanel session={child} paneId={pane.id} {...props} />;
 }
 

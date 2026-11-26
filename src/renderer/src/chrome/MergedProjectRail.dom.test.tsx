@@ -191,7 +191,7 @@ describe("the rail", () => {
     await probe.act(flush);
     return probe.container;
   }
-  const workspaceRows = (root: HTMLElement) => [...root.querySelectorAll('nav[aria-label="Workspaces"] [data-rail-path]')];
+  const workspaceRows = (root: HTMLElement) => [...root.querySelectorAll('nav[aria-label="Main"] [data-rail-path]')];
   const rowNames = (root: HTMLElement) => workspaceRows(root).map((row) => row.querySelector("button")?.textContent ?? "");
   /** The row's 16px lead slot, where the workspace's glyph sits. */
   const glyphOf = (row: Element) => row.querySelector("button > span[aria-hidden]");
@@ -209,9 +209,11 @@ describe("the rail", () => {
 
   it("opens with one navigation group, Accounts and Stats in it, before Pinned and Workspaces", async () => {
     const root = await mountRail([LOCAL, BOX]);
-    const list = root.querySelector('nav[aria-label="Workspaces"] .overflow-y-auto')!;
+    const list = root.querySelector('nav[aria-label="Main"] .overflow-y-auto')!;
     const labels = [...list.querySelectorAll("[data-rail-row] > button")].map((b) => b.textContent);
     expect(labels.slice(0, 8)).toEqual(["Search", "Inbox", "Computers", "Mark all read", "Notes", "Chats", "Accounts", "Stats"]);
+    // The landmark holds Search, Inbox and Notes too, so it is "Main" (read "Main navigation"), not "Workspaces".
+    expect(root.querySelector("nav")!.getAttribute("aria-label")).toBe("Main");
     // No heading names the navigation or an Accounts group; two threads wait
     // on the person, so the Working section stands under the list.
     expect(headers(root)).toEqual(["Workspaces", "Working"]);
@@ -229,7 +231,7 @@ describe("the rail", () => {
     expect(foot.className).toContain("border-t");
     expect(working.className).not.toContain("border-t");
     expect(foot.textContent).toContain("Settings");
-    expect(root.querySelector('nav[aria-label="Workspaces"] .overflow-y-auto [data-rail-working]')).toBeNull();
+    expect(root.querySelector('nav[aria-label="Main"] .overflow-y-auto [data-rail-working]')).toBeNull();
   });
 
   it("Mark all read marks every thread on every host seen", async () => {
@@ -368,7 +370,7 @@ describe("the rail", () => {
 
   it("dims a row whose only host is down, not the linked one", async () => {
     const root = await mountRail([LOCAL, BOX], { env_box: status("offline") });
-    const dim = [...root.querySelectorAll('nav[aria-label="Workspaces"] [data-host-offline]')];
+    const dim = [...root.querySelectorAll('nav[aria-label="Main"] [data-host-offline]')];
     expect(dim.map((row) => row.querySelector("button")?.textContent)).toEqual(["only-box"]);
   });
 

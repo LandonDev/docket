@@ -5,6 +5,7 @@ import { previewInput, previewNow } from "../lib/previewHost.preview";
 export default [
   { name: "Loading notes", props: { state: "loading" } },
   { name: "No notes", props: { state: "empty" } },
+  { name: "Notes could not be read", props: { state: "failed" } },
   { name: "A note selected", props: {} },
   { name: "No notes match the filter", props: {}, prepare: (root: HTMLElement) => previewInput(root, "Filter notes", "packing list") },
 ].map((fixture) => ({ ...fixture, now: previewNow }));

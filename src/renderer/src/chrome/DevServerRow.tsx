@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { useStore } from "zustand";
+import { HeldTip } from "../components/heldTip";
 import { Tip } from "../components/tip";
 import { BusyLabel, Button } from "../components/ui/button";
 import { Item, ItemActions, ItemButton, ItemContent, ItemTitle } from "../components/ui/item";
 import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../components/ui/press";
 import { cn } from "../lib/cn";
 import { registry } from "../lib/connection";
+import { useHostHeld } from "../lib/connection/degraded";
 import { openUrl, portOpen } from "../lib/devPorts";
 import { dialogErrorWords } from "../lib/dialogErrorWords";
 import { DID_NOT_STOP, stopLiveServer, type LiveServer } from "../lib/devServers";
 import { macBridgeStore } from "../lib/macBridge";
+import { useLinkMay } from "../lib/linkMayCore";
 import { isWebMode } from "../lib/nativeWeb";
 import { HostGlyph } from "./HostGlyph";
 
@@ -24,13 +27,17 @@ function stopFailWords(err: unknown, environmentId: string): string {
  * Dev servers pane: what it is in plain words, its address on its host,
  * "Open on the Mac :5174" when it opens here, and Stop. The address is the
  * row's Open control (a local server's own address, else the Mac's link);
- * Stop is its one word button. `onPick` makes the row pick its console (the pane).
+ * Stop is its one word button: not drawn for a key that may not stop it, held
+ * while its host is away. `onPick` makes the row pick its console (the pane).
  */
 export function DevServerRow({ server, picked = false, onPick }: { server: LiveServer; picked?: boolean; onPick?: () => void }) {
   const localId = useStore(macBridgeStore, (s) => s.localId);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = stopping || server.stopping !== undefined;
+  // D5: a run stops by `devServer.stop`, a ledger row by `resources.remove`, both on the row's host.
+  const mayStop = useLinkMay(server.environmentId, server.runId ? "devServer.stop" : "resources.remove");
+  const held = useHostHeld(server.environmentId);
   const port = server.port;
   const open = port && !isWebMode() ? portOpen(port.number, port.environmentId, port.forwards, localId) : null;
   // A server on this machine opens from its own address; one elsewhere says where it lives, then where it opens here.
@@ -90,17 +97,21 @@ export function DevServerRow({ server, picked = false, onPick }: { server: LiveS
         ) : null}
       </ItemContent>
       <ItemActions className={cn(picks && ROW_CONTROLS)}>
-        {/* The word says what it does: no tooltip. */}
-        <Button
-          variant="ghost"
-          size="xs"
-          disabled={pending}
-          aria-busy={pending || undefined}
-          className="text-muted-foreground hover:text-foreground"
-          onClick={stop}
-        >
-          <BusyLabel busy={pending} label="Stop" />
-        </Button>
+        {/* The word says what it does: no tooltip, but the link's words while its host is away. */}
+        {mayStop ? (
+          <HeldTip held={held}>
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={pending || !!held}
+              aria-busy={pending || undefined}
+              className="text-muted-foreground hover:text-foreground"
+              onClick={stop}
+            >
+              <BusyLabel busy={pending} label="Stop" />
+            </Button>
+          </HeldTip>
+        ) : null}
       </ItemActions>
     </Item>
   );

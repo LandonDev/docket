@@ -1125,7 +1125,7 @@ const SWITCH_OBSERVERS = `(() => {
     }).observe({ type: 'long-animation-frame' })
   } catch {}
   const shown = (e) => e.getBoundingClientRect().width > 0 && !e.closest('.tab-parked, .board-parked')
-  s.row = (name) => [...document.querySelectorAll('nav[aria-label="Workspaces"] button')].filter(shown).find((e) => { const t = e.getAttribute('aria-label') || e.textContent.trim(); return t === name || t.startsWith(name + ',') })
+  s.row = (name) => [...document.querySelectorAll('nav[aria-label="Main"] button')].filter(shown).find((e) => { const t = e.getAttribute('aria-label') || e.textContent.trim(); return t === name || t.startsWith(name + ',') })
   s.read = () => {
     const pane = [...document.querySelectorAll('[data-session-drop]')].find(shown)
     return {
@@ -1167,7 +1167,7 @@ async function recordSwitch(c: Cdp): Promise<void> {
   const until = Date.now() + 60_000
   while (Date.now() < until && !(await c.eval<boolean>(`!!window.__switch.row(${JSON.stringify(a)}) && !!window.__switch.row(${JSON.stringify(b)})`))) await sleep(500)
   if (!(await c.eval<boolean>(`!!window.__switch.row(${JSON.stringify(a)}) && !!window.__switch.row(${JSON.stringify(b)})`))) {
-    throw new Error(`the rail has no workspaces named ${a} and ${b}: ${JSON.stringify(await c.eval('[...document.querySelectorAll(\'nav[aria-label="Workspaces"] button\')].map((e) => e.getAttribute("aria-label") || e.textContent.trim())'))}`)
+    throw new Error(`the rail has no workspaces named ${a} and ${b}: ${JSON.stringify(await c.eval('[...document.querySelectorAll(\'nav[aria-label="Main"] button\')].map((e) => e.getAttribute("aria-label") || e.textContent.trim())'))}`)
   }
   const press = async (name: string): Promise<void> => {
     // A long rail scrolls: the row comes into view before the press.

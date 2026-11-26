@@ -438,6 +438,9 @@ until the setup starts. Shapes: `SetupItems`, `SetupStep`, `SetupPeek`,
   done; Folders in Files offers **Add folders…** (the native picker, several at
   once, `pickFolders` in lib/fs.ts) once Allow is done. The steps follow
   `device-setup` and read `devices.setup.state` again after a Retry or a pick.
+  A Start that went moves to the steps at once (Link done, Allow working, from the
+  peek) and the state is read there: a read that fails is one red line over the
+  steps, "Couldn't read the steps", with Retry, never a refusal on the confirm.
 - **The first screen** (`SetupFirstRun.tsx`): opens by itself once, on a fresh
   install (no saved hosts, no workspaces, no accounts; `isFreshInstall`), and
   at every launch while a setup is under way, on its steps. Closing it sets

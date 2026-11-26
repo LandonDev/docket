@@ -163,6 +163,14 @@ export const DOCKET_ASKS: readonly DocketAsk[] = [
     linkDown: ["surfaces/DevStarter.dom.test.tsx", "draws no Run for a key that may only read, and holds it while the host is away"],
   },
   {
+    method: "devServer.stop",
+    need: "operate",
+    control: "a live dev server's Stop (a ledger row's Stop sends resources.remove, gated the same way)",
+    file: "chrome/DevServerRow.tsx",
+    readKey: ["chrome/DevServerRow.dom.test.tsx", "draws no Stop for a key that may only read, and holds it while the host is away"],
+    linkDown: ["chrome/DevServerRow.dom.test.tsx", "draws no Stop for a key that may only read, and holds it while the host is away"],
+  },
+  {
     method: "session.rename",
     need: "operate",
     control: "the thread menu's Rename (and every verb of it, THREAD_MENU_METHODS)",

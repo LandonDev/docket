@@ -15,6 +15,7 @@ const NEEDS = {
   "batch.stopStep": "operate",
   "build.run": "operate",
   "devServer.start": "operate",
+  "devServer.stop": "operate",
   "fs.createPath": "operate",
   "git.commitStaged": "operate",
   "git.stageFile": "operate",

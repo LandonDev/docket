@@ -1112,7 +1112,7 @@ export function Composer({
               <HeldTip held={blocked ? null : asks.refusal}>
                 <SendButton
                   intent={intent}
-                  disabled={!!refused || filing || (intent !== 'pause' && !sendable)}
+                  disabled={!!refused || filing || uploading || (intent !== 'pause' && !sendable)}
                   onSubmit={(invert) => submit(inputRef.current?.value() ?? '', invert)}
                   onPause={() => onPause?.()}
                 />

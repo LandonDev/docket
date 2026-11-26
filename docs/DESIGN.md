@@ -499,7 +499,9 @@ what he types on Enter or when he leaves it ("6", "6p", "18:00",
 "6:30 pm"; an hour with no AM or PM is the 24-hour clock's), and gives
 words that are no time the last time back. A press, ↓ or typing drops the
 quarter hours under it in the popover's list, those that begin with what
-he typed, the set one ticked with a muted check and in view. Its value is
+he typed, matched against the time itself, not its words ("6p" is 6:00 to
+6:45 PM on either clock; bare digits are his clock's hour: "18" on a
+24-hour one), the set one ticked with a muted check and in view. Its value is
 a time input's own ("18:00", "" for none), beside `DateField`'s.
 
 ### Spacing
@@ -5292,7 +5294,8 @@ letters pick as well), and the free-form row wears the one focus ring while
 its field holds the focus. Its
 actions end the card 16px under the options, right-aligned 8px apart, the
 raised buttons at `sm`: Back and Skip `secondary`, Next or Continue (with ⌘⏎)
-`default`; Back arrives at the group's start, so Skip and Next never move. Every action
+`default`, enabled only once the answer is ready (a checked free-form row needs its words, whatever else is
+checked); Back arrives at the group's start, so Skip and Next never move. Every action
 row ends in a caret: it turns on a row that opens a body and stays still on
 one that opens its file.
 

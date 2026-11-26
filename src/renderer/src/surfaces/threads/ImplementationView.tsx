@@ -22,6 +22,7 @@ import { actKind, changeStat, editPath } from "../../lib/threads/rounds";
 import { AgentMarkdown } from "../AgentMarkdown";
 import { OpenAgentDetailContext } from "../agentDetailContext";
 import { duration } from "../../lib/duration";
+import { fallbackFailure } from "@server/shared/failureFallback";
 import { TypeGlyph } from "./TypeGlyph";
 import { ChangeRows } from "./ChangeRows";
 import { AgentDetail } from "./fleet/AgentDetail";
@@ -330,7 +331,8 @@ export function ImplementationView(props: ThreadViewProps) {
                 {failure.stopped || stopped ? (
                   <StatusMark state="stopped" />
                 ) : (
-                  <StatusMark state="failed" detail={failure.failure?.summary ?? failure.text} />
+                  /* An older row with no verdict reads the transcript's fallback words, never the driver's raw text. */
+                  <StatusMark state="failed" detail={(failure.failure ?? fallbackFailure()).summary} />
                 )}
               </div>
             ) : null}

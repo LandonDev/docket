@@ -224,7 +224,7 @@ of the right panel's Changes section, not the header's.
 | --- | --- | --- |
 | Frame | `chrome/ProjectRail.tsx`, a flex column on `bg-sidebar` | resizable; the 40px header (traffic lights, back, forward, the toggle), the scrolling list, then the foot under one hairline. The navigation group scrolls with the workspaces, so a short window never starves the list (⌘K still reaches Search once it has scrolled away). The classic layout and its tab strip are gone. At the least width it folds: while the window less the rail's width and the column's would leave the thread under its 360px floor (`THREAD_MIN`; 800 − 200 − 260 = 340), the rail takes its collapsed state, his saved choice untouched, and opens again once the room is back; a press of the toggle while cramped stands until the room crosses the line again (lib/railFold.ts, `foldRail`/`unfoldRail` in stores/shell.ts). Nothing else gives way by itself |
 | Row | `chrome/RailRow.tsx` (`RailRow`) | every row in the rail and the settings list: 28px, 12px horizontal padding, a 16px glyph slot only when the row has an icon or a glyph (a row with neither starts its label at the 12px inset), 8px to a 13px label that keeps at least 48px (`min-w-12`), so trailing marks never take the whole row. An item is `text-muted-foreground` at rest and `text-foreground` on hover, focus and selection; selection is `aria-current` with the `bg-sidebar-group-selected` fill (the open menu's row too), hover `bg-chrome-hover`, never a bar, border or shadow (docs/DESIGN.md "Colour": in dark these are `muted` and `foreground` 5%, as before; in light the selected and hovered group steps, so a selected row never reads as a resting card). `surface="group"` is a container: `bg-sidebar-group` at rest, `-hover` on hover, `-selected` while `aria-current` or its menu is open, the label foreground at every state, no transition on the fill. At most one trailing node (`trailingInteractive` puts a control such as a workspace's state glyph beside the row's button) and two `hoverActions`, 24px icon Buttons with their Tooltips (one `TooltipProvider`) in order at the row's end on hover (after `--delay-hover`, fading in on a wrapper so the button keeps its hover fill) and keyboard focus (a mouse click does not hold them; an open action menu keeps them and keeps the mark they cover hidden), whose presses never reach the row (beside an interactive trailing node they lie over the end of the row's button right before it, 4px from it, on the row's own fill whose first 12px fade the name out under them: the name keeps its whole room at rest and is covered, never reflowed, and a plain mark there, `trailingYield`, fades as they cover it). A Tooltip, never `title=`, and a label the row cuts (a long workspace name) is its own tooltip while it is cut (`useTruncated`); rows never animate in or out. The lists sit in an 8px inset; an icon row's glyph, a heading and a workspace name start at the same 12px inset |
-| Heading | `RailHeading` in `chrome/RailRow.tsx` | 28px, 12px `font-medium` muted, sentence case, at the rows' 12px inset; "Pinned" only when pins exist, "Workspaces" ends in Add workspace (one always-visible 24px icon button) unless the list is empty, when an Add workspace… row stands under it instead, and "Working" in the foot. The navigation group has none. Groups are 16px apart |
+| Heading | `RailHeading` in `chrome/RailRow.tsx` | 28px, 12px `font-medium` muted, sentence case, at the rows' 12px inset; "Pinned" only when pins exist, "Workspaces" ends in Add workspace (one always-visible 24px icon button) unless the list is empty, when an Add workspace… row stands under it instead, and "Working" in the foot. The navigation group has none. The rail is one `nav` named "Main" (read "Main navigation"): it holds more than workspaces. Groups are 16px apart |
 | List | the navigation group, Pinned, then Workspaces (`railTopRows` in chrome/ProjectRail.tsx) | the navigation group first, one group with no heading and no gap between rows: Search (Tooltip ⌘K, selected while the search view is open), Inbox (medium while something is unseen), Computers (always there; the working dot while a computer is driven, the amber mark while one needs him, no count; Tooltip ⌘⇧L; opens the Computers page), Mark all read (every thread on every host, and the seen floor raised, as the Threads menu's item; no selected state), Notes (selected while the Notes view is open), Chats (the home's loose chats, its trailing mark the waiting or working glyph), then Accounts and Stats in the desktop app only (at /ui their pages cannot open, so the rows are absent) |
 | Workspace row | `WorkspaceRow` in `chrome/ProjectRail.tsx` on `lib/linkedRail.ts` | a container: `RailRow surface="group"`, the rows 4px apart (`gap-1`) so their fills never touch. It leads with the workspace's 16px glyph (`WorkspaceGlyph`, chrome/WorkspaceGlyph.tsx, the one glyph Search, Inbox, Notes and the folder picker draw too): the logo Customize set, else the repo's icon or its host's GitHub or GitLab mark from the workspace's host unless a mascot was picked, else the mascot (picked, or hashed from the key) in the workspace's colour; an image on the 4px radius, loaded lazily and drawn only once loaded (a data URL at once; the slot keeps its size, so the name never moves), one that fails giving way to the next; never animated, never tinted by state; a linked row reads the leader copy's look. The name (a label this window saved, else the workspace's name) follows 8px on in 13px foreground, `font-medium` while one of its threads is unread. Its trailing marks: the selected row's uncommitted lines, "+212 −48" in 12px muted `tabular-nums` (`diffWords`; green and red stay in the Changes section; only the selected row asks git, on the bulk lane, `useGitDiffStats`; the button's name adds "3 files changed, +12, -4", `workspaceRowAriaLabel`; it fades out under the hover actions, and leaves for the name in a rail under 15rem, the row being the `railrow` container, so the default 200px rail never draws it: at 11rem the name was cut to four letters), then the state's one `StatusMark` glyph in a 24px ghost button named with its word and count ("Needs you, 4 threads"; Needs you, Failed, Working, Paused, Watching, loudest first; no glyph for idle or done), whose click opens the workspace's threads in a Popover, each row led by its type's tinted glyph and a master's batch threads one step past it, and whose press never starts a drag. On hover (after `--delay-hover`, fading in on the row's fill over the name's end and the diff, right before the glyph, so the name never reflows) and keyboard focus, Pin or Unpin then ⋯ (the right-click's menu: Rename… (the workspace's own name, `workspace.rename`, in a small dialog; the folder keeps its name), Customize… (name, logo, colour and mascot in one dialog, applied on Save; the name is the same rename), Pin or Unpin, Move up and Move down (each disabled at its list's end), Reveal, Mark all read, the fleet switches, Archive, Remove…), the glyph staying where it is. Drag reorders it, a 2px accent line marks the drop; Move up and Move down are the keyboard's way to the same order. One "Workspaces" section for every host, no host headers; a workspace linked across hosts (one `linkId`) is one row led by this machine's copy, its threads, glyph, Mark all read, pin and drag spanning every copy; order, pins, recents, labels, colours and mascots keep their keys, the other copies alias to the leader's (`aliasKeys`). No shimmer on the name and no line under the row: Working names the threads. The glyph button is A2's, in `chrome/WorkspaceRowMarks.tsx` |
 | Offline tint | `chrome/hostOffline.ts` | with two or more hosts, a row whose host's link is not open (a rail row: every host of it) sits at `opacity-50` with `data-host-offline`; its rows are the launch mirror's and lift when the host is back. Its menu holds the host's verbs (Rename…, Mark all read, the fleet switches, Archive, Remove…), the link's words their reason; Pin, Reveal and the order stay (`hostsHeld`, `heldRows`). A master board's row of a host that is away keeps `data-host-offline` but reads muted by its title, never by opacity, and keeps Message alone |
@@ -502,7 +502,8 @@ second model `--chart-3` and `--chart-4` by its family, never its rank, the
 rest "Other", and a series that counts both providers (Top projects, Tools
 used, Cache hit rate, the Busiest hours ramp) the neutral gray; one hover
 readout per chart, 12px ticks (a day axis labels at most six days, evenly
-spaced, `dayTickInterval`), the tooltip on `px-3 rounded-xl`, and every
+spaced, and no more than its plot holds at 64px a label, so a narrow window's
+dates keep their room: `dayTickInterval` from the frame's width), the tooltip on `px-3 rounded-xl`, and every
 chart colour reaches 3:1 on the page in both themes
 (`lib/tokenContrast.test.ts`).
 
@@ -617,7 +618,10 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   out and fading over `--dur-fast`; a toggle mid-move turns back from where
   it is; under reduced motion it fades. The row clips on x alone, so a
   split's neighbour never sees it. A pane that mounts open (a tab switch, a
-  launch) is just there, and the sash's drag is immediate. The body fades in
+  launch) is just there, and the sash's drag is immediate. While its chunk
+  loads, its place is the panel's own frame at the width the row gives it
+  (`--pane-width` on the row) with the pane skeleton in it, so the thread
+  keeps its column and nothing moves when the panel lands. The body fades in
   over `--dur-fast`. Closed is closed: the thread header's button, ⌘⇧R and
   View › Show Panel reopen it on its last section. An agent's
   detail (`fleet.detailId`, surfaces/threads/fleet/AgentDetail.tsx) is a
@@ -716,7 +720,10 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     whole on hover only while cut);
     "2 behind origin" with Fetch only when a fetch is due; the log; the
     outputs as rows that reveal the file. No command is one Empty with "Set
-    one" (the workspace's Build settings) and no Build button beside it.
+    one" (the workspace's Build settings) and no Build button beside it; a
+    read of the command that failed is never that: one red line, "Couldn't
+    read the build command", with Retry, and no Build. A refused Build or
+    Fetch is one red line in `dialogErrorWords`'s words, never the rejection.
   - **Debug** (`DebugPanel`): with no session one muted line, "⌃D in a
     Java file starts a session here"; while one runs, the step controls,
     its `StatusMark` (Working, Paused, Failed while its error line shows) and Stop, then Call stack, Variables
@@ -762,7 +769,9 @@ surfaces/FailLine.tsx): plain words ("Couldn't load Linear issues",
 "Couldn't save this note", under its title), the program's own text
 on hover alone; a failed source hides its repos' lines. Notes with no note
 to show says a failed read as its `EmptyState` ("Couldn't load notes on the
-box") with Retry. The detail says its own failures the same way, one line a
+box") with Retry; over listed notes the same words are the red line, with
+Retry at its end, and the rows stay (`readNotes` rejects a failed read; the
+pickers' `loadNotes` keeps the last good list). The detail says its own failures the same way, one line a
 place ("Couldn't load this pull request", "Couldn't load the changes",
 "Couldn't load the comments", "Couldn't post the comment"). A comment's head
 is its author, 4px on one comma run of its facts (review state, place,
@@ -797,7 +806,10 @@ name cuts first (a note's row too). Go to File and Go to Symbol are the same
 list in a picker dialog (chrome/PickerDialog.tsx) whose rows are menu rows.
 Go to Symbol draws only the rows of the words now typed: from the first key of
 new words the old rows go and the picker says "Searching…" until their answer
-lands, so Enter never opens a result of the last query.
+lands, so Enter never opens a result of the last query. Go to File keeps the
+names it last read when a fresh read fails, under one red 12px line,
+"Couldn't list this project's files", with Retry (Tab reaches it; his words stay);
+no "No matching files" stands in for the failure.
 
 ### The viewers
 
@@ -990,7 +1002,8 @@ The box is Claude desktop's: `rounded-xl` on `COMPOSER_SURFACE` (the card
 fill and a hairline that steps to `border-input` while the box has focus;
 the checkpoint strip above it shares it; the hairline's step eases over
 `--dur-fast`), attachments as `Attachment` chips at its top (6px in, on the
-row's inset, each `rounded-md` so 12 = 6 + 6 with the box's corner; a failed
+row's inset, each `rounded-md` so 12 = 6 + 6 with the box's corner; while
+they go up to the thread's host Send is disabled and each chip shows its progress; a failed
 upload is its chip's red Failed, and the line under the chips says only why,
 in words (`attachLine`: "Not connected", our own reasons as written, else
 "Couldn't attach the file"; never a failure's raw text), a failed pick or paste the same;
@@ -1204,7 +1217,7 @@ the project, a server runs or the pane is open. Switching is instant.
   threads (a 12px muted heading per thread), and the picked one's console
   filling the rest. A row (chrome/DevServerRow.tsx) is what it is in plain
   words with the host glyph (the name wraps in its column, never cut), its
-  address and "Open on the Mac :5174" under it, Stop at its end. In the pane the row picks its console through an
+  address and "Open on the Mac :5174" under it, Stop at its end (not drawn for a key that may not stop it; disabled in place while its host is away, the link's words its tooltip, `HeldTip`). In the pane the row picks its console through an
   open control laid over it (`ROW_HOLDS`: Enter or Space picks too), the
   address and Stop its own buttons above it. The address is the row's Open control ("Open
   localhost:5199", "Open in browser" on hover); a server on another host

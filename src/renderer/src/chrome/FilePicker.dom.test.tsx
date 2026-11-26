@@ -14,9 +14,9 @@ const FILES = ["src/app.ts", "src/main.ts", "README.md"].map((relative) => ({
   name: relative.slice(relative.lastIndexOf("/") + 1),
 }));
 
-const index = vi.hoisted(() => ({ fail: false, files: null as { path: string; relative: string; name: string }[] | null, dropped: null as (() => void) | null }));
+const index = vi.hoisted(() => ({ fail: false, refreshFails: false, files: null as { path: string; relative: string; name: string }[] | null, dropped: null as (() => void) | null }));
 vi.mock("../lib/fileIndex", () => ({
-  loadProjectFiles: () => (index.fail ? Promise.reject(new Error("ENOENT: rg not found at /usr/bin/rg")) : Promise.resolve(index.files ?? FILES)),
+  loadProjectFiles: () => (index.fail || index.refreshFails ? Promise.reject(new Error("ENOENT: rg not found at /usr/bin/rg")) : Promise.resolve(index.files ?? FILES)),
   peekProjectFiles: () => (index.fail ? null : (index.files ?? FILES)),
   subscribeProjectFilesDropped: (_cwd: string, dropped: () => void) => {
     index.dropped = dropped;
@@ -40,6 +40,7 @@ afterEach(() => {
   cleanup();
   index.files = null;
   index.dropped = null;
+  index.refreshFails = false;
 });
 
 async function mount() {
@@ -81,6 +82,30 @@ describe("FilePicker", () => {
     expect(screen.getByText("Couldn't list this project's files")).toBeTruthy();
     expect(document.body.textContent).not.toContain("ENOENT");
     index.fail = false;
+  });
+
+  // Council 5 S F9.1: the cached names masked a failed refresh as "No matching files".
+  it("keeps the cached names when a refresh fails, says so in one red line, and Retry asks again", async () => {
+    index.refreshFails = true;
+    const field = await mount();
+    const line = screen.getByRole("alert");
+    expect(line.textContent).toContain("Couldn't list this project's files");
+    expect(line.className.split(" ")).toEqual(expect.arrayContaining(["text-xs", "text-destructive"]));
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+    // Tab leaves the field for Retry only while the line stands.
+    expect(fireEvent.keyDown(field, { key: "Tab" })).toBe(true);
+    // A name the cache lacks: the failure, never "No matching files".
+    fireEvent.change(field, { target: { value: "NEW" } });
+    expect(screen.queryByText("No matching files")).toBeNull();
+    expect(screen.getByRole("alert")).toBeTruthy();
+    // Retry reads again and keeps his words; the fresh list has the new file.
+    index.refreshFails = false;
+    index.files = [...FILES, { path: "/srv/app/NEW.md", relative: "NEW.md", name: "NEW.md" }];
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect((screen.getByRole("combobox", { name: "Go to file" }) as HTMLInputElement).value).toBe("NEW");
+    expect(screen.getAllByRole("option").map((row) => row.textContent)).toEqual([expect.stringContaining("NEW.md")]);
+    expect(fireEvent.keyDown(screen.getByRole("combobox", { name: "Go to file" }), { key: "Tab" })).toBe(false);
   });
 
   it("drops the old key's names when its host's key changes or it leaves, and shows the list asked again", async () => {

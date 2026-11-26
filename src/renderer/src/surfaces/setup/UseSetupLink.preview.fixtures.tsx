@@ -15,6 +15,7 @@ export default [
           { step: "allow", state: "waiting" },
           ...(["accounts", "lifeos", "work", "folders"] as const).map((step) => ({ step, state: "waiting" as const })),
         ]) } } },
+  { name: "Steps not read", props: { ...base, phase: { at: "steps", readFailed: true, state: { ...state([{ step: "link", state: "done" }, { step: "allow", state: "working" }]), words: null } } } },
   {
     name: "Working, failed, folders waiting",
     props: {

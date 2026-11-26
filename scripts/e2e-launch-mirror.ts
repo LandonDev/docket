@@ -182,7 +182,7 @@ const boxMetas = (cdp: Cdp, env: string): Promise<Meta[]> =>
   cdp.eval<Meta[]>(
     `window.__docket.sessionStore.metas().filter((m) => m.environmentId === ${JSON.stringify(env)}).map((m) => ({ id: m.id, title: m.title, archived: m.archived, environmentId: m.environmentId, status: m.status }))`
   )
-const railText = (cdp: Cdp): Promise<string> => cdp.eval<string>(`document.querySelector('[aria-label="Workspaces"]')?.textContent ?? ''`)
+const railText = (cdp: Cdp): Promise<string> => cdp.eval<string>(`document.querySelector('[aria-label="Main"]')?.textContent ?? ''`)
 /** The window's connection state, for a timed-out wait: which hosts are registered, open, listed or mirrored. */
 const stateOf = (cdp: Cdp): Promise<string> =>
   cdp.eval<string>(

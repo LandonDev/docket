@@ -9,9 +9,12 @@ const notes: Note[] = [
   { id: "cache", slug: "cache-refresh", title: "Cache refresh", body: "Keep the last page visible while the next one loads.\n\nCheck the offline case before shipping.", sourceCwd: previewCwd, createdAt: previewNow, updatedAt: previewNow },
   { id: "release", slug: "release-checklist", title: "Release checklist", body: "Open the notes list on both computers.", createdAt: previewNow, updatedAt: previewNow },
 ];
-let shown: "loading" | "populated" | "empty" = "populated";
+let shown: "loading" | "populated" | "empty" | "failed" = "populated";
 const host = await addPreviewHost({ id: "local", name: "This computer", answers: {
-  "notes.list": () => shown === "loading" ? new Promise(() => {}) : shown === "empty" ? [] : notes,
+  "notes.list": () => {
+    if (shown === "failed") throw new Error("connect ECONNREFUSED 127.0.0.1:8787");
+    return shown === "loading" ? new Promise(() => {}) : shown === "empty" ? [] : notes;
+  },
   // The note's folder is a workspace, which the note names as the rail does ("Field Notes").
   "workspace.list": () => [previewWorkspace],
   "project.list": () => [],

@@ -198,6 +198,19 @@ describe("the implementation board", () => {
     expect(document.querySelector("[data-collapsed]")?.getAttribute("data-collapsed")).toBe("false");
   });
 
+  // council 5 S F6.1: an older failure with no verdict reads the transcript's fallback words, never the driver's text.
+  it("says an older failure with no summary in the transcript's fallback words", () => {
+    const raw = "claude exited with code 1: ECONNRESET at /usr/lib/node_modules/@anthropic-ai/claude-code/cli.js:812";
+    view(session({ blocks: [first, edit("e", "src/a.ts", 0), { id: "err:9", role: "system", text: raw, round: 0 } as Block], todos: [todo("Write a", "in_progress")] }));
+    const board = document.querySelector("[data-board]") as HTMLElement;
+    expect(board.textContent).toContain("The turn ended before it finished");
+    expect(board.textContent).not.toContain("ECONNRESET");
+    cleanup();
+    const failure = { kind: "network", account: null, summary: "The connection dropped", cause: "" };
+    view(session({ blocks: [first, edit("e", "src/a.ts", 0), { id: "err:9", role: "system", text: raw, round: 0, failure } as unknown as Block], todos: [todo("Write a", "in_progress")] }));
+    expect((document.querySelector("[data-board]") as HTMLElement).textContent).toContain("The connection dropped");
+  });
+
   it("a needs-you line opens the chat", () => {
     view(
       session({

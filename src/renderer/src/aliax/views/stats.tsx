@@ -190,10 +190,17 @@ function StatsSkeleton() {
  * History from this machine's session logs, one chart per section, each
  * directly under its heading. Data in, sections out: StatsPage loads.
  */
-/** A day axis labels at most six days, evenly spaced, whatever the chart's width: "Oct 3" never runs into
- *  "Oct 6", and no label waits on a text measure (recharts' `minTickGap` needs one). */
-export function dayTickInterval(days: number): number {
-  return Math.max(0, Math.ceil(days / 6) - 1);
+/** The room one day label takes on its axis: "Oct 30" in 12px tabular figures and the gap to the next. */
+export const DAY_TICK_PX = 64;
+/** What a day chart's frame gives to things that are not its plot: the y axis (44) and the right margin (12). */
+const PLOT_INSET = 56;
+
+/** A day axis labels at most six days, evenly spaced, and no more than its plot's width holds at
+ *  `DAY_TICK_PX` each (at least one): "Oct 6" never runs into "Oct 11" in a narrow window, and no
+ *  label waits on a text measure (recharts' `minTickGap` needs one). A frame not yet measured (0) takes six. */
+export function dayTickInterval(days: number, frameWidth = 0): number {
+  const fit = frameWidth > 0 ? Math.max(1, Math.min(6, Math.floor((frameWidth - PLOT_INSET) / DAY_TICK_PX))) : 6;
+  return Math.max(0, Math.ceil(days / fit) - 1);
 }
 
 export function StatsView({ data, status }: { data: StatsBundle | null; status: StatsStatus | null }) {
@@ -265,14 +272,16 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
               ]}
             />
             <ChartFrame label="Daily output">
+              {(width) => (
               <BarChart data={data.daily} barGap={2} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
                 <CartesianGrid {...GRID} />
-                <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(data.daily.length)} />
+                <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(data.daily.length, width)} />
                 <YAxis {...AXIS} width={44} tickFormatter={compactTick} />
                 <ChartTooltip cursor={BAR_CURSOR} isAnimationActive={false} content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: compact })} />
                 <Bar {...BAR} dataKey="claude" name="Claude Code" fill={SERVICE_SERIES["claude-code"]} />
                 <Bar {...BAR} dataKey="codex" name="Codex" fill={SERVICE_SERIES.codex} />
               </BarChart>
+              )}
             </ChartFrame>
           </>
         )}
@@ -285,9 +294,10 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
           <>
             <ChartLegend items={mix.series.map((m) => ({ label: m.key === OTHER_KEY ? m.name : modelLabel(m.name), color: m.color }))} />
             <ChartFrame label="Model mix">
+              {(width) => (
               <AreaChart data={mix.rows} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
                 <CartesianGrid {...GRID} />
-                <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(mix.rows.length)} />
+                <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(mix.rows.length, width)} />
                 <YAxis {...AXIS} width={44} tickFormatter={compactTick} />
                 <ChartTooltip
                   cursor={LINE_CURSOR}
@@ -298,6 +308,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
                   <Area key={m.key} {...LINE} dataKey={m.key} name={m.name} stackId="mix" stroke={m.color} strokeWidth={1.5} fill={m.color} fillOpacity={0.2} />
                 ))}
               </AreaChart>
+              )}
             </ChartFrame>
           </>
         )}
@@ -312,13 +323,15 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
           <NoData named={cacheDenominator > 0} />
         ) : (
           <ChartFrame label="Cache hit rate">
+            {(width) => (
             <LineChart data={data.cacheDaily} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
               <CartesianGrid {...GRID} />
-              <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(data.cacheDaily.length)} />
+              <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(data.cacheDaily.length, width)} />
               <YAxis {...AXIS} domain={[0, 100]} width={44} tickFormatter={percent} />
               <ChartTooltip cursor={LINE_CURSOR} isAnimationActive={false} content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: percent })} />
               <Line {...LINE} dataKey="hit" name="Hit rate" stroke={NEUTRAL_SERIES} />
             </LineChart>
+            )}
           </ChartFrame>
         )}
       </Section>

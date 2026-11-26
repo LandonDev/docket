@@ -63,11 +63,13 @@ export function holdsGrant(read: () => Promise<string | null>): Promise<boolean>
 export const KEY_NOT_META = 'Not a Meta key: keys start with LLM_'
 export const KEY_REFUSED = 'That key was refused by Meta'
 export const META_UNREACHABLE = "Couldn't reach Meta"
+/** Anything else core or the request threw (a store's path, a system code): never its own text under Key. */
+export const KEY_NOT_SAVED = "Couldn't save the key"
 
-/** What the dialog says for a key core would not save: the known refusals in our words, anything else capitalised. */
+/** What the dialog says for a key core would not save: the known refusals in our words, anything else one plain line. */
 export function keyErrorLine(message: string): string {
   if (/^not a Meta key/i.test(message)) return KEY_NOT_META
   if (/^that key was refused/i.test(message)) return KEY_REFUSED
   if (/^Meta could not be reached/i.test(message)) return META_UNREACHABLE
-  return message ? message.charAt(0).toUpperCase() + message.slice(1) : 'The key was not saved'
+  return KEY_NOT_SAVED
 }

@@ -16,6 +16,7 @@ import { cn } from "@renderer/lib/cn";
 import { FileRefMenu } from "../../surfaces/FileRefMenu";
 import { duration, useNow } from "../../lib/duration";
 import { invoke } from "../../lib/native";
+import { dialogErrorWords } from "../../lib/dialogErrorWords";
 import { registry } from "../../lib/connection";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import {
@@ -49,6 +50,9 @@ export function BuildPanel({ projectId }: { projectId: string }) {
   // Round 2: Build and Cancel go to the project's host; held while it is away.
   const held = useHostHeld(environmentId);
   const [effective, setEffective] = useState<EffectiveBuild | null | undefined>(undefined);
+  // A read of the command that failed is its own state, never "No build command"; Retry asks again.
+  const [readFailed, setReadFailed] = useState(false);
+  const [readTry, setReadTry] = useState(0);
   const [error, setError] = useState<string | null>(null);
   // Which branch to build: the project's own by default; another checkout
   // or local branch builds there without switching this checkout.
@@ -76,12 +80,21 @@ export function BuildPanel({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (!environmentId) return;
+    let live = true;
     setEffective(undefined);
+    setReadFailed(false);
     void registry.linkOf(environmentId)
       .request("build.effective", { projectId, ...(branchArg ? { branch: branchArg } : {}) })
-      .then((e) => setEffective(e as EffectiveBuild | null))
-      .catch(() => setEffective(null));
-  }, [environmentId, projectId, branchArg]);
+      .then((e) => live && setEffective(e as EffectiveBuild | null))
+      .catch(() => {
+        if (!live) return;
+        setEffective(null);
+        setReadFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [environmentId, projectId, branchArg, readTry]);
 
   useEffect(() => {
     if (!chosen || !environmentId) return;
@@ -104,7 +117,7 @@ export function BuildPanel({ projectId }: { projectId: string }) {
     try {
       setRemote(await pullBranch(projectId, branchArg));
     } catch (err) {
-      setPullError(err instanceof Error ? err.message : String(err));
+      setPullError(dialogErrorWords(err));
       void registry.linkOf(environmentId)
         .request("build.remote", { projectId, ...(branchArg ? { branch: branchArg } : {}) })
         .then((r) => setRemote(r as RemoteStatus | null))
@@ -124,7 +137,7 @@ export function BuildPanel({ projectId }: { projectId: string }) {
     try {
       await runBuild(projectId, branchArg);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(dialogErrorWords(err));
     }
   };
 
@@ -134,6 +147,8 @@ export function BuildPanel({ projectId }: { projectId: string }) {
       chosen={chosen}
       own={own}
       effective={effective}
+      readFailed={readFailed}
+      onRetryRead={() => setReadTry((n) => n + 1)}
       run={run}
       lines={build?.lines ?? []}
       remote={remote}
@@ -171,6 +186,8 @@ export function BuildView({
   chosen,
   own,
   effective,
+  readFailed = false,
+  onRetryRead,
   run,
   lines,
   remote,
@@ -193,6 +210,9 @@ export function BuildView({
   own: string | null;
   /** the command; undefined while it loads, null when none is set or detected */
   effective: EffectiveBuild | null | undefined;
+  /** the command's read failed: one red line with Retry, never "No build command" */
+  readFailed?: boolean;
+  onRetryRead?: () => void;
   run: BuildRun | null;
   lines: string[];
   remote: RemoteStatus | null | undefined;
@@ -255,7 +275,16 @@ export function BuildView({
       </TooltipProvider>
       {error ? <p className="shrink-0 px-3 pb-2 text-xs break-words text-destructive">{error}</p> : null}
       <OriginLine remote={remote} pulling={pulling} progress={progress} error={pullError} disabled={running} onFetch={onFetch} />
-      {effective === null ? (
+      {effective === null && readFailed ? (
+        <p role="alert" className="flex h-7 shrink-0 items-center gap-2 px-3 text-xs text-destructive" data-slot="build-read-failed">
+          <span className="min-w-0 flex-1 truncate">Couldn't read the build command</span>
+          {onRetryRead ? (
+            <Button variant="ghost" size="xs" onClick={onRetryRead}>
+              Retry
+            </Button>
+          ) : null}
+        </p>
+      ) : effective === null ? (
         <Empty className={cn("p-4", run && "flex-none")}>
           <EmptyHeader>
             <EmptyTitle className="text-[13px]">No build command</EmptyTitle>

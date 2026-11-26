@@ -174,7 +174,7 @@ const SNAPSHOT = `(() => {
 const controlExpr = (kind: 'ws' | 'card' | 'button', name: string, scope = 'document'): string => {
   const text = JSON.stringify(name)
   const match = `(e) => { const t = e.getAttribute('aria-label') || e.textContent.trim(); return t === ${text} || t.startsWith(${text} + ',') }`
-  const selector = kind === 'ws' ? 'nav[aria-label="Workspaces"] button' : kind === 'card' ? 'button[data-project-card]' : 'button, [role="tab"], [role="radio"]'
+  const selector = kind === 'ws' ? 'nav[aria-label="Main"] button' : kind === 'card' ? 'button[data-project-card]' : 'button, [role="tab"], [role="radio"]'
   return `[...${scope}.querySelectorAll(${JSON.stringify(selector)})].filter(${visible}).find(${match})`
 }
 

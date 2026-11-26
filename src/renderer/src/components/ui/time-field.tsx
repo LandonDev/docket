@@ -38,17 +38,24 @@ export function parseTime(text: string): string | null {
 /** Every quarter hour of a day, as values: "00:00" … "23:45". */
 export const QUARTERS: readonly string[] = Array.from({ length: 96 }, (_, i) => `${pad(Math.floor(i / 4))}:${pad((i % 4) * 15)}`);
 
-/** The quarter hours whose words begin with what he typed, digit for digit ("6" → 6:00 AM to 6:45 PM, "6:3p" → 6:30
- *  PM); every one while nothing is typed. */
-export function timesFor(text: string): string[] {
+/** Whether his clock says the afternoon as 13 and on ("13:00"), not "1:00 PM". */
+const onClock24 = (): boolean => timeWords("13:00").replace(/\D/g, "").startsWith("13");
+
+/** The quarter hours that begin with what he typed, digit for digit, matched against the value itself, so his
+ *  clock's form never decides it: "6p" or "6:3p" is the 12-hour hour and its half (6:00 to 6:45 PM, 6:30 PM) on any
+ *  clock; bare digits are the hour his clock writes ("6" is 6:00 AM to 6:45 PM on a 12-hour clock, 06:00 to 06:45 on a
+ *  24-hour one, where "18" is 18:00 to 18:45). Every one while nothing is typed. `clock24` for a test. */
+export function timesFor(text: string, clock24 = onClock24()): string[] {
   const typed = text.trim().toLowerCase();
   const digits = typed.replace(/\D/g, "");
   if (!digits) return typed ? [] : [...QUARTERS];
   const half = /[ap]/.exec(typed.replace(/\d|:|\s|\./g, ""))?.[0];
   return QUARTERS.filter((value) => {
-    const words = timeWords(value).toLowerCase();
-    if (!words.replace(/\D/g, "").startsWith(digits)) return false;
-    return !half || words.replace(/[^ap]/g, "").startsWith(half);
+    const hour = Number(value.slice(0, 2));
+    const minutes = value.slice(3);
+    const twelve = `${hour % 12 || 12}${minutes}`;
+    if (half) return twelve.startsWith(digits) && (hour < 12 ? "a" : "p") === half;
+    return clock24 ? `${hour}${minutes}`.startsWith(digits) || `${value.slice(0, 2)}${minutes}`.startsWith(digits) : twelve.startsWith(digits);
   });
 }
 

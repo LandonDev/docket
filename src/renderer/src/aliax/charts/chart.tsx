@@ -49,14 +49,29 @@ function useNearViewport<T extends HTMLElement>(): [React.RefObject<T | null>, b
 /** A chart's plot height unless it names its own (the ranked lists size by their rows). */
 export const CHART_HEIGHT = 200;
 
-/** One chart's plot area: a fixed height, the chart mounted once it nears the screen. */
-export function ChartFrame({ label, height = CHART_HEIGHT, children }: { label: string; height?: number; children: ReactElement }) {
+/** The frame's width in px once laid out (0 before, or where nothing measures), kept as it resizes. */
+function useFrameWidth(ref: React.RefObject<HTMLElement | null>, on: boolean): number {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!on || !el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, on]);
+  return width;
+}
+
+/** One chart's plot area: a fixed height, the chart mounted once it nears the screen. A function child
+ *  draws from the frame's width (a day axis spaces its labels by it); 0 until the frame is laid out. */
+export function ChartFrame({ label, height = CHART_HEIGHT, children }: { label: string; height?: number; children: ReactElement | ((width: number) => ReactElement) }) {
   const [ref, visible] = useNearViewport<HTMLDivElement>();
+  const width = useFrameWidth(ref, visible && typeof children === "function");
   return (
     <div ref={ref} data-chart role="img" aria-label={label} style={{ height }} className="w-full">
       {visible ? (
         <ResponsiveContainer width="100%" height="100%">
-          {children}
+          {typeof children === "function" ? children(width) : children}
         </ResponsiveContainer>
       ) : null}
     </div>

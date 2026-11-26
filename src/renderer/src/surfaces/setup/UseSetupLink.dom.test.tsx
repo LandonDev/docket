@@ -102,6 +102,35 @@ describe("UseSetupLinkDialog", () => {
     }
   });
 
+  // Council 5 S F10.1: a failed read after a good Start was caught as a refused Start and left him on the link.
+  it("moves to the steps once Start succeeds, and a failed read of them says so over the steps with Retry", async () => {
+    let reads = 0;
+    const link = fakeDevicesLink((method) => {
+      if (method === "devices.setup.peek") return peek;
+      if (method === "devices.setup.state") return ++reads === 1 ? new Error("The box did not answer") : started;
+      return { ok: true };
+    });
+    try {
+      render(<UseSetupLinkDialog first onClose={() => {}} />);
+      fireEvent.change(screen.getByLabelText("Paste the setup link"), { target: { value: LINK } });
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Set up this Mac" }));
+      const line = await screen.findByRole("alert");
+      expect(line.textContent).toContain("Couldn't read the steps");
+      // The link is claimed and Allow awaited: the steps say so, and no refusal stands on a Start that went.
+      expect(screen.queryByText("Use a setup link")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Set up this Mac" })).toBeNull();
+      expect(step("link").dataset.state).toBe("done");
+      expect(step("allow").dataset.state).toBe("working");
+      fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+      await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+      expect(step("accounts").dataset.state).toBe("waiting");
+      expect(reads).toBe(2);
+    } finally {
+      link.restore();
+    }
+  });
+
   it("says why a link was refused under the field", async () => {
     const link = fakeDevicesLink(() => new Error("This link was used at 3:04 PM"));
     try {

@@ -37,4 +37,18 @@ describe("Stats day axes", () => {
     expect(dayTickInterval(30)).toBe(4);
     expect(dayTickInterval(5)).toBe(0);
   });
+
+  // council 5 S F8.1: a narrow plot labels fewer days, so the dates keep their room; a wide one keeps six.
+  it("label no more days than the plot's width holds, each at least 64px apart", () => {
+    for (const width of [180, 240, 296, 360, 420, 700, 1200]) {
+      const step = dayTickInterval(30, width) + 1;
+      const labels = Math.ceil(30 / step);
+      expect(labels, `${width}px`).toBeLessThanOrEqual(6);
+      expect(labels, `${width}px`).toBeGreaterThanOrEqual(1);
+      if (labels > 1) expect((width - 56) / labels, `${width}px`).toBeGreaterThanOrEqual(64);
+    }
+    // The 400px window's chart (about 296px wide) labels three days, not six.
+    expect(Math.ceil(30 / (dayTickInterval(30, 296) + 1))).toBe(3);
+    expect(dayTickInterval(30, 1200)).toBe(dayTickInterval(30));
+  });
 });

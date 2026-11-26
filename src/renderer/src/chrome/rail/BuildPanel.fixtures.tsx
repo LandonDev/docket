@@ -49,6 +49,8 @@ const base = {
 
 export default [
   { name: "no command", props: { ...base, effective: null } },
+  { name: "command read failed", props: { ...base, effective: null, readFailed: true, onRetryRead: "fn" } },
+  { name: "build refused", props: { ...base, error: "This computer's key may not do that on the box." } },
   { name: "never run", props: { ...base, effective: { ...effective, source: "detected" } } },
   {
     name: "running with log",

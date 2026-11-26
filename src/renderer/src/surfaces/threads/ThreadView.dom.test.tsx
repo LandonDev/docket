@@ -24,7 +24,8 @@ vi.mock("../chunks", () => ({
     },
   },
   rightPanelChunk: {
-    surface: () => (props: { width?: number; motion?: string; onLeft?: () => void; session: Session; paneId?: string }) => (
+    // While `chunk.loading`, the surface draws the fallback ThreadView handed it, as lazyChunk's Suspense does.
+    surface: (_name: string, fallback: ReactNode) => (props: { width?: number; motion?: string; onLeft?: () => void; session: Session; paneId?: string }) => chunk.loading ? fallback : (
       <aside
         aria-label="Thread panel"
         data-width={props.width}
@@ -38,6 +39,8 @@ vi.mock("../chunks", () => ({
   },
 }));
 vi.mock("./ChatView", () => ({ ChatView: () => <div data-chat /> }));
+// Whether the panel's chunk is still loading.
+const chunk = vi.hoisted(() => ({ loading: false }));
 // Which threads the store says are Work threads (`SessionMeta.scope`).
 const canvas = vi.hoisted(() => ({ asked: [] as string[], work: new Set<string>() }));
 vi.mock("../../lib/tcserver/store", () => ({
@@ -61,6 +64,7 @@ class FakeResizeObserver {
 }
 
 beforeEach(() => {
+  chunk.loading = false;
   rightPanel.reset();
   store.clear();
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
@@ -102,6 +106,26 @@ describe("ThreadView's panel", () => {
     act(() => resize(1000));
     expect(panel()).not.toBeNull();
     expect(rightPanel.hasRoom("t1")).toBe(true);
+  });
+
+  it("holds the panel's own frame at its width while its chunk loads, so the thread keeps its column", () => {
+    chunk.loading = true;
+    rightPanel.open("t1");
+    view();
+    act(() => resize(THREAD_MIN + 280));
+    const aside = panel();
+    expect(aside?.querySelector("[role='status']")?.getAttribute("aria-label")).toBe("Loading panel");
+    // Its width is the row's fit, never the row's whole width (a bare skeleton is w-full and took the thread's place).
+    expect(aside?.className).toContain("w-(--pane-width)");
+    expect(aside?.className).toContain("shrink-0");
+    const row = aside?.parentElement as HTMLElement;
+    expect(row.style.getPropertyValue("--pane-width")).toBe("280px");
+    expect(row.querySelector("[data-chat]")).not.toBeNull();
+
+    chunk.loading = false;
+    act(() => resize(1200));
+    expect(panel()?.getAttribute("data-width")).toBe("320");
+    expect(row.style.getPropertyValue("--pane-width")).toBe("320px");
   });
 
   it("gives the room back when the thread leaves the screen", () => {
