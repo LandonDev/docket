@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import type { OutboxItem } from "@shared/contract-work-outbox";
-import { File, X } from "../../chrome/icons";
+import { X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { registry, type Link } from "../../lib/connection";
 import { workPlaceRow } from "../../lib/workPlaces";
@@ -33,7 +33,6 @@ const HELD: TodaySection = { id: "held", title: "Waiting on you", order: 10, emp
 const MEETINGS: TodaySection = { id: "meetings", title: "Meetings", order: 20, empty: "No meetings today", lifeos: true, bones: "lines" };
 const DUE: TodaySection = { id: "due", title: "Due", order: 30, empty: "Nothing due today", fold: 7, lifeos: true, bones: "tick" };
 const WAITING: TodaySection = { id: "waiting", title: "Waiting on others", order: 40, empty: "No one owes you a reply", fold: 5, lifeos: true, bones: "lines" };
-const FILES: TodaySection = { id: "files", title: "Changed by others", order: 50, empty: "No one changed your files", fold: 5, bones: "lines" };
 
 const HELD_ROWS = [
   // Oldest first, each with when it was held as a time that names its day (outbox/when.ts `heldWhen`).
@@ -59,7 +58,6 @@ const WAITING_ROWS = [
   row("mail:1", "waiting", "purdue", "Marcus Bell", { detail: "Sponsor deck for the spring LAN", when: "6 days", at: 1, acts: [{ label: "Nudge", run: noop }, { label: "Dismiss", run: noop }] }),
   row("mail:2", "waiting", "hypixel", "Priya Nair and 2 more", { detail: "Render queue access", when: "3 days", at: 2, acts: [{ label: "Nudge", run: noop }, { label: "Dismiss", run: noop }] }),
 ];
-const FILE_ROWS = [row("file:1", "files", "purdue", "FY27 budget.xlsx", { detail: "Dana Reyes", when: "Sun 9:14 PM", lead: glyph(File), at: 1 })];
 
 // A workspace is named as the rail names it, so a row that names its own job (Messages, Owed) reads as the rest.
 const JOB_NAMES: Record<string, string> = { cosmic: "CosmicGames", hypixel: "Hypixel", purdue: "Purdue Esports", ref: "Refereeing", unify: "UnifyPlatforms", life: "Life" };
@@ -71,7 +69,7 @@ type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "lost-elsewhere"
 
 /** A job by its workspace's name, as the rail says it. */
 
-const FULL = [fed(HELD, { rows: HELD_ROWS }), fed(MEETINGS, { rows: MEETING_ROWS }), fed(DUE, { rows: DUE_ROWS }), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, { rows: FILE_ROWS })];
+const FULL = [fed(HELD, { rows: HELD_ROWS }), fed(MEETINGS, { rows: MEETING_ROWS }), fed(DUE, { rows: DUE_ROWS }), fed(WAITING, { rows: WAITING_ROWS })];
 const ALL_FOLDS: Folds = { more: new Set(["due"]), earlier: new Set(["meetings"]) };
 
 function modelOf(state: State) {
@@ -82,12 +80,12 @@ function modelOf(state: State) {
     case "unfolded":
       return page(FULL, opts("ok", JOBS, ALL_FOLDS));
     case "bones":
-      return page([fed(HELD, { loading: true }), fed(MEETINGS, { loading: true }), fed(DUE, { loading: true }), fed(WAITING, { loading: true }), fed(FILES, { loading: true })], opts("waiting"));
+      return page([fed(HELD, { loading: true }), fed(MEETINGS, { loading: true }), fed(DUE, { loading: true }), fed(WAITING, { loading: true })], opts("waiting"));
     case "empty":
-      return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync" }), fed(DUE, {}), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, {})], opts());
+      return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync" }), fed(DUE, {}), fed(WAITING, { rows: WAITING_ROWS })], opts());
     case "hosts":
       return page(
-        [fed(HELD, { rows: HELD_ROWS.slice(0, 1), failed: [{ environmentId: "box", error: TIMED_OUT, retry: noop }] }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: DUE_ROWS.slice(0, 3) }), fed(WAITING, {}), fed(FILES, { failed: [{ environmentId: "box", error: "Work is off on this host", retry: noop }] })],
+        [fed(HELD, { rows: HELD_ROWS.slice(0, 1), failed: [{ environmentId: "box", error: TIMED_OUT, retry: noop }] }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: DUE_ROWS.slice(0, 3) }), fed(WAITING, {})],
         opts("ok", [...JOBS, job("mac", "purdue", false)]),
       );
     case "lost-elsewhere": {
@@ -103,7 +101,6 @@ function modelOf(state: State) {
           fed(MEETINGS, { rows: MEETING_ROWS.slice(2).filter(onBox), failed: [lost("ref", "meetings", "unreachable")] }),
           fed(DUE, { rows: DUE_ROWS.filter(onBox).slice(0, 3), failed: [lost("ref", "tasks", "unreachable"), lost("unify", "tasks", "withheld")] }),
           fed(WAITING, { rows: [], failed: [lost("ref", "mail", "unreachable")] }),
-          fed(FILES, {}),
         ],
         opts("ok", [...JOBS.filter((j) => j.sector !== "ref" && j.sector !== "unify"), job("mac", "ref"), job("mac", "unify")]),
       );
@@ -119,14 +116,13 @@ function modelOf(state: State) {
           fed(MEETINGS, { rows: MEETING_ROWS.slice(2).filter(onBox), failed: [waits("meetings")] }),
           fed(DUE, { rows: DUE_ROWS.filter(onBox).slice(0, 3), failed: [waits("tasks")] }),
           fed(WAITING, { rows: [], failed: [waits("mail")] }),
-          fed(FILES, {}),
         ],
         opts("ok", [...JOBS.filter((j) => j.sector !== "ref"), job("mac", "ref")]),
       );
     }
     case "refused":
       return page(
-        [fed(HELD, { rows: HELD_ROWS.slice(0, 1) }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: [], failed: [{ environmentId: "box", error: "Uncaught Error", said: "LifeOS could not read tasks", retry: noop }] }), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, {})],
+        [fed(HELD, { rows: HELD_ROWS.slice(0, 1) }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: [], failed: [{ environmentId: "box", error: "Uncaught Error", said: "LifeOS could not read tasks", retry: noop }] }), fed(WAITING, { rows: WAITING_ROWS })],
         opts(),
       );
     case "lifeos-down":
@@ -146,9 +142,9 @@ function modelOf(state: State) {
     case "pairing":
       return page(FULL, opts("pairing"));
     case "clear":
-      return page([fed(HELD, {}), fed(MEETINGS, {}), fed(DUE, {}), fed(WAITING, {}), fed(FILES, {})], opts());
+      return page([fed(HELD, {}), fed(MEETINGS, {}), fed(DUE, {}), fed(WAITING, {})], opts());
     case "evening":
-      return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync" }), fed(DUE, {}), fed(WAITING, {}), fed(FILES, {})], opts());
+      return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync" }), fed(DUE, {}), fed(WAITING, {})], opts());
     case "pillars":
       return page(PILLARS, opts());
     case "long-job":

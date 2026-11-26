@@ -3293,7 +3293,7 @@ own selected fill is a card's fill at rest in light.
   many times a day.
 - **One column**, 720px at most, 24px in. Sections are a 12px medium muted
   heading (28px) over their rows, 24px apart, in a fixed order: Waiting on
-  you, Meetings, Due, Waiting on others, Messages, Changed by others, Owed,
+  you, Meetings, Due, Waiting on others, Messages, Owed,
   Also (the last two only while they hold something). What is blocked
   on his press comes first; the page is grouped by need, never by job.
 - **One row grid for the whole page**: a 16px lead, the title with an
@@ -3352,7 +3352,7 @@ own selected fill is a card's fill at rest in light.
   sheet is open the toasts are back in the window's corner, behind it, as
   under any sheet.
 - **Long sections fold**: Waiting on you shows 5, Due 7, Waiting on others
-  5, Changed by others 5, then one muted 12px line ("4 more") that unfolds
+  5, then one muted 12px line ("4 more") that unfolds
   in place and stays unfolded. Meetings that have ended fold into "2
   earlier" at the section's head.
 - **One live line**: under a meeting's time, 12px medium `foreground`,

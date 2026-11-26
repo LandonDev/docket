@@ -68,7 +68,7 @@ place's label. With Work off the rail is what it was
 | Meetings | `today/meetings.ts` | LifeOS `events:range {from, to}` over two local days; `people:directory {sector}` for each sector a job holds | LifeOS, once |
 | Due | `today/due.ts` | LifeOS `tasks:list {}`, kept by work-kit's `isTodayTask` | LifeOS, once |
 | Waiting on others | `today/waiting.ts` | LifeOS `mailWaits:list {paginationOpts}`, one page of 100, ready after one answer; where LifeOS says there is more past it, the section never says it is empty (`away`) | LifeOS, once |
-| Changed by others | `today/files.ts` | `work.files.changed {workspaceId}` per job | each host |
+| Changed by others | `today/files.ts` | `work.files.changed {workspaceId}` per job | each host; not in `TODAY_SOURCES` and out of DESIGN's order until a host answers that read (the owner, Nov 26) |
 | Responses | `msforms/today.ts` | `work.msforms.list {workspaceId}` per job, live on the `work.msforms` push: one row a Microsoft form with unseen answers ("3 new responses"), section order 70, folded past five, drawn only while it has a row; a press opens the form in its Files tab (`openInFiles`, the `msform` source) | each host |
 
 The Files source is written and tested against a fake wire and is **not**
@@ -358,7 +358,7 @@ one day). `TodayView.tsx` draws it; `TodayRow.tsx` is the one row grid.
 | No Work workspace has a sector | "No jobs yet", with Add workspace |
 | Work is off on every host | no rail row, no menu row, the key does nothing |
 
-Folds: Waiting on you 5, Due 7, Waiting on others 5, Changed by others 5.
+Folds: Waiting on you 5, Due 7, Waiting on others 5.
 An unfolded section stays open until the window closes.
 
 Keys: every row and every fold line on the page is one list, one tab stop.
