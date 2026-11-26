@@ -2488,6 +2488,11 @@ milestone 46 built, where it lives now:
   live, failed, and out of date until put away; never sending or
   scheduled, held to the desktop's fixture in OutboxWaitingTests), less
   what a Send holds back right now; Today's `needsHim` calls it.
+- **A sent item** says what LifeOS says of it while LifeOS has not said it
+  went (`OutboxModel.lifeosLine`, the desktop's `lifeosWords`): "Queued in
+  LifeOS for 3m", its age as of the draw with no clock of its own, "Back in
+  drafts in LifeOS", "No longer in LifeOS"; "Sent 2:14 PM" once it went. An open detail follows the host's pushes of it
+  after it leaves Waiting (`WorkHost.heard`).
 - **The next item.** On the open Duo the detail keeps the item he opened,
   through its Send's five seconds (its bar steps away while the capsule
   offers Undo). When the item leaves the list (sent once its wait ends,
@@ -2622,8 +2627,9 @@ milestone 46 built, where it lives now:
   the app or losing the link cancels it, as every phone Send, and the line under the head says so ("Not sent:
   TempCode left the screen"). A press whose answer was lost keeps Send busy and the line says "Checking…" until
   the request is read back; Send keeps its name for VoiceOver, its value "Sending" while the spinner shows. Then each row's result lands in its line (a muted
-  check, with "Queued in LifeOS", "Posted", "Discarded" or "Scheduled" only
-  where the word adds to the check, or the destructive dot and the reason),
+  check, with "Queued in LifeOS", "Back in drafts in LifeOS", "No longer in LifeOS", "Posted", "Discarded" or
+  "Scheduled" only where the word adds to the check (LifeOS's words only on the host's own verdict on the item,
+  never because a mail's stored result reads sent), or the destructive dot and the reason),
   a row the press did not take reads "Left out" at full ink, and the foot
   is Done. Not Now declines
   and closes. A key that may not answer it reads why and cannot press. Nothing
@@ -2867,15 +2873,20 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   medium; it opens the thread) over one meta line, what it is doing (or
   "You are driving") and where it runs. No buttons on a tile: Take Over,
   Hand Back and Stop are on its full screen. With nothing driven the list
-  says "No Computer in Use".
+  tells three states apart (`ComputersState`): a spinner while a connected
+  host has not said; "Not Connected to the box" when no host is connected;
+  else "No Computer in Use", its line naming any host away ("Not connected
+  to Mac.").
 - **Ask** from an item is a form sheet: the selection as its chip, his
   words, Send; then Chat shows.
 - **The guest link sheet**: a form sheet at medium height, For, Can (View,
   Comment, Edit, one segmented control), Ends (a date), Cancel and
   Create; then the address once, with Copy and Share.
 - **Routines**: two bands, Routines and Watches; each row its name, its
-  trigger in plain words under it, and when it next runs as the stamp (a
-  watch that ends on a day: "Until Tue, Nov 24"); a watch carries the
+  trigger in plain words under it, and when it next runs as the stamp only
+  where that adds a fact: none for a run the words already name ("Fridays
+  at 4:00 PM"), a date for one a week or more away ("Dec 4"), a time for a
+  cadence that names none (a watch that ends on a day: "Until Tue, Nov 24"); a watch carries the
   watching dot, a paused one the pause glyph; swipe for Pause (warning) or
   Resume.
 - **Write in My Voice** is the first row of the house rules page.
@@ -3159,7 +3170,8 @@ own row says one row down (`TodayModel.workListLine`), and where the tab opens a
   that are offline, a Work host not yet linked this launch among them, are named once at the foot. All clear:
   "All Clear" over "Nothing needs you today." or what tomorrow starts with.
 - **Large text.** At accessibility sizes a row's title and line wrap to three lines and its time goes under them;
-  VoiceOver hears "late" and "over", which the ink alone tells the eye.
+  VoiceOver hears "late" and "over", which the ink alone tells the eye. At any size a title or a fault's reason that
+  would be cut wraps instead, and the time goes under the words (`ViewThatFits`); any other line keeps one line.
 - **Speed.** The first frame paints yesterday's rows from the disk (`WorkCacheStore`), each opening its thing to
   read until it is fresh; the fresh page lands as a diff that keeps every unchanged row as the value it was. The
   hosts' lists are read once and again on their pushes and at midnight; LifeOS's own queries live only while
@@ -3273,6 +3285,13 @@ the open Duo. It opens from Today's Resolve and from a clash's tell or notice.
 Mail is the Work list's third place: LifeKitUI's own Mail, for every job at once as Tasks and Agenda are (each row
 led by its job's dot, the job filter in the bar, the whole width and its two pages on the open Duo).
 
+- **LifeOS down**: Mail, Tasks, Agenda, People and Messages say why in the one rule Today uses
+  (`TodayDown.words`, the desktop's lifeosDown.ts), the computer named ("Not signed in to LifeOS on the box"). Try
+  Again only for silence ("LifeOS did not answer the box", "The box did not answer"); a sign-in missing, refused
+  or waiting offers "Open on <computer>" (Settings → Connections there) where this key may, else says "Sign in from
+  a computer that manages the box"; a LifeOS still connecting is a spinner ("LifeOS is still connecting on the
+  box").
+
 - **Waiting on** is one bar item, the hourglass, filled while it shows: the place swaps to LifeKitUI's Waiting on
   list and back, with no motion, and a fold keeps which one shows. Its rows' Nudge opens the thread that drafts
   the follow-up; Dismiss has the shared undo capsule. Nudge shows only for a key that may start the thread.
@@ -3300,8 +3319,9 @@ desktop's weekly review on the phone (docs/agents/work-review.md "The phone"). O
   off. …"), a list read in part, then the red lines (a host that did not answer, a source that feeds more than one
   section), the first with Retry, as the desktop's head.
 - **Hours**: one row a job, every job listed (the empty one is the news), its sector dot in the mark slot, the
-  name, the total trailing ("about 11 h", "6 hr 30 min"; else "Nothing seen" muted), then under it the facts
-  ("6 hr 30 min on the calendar, about 4 hr 30 min at the desk"), "Threads ran 2 hr", the week before where
+  name, the total trailing ("about 11 h", "6 hr 30 min"; else "Nothing seen" muted; under the name at accessibility
+  sizes), then under it the facts ("6 hr 30 min on the calendar, about 4 hr 30 min at the desk"; a row with one
+  source says its figure once, "about 15 min at the desk", with no total beside it), "Threads ran 2 hr", the week before where
   it says something, and Money's line ("Money $2,400.00 in, $312.50 out"). The footer says once that calendar
   time is measured and desk time an estimate.
 - **Shipped**: each job's rows (dot, the thing's own title, what it was: "Sent to Dana Lee"), five a job, then "3
@@ -3335,9 +3355,10 @@ from that row, Today's Owed rows and a waiting receipt's tell (Work/Money/MoneyS
 - **The span**: while a newly picked span is read, its section draws its bones, never the old span's sums under
   the new name. In, Out and Net as three figures in one row (stacked at accessibility sizes), then the eight newest entries (who, the day and
   category under it, the amount trailing, money in in the success ink), then "4 more in the ledger".
-- **States**: a fault of the books is one red line at the top in the desktop's words; a job that never had money
-  is one empty state ("Can’t Read Money" for a first read that failed); a read that failed keeps what showed with
-  Retry (`PillButton`). A receipt's picture that does not come drops its slot; the fields stand alone.
+- **States**: the span's state comes first (`MoneyPage.pageState`). A fault of the books is one red line at the top
+  in the desktop's words; a job that never had money is one empty state, said only of a span that was read ("Can’t
+  Read Money" for a first read, or a newly picked span, that failed); a read that failed keeps what showed with
+  Retry (`PillButton`). A host's error is said in Work's words (`WorkErrorWords.readFailure`), never its raw text. A receipt's picture that does not come drops its slot; the fields stand alone.
 
 ### A job's small places
 
@@ -3368,7 +3389,9 @@ card. Connections and Computers sit in the Work list's foot.
 - **Connections**: a section a group, in the desktop's order, "Ending Soon" first when an end is within two weeks; a
   row's title, the host's one line under it, its word trailing ("Ready" muted, "Needs you" in the warning ink,
   "Broken" in the destructive ink, both semibold). A row that does not work offers "Open on <computer>" in its swipe
-  and context menu.
+  and context menu. A Work host whose checks did not come back is named in the one line over the rows, never "Nothing
+  to Check" (`Connections.missedLine`): not connected, did not answer (its kept rows "Showing what it said at 2:10
+  PM."), or did not say what ends soon; the list reads again when a host's link opens.
 - **Computers** leads with the Windows VM where a host keeps it: "Windows VM", how it stands ("Asleep", the step while
   it wakes), its last fault in the destructive ink, and one bordered capsule, Wake or Sleep, a spinner while it moves.
   The live picture's foot has Copy beside Paste while he drives.
