@@ -36,8 +36,9 @@ type Kept = {
 };
 
 const kept = new Map<string, Kept>();
-/** An ask out, per slot; `changed` when a git-changed event named its checkout while it was out. */
-const inflight = new Map<string, { cwd: string; promise: Promise<ProjectFile[]>; changed: boolean }>();
+/** An ask out, per slot, under the link key it was asked with; `changed` when a git-changed event named its
+ *  checkout while it was out. */
+const inflight = new Map<string, { cwd: string; key: string; promise: Promise<ProjectFile[]>; changed: boolean }>();
 const epochs = new Map<string, number>();
 const recentsByCwd = new Map<string, string[]>();
 let offGitChanged: (() => void) | null = null;
@@ -127,15 +128,18 @@ export function loadProjectFiles(
     kept.set(slot, entry);
     return Promise.resolve(entry.files);
   }
-  const running = inflight.get(slot);
-  if (running) return running.promise;
-
   const key = linkKeyOf(host);
+  // An ask out under another key is not joined: its names are not this key's.
+  const running = inflight.get(slot);
+  if (running && running.key === key) return running.promise;
+
   const id = (epochs.get(slot) ?? 0) + 1;
   epochs.set(slot, id);
   const promise = listProjectFiles(host, cwd)
     .then((files) => {
-      if (id === epochs.get(slot) && key === linkKeyOf(host)) {
+      // Asked under a key that has changed since: its names reach no caller and nothing keeps them.
+      if (key !== linkKeyOf(host)) return [];
+      if (id === epochs.get(slot)) {
         kept.delete(slot);
         kept.set(slot, { host, cwd, files, at: Date.now(), dirty: ask.changed, key });
         while (kept.size > KEPT_CHECKOUTS) kept.delete(kept.keys().next().value!);
@@ -146,9 +150,24 @@ export function loadProjectFiles(
       if (inflight.get(slot) === ask) inflight.delete(slot);
     });
   // A git-changed event while the ask is out still marks what lands.
-  const ask = { cwd, promise, changed: false };
+  const ask = { cwd, key, promise, changed: false };
   inflight.set(slot, ask);
   return promise;
+}
+
+/**
+ * An open picker's names for `cwd` are no longer good: its host's link key (or credential) changed, or the host
+ * left. `dropped` is told once a change; the picker clears what it shows and asks again (Composer's @, SearchView).
+ */
+export function subscribeProjectFilesDropped(cwd: string, dropped: () => void): () => void {
+  const host = hostOfCwd(cwd);
+  let key = linkKeyOf(host);
+  return registry.subscribe(() => {
+    const now = linkKeyOf(host);
+    if (now === key) return;
+    key = now;
+    dropped();
+  });
 }
 
 /** Test seam: forget every kept list and stop listening. */

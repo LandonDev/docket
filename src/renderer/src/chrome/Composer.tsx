@@ -32,7 +32,7 @@ import { compact as compactSession } from '../lib/tcserver/commands'
 import { ContextMeter } from './ContextMeter'
 import { useComposerAsks } from './composerAsks'
 import { HeldTip } from '../components/heldTip'
-import { loadProjectFiles, peekProjectFiles } from '../lib/fileIndex'
+import { loadProjectFiles, peekProjectFiles, subscribeProjectFilesDropped } from '../lib/fileIndex'
 import { buildMentionIndex, fileMentionParts } from '../lib/fileMentions'
 import {
   commandTextParts,
@@ -589,16 +589,26 @@ export function Composer({
   useEffect(() => {
     if (!mentionOpen) return
     let cancelled = false
-    void loadProjectFiles(executionCwd, true)
-      .then((next) => {
-        if (!cancelled) setFiles(next)
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setFilesFor(executionCwd)
-      })
+    const load = () =>
+      void loadProjectFiles(executionCwd, true)
+        .then((next) => {
+          if (!cancelled) setFiles(next)
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (!cancelled) setFilesFor(executionCwd)
+        })
+    load()
+    // The host's key changed while @ is open: the names it shows were another key's (lib/fileIndex.ts).
+    const offDropped = subscribeProjectFilesDropped(executionCwd, () => {
+      if (cancelled) return
+      setFiles([])
+      setFilesFor(null)
+      load()
+    })
     return () => {
       cancelled = true
+      offDropped()
     }
   }, [executionCwd, mentionOpen])
 

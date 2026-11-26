@@ -12,6 +12,7 @@ import type { ProjectFile } from "./fs";
 const h = vi.hoisted(() => ({
   list: vi.fn<(host: string, cwd: string) => Promise<ProjectFile[]>>(),
   env: { keyId: "k1", credentialRef: null as string | null } as { keyId?: string; credentialRef: string | null } | undefined,
+  subs: new Set<() => void>(),
 }));
 
 vi.mock("./fs", async (importOriginal) => ({
@@ -24,10 +25,13 @@ vi.mock("./tcserver/projects", async (importOriginal) => ({
 }));
 vi.mock("./connection", async (importOriginal) => {
   const real = await importOriginal<typeof import("./connection")>();
-  return { ...real, registry: { ...real.registry, environment: () => h.env } };
+  return {
+    ...real,
+    registry: { ...real.registry, environment: () => h.env, subscribe: (fn: () => void) => (h.subs.add(fn), () => void h.subs.delete(fn)) },
+  };
 });
 
-import { FRESH_MS, KEPT_CHECKOUTS, invalidateProjectFiles, loadProjectFiles, peekProjectFiles, resetProjectFiles } from "./fileIndex";
+import { FRESH_MS, KEPT_CHECKOUTS, invalidateProjectFiles, loadProjectFiles, peekProjectFiles, resetProjectFiles, subscribeProjectFilesDropped } from "./fileIndex";
 import { notifyGitChanged } from "./gitChanged";
 
 const cwd = "/Users/me/app";
@@ -112,6 +116,27 @@ describe("the kept file list", () => {
     answer(A);
     await asked;
     expect(peekProjectFiles(cwd)).toBeNull();
+  });
+
+  it("an ask out when the key changes hands its names to no caller, is not joined, and an open list hears it is dropped", async () => {
+    let answer!: (files: ProjectFile[]) => void;
+    h.list.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const old = loadProjectFiles(cwd, true);
+    const dropped = vi.fn();
+    const off = subscribeProjectFilesDropped(cwd, dropped);
+    h.env = { keyId: "k2", credentialRef: null };
+    for (const fn of h.subs) fn();
+    expect(dropped).toHaveBeenCalledTimes(1);
+    // the open picker asks again under the new key: a new ask, not the old one joined
+    h.list.mockResolvedValueOnce(B);
+    const fresh = loadProjectFiles(cwd, true);
+    expect(h.list).toHaveBeenCalledTimes(2);
+    answer(A);
+    expect(await old).toEqual([]);
+    expect(await fresh).toBe(B);
+    for (const fn of h.subs) fn();
+    expect(dropped).toHaveBeenCalledTimes(1);
+    off();
   });
 
   it("invalidate drops the list, so the next open asks", async () => {

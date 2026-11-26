@@ -75,7 +75,7 @@ vi.mock("../lib/fileIndex", async (importOriginal) => {
     { name: "gateway.ts", path: "/Users/me/app/src/gateway.ts", relative: "src/gateway.ts" },
     { name: "README.md", path: "/Users/me/app/README.md", relative: "README.md" },
   ];
-  return { ...real, peekProjectFiles: () => files, loadProjectFiles: () => Promise.resolve(files), recentOpenedFiles: () => h.recentFiles };
+  return { ...real, peekProjectFiles: () => files, loadProjectFiles: () => Promise.resolve(files), recentOpenedFiles: () => h.recentFiles, subscribeProjectFilesDropped: () => () => undefined };
 });
 vi.mock("../lib/session", () => ({ sessionDisplayTitle: (title: string) => title }));
 vi.mock("../lib/projectLogos", () => ({ projectLogoSrc: () => null }));

@@ -56,6 +56,7 @@ import {
 import {
   loadProjectFiles,
   peekProjectFiles,
+  subscribeProjectFilesDropped,
   rankProjectFiles,
   recentOpenedFiles,
 } from "../lib/fileIndex";
@@ -202,11 +203,20 @@ export function SearchView({
     const cached = peekProjectFiles(cwd);
     if (cached) setFiles(cached);
     let cancelled = false;
-    void loadProjectFiles(cwd).then((next) => {
-      if (!cancelled) setFiles(next);
+    const load = () =>
+      void loadProjectFiles(cwd).then((next) => {
+        if (!cancelled) setFiles(next);
+      });
+    load();
+    // The host's key changed while the search is open: its file names were another key's (lib/fileIndex.ts).
+    const offDropped = subscribeProjectFilesDropped(cwd, () => {
+      if (cancelled) return;
+      setFiles([]);
+      load();
     });
     return () => {
       cancelled = true;
+      offDropped();
     };
   }, [cwd, open]);
 
