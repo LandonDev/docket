@@ -77,6 +77,13 @@ function mount(sessionId: string) {
   return { view, field };
 }
 
+/** Lets the composer's own timers after a key (the draft save, the token paint) run before renders are counted. */
+async function settle() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 500));
+  });
+}
+
 /** A push from the host: one thread's meta moves (a streaming turn's context, a busy master's activity). */
 async function push(over: Partial<SessionMeta>, id = "busy") {
   await act(async () => {
@@ -99,7 +106,7 @@ describe("a meta push with the menu open", () => {
   it("renders no Composer with / open", async () => {
     const { view, field } = mount("t-slash");
     type(field, "/re");
-    await act(async () => {});
+    await settle();
     expect(view.container.querySelector("[data-command-popover]")).not.toBeNull();
     const before = commits;
     await push({ title: "Busy thread, renamed", status: "running" });
@@ -110,7 +117,7 @@ describe("a meta push with the menu open", () => {
   it("renders no Composer with @ open for a push no row draws, and draws one that moves a row", async () => {
     const { view, field } = mount("t-at");
     type(field, "@");
-    await act(async () => {});
+    await settle();
     expect(view.container.querySelector("[data-command-popover]")?.textContent).toContain("Busy thread");
     const before = commits;
     // A child thread, an archived one, a field no row draws: nothing to redraw.
