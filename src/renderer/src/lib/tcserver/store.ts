@@ -1596,6 +1596,7 @@ class SessionStore {
     entry.lastTs = undefined;
     entry.nextId = 1;
     entry.held = null;
+    entry.resyncAt = undefined;
     entry.resyncHold = false;
     entry.rows = null;
     this.stopTimers(entry);
@@ -1709,6 +1710,7 @@ class SessionStore {
         // retry would then ask only for what follows them.
         this.subsOf(entry)?.remove(id);
         entry.held = null;
+        entry.resyncAt = undefined;
         this.resetFold(entry);
         if (entry.wanted) this.failLoad(entry, e);
       }
@@ -1902,7 +1904,10 @@ class SessionStore {
       begin: () => {
         // Rows held from an older socket go: a host that restarted may never have kept them, and this socket's page
         // brings whatever is real. Rows held since a resync push on this socket stay held: they fold after the page.
-        if (entry.held && entry.heldOn !== socket) entry.held = null;
+        if (entry.held && entry.heldOn !== socket) {
+          entry.held = null;
+          entry.resyncAt = undefined;
+        }
         entry.held ??= [];
         entry.heldOn = socket;
         entry.resyncHold = false;
@@ -2009,6 +2014,7 @@ class SessionStore {
       if (entry.heldFailed) continue;
       const held = entry.held;
       entry.held = null;
+      entry.resyncAt = undefined;
       entry.resyncHold = false;
       for (const row of held ?? []) this.applyPush(entry, row);
     }
@@ -2408,13 +2414,16 @@ class SessionStore {
           // socket's hold is replaced (that host may never have kept its rows).
           const socket = attached.opens;
           for (const entry of this.entries.values()) {
-            if (!entry.loaded || entry.meta?.environmentId !== environmentId) continue;
-            // A replay on this socket already holds its rows: the marker is noted, and its end replays again.
+            if (entry.meta?.environmentId !== environmentId) continue;
+            // A read on this socket already holds its rows (a replay, or a first load still waiting for its page):
+            // the marker is noted, and its end replays again.
             if (entry.held && entry.heldOn === socket) {
               entry.resyncAt ??= entry.held.length;
               continue;
             }
+            if (!entry.loaded) continue;
             entry.held = [];
+            entry.resyncAt = undefined;
             entry.heldOn = socket;
             entry.resyncHold = true;
           }
