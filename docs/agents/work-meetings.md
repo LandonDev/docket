@@ -347,7 +347,8 @@ claimed by no kind, unless either is opened as a meeting (`meeting_open`).
 - **Tasks** sit under their turn on `--add-bg` with the add-task glyph
   (`TaskAdd`) until accepted, then show LifeOS's mark (`Lifeos`) untinted. The pane's stepper steps through those waiting (the
   player and the list move to each); a waiting task's row is one press laid over it ("Review …", `ROW_OPEN`), so Tab
-  reaches it and a press steps the review to it. Accept files the current one, and the
+  reaches it and a press steps the review to it, 32px at least as a row's main press is; a turn's speaker name and
+  minute reach 2px past their 20px line each way, 24px targets. Accept files the current one, and the
   pane's More holds Accept all and Reject all. A filing that failed is the
   state line, with Try again.
 - **Notes:** once there are notes, a Notes and Transcript switch in the bar

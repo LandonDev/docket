@@ -1,8 +1,9 @@
-import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode, type RefObject } from "react";
 import { ConvexProvider } from "convex/react";
 import { MailClientProvider, useMailClient, type Draft, type MailClient } from "work-kit/mail";
 import type { MailOffer } from "@shared/work/mailChat";
-import { TruncateTip } from "../../../components/tip";
+import { TruncateTip, useTruncated } from "../../../components/tip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { Button } from "../../../components/ui/button";
 import { StatusMark } from "../../../components/ui/status";
 import { openWorkView } from "../../../lib/workSwitch";
@@ -231,6 +232,18 @@ export function AddRow(props: { task?: TaskOffer; event?: EventOffer; at: OfferA
   );
 }
 
+/** The card's whole title as a tip on what it wraps, only while the row cuts it. */
+function WholeTitle({ title, cut, children }: { title: string; cut: boolean; children: ReactElement }) {
+  return (
+    <Tooltip disabled={!cut}>
+      <TooltipTrigger render={children} />
+      <TooltipContent side="top" align="start">
+        <span className="min-w-0 break-words">{title}</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function Row({ task, event, at, keep }: { task?: TaskOffer; event?: EventOffer; at: OfferAt; keep: AddKeep }) {
   const outcome = useOpOutcome(keep.added && "op" in keep.added ? keep.added.op : null);
   const title = task?.title ?? event?.title ?? "";
@@ -238,16 +251,18 @@ function Row({ task, event, at, keep }: { task?: TaskOffer; event?: EventOffer; 
   const refused = outcome?.status === "failed" ? outcome.reason : null;
   const added = !!keep.added && ("task" in keep.added || outcome?.status === "done");
   const Glyph = task ? Task : Calendar;
+  const { ref: cutRef, cut } = useTruncated(title);
   return (
     <div data-mail-offer={task ? "task" : "event"} className={`${CARD} flex h-11 items-center gap-2.5 px-3`}>
       <Glyph className="size-3.5 shrink-0 text-muted-foreground" />
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
-        {/* A title the row cuts (when and the press take their room first) says the whole of itself on hover. */}
-        <TruncateTip text={title}>
-          <span data-add-title className="min-w-0 truncate text-[13px] font-medium text-foreground">
+        {/* A title the row cuts (when and the press take their room first) says the whole of itself on its hover, and on the
+            row's press's focus, so the keyboard reads it too. */}
+        <WholeTitle title={title} cut={cut}>
+          <span ref={cutRef} data-add-title className="min-w-0 truncate text-[13px] font-medium text-foreground">
             {title}
           </span>
-        </TruncateTip>
+        </WholeTitle>
         {refused ? (
           <TruncateTip text={refused}>
             <span data-add-refused role="alert" className="min-w-0 truncate text-xs text-destructive">
@@ -263,16 +278,20 @@ function Row({ task, event, at, keep }: { task?: TaskOffer; event?: EventOffer; 
           <span className="text-xs text-muted-foreground">Added</span>
           {/* A task opens in Tasks' list, where it now stands. LifeOS's row for an event names no event to stand on, so
               its press says where it goes rather than promise the event. */}
-          <Button variant="ghost" size="sm" onClick={() => openWorkView({ workspaceId: at.workspaceId, view: task ? "tasks" : "agenda" })}>
-            {task ? "Open" : "Open Agenda"}
-          </Button>
+          <WholeTitle title={title} cut={cut}>
+            <Button variant="ghost" size="sm" onClick={() => openWorkView({ workspaceId: at.workspaceId, view: task ? "tasks" : "agenda" })}>
+              {task ? "Open" : "Open Agenda"}
+            </Button>
+          </WholeTitle>
         </>
       ) : outcome?.status === "pending" ? (
         <StatusMark data-add-queued state="queued" className="shrink-0" />
       ) : (
-        <Button variant="secondary" size="sm" onClick={() => keep.setOpen(true)}>
-          Add…
-        </Button>
+        <WholeTitle title={title} cut={cut}>
+          <Button variant="secondary" size="sm" onClick={() => keep.setOpen(true)}>
+            Add…
+          </Button>
+        </WholeTitle>
       )}
     </div>
   );

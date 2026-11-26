@@ -447,7 +447,7 @@ describe("an event's Added", () => {
   });
 
   // Council round 2 (sitting B): an added event's title the row cut had no way to be read whole.
-  it("gives a title the row cuts a tip with the whole of it", async () => {
+  it("gives a title the row cuts a tip with the whole of it, on the title and on the row's press", async () => {
     const { tooltipChunk, warmTooltips } = await import("../../../components/ui/tooltip");
     await act(async () => {
       await tooltipChunk.load();
@@ -459,8 +459,9 @@ describe("an event's Added", () => {
     const box = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
     try {
       draw({ event: { title: "Walk the venue with Dana before the doors open", start: "2026-12-04T12:30:00", end: "2026-12-04T13:30:00", where: "Harry's" } });
-      // The whole title rides a tip only while the row cuts it (`TruncateTip`).
-      expect(document.querySelector("[data-add-title]")!.getAttribute("data-slot")).toBe("tooltip-trigger");
+      // The whole title rides a tip only while the row cuts it, on the title's hover and on the press's focus.
+      expect(document.querySelector("[data-add-title]")!.hasAttribute("data-base-ui-tooltip-trigger")).toBe(true);
+      expect(screen.getByRole("button", { name: "Add…" }).hasAttribute("data-base-ui-tooltip-trigger")).toBe(true);
     } finally {
       wide.mockRestore();
       box.mockRestore();

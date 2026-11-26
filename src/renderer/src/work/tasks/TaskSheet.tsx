@@ -1,5 +1,5 @@
 import { useQuery } from "convex/react";
-import { HeldTip } from "../../components/heldTip";
+import { Tip } from "../../components/tip";
 import { useEffect } from "react";
 import { makeFunctionReference } from "convex/server";
 import { Button } from "../../components/ui/button";
@@ -134,11 +134,13 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, heldWords = null, 
             Start thread
           </Button>
         )}
-        <HeldTip held={heldWords}>
-          <Button size="sm" variant="secondary" disabled={!!heldWords} onClick={() => (onClose(), onDone(full))}>
+        {/* Held, it stays a Tab stop (`focusableWhenDisabled`), so the keyboard reaches the reason in its tip as the pointer does:
+            the sheet covers the frame's line that says it. */}
+        <Tip label={heldWords} disabled={!heldWords}>
+          <Button size="sm" variant="secondary" disabled={!!heldWords} focusableWhenDisabled className="aria-disabled:opacity-50" onClick={() => (onClose(), onDone(full))}>
             Done
           </Button>
-        </HeldTip>
+        </Tip>
         <Button size="sm" variant="ghost" onClick={() => (onClose(), onCode(full))}>
           Open a code thread…
         </Button>

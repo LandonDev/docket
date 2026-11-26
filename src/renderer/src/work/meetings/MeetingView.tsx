@@ -138,6 +138,8 @@ export function TaskRow({ action, current, doc = false, onPick, at }: { action: 
       className={cn(
         "relative flex min-h-7 min-w-0 items-center gap-2 rounded-md px-2 py-1 data-current:outline-1 data-current:-outline-offset-1 data-current:outline-success/50 data-[state=proposed]:bg-(--add-bg)",
         doc ? "-mx-2 mt-1 text-[15px] leading-6" : "mt-1.5 text-[13px] leading-5",
+        // A proposal is a row's main press: 32px at least, as every row's is.
+        pick && "min-h-8",
       )}
     >
       {pick ? (
@@ -250,7 +252,8 @@ function Turn({ seg, meeting, current, sel, hits, hit, onSeek, nameNode, hint, c
             event.stopPropagation();
             onSeek(seg.start);
           }}
-          className="h-auto p-0 text-xs leading-5 font-normal text-muted-foreground tabular-nums underline-offset-3"
+          // Its press reaches 2px past the 20px line each way, a 24px target, and the minute does not move.
+          className="h-auto p-0 text-xs leading-5 font-normal text-muted-foreground tabular-nums underline-offset-3 after:absolute after:inset-x-0 after:-inset-y-0.5"
         >
           <time>{timeOf(seg.start, meeting)}</time>
         </Button>

@@ -44,8 +44,9 @@ export function SpeakerName({ env, itemId, speaker }: { env: string; itemId: str
           }
         }}
       >
+        {/* Its press reaches 2px past the 20px line each way, a 24px target, and the name does not move. */}
         <PopoverTrigger
-          render={<Button variant="link" size="xs" onClick={(event) => event.stopPropagation()} className="h-auto min-w-0 shrink p-0 text-[13px] leading-5 font-medium underline-offset-3" />}
+          render={<Button variant="link" size="xs" onClick={(event) => event.stopPropagation()} className="h-auto min-w-0 shrink p-0 text-[13px] leading-5 font-medium underline-offset-3 after:absolute after:inset-x-0 after:-inset-y-0.5" />}
         >
           <span className="truncate">{shown}</span>
         </PopoverTrigger>

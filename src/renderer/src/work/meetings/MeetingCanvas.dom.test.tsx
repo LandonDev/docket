@@ -197,6 +197,8 @@ describe("the meeting canvas", () => {
     expect(second.tagName).toBe("BUTTON");
     expect(second.getAttribute("aria-label")).toMatch(/^Review /);
     expect(container.querySelector('[data-task="a4"] > [data-row-open]')).toBeNull();
+    // Round 3: a proposal is a row's main press, 32px at least.
+    expect(container.querySelector('[data-task="a2"]')!.className.split(" ")).toContain("min-h-8");
     second.focus();
     fireEvent.click(second);
     await waitFor(() => expect(within(bar).getByText("2/3")).toBeTruthy());
@@ -569,6 +571,8 @@ describe("the meeting canvas", () => {
     const { container } = await seat(sampleMeeting());
     await waitFor(() => expect(container.querySelector("[data-meeting=ready]")).toBeTruthy());
     const minute = screen.getByRole("button", { name: "Go to 16:03" });
+    // Round 3, sitting B: its press reaches 2px past the 20px line each way, a 24px target.
+    expect(minute.className.split(" ")).toEqual(expect.arrayContaining(["after:absolute", "after:-inset-y-0.5"]));
     fireEvent.click(minute);
     expect(time(container)).toBe("16:03 / 42:10");
   });

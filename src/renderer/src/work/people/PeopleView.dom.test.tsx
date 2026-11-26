@@ -136,6 +136,32 @@ describe("the list", () => {
     }
   });
 
+  // Council round 3, sitting B (Sol, People 1): a page row's cut mail title or line had no way to be read whole.
+  it("gives a page row that cuts its title or line the row's one tip, only while one is cut", async () => {
+    const { tooltipChunk, warmTooltips } = await import("../../components/ui/tooltip");
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    const wide = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.textContent === "Bracket for Friday" && this.classList.contains("truncate") ? 300 : 100;
+    });
+    const box = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    try {
+      setPlace("ws", { person: "p_maya" });
+      lifeos.page = mayaPage;
+      mount();
+      const rows = await screen.findAllByRole("button", { name: /Bracket for Friday/ });
+      const row = rows.find((r) => r.hasAttribute("data-page-row"))!;
+      expect(row.hasAttribute("data-base-ui-tooltip-trigger")).toBe(true);
+      const quiet = [...document.querySelectorAll("[data-page-row]")].find((r) => r.textContent?.includes("Send the bracket"))!;
+      expect(quiet.hasAttribute("data-base-ui-tooltip-trigger")).toBe(false);
+    } finally {
+      wide.mockRestore();
+      box.mockRestore();
+    }
+  });
+
   it("says when the list did not load", () => {
     lifeos.directoryFails = true;
     mount();

@@ -204,16 +204,19 @@ describe("the Tasks view", () => {
       fireEvent.click(tick());
       status = { ...status, transport: "reconnecting" };
       view.rerender(tree());
-      expect(done().disabled).toBe(true);
-      // Council round 2, sitting B: a held Done says why in its tooltip (`HeldTip`), here and in the sheet.
-      expect(done().closest("[data-held]")).toBeTruthy();
+      // Council round 3, sitting B: a held Done stays a Tab stop (aria-disabled) whose tooltip says why, here and in
+      // the sheet; the row's tick says it on hover (`HeldTip`).
+      expect(done().getAttribute("aria-disabled")).toBe("true");
+      done().focus();
+      expect(document.activeElement).toBe(done());
+      expect(tick().closest("[data-held]")).toBeTruthy();
       expect(tick().matches('[disabled], [aria-disabled="true"]')).toBe(true);
       await act(async () => void vi.advanceTimersByTime(400));
       expect(client.acts).toEqual([]);
       status = { ...status, transport: "open" };
       view.rerender(tree());
-      expect(done().disabled).toBe(false);
-      expect(done().closest("[data-held]")).toBeNull();
+      expect(done().getAttribute("aria-disabled")).not.toBe("true");
+      expect(tick().closest("[data-held]")).toBeNull();
       expect(tick().matches('[disabled], [aria-disabled="true"]')).toBe(false);
     } finally {
       statusOf.mockRestore();

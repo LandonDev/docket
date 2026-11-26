@@ -553,17 +553,28 @@ function Section({ label, show, children }: { label: string; show: boolean; chil
   );
 }
 
-/** One thing live with them: its title, a muted second line, its time at the end; a press opens it where it lives. */
+/**
+ * One thing live with them: its title, a muted second line, its time at the end; a press opens it where it lives. A
+ * title or line the row cuts is said whole in the row's one tip, on hover and focus, only while one is cut (the list's
+ * rule).
+ */
 function PageRow({ title, line, trail, strong, onOpen }: { title: string; line?: string | undefined; trail?: string | undefined; strong?: boolean; onOpen: () => void }) {
+  const { ref: cutRef, cut } = useTruncated(`${title}\n${line ?? ""}`);
   return (
     <div role="listitem">
-      <ItemButton data-page-row="" size="xs" onClick={onOpen} className={cn("-mx-2 min-h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap rounded-md py-1.5 text-[13px]", ROW_PRESS)}>
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className={cn("truncate text-foreground", strong && "font-medium")}>{title}</span>
-          {line ? <span className="truncate text-xs text-muted-foreground">{line}</span> : null}
-        </span>
-        {trail ? <span className="mt-0.5 shrink-0 self-start text-xs text-muted-foreground tabular-nums">{trail}</span> : null}
-      </ItemButton>
+      <Tooltip disabled={!cut}>
+        <TooltipTrigger render={<ItemButton data-page-row="" size="xs" onClick={onOpen} className={cn("-mx-2 min-h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap rounded-md py-1.5 text-[13px]", ROW_PRESS)} />}>
+          <span ref={cutRef} className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className={cn("truncate text-foreground", strong && "font-medium")}>{title}</span>
+            {line ? <span className="truncate text-xs text-muted-foreground">{line}</span> : null}
+          </span>
+          {trail ? <span className="mt-0.5 shrink-0 self-start text-xs text-muted-foreground tabular-nums">{trail}</span> : null}
+        </TooltipTrigger>
+        <TooltipContent side="top" align="start">
+          {title}
+          {line ? <span className="block">{line}</span> : null}
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 }

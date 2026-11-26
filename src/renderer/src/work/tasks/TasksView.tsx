@@ -10,7 +10,7 @@ import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { ItemButton } from "../../components/ui/item";
 import { HeldTip } from "../../components/heldTip";
-import { useTruncated } from "../../components/tip";
+import { Tip, useTruncated } from "../../components/tip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../../components/ui/press";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../components/ui/context-menu";
@@ -189,7 +189,7 @@ export function Tasks({
   const tasks = useKeptRows(client.useOpenTasks() ?? null, idOfTask);
   const projects = client.useProjectsById();
   const actions = client.useTaskActions();
-  // The link's words while it is down: Done is held, and its tooltip says why (`HeldTip`).
+  // The link's words while it is down: Done is held, and its tooltip says why.
   const heldWords = useHostLinkDown(place?.environmentId);
   const doneHeld = !!heldWords;
   const now = useMinute();
@@ -266,6 +266,7 @@ export function Tasks({
               return (
                 <TaskRow
                 doneHeld={doneHeld}
+                heldWords={heldWords}
                   key={task._id}
                   task={task}
                   meta={meta(task, g === "waiting")}
@@ -362,11 +363,11 @@ function Lead({
               Start thread
             </Button>
           )}
-          <HeldTip held={heldWords}>
-            <Button size="sm" variant="secondary" disabled={doneHeld} onClick={() => actions.complete(task)}>
+          <Tip label={heldWords} disabled={!heldWords}>
+            <Button size="sm" variant="secondary" disabled={doneHeld} focusableWhenDisabled className="aria-disabled:opacity-50" onClick={() => actions.complete(task)}>
               Done
             </Button>
-          </HeldTip>
+          </Tip>
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>
               Snooze
@@ -443,6 +444,7 @@ const TaskRow = memo(function TaskRow({
   onOpen,
   onCode,
   doneHeld,
+  heldWords,
   useThread,
   place,
 }: {
@@ -457,6 +459,8 @@ const TaskRow = memo(function TaskRow({
   onOpen: (task: Task) => void;
   onCode: (task: Task) => void;
   doneHeld: boolean;
+  /** The link's words while Done is held, its tick's tip. */
+  heldWords: string | null;
   useThread: UseThread;
 }) {
   const [ticked, setTicked] = useState(false);
@@ -486,7 +490,10 @@ const TaskRow = memo(function TaskRow({
           </TooltipContent>
         </Tooltip>
         {/* Its press reaches 8px a side, a 32px target that ends where the title starts, so the title opens the row. */}
-        <Checkbox shape="round" className={cn("mt-0.5 after:-inset-x-2", ROW_CONTROLS)} checked={ticked} disabled={doneHeld} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
+        {/* Held, the tick says why on hover (`HeldTip`), as Done on the lead and in the sheet does. */}
+        <HeldTip held={heldWords} className={ROW_CONTROLS}>
+          <Checkbox shape="round" className={cn("mt-0.5 after:-inset-x-2", ROW_CONTROLS)} checked={ticked} disabled={doneHeld} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
+        </HeldTip>
         <span ref={cutRef} className={cn("flex min-w-0 flex-1 flex-col", ROW_SHOWS)}>
           <span className={cn("max-w-full truncate text-[13px] leading-5 text-foreground transition-colors duration-(--dur-fast)", ticked && "text-muted-foreground line-through")}>{task.title}</span>
           {meta ? <span className="max-w-full truncate text-xs text-muted-foreground">{meta}</span> : null}
