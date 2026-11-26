@@ -111,7 +111,6 @@ import { useSlashCommands } from '../lib/tcserver/slashCommands'
 import { readCopiedMessage } from '../lib/copyMessage'
 import { sessionStore, useSessionMetaValue } from '../lib/tcserver/store'
 import { useMentionThreads } from '../lib/mentionThreads'
-import { useRankQuery } from '../lib/rankQuery'
 import { threadToken } from '../lib/threadMentions'
 import { tune as tuneSession } from '../lib/tcserver/commands'
 import { nativeModelId } from '../lib/models'
@@ -405,10 +404,11 @@ export function Composer({
     () => files.filter((file) => !file.isDir && !/\s/.test(file.relative)),
     [files]
   )
-  // The `@` rows rank on the query alone (past 5,000 paths in a transition, lib/rankQuery.ts); the metas are read
-  // only in `@` mode, and a push that moves no drawn thread row renders nothing here (lib/mentionThreads.ts).
+  // The `@` rows rank on the query alone; the metas are read only in `@` mode, and a push that moves no drawn
+  // thread row renders nothing here (lib/mentionThreads.ts). Its substring rank over the lowered list is cheap
+  // at 20,000 paths, so it stays on the key: a deferred rank cost `@` a render a key (perf row picker-at).
   const liveQuery = live?.query ?? ''
-  const mentionQuery = useRankQuery(mentionOpen ? liveQuery : '', mentionable.length)
+  const mentionQuery = mentionOpen ? liveQuery : ''
   const threads = useMentionThreads(mentionOpen, mentionQuery, sessionId, projectId)
   const fileHits = useMemo<AtMatch[]>(
     () => (mentionOpen && looksLikeProject(executionCwd) ? rankFiles(mentionable, mentionQuery).map((file) => ({ kind: 'file', file })) : []),
