@@ -8,7 +8,8 @@ import type { MenuIcon, MenuRow } from "../../chrome/menuRows";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { Field } from "../../chrome/DialogField";
-import { DialogFooter, ErrorLine, errorText } from "../../chrome/ConfirmDialog";
+import { workErrorWords } from "../../lib/workErrorWords";
+import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -189,7 +190,8 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
   const [retrying, setRetrying] = useState(false);
 
   useLayoutEffect(() => {
-    const fail = (error: unknown): void => void loadToast().then((toast) => toast.error(errorText(error)));
+    // In Work's words, never the host's raw text (lib/workErrorWords.ts).
+    const fail = (error: unknown): void => void loadToast().then((toast) => toast.error(workErrorWords(error) || "That did not go through. Try again."));
     const workspaceAt = (path: string | null): WorkspaceMeta | undefined => (path ? workspaceByPath(workspaces, path) : undefined);
     workRailPort.set({
       subscribe: (listener) => (railListeners.add(listener), () => void railListeners.delete(listener)),
@@ -288,7 +290,7 @@ function NameWorkspaceDialog({
       setPending(false);
       closeThen(() => onCreated(workspace));
     } catch (err) {
-      setError(errorText(err));
+      setError(workErrorWords(err) || "The job was not made. Try again.");
       setPending(false);
     }
   };

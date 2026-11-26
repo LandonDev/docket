@@ -277,6 +277,16 @@ describe("the Threads section", () => {
     expect(opened).toEqual(["held"]);
   });
 
+  it("lights the open thread's row, and leaves it unlit while a view of the job covers the thread (council R2-A1)", () => {
+    render(<WorkThreadsSection items={items} actions={{ ...actions(), activeSessionId: "held" }} requested={30} onMore={() => {}} archived={scope} />);
+    const held = () => document.querySelector('[data-work-thread="held"] [data-row-open]')!;
+    expect(held().getAttribute("aria-current")).toBe("true");
+    act(() => openWorkView({ workspaceId: "w-job", view: "mail" }));
+    expect(held().getAttribute("aria-current")).toBeNull();
+    act(() => openWorkView(null));
+    expect(held().getAttribute("aria-current")).toBe("true");
+  });
+
   it("says a cut title and second line whole on focus, and draws no tip while nothing is cut", async () => {
     const focusTip = async () => {
       await act(async () => {

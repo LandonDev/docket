@@ -28,12 +28,13 @@ import type { SessionMeta } from "../../lib/tcserver/types";
 import { archivedThreads, quietWords, targetWords, threadLead, threadLine, threadTime, workProjectRows, type ArchivedThread, type WorkLead, type WorkProjectRow } from "./columnModel";
 import { useColumnProjects, useColumnProjectsReading } from "./columnProjects";
 import { linkIsDown } from "./hostLinkDown";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { registry } from "../../lib/connection/registry";
 import { projectsBack, useProjectsHere } from "../projects/here";
 import type { ProjectGroup } from "../../lib/workspaceSessions";
 import { choose, openWorkView, stillChosen, useWorkView } from "../../lib/workSwitch";
 import type { ThreadRow } from "../../lib/workspaceSessions";
-import { shell, shellStore, threadsCovered } from "../../stores/shell";
+import { shell, shellStore, threadsCovered, useShell } from "../../stores/shell";
 
 /**
  * A Work job's column under its views (docs/DESIGN.md "The column"): Projects, one row a project, then Threads, two
@@ -285,7 +286,9 @@ export const WorkThreadRow = memo(function WorkThreadRow({ row, project, actions
   const lead = threadLead(row, planReady);
   const line = threadLine(project, row);
   const title = row.title || "Untitled";
-  const selected = row.id === actions.activeSessionId;
+  // A view over the thread panes (Mail, Today, Settings) is the one place lit: the thread under it is not in front.
+  const covered = useShell(threadsCovered) || useWorkView() !== null;
+  const selected = row.id === actions.activeSessionId && !covered;
   const renaming = actions.renamingId === row.id;
   const working = lead?.kind === "state" && lead.state === "working";
   const label = [title, ...markWords(row), leadWords(lead), line].filter(Boolean).join(", ");
@@ -428,7 +431,7 @@ async function restoreThread(id: string, onOpen: (id: string) => void): Promise<
   try {
     await setSessionArchived(id, false);
   } catch (error) {
-    void loadToast().then((toast) => toast.error(error instanceof Error ? error.message : String(error)));
+    void loadToast().then((toast) => toast.error(workErrorWords(error) || "The thread was not restored. Try again."));
     return;
   }
   if (stillChosen(mine, null, "")) onOpen(id);
