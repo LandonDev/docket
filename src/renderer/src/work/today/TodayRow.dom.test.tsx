@@ -73,3 +73,12 @@ describe("a Today row's whole words", () => {
     expect((await tipOf(container))?.querySelector("[data-tip-detail]")?.textContent).toBe(`${JOB} Due today`);
   });
 });
+
+it("keeps a meeting's place and people after a clash's note, the note in the failed tone, the row named by both", () => {
+  const meeting: TodayRow = { key: "event:1", section: "meetings", sector: "hypixel", title: "Thumbnail review", detail: "Overlaps Staff sync", detailLate: true, detailAfter: "Studio B, with Priya Nair", open: () => undefined };
+  const { container } = render(<TodayRowView row={meeting} job="Hypixel" />);
+  const line = container.querySelector("[data-row-detail]")!;
+  expect(line.textContent).toBe("HypixelOverlaps Staff sync · Studio B, with Priya Nair");
+  expect(screen.getByText("Overlaps Staff sync").className).toContain("text-destructive");
+  expect(screen.getByRole("button", { name: "Thumbnail review, Overlaps Staff sync · Studio B, with Priya Nair" })).toBeTruthy();
+});

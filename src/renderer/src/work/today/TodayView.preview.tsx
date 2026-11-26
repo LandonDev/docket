@@ -45,7 +45,7 @@ const MEETING_ROWS = [
   row("event:0", "meetings", "cosmic", "Standup", { when: "8:30 AM", past: true, at: 1 }),
   row("event:00", "meetings", "hypixel", "Render review", { when: "9:00 AM", past: true, at: 2 }),
   row("event:1", "meetings", "purdue", "Staff sync", { detail: "CoRec 2212, with Dana Reyes", when: "10:30 AM", whenLine: "in 25 min", at: 3, acts: [{ label: "Prepare", run: noop }] }),
-  row("event:2", "meetings", "hypixel", "Thumbnail review", { detail: "Overlaps Staff sync", detailLate: true, when: "10:45 AM", at: 4, acts: [{ label: "Resolve", run: noop }, { label: "Prepare", run: noop }] }),
+  row("event:2", "meetings", "hypixel", "Thumbnail review", { detail: "Overlaps Staff sync", detailLate: true, detailAfter: "Studio B, with Priya Nair", when: "10:45 AM", at: 4, acts: [{ label: "Resolve", run: noop }, { label: "Prepare", run: noop }] }),
   row("event:3", "meetings", "ref", "JV basketball, Harrison at West Lafayette", { detail: "Harrison High School", when: "6:00 PM", whenLine: "Leave 5:10 PM", at: 5, acts: [{ label: "Prepare", run: noop }] }),
 ];
 const DUE_ROWS = [
@@ -84,7 +84,7 @@ function modelOf(state: State) {
     case "bones":
       return page([fed(HELD, { loading: true }), fed(MEETINGS, { loading: true }), fed(DUE, { loading: true }), fed(WAITING, { loading: true }), fed(FILES, { loading: true })], opts("waiting"));
     case "empty":
-      return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync." }), fed(DUE, {}), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, {})], opts());
+      return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync" }), fed(DUE, {}), fed(WAITING, { rows: WAITING_ROWS }), fed(FILES, {})], opts());
     case "hosts":
       return page(
         [fed(HELD, { rows: HELD_ROWS.slice(0, 1), failed: [{ environmentId: "box", error: TIMED_OUT, retry: noop }] }), fed(MEETINGS, { rows: MEETING_ROWS.slice(2) }), fed(DUE, { rows: DUE_ROWS.slice(0, 3) }), fed(WAITING, {}), fed(FILES, { failed: [{ environmentId: "box", error: "Work is off on this host", retry: noop }] })],
@@ -148,7 +148,7 @@ function modelOf(state: State) {
     case "clear":
       return page([fed(HELD, {}), fed(MEETINGS, {}), fed(DUE, {}), fed(WAITING, {}), fed(FILES, {})], opts());
     case "evening":
-      return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync." }), fed(DUE, {}), fed(WAITING, {}), fed(FILES, {})], opts());
+      return page([fed(HELD, {}), fed(MEETINGS, { rows: MEETING_ROWS.slice(0, 2), note: "Tomorrow starts at 9:00 AM with Staff sync" }), fed(DUE, {}), fed(WAITING, {}), fed(FILES, {})], opts());
     case "pillars":
       return page(PILLARS, opts());
     case "long-job":
@@ -167,7 +167,7 @@ function modelOf(state: State) {
 const NOON = new Date(2026, 10, 23, 9, 30).getTime();
 const PILLARS = [
   fed(HELD, { rows: HELD_ROWS.slice(0, 1) }),
-  fed(MEETINGS, { rows: MEETING_ROWS.slice(2).map((r) => ({ ...r, detail: r.key === "event:2" ? undefined : r.detail, detailLate: undefined, whenLine: undefined, acts: [{ label: "Prepare", run: noop }] })) }),
+  fed(MEETINGS, { rows: MEETING_ROWS.slice(2).map((r) => ({ ...r, detail: r.key === "event:2" ? "Studio B, with Priya Nair" : r.detail, detailLate: undefined, detailAfter: undefined, whenLine: undefined, acts: [{ label: "Prepare", run: noop }] })) }),
   {
     source: { id: "clashes" },
     answer: {

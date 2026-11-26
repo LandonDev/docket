@@ -59,9 +59,11 @@ function lay(row: TodayRow, marks: readonly TodayMark[]): TodayRow {
   const out: TodayRow = { ...row };
   // A fault's note (a clash) is said before a plain one (prep is ready).
   const noted = marks.find((m) => m.note && m.late) ?? marks.find((m) => m.note);
+  // The row's own line (its place and people) stays after the note.
   if (noted) {
     out.detail = noted.note;
     out.detailLate = !!noted.late;
+    if (row.detail && row.detail !== noted.note) out.detailAfter = row.detail;
   }
   // One Leave shows: a mark's line takes the place of the row's own.
   const lined = marks.find((m) => m.whenLine);
@@ -331,8 +333,9 @@ export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[
   const drawn = new Set(shown.map((s) => s.id));
   const out = reached.some(({ source, answer }) => !!answer.loading && !(source.section && drawn.has(source.section.id)));
   if (!said && !leftOut && !out && offline.length === 0 && shown.every(done)) {
+    // A section's note is a muted line with no stop, as its empty lines are; under "All clear" it is a sentence.
     const line = shown.find((s) => s.note)?.note;
-    return { kind: "clear", ...(line ? { line } : {}) };
+    return { kind: "clear", ...(line ? { line: `${line}.` } : {}) };
   }
   const keys = shown.flatMap((s) => (s.state !== "rows" ? [] : [...(s.earlier > 0 ? [foldKey("earlier", s.id)] : []), ...s.rows.map((r) => r.key), ...(s.more > 0 ? [foldKey("more", s.id)] : [])]));
   return { kind: "day", blocks, offline, keys };

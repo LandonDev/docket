@@ -97,7 +97,7 @@ export function meetingRows(events: readonly MeetingEvent[], day: { from: number
   if (rows.length === 0 || rows.some((row) => !row.past)) return { rows };
   const next = days.find((d) => d.day === dayAfter(day.from, 1))?.events.find((event) => !event.allDay);
   // The fold above already says today's are over ("2 earlier"); the line says only what comes next.
-  return next ? { rows, note: `Tomorrow starts at ${clockTime(next.startsAt)} with ${next.title}.` } : { rows };
+  return next ? { rows, note: `Tomorrow starts at ${clockTime(next.startsAt)} with ${next.title}` } : { rows };
 }
 
 /** A slot with nothing to read. */

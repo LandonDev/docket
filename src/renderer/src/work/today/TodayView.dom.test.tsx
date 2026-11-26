@@ -538,7 +538,7 @@ describe("Today", () => {
 
   it("is all clear once only ended meetings are left, and says what tomorrow starts with", async () => {
     await loadOutbox();
-    const over = { rows: [{ key: "event:1", section: "meetings", sector: "purdue" as const, title: "Staff sync", past: true, open: () => {} }], note: "Tomorrow starts at 9:00 AM with Crew meeting." };
+    const over = { rows: [{ key: "event:1", section: "meetings", sector: "purdue" as const, title: "Staff sync", past: true, open: () => {} }], note: "Tomorrow starts at 9:00 AM with Crew meeting" };
     resetToday([held, { id: "meetings", section: { id: "meetings", title: "Meetings", order: 20, empty: "No meetings today" }, use: () => over }]);
     render(<View onClose={() => {}} />);
     expect(screen.getByText("All clear")).toBeTruthy();
@@ -1015,10 +1015,9 @@ describe("a source", () => {
     resetToday([held, money]);
     render(<View onClose={() => {}} />);
     expect([...document.querySelectorAll("[data-today-section]")].map((s) => s.getAttribute("data-today-section"))).toEqual(["held", "money"]);
-    // The mark's note takes the held row's second line, in the fault's tone.
+    // The mark's note leads the held row's second line, in the fault's tone; the row's own line stays after it.
     const heldRow = document.querySelector<HTMLElement>('[data-today-row="held:box:lifeos:o1"]')!;
-    expect(heldRow.textContent).toContain("Overlaps Staff sync");
-    expect(heldRow.textContent).not.toContain("Sponsor deck");
+    expect(heldRow.textContent).toContain("Overlaps Staff sync · Sponsor deck");
     const row = document.querySelector<HTMLElement>('[data-today-row="owed:1"]')!;
     expect(row.textContent).toContain("Unify");
     fireEvent.click(within(row).getByRole("button", { name: "Remind" }));

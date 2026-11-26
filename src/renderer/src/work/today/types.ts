@@ -48,6 +48,8 @@ export type TodayRow = {
   detail?: string;
   /** The detail is a fault (a send that failed): drawn in the failed tone. */
   detailLate?: boolean;
+  /** The row's own detail where a mark's note took its place (a clash over "CoRec 2212, with Dana Reyes"): kept after the note, muted. */
+  detailAfter?: string;
   /** What the section orders by, ascending; a row with none keeps its place after those with one. */
   at?: number;
   /** The trailing fact ("2:00 PM", "6 days"). */

@@ -108,8 +108,9 @@ What a row does:
   press opens the event in its job's Agenda; Prepare starts a thread about
   it there. Once every meeting has ended the "N earlier" line says so, and
   the section's one line under it says what comes next, where there is one:
-  "Tomorrow starts at 9:00 AM with …". A meeting that ended is not left:
-  with nothing else on the page it is "All clear" over that line.
+  "Tomorrow starts at 9:00 AM with …", with no stop, as every empty line
+  beside it. A meeting that ended is not left: with nothing else on the page
+  it is "All clear" over that line, a sentence there with its stop.
 - **Due.** The most overdue first, then today's by time, then the pinned
   with no date. The tick holds 350ms, then completes through the job's host
   (`work.tasks.done`), so a task a thread worked completes with that
@@ -245,8 +246,11 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
   live line under it), `late`, `past`, `lead` (a tick or a glyph), `open`,
   and at most two `acts`.
 - A **mark** says something about a row another source made, found by its
-  key: its `note` takes the row's second line (a `late` note wins and is
-  drawn in the failed tone), its `whenLine` takes the place of the row's own
+  key: its `note` leads the row's second line (a `late` note wins and is
+  drawn in the failed tone), the row's own line (a meeting's place and
+  people) kept after it, "Overlaps Staff sync · CoRec 2212, with Dana Reyes"
+  (`detailAfter`); a clash is said on both of its rows, each in its side's
+  words, its `whenLine` takes the place of the row's own
   live line, `open` replaces the press and `act` leads the verbs. A mark
   with no row draws nothing. Prep and clashes show on a meeting this way,
   with no second row for it.

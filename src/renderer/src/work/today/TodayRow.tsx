@@ -119,7 +119,9 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
   // One tab stop for the whole list: only the row the arrows are on takes Tab, and its own controls with it.
   const stop = current ? 0 : -1;
   // A title, a second line or a job name the columns cut is said whole on hover and focus, only while one is cut.
-  const words = useTruncated(`${row.title}\n${job ?? ""}\n${row.detail ?? ""}`);
+  const words = useTruncated(`${row.title}\n${job ?? ""}\n${row.detail ?? ""}\n${row.detailAfter ?? ""}`);
+  // The second line's words: a mark's note, then the row's own place and people it would have covered.
+  const detail = [row.detail, row.detailAfter].filter(Boolean).join(" · ");
   const wideJob = useTruncated(job ?? "");
   // The row's name is its title and second line; its job and its time are read after it, as he sees them.
   const id = useId();
@@ -145,7 +147,7 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
         data-row-open
         data-roving-key={row.key}
         tabIndex={stop}
-        aria-label={row.detail ? `${row.title}, ${row.detail}` : row.title}
+        aria-label={detail ? `${row.title}, ${detail}` : row.title}
         aria-describedby={told || undefined}
         onClick={row.open}
         onKeyDown={
@@ -170,7 +172,7 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
             <span data-tip-detail className="block">
               {job ? <span className="font-medium">{job}</span> : null}
               {job && row.detail ? " " : null}
-              {row.detail}
+              {detail}
             </span>
           ) : null}
         </TooltipContent>
@@ -191,6 +193,7 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
               </span>
             ) : null}
             {row.detail ? <span className={cn(job && "@max-[30rem]/today:ms-1", row.detailLate && "text-destructive")}>{row.detail}</span> : null}
+            {row.detailAfter ? ` · ${row.detailAfter}` : null}
           </span>
         ) : null}
       </span>

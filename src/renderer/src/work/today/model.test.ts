@@ -17,7 +17,7 @@ describe("merge", () => {
     expect(meetings!.rows.map((r) => r.title)).toEqual(["From LifeOS"]);
   });
 
-  it("lays a mark on the row of its key: the note takes the second line, the live line the row's own, the press and one verb", () => {
+  it("lays a mark on the row of its key: the note leads the second line, the row's own after it, the live line the row's own, the press and one verb", () => {
     const open = vi.fn();
     const resolve = { label: "Resolve", run: vi.fn() };
     const prepare = { label: "Prepare", run: vi.fn() };
@@ -30,6 +30,8 @@ describe("merge", () => {
     // The fault's note is said, not the plain one, whichever source came first.
     expect(shown.detail).toBe("Overlaps Staff sync");
     expect(shown.detailLate).toBe(true);
+    // The row's own place and people stay beside it.
+    expect(shown.detailAfter).toBe("CoRec 2212");
     // One Leave shows: the mark's.
     expect(shown.whenLine).toBe("Leave 4:40 PM");
     expect(shown.open).toBe(open);
@@ -149,7 +151,7 @@ describe("page", () => {
   it("a meeting that ended is not left: the evening is all clear, and says what the day's last section said of tomorrow", () => {
     const over = (answer: TodayAnswer) => [fed("held", HELD, {}), fed("meetings", MEETINGS, { rows: [row("event:1", "meetings", { past: true })], ...answer }), fed("due", DUE, {})];
     expect(page(over({}), { jobs, lifeos: "ok" })).toEqual({ kind: "clear" });
-    expect(page(over({ note: "Tomorrow starts at 9:00 AM with Staff sync." }), { jobs, lifeos: "ok" })).toEqual({ kind: "clear", line: "Tomorrow starts at 9:00 AM with Staff sync." });
+    expect(page(over({ note: "Tomorrow starts at 9:00 AM with Staff sync" }), { jobs, lifeos: "ok" })).toEqual({ kind: "clear", line: "Tomorrow starts at 9:00 AM with Staff sync." });
     // The day settles the same way whether "N earlier" is folded or open.
     expect(page(over({}), { jobs, lifeos: "ok", folds: { more: new Set(), earlier: new Set(["meetings"]) } }).kind).toBe("clear");
     // A read still out, or one that failed, is not an answer.
