@@ -16,7 +16,7 @@ import { focusSignal } from "./commands";
 import { sessionStore } from "./store";
 import { docketOpen } from "../docketOpen";
 import { environmentStore } from "../../stores/environment";
-import { probeDoctor, refreshCatalog } from "./catalog";
+import { forgetCatalog, probeDoctor, refreshCatalog } from "./catalog";
 import { afterOpen } from "./openPhase";
 import { dropHarnessModels, setDefaultCatalogEnvironment } from "../models";
 import { dropHarnessAvailability, probeHarnessAvailability } from "../harness/availability";
@@ -61,13 +61,14 @@ export function initServerLink(): void {
   registry.onLink((link, event) => {
     if (event !== "added") {
       dropHarnessModels(link.environmentId);
+      forgetCatalog(link.environmentId);
       dropHarnessAvailability(link.environmentId);
       return;
     }
     // A new socket holds no focus: tell it which thread this window shows.
     link.onOpen(() => focusSignal.reopened(link.environmentId));
-    // Each host's model catalog, so a picker on its thread shows its rows.
-    link.onOpen(() => void refreshCatalog(link.environmentId).catch(() => undefined));
+    // Each host's model catalog, so a picker on its thread shows its rows; a new socket asks again whatever the 60 s.
+    link.onOpen(() => void refreshCatalog(link.environmentId, { force: true }).catch(() => undefined));
     // Its providers' doctor after the first paint (openPhase.ts): one `doctor.get` answers the report and which
     // CLIs are installed (the pickers keep every provider until it has).
     link.onOpen(() =>

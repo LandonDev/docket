@@ -96,11 +96,18 @@ export function agentModelsFor(provider: ProviderInfo): AgentModel[] {
 }
 
 const catalogInflight = new Map<string, Promise<void>>();
+/** A host's catalog is kept this long: a picker's opens, tab changes and first keys inside it ask nothing. */
+export const CATALOG_TTL_MS = 60_000;
+/** When each host's last catalog answer landed; a failed read stamps nothing. */
+const catalogAt = new Map<string, number>();
 
-/** Pull one environment's catalog once and overlay every provider's models for it. */
-export function refreshCatalog(environmentId: string): Promise<void> {
+/** Pull one environment's catalog and overlay every provider's models for it; an answer inside
+ *  CATALOG_TTL_MS is reused unless `force` (a new socket: the host may have restarted). */
+export function refreshCatalog(environmentId: string, options?: { force?: boolean }): Promise<void> {
   const inflight = catalogInflight.get(environmentId);
   if (inflight) return inflight;
+  const at = catalogAt.get(environmentId);
+  if (!options?.force && at !== undefined && Date.now() - at < CATALOG_TTL_MS) return Promise.resolve();
   const run = registry
     .linkOf(environmentId)
     .request<Record<ProviderId, ProviderInfo>>("catalog.get")
@@ -109,6 +116,7 @@ export function refreshCatalog(environmentId: string): Promise<void> {
         if (!(HARNESSES as string[]).includes(provider.id)) continue;
         setHarnessModels(provider.id as HarnessId, agentModelsFor(provider), provider.defaultModel, environmentId);
       }
+      catalogAt.set(environmentId, Date.now());
     })
     .finally(() => {
       catalogInflight.delete(environmentId);
@@ -158,6 +166,12 @@ export function probeDoctor(
 export function resetCatalogProbes(): void {
   doctors.clear();
   catalogInflight.clear();
+  catalogAt.clear();
+}
+
+/** A host gone from the registry: its kept catalog stamp goes with its models. */
+export function forgetCatalog(environmentId: string): void {
+  catalogAt.delete(environmentId);
 }
 
 export function availabilityFromDoctor(doctor: Doctor): Record<HarnessId, boolean> {

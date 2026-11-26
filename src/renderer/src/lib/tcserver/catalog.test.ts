@@ -4,6 +4,8 @@ import {
   agentModelsFor,
   availabilityFromDoctor,
   probeDoctor,
+  CATALOG_TTL_MS,
+  forgetCatalog,
   refreshCatalog,
   resetCatalogProbes,
 } from "./catalog";
@@ -122,6 +124,43 @@ describe("refreshCatalog", () => {
     expect(modelsFor("claude").map((m) => m.id)).toEqual(["claude:claude-opus-5", "claude:claude-sonnet-5-5"]);
     expect(resolveModel("claude", "claude-opus-5").id).toBe("claude:claude-opus-5");
     expect(modelsFor("cursor")[0].id).toBe("cursor:composer-2.5");
+  });
+});
+
+describe("refreshCatalog's 60 s", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("reuses a host's catalog.get answer inside 60 s, asks again after it, and a new socket forces it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000_000);
+    const link = fakeLink({ "catalog.get": { claude } });
+    await refreshCatalog("local");
+    vi.setSystemTime(1_000_000 + CATALOG_TTL_MS - 1);
+    // A picker's open, a tab change and a first key.
+    await refreshCatalog("local");
+    await refreshCatalog("local");
+    await refreshCatalog("local");
+    expect(link.calls).toEqual(["catalog.get"]);
+    vi.setSystemTime(1_000_000 + CATALOG_TTL_MS);
+    await refreshCatalog("local");
+    expect(link.calls).toHaveLength(2);
+    await refreshCatalog("local", { force: true });
+    expect(link.calls).toHaveLength(3);
+    // A host gone from the registry keeps no stamp.
+    forgetCatalog("local");
+    await refreshCatalog("local");
+    expect(link.calls).toHaveLength(4);
+  });
+
+  it("stamps no failed read: the next ask goes out", async () => {
+    const link = fakeLink({});
+    link.request = <T,>(method: string): Promise<T> => {
+      link.calls.push(method);
+      return Promise.reject(new Error("refused"));
+    };
+    await expect(refreshCatalog("local")).rejects.toThrow("refused");
+    await expect(refreshCatalog("local")).rejects.toThrow("refused");
+    expect(link.calls).toHaveLength(2);
   });
 });
 
