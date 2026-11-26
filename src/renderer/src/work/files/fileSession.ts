@@ -21,6 +21,9 @@ import { bytesOfBase64, decodeText, encodeText, linkDropped, notSavedWords, trie
  */
 
 export const SAVE_AFTER_MS = 700;
+/** Looks a save makes at most while the folder keeps speaking (any file of the workspace): past them the line stays
+ *  unconfirmed, no Saved, and the save ends, so a busy workspace never holds the next save or a tab's close. */
+export const SAVE_LOOKS = 3;
 
 // The wire carries the host's sentence. A failed or refused read does not establish removal.
 function readGone(err: unknown): boolean {
@@ -428,13 +431,20 @@ export class FileSession {
           let now: FileBytes | null | undefined;
           let seen: number;
           this.unconfirmed = true;
+          let looks = 0;
           do {
             seen = this.noted;
             now = await this.look();
-          } while (now !== undefined && this.noted !== seen && !this.disposed);
+            looks += 1;
+          } while (now !== undefined && this.noted !== seen && !this.disposed && looks < SAVE_LOOKS);
           this.saving = null;
           this.sentAt = null;
           if (this.disposed) return;
+          // Still noticed after the last look: not confirmed, so no Saved; a later write meets the host's version check.
+          if (now !== undefined && this.noted !== seen) {
+            this.later(null);
+            return this.line();
+          }
           // A look that failed says nothing of saving, as a failed read does: never Saved unproven, and its timer goes.
           if (now === undefined) {
             this.later(null);

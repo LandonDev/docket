@@ -456,6 +456,28 @@ describe("a text file open", () => {
     expect(h.lines.at(-1)?.state ?? null).not.toBe("saved");
   });
 
+  it("a busy workspace's notices on every look: the save ends after 3 looks with no Saved line (Sol S26)", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    const host = (h.session as unknown as { host: FileSessionHost }).host;
+    const real = host.request.bind(host);
+    let looks = 0;
+    host.request = async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+      const got = await real<T>(method, params);
+      if (method === "work.files.write") void h.session.check();
+      // Another file in the workspace changes while each look is out.
+      if (method === "work.files.read" && params.length === 1 && h.calls.some((c) => c.method === "work.files.write")) {
+        looks++;
+        void h.session.check();
+      }
+      return got;
+    };
+    h.session.edit("mine\n");
+    await h.fire();
+    expect(looks).toBe(3);
+    expect(h.lines.at(-1)?.state ?? null).not.toBe("saved");
+  });
+
   it("keeps an unlisted open copy writable after a scoped look and a failed look", async () => {
     const h = standIn("first\n", { unlisted: true });
     await h.session.load();
