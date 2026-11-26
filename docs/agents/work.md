@@ -311,7 +311,8 @@ Settings → Work.
   (`sessionStore.ensureArchivedWork`, `session.list {archived: true, scope:
   "work"}`; an older host ignores `scope` and answers every archived
   thread), and the row renders again only when the scope's archived ids
-  change. Work Chats' title bar New thread starts a Work Chat on the host a
+  change; it reckons them again only when a change touches an archived
+  thread, so a push for a live thread costs it nothing (`archivedWatch`). Work Chats' title bar New thread starts a Work Chat on the host a
   Work Chat goes to (`chooserPlace` in chrome/NewThreadChooser.tsx, `workHome`).
 - **A view registers** in `src/renderer/src/work/views/registry.ts`: the
   milestone fills its own `work/<pillar>/view.ts` (mail, tasks, agenda,
@@ -692,7 +693,8 @@ One record answers it for every screen (the thread's head, the column's outcome 
   layout measures it), again whenever the folded outcome or the thread's status moves, one of its held items changes in
   the Outbox's list (sent, discarded, edited in place), one of its root's Results is made or undone (`resultsStamp`,
   outbox/results.ts, the stamp a project's Files reads by), or LifeOS changes one of its open tasks (`tasks:get` watched on
-  the job's LifeOS session, which the column already holds). A record read for another thread or host is never shown;
+  the job's LifeOS session, which the column already holds); the first read goes at once, and the changes after it
+  inside 500 ms make one read at the span's end (`HEAD_JOIN_MS`), `fresh` when the task pulse moved among them. A record read for another thread or host is never shown;
   a refresh that fails keeps the last facts with one quiet line, "Couldn't refresh. As of 10:02 AM". A record with
   `worksDown` keeps the last task facts under that line, and is read again once the job's LifeOS session connects
   after it was not, task ids or none, and after 5, 15 and 45 seconds while it stays connected, then left

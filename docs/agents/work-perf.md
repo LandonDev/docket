@@ -235,6 +235,26 @@ backoff): the 20 s after, the wire's bytes, the transcript asks by mounted, tab,
 `scripts/perf/lib/frames.ts` (`WireLog`) keeps every WebSocket event of the window with CDP's own times on the
 epoch clock, for the rows that need more than the probe's counts. L10 is `off` in budgets.ts, with why.
 
+## Costs a screen pays only when something moved (Nov 26, perf2 M11)
+
+- **The tracker** (work/tracker/data.ts) reads `work.projects.overview` through `lib/quietPoll.ts`: once on show, a
+  minute after its last read, never while the window is hidden, on a focus only when no read began in the last
+  minute, at once on a roster change. Its due words move on the window's one minute clock (`useMinuteClock`).
+- **The job column's archived row** (work/shell/WorkColumnRows.tsx `archivedWatch`) runs `archivedThreads` only when a
+  change touches an archived thread (one archived now, or one in its last answer) or the catalog moves; its answer is
+  compared by id.
+- **A Work thread's head** asks `work.threads.record` at once on open, then joins every change inside 500 ms to one
+  ask at the span's end (`HEAD_JOIN_MS`), `fresh` when LifeOS's task pulse moved among them (the host's 60 s cache stands).
+- **The text journal** (work/files/fileSession.ts) copies the text to main at once after a quiet spell, then at most
+  once every 250 ms for any size (`JOURNAL_MS`), the last edit written before a save or a close. The save line reads the
+  host's write alone; a crash inside a span keeps the key before it.
+- **Live Office's ask** (`useLiveOf`) retries after 2, 5, 15 and 30 s, then waits for a window focus or the link opening.
+- **A parked Forms carrier** waits on `onOwnerTakes` (browser/drive.ts), not a database read every 5 s.
+- **Kept by item, gone with it**: a picture's fit (media/MediaCanvas.tsx, `forgetWithItems`), a document's last store
+  time once each of its items has closed (docs/host.ts), and on the host a Google deck's read times once its poll lets
+  the deck go (google/deckMirror.ts, `onUnwatched`). `farLink`'s `made` is one entry a far desktop, replaced when its
+  route moves: not by item, bounded by the hosts.
+
 ## The pass's numbers
 
 Before (Nov 24, 7633505ea) and after (Nov 25, 49bedd5e8 with the kit's Host fix) sit side by side in

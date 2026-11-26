@@ -45,8 +45,10 @@ row passes on.
 
 ## The window
 
-`useTracker()` asks every host with Work on (`askHosts`), once when the page shows, again on focus, each minute while
-it stands, when the roster moves, and on a down job's Retry (`reload`). The roster is the Work hosts and whether
+`useTracker()` asks every host with Work on (`askHosts`), once when the page shows, then through `lib/quietPoll.ts`: a
+minute after the last read, never while the window is hidden (once as it shows again, when one came due), on a focus
+only when no read began in the last minute, at once when the roster moves, and on a down job's Retry (`reload`). Its
+due words and ages move on the window's one minute clock (`useMinuteClock`, lib/turnClock.ts). The roster is the Work hosts and whether
 each link is open, held by one rule, `reconcileKept`, on the first read and on every change from then on (a host joins
 or leaves Work, a link drops or opens again): a host whose link is not open is marked closed and says its line at once,
 a host that is new, or whose link opens again, is pending, and a host that left Work goes; the other hosts' groups
