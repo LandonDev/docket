@@ -15,7 +15,6 @@ import {
 import type { Session } from "./session";
 import { restoreSessionCheckout } from "./fs";
 import {
-  getSession,
   isPersistedThread,
   loadSession,
   peekSession,
@@ -152,10 +151,12 @@ export function loadBootWorkspace(): Promise<BootWorkspace> {
       const historyHint = listProjectHistory(hintedCwd);
       const windowTransfer = await loadWindowTransfer();
       if (windowTransfer) {
-        // The payload names the sessions; their transcripts come from the server.
+        // The payload names the sessions; their transcripts come from the
+        // server: the tail, once, as a restore paints (older rows page in on
+        // the reader's scroll), never the whole kept log first.
         const sessions = await Promise.all(
           windowTransfer.sessions.map(
-            async (session) => (await getSession(session.id).catch(() => null)) ?? session,
+            async (session) => (await loadSession(session.id).catch(() => null)) ?? session,
           ),
         );
         const listed = await historyForCwd(

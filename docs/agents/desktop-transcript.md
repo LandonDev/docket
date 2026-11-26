@@ -84,6 +84,12 @@
   failed ask) drops the request and leaves the thread as it is, Load
   earlier still working. A hit at row 500 of 30,000 is 98 pages and one
   refold (store.remote.test.ts "a jump to an old search hit").
+- A tab moved to a new window carries the tail alone: the window that takes
+  it loads each transferred thread as a restore does (`loadSession` in
+  lib/appLifecycle.ts `loadBootWorkspace`), one transcript ask a remote
+  thread, its older rows left on the host for the reader's scroll; it no
+  longer pages the whole kept log in before it paints (`getSession`,
+  `ensureComplete`). appLifecycle.transfer.test.ts holds one ask.
 - The streaming reveal (surfaces/smoothText.ts) holds a lead behind the live
   end (seeded 100 ms, 250 ms for another host's thread, grown by an
   underrun, decaying back), never runs slower than the stream, shows every
