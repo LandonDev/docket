@@ -1578,7 +1578,7 @@ describe("the mounted set", () => {
     expect(sessionStore.get("s1")?.blocks.at(-1)?.text).toBe("q8");
   });
 
-  it("a busy transcript outside the kept set replays its gap on a resync too: the unload that keeps its rows never releases past the shed ones", async () => {
+  it("a busy transcript outside the kept set is dropped on a resync, not replayed: nothing folds past the shed rows, and the next open is whole", async () => {
     link.metas = [wireMeta({ id: "s1" }), wireMeta({ id: "s2" })];
     const rows: EventRow[] = [];
     for (let i = 1; i <= 5; i++) rows.push(row("s1", i, { type: "user-text", text: `q${i}` }));
@@ -1595,8 +1595,11 @@ describe("the mounted set", () => {
     link.push({ push: "resync" });
     link.push({ push: "event", row: row("s1", 7, { type: "user-text", text: "q7" }) });
     for (let i = 0; i < 6; i++) await tick();
+    // Its rows were stale from the cut: it holds none, so q7 alone cannot fold past the shed q6.
+    expect(sessionStore.get("s1")?.loaded).toBe(false);
+    expect(sessionStore.get("s1")?.blocks.map((b) => b.text) ?? []).toEqual([]);
+    await sessionStore.ensureLoaded("s1", "test");
     expect(sessionStore.get("s1")?.blocks.map((b) => b.text)).toEqual(["q1", "q2", "q3", "q4", "q5", "q6", "q7"]);
-    expect(sessionStore.get("s1")?.loaded).toBe(true);
   });
 
   it("a batch of 1,000 metas builds one snapshot and notifies once per frame", async () => {

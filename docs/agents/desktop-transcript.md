@@ -177,8 +177,14 @@
   microtasks); no other starts while its fetch is out
   (so its page never queues behind another on the socket); the panes on
   the page, then the kept ones, go one at a time, each followed by a pause
-  of its bytes at
-  CATCH_UP_BYTES_PER_SEC (2 MiB/s) and at least one macrotask. A page folds
+  that holds background work to BACKGROUND_SHARE (half) of the link's
+  rate as its own fetches measured it (those of RATE_SAMPLE_BYTES, 64 KiB,
+  or more; CATCH_UP_BYTES_PER_SEC, 2 MiB/s, until one has), and at least
+  one macrotask: a fast LAN is no longer held to 2 MiB/s, and a slow link
+  keeps half of itself for the shown thread. A resync replays only the
+  kept set's transcripts: a loaded one outside it is dropped, a running
+  one too (the threads only in the rail's Working list were each fetched
+  again after every cut), unless a send of his is pending. A page folds
   in slices of FOLD_SLICE_MS (8 ms) with the window given back between
   them; pushes stay held until the last slice. A cold load at launch takes
   the same lane. No wait there is unbounded: background work waits for the

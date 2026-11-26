@@ -109,17 +109,41 @@ describe("CatchUpLane", () => {
     expect(h.started).toEqual(["a", "c", "b"]);
   });
 
-  it("pauses after a transcript in proportion to the bytes it took", async () => {
+  it("pauses after a transcript so it took half the link's measured rate: as long again as the fetch took", async () => {
+    const h = harness();
+    for (const id of ["a", "b", "c"]) void h.lane.run(id, h.fetch(id));
+    await flush();
+    // 2 MiB in 100 ms: the link runs at 20 MiB/s, and background takes half of it.
+    h.state.now = 100;
+    await h.answer("a", 2 * 1024 * 1024);
+    expect(h.sleeps).toEqual([100]);
+    expect(h.lane.linkRate).toBe(20 * 1024 * 1024);
+    expect(h.started).toEqual(["a", "b"]);
+  });
+
+  it("a slow link is paced to half of itself and a fast LAN is never held to 2 MiB/s", async () => {
+    const slow = harness();
+    for (const id of ["a", "b"]) void slow.lane.run(id, slow.fetch(id));
+    await flush();
+    slow.state.now = 4_000;
+    await slow.answer("a", 2 * 1024 * 1024); // 0.5 MiB/s
+    expect(slow.sleeps).toEqual([4_000]);
+    const fast = harness();
+    for (const id of ["a", "b"]) void fast.lane.run(id, fast.fetch(id));
+    await flush();
+    fast.state.now = 20;
+    await fast.answer("a", 2 * 1024 * 1024); // 100 MiB/s; 2 MiB/s fixed would have slept 980 ms
+    expect(fast.sleeps).toEqual([20]);
+  });
+
+  it("before any fetch big enough to measure, it paces at half the assumed 2 MiB/s", async () => {
     const h = harness();
     for (const id of ["a", "b"]) void h.lane.run(id, h.fetch(id));
     await flush();
-    h.state.now = 100;
-    h.state.bytes += CATCH_UP_BYTES_PER_SEC;
-    h.answers.get("a")!.resolve();
-    await flush();
-    // A second's worth of the budget, less the 100 ms the fetch itself took.
-    expect(h.sleeps).toEqual([900]);
-    expect(h.started).toEqual(["a"]);
+    h.state.now = 10;
+    await h.answer("a", 32 * 1024);
+    expect(h.lane.linkRate).toBeNull();
+    expect(h.sleeps).toEqual([(32 * 1024 * 1000) / (CATCH_UP_BYTES_PER_SEC / 2) - 10]);
   });
 
   it("yields between two transcripts even when they took nothing", async () => {

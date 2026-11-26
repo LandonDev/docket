@@ -11,8 +11,12 @@
  * the socket, so the next one asked for all six again.
  */
 
-/** What background catch-up may take of the link, on average. */
+/** The link's rate assumed until a fetch has measured it. */
 export const CATCH_UP_BYTES_PER_SEC = 2 * 1024 * 1024;
+/** What background catch-up may take of the link's measured rate: the rest is the shown thread's. */
+export const BACKGROUND_SHARE = 0.5;
+/** A fetch smaller than this measures the round trip, not the rate. */
+export const RATE_SAMPLE_BYTES = 64 * 1024;
 
 /** The longest a background fetch waits for the shown thread's: on
  *  2026-11-24 a child opened in a master's view waited behind the master's
@@ -33,6 +37,7 @@ export type CatchUpOptions = {
   sleep?: (ms: number) => Promise<void>;
   /** The clock for the two bounds (FRONT_WAIT_MS, TURN_WAIT_MS). */
   timer?: (ms: number) => Promise<void>;
+  /** A fixed rate for the pace (tests); else the link's own, measured fetch by fetch. */
   bytesPerSec?: number;
 };
 
@@ -49,13 +54,32 @@ export class CatchUpLane {
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly timer: (ms: number) => Promise<void>;
-  private readonly rate: number;
+  /** The link's rate as background fetches measured it (bytes a second), null until one has. */
+  private measured: number | null = null;
 
   constructor(private readonly options: CatchUpOptions) {
     this.now = options.now ?? (() => Date.now());
     this.sleep = options.sleep ?? realSleep;
     this.timer = options.timer ?? realSleep;
-    this.rate = options.bytesPerSec ?? CATCH_UP_BYTES_PER_SEC;
+  }
+
+  /**
+   * The link's rate for the pace: a fixed one when given, else the mean of what the fetches big enough to say
+   * measured (the newest weighed a third), so a fast LAN is never held to a slow link's pace and a slow link gives
+   * the shown thread half of itself.
+   */
+  private rate(bytes: number, took: number): number {
+    if (this.options.bytesPerSec) return this.options.bytesPerSec;
+    if (bytes >= RATE_SAMPLE_BYTES && took > 0) {
+      const sample = (bytes / took) * 1000;
+      this.measured = this.measured === null ? sample : this.measured + (sample - this.measured) / 3;
+    }
+    return this.measured ?? CATCH_UP_BYTES_PER_SEC;
+  }
+
+  /** The link's rate as measured so far (bytes a second), null until a fetch said. */
+  get linkRate(): number | null {
+    return this.measured;
   }
 
   /** Transcripts waiting their turn, in order. */
@@ -140,7 +164,8 @@ export class CatchUpLane {
         const startedAt = this.now();
         await Promise.race([w.start(), this.timer(TURN_WAIT_MS)]);
         const bytes = Math.max(0, this.options.bytesIn() - before);
-        const owed = (bytes / this.rate) * 1000 - (this.now() - startedAt);
+        const took = this.now() - startedAt;
+        const owed = (bytes / (BACKGROUND_SHARE * this.rate(bytes, took))) * 1000 - took;
         // At least one macrotask between two transcripts, so the window paints and takes input.
         await this.sleep(Math.max(0, owed));
       }

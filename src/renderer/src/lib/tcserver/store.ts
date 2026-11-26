@@ -1389,10 +1389,12 @@ class SessionStore {
       if (!entry.loaded || !entry.meta || entry.meta.environmentId !== environmentId) continue;
       if (early?.has(entry.meta.id)) continue;
       if (!keep || keep.has(entry.meta.id)) replay.push(entry);
-      // A transcript the unload refuses (busy, a send pending) keeps its
-      // rows, so it replays its gap like a kept one: a resync's hold on it
-      // must never release past the rows the host shed.
-      else if (!this.unload(entry)) replay.push(entry);
+      // A transcript the unload refuses (a send of his pending, a load out)
+      // keeps its rows, so it replays its gap like a kept one: a resync's hold
+      // on it must never release past the rows the host shed. A busy one goes
+      // too: its rows are stale after the cut whatever it streams, and the
+      // threads only in the rail's Working list were each fetched again here.
+      else if (!this.unload(entry, true)) replay.push(entry);
     }
     // On a remote host they take turns (catchUp.ts): the shown one, then the
     // panes on the page, then the transcripts only kept.
@@ -1524,9 +1526,9 @@ class SessionStore {
   /** Forget a transcript: blocks and seq reset, subscription released, so
    *  the next ensureLoaded fetches it afresh. A busy session or one with a
    *  send still pending keeps its rows. Returns whether it dropped. */
-  private unload(entry: Entry): boolean {
+  private unload(entry: Entry, busyToo = false): boolean {
     if (!entry.meta || entry.loading) return false;
-    if (entry.session.busy || entry.session.blocks.some((b) => b.pending)) return false;
+    if ((entry.session.busy && !busyToo) || entry.session.blocks.some((b) => b.pending)) return false;
     this.settleHead(entry);
     this.subsOf(entry)?.remove(entry.meta.id);
     entry.loaded = false;

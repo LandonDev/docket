@@ -511,6 +511,44 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1"]);
   });
 
+  it("40 kept threads after a cut: one background fetch out at a time, none for a running thread only in the rail", async () => {
+    const kept = Array.from({ length: 40 }, (_, i) => `k${i}`);
+    const rail = ["r0", "r1", "r2"];
+    link.pages = [[...kept.map((id) => wireMeta({ id })), ...rail.map((id) => wireMeta({ id, status: "running" }))]];
+    for (const id of [...kept, ...rail]) link.events.set(id, turns(id, 1));
+    await boot(link);
+    sessionStore.followShown({ shown: () => "k0", onChange: () => () => {} });
+    // The rail's running threads were opened once (a hover, an earlier look) and left: loaded, outside the kept set.
+    for (const id of rail) await sessionStore.ensureLoaded(id);
+    sessionStore.setMounted(kept);
+    for (const id of kept) await sessionStore.ensureLoaded(id);
+    expect(rail.every((id) => sessionStore.get(id)!.loaded)).toBe(true);
+    const gate: (() => void)[] = [];
+    link.holdEvents = gate;
+    const start = link.calls.length;
+    const asked = (): string[] =>
+      link.calls.slice(start).filter((c) => c.method === "session.events").map((c) => (c.params as { sessionId: string }).sessionId);
+    link.open();
+    let released = 0;
+    let most = 0;
+    for (let round = 0; round < 400 && released < kept.length; round++) {
+      for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+      most = Math.max(most, asked().length - released);
+      const next = gate.shift();
+      if (next) {
+        next();
+        released++;
+      }
+    }
+    expect(asked()[0]).toBe("k0");
+    expect(new Set(asked())).toEqual(new Set(kept));
+    expect(asked()).toHaveLength(kept.length);
+    expect(most).toBe(1);
+    expect(asked().some((id) => rail.includes(id))).toBe(false);
+    expect(rail.every((id) => !sessionStore.get(id)!.loaded)).toBe(true);
+    link.holdEvents = null;
+  });
+
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
   async function masterWithChild(): Promise<{ asked: () => string[] }> {
     link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];
