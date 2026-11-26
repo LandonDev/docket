@@ -211,6 +211,60 @@ describe('ui-preview', () => {
     }
   })
 
+  it('--fresh compiles the stylesheet from source in the built index sheet\'s place, keeping the other sheets', () => {
+    const { dir, name, target } = temporaryComponent((name) => `export function ${name}() { return <span className="bg-primary">Fresh</span> }`)
+    const assets = join(dir, 'out/renderer/assets')
+    mkdirSync(assets, { recursive: true })
+    writeFileSync(join(assets, 'index-abc123.css'), '.stale-build-marker { color: red; }')
+    writeFileSync(join(assets, 'TerminalView-abc123.css'), '.kept-chunk-sheet { color: blue; }')
+    const result = run([target, '--fresh'], dir)
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stdout).not.toContain('No built stylesheet')
+    for (const page of Object.values(output(name))) {
+      expect(page).not.toContain('.stale-build-marker')
+      expect(page).toContain('.kept-chunk-sheet { color: blue; }')
+      // The token layer and a utility the renderer uses, from index.css itself.
+      expect(page).toContain('--dur-fast: 120ms')
+      expect(page).toContain('.bg-primary')
+      expect(page).toMatch(/url\("file:\/\/[^"]*src\/renderer\/src\/assets\/fonts\/JetBrainsMono-Regular\.ttf"\)/)
+    }
+  })
+
+  it('draws an open popup in place under its fixture: a popover in the flow, a dialog fixed to a window box', () => {
+    const { dir, name, target } = temporaryComponent((name) => `
+      import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
+      import { Dialog, DialogContent, DialogTitle } from '@renderer/components/ui/dialog'
+      export function ${name}({ kind }: { kind: 'popover' | 'dialog' }) {
+        return kind === 'popover'
+          ? <Popover open><PopoverTrigger>Accounts</PopoverTrigger><PopoverContent>Two accounts</PopoverContent></Popover>
+          : <Dialog open><DialogContent><DialogTitle>Rename the thread</DialogTitle></DialogContent></Dialog>
+      }`)
+    writeFileSync(join(dir, 'sample.fixtures.tsx'), `export default [
+      { name: 'Popover', props: { kind: 'popover' } },
+      { name: 'Dialog', props: { kind: 'dialog' } },
+    ]`)
+    const result = run([target], dir)
+    expect(result.status, result.stderr).toBe(0)
+    for (const page of Object.values(output(name))) {
+      const [, popover, dialog] = page.split('class="preview-fixture"')
+      expect(popover).toContain('Accounts')
+      expect(popover).toMatch(/<div class="preview-portal">.*data-slot="popover-content".*Two accounts/s)
+      // The positioner lies in the flow: no coordinates from a jsdom that measures nothing.
+      expect(popover).not.toMatch(/data-side="[a-z]+"[^>]*style="/)
+      expect(popover).not.toContain('Rename the thread')
+      expect(dialog).toMatch(/<div class="preview-portal" data-preview-window="">.*role="dialog".*Rename the thread/s)
+      expect(dialog).not.toContain('Two accounts')
+    }
+  })
+
+  it('renders markdown: no worker to wait on', () => {
+    const result = run(['src/renderer/src/surfaces/AgentMarkdown.tsx#AgentMarkdown'])
+    expect(result.status, result.stderr).toBe(0)
+    const html = output('AgentMarkdown')
+    expect(html.dark).toContain('Why the build is slow</h1>')
+    expect(html.light).toContain('The numbers</h3>')
+  }, 60_000)
+
   it('names a default export after its module', () => {
     const { dir, name } = temporaryComponent(() => 'export default function Example() { return <span>Default export</span> }')
     writeFileSync(join(dir, `${name}.tsx`), readFileSync(join(dir, 'sample.tsx')))

@@ -7,14 +7,17 @@
  * through headless Chrome (TEMP_CODE_CHROME, else Playwright's cached
  * chrome-headless-shell), each page as tall as its content.
  * Separate documents keep html.theme-light and dark: selectors intact, without
- * iframes or CSS rewriting. Both embed out/renderer/assets/*.css when present.
+ * iframes or CSS rewriting. Both embed out/renderer/assets/*.css when present;
+ * --fresh compiles the app's own stylesheet from source in the built one's
+ * place (about a second), so a class or a token newer than the build draws.
  * Adjacent component.fixtures.tsx carries [{ name, props }] (its default export,
  * else `fixtures`, else its first such array); all fixtures appear in each theme. --props supplies shared defaults, fixtures override them.
  * Use "fn" for required callbacks (also within nested props); it becomes a noop.
  * The component renders with the client renderer into a jsdom document (the
  * stores' useSyncExternalStore reads need no server snapshot that way), then
- * its markup is written into a static page. Events and portals still need a
- * DOM test.
+ * its markup is written into a static page. A popup the render left open (a
+ * menu, a select, a popover, a dialog, a sheet: `open` or `defaultOpen` in the
+ * fixture) is drawn in place under its fixture. Events still need a DOM test.
  */
 import { plugin } from 'bun'
 import { spawnSync } from 'node:child_process'
@@ -54,6 +57,18 @@ plugin({
   }
 })
 
+/** src/renderer/src/index.css compiled as the build compiles it (Tailwind
+ *  over the renderer's sources), in about a second, with its font files
+ *  addressed where they lie. */
+export async function freshStylesheet(): Promise<string> {
+  const { compile } = await import('@tailwindcss/node')
+  const { Scanner } = await import('@tailwindcss/oxide')
+  const path = join(root, 'src/renderer/src/index.css')
+  const compiler = await compile(await readFile(path, 'utf8'), { base: dirname(path), onDependency: () => {} })
+  const css = compiler.build(new Scanner({ sources: [{ base: join(root, 'src/renderer'), pattern: '**/*', negated: false }, ...compiler.sources] }).scan())
+  return css.replaceAll('url("./assets/fonts/', `url("${pathToFileURL(join(root, 'src/renderer/src/assets/fonts')).href}/`)
+}
+
 type Props = Record<string, unknown>
 type Fixture = { name: string; props: Props }
 const noop = (): void => {}
@@ -85,9 +100,27 @@ function documentWindow(): JSDOM['window'] {
   page = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true, url: 'http://localhost/' })
   const { window } = page
   const target = globalThis as Record<string, unknown>
-  for (const key of ['window', 'document', 'navigator', 'HTMLElement', 'Element', 'Node', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'MutationObserver', 'localStorage', 'CustomEvent', 'Event', 'KeyboardEvent', 'MouseEvent', 'PointerEvent', 'DOMRect', 'SVGElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLBRElement', 'customElements', 'HTMLDivElement', 'HTMLSpanElement', 'HTMLCanvasElement', 'DocumentFragment', 'Range', 'Selection', 'getSelection', 'self', 'location', 'FocusEvent', 'UIEvent', 'WheelEvent', 'Text']) {
+  for (const key of ['window', 'document', 'navigator', 'HTMLElement', 'Element', 'Node', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'MutationObserver', 'localStorage', 'CustomEvent', 'Event', 'KeyboardEvent', 'MouseEvent', 'PointerEvent', 'DOMRect', 'SVGElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLBRElement', 'customElements', 'HTMLDivElement', 'HTMLSpanElement', 'HTMLCanvasElement', 'DocumentFragment', 'Range', 'Selection', 'getSelection', 'self', 'location', 'FocusEvent', 'UIEvent', 'WheelEvent', 'Text', 'NodeFilter', 'ShadowRoot', 'HTMLButtonElement']) {
     const value = (window as unknown as Record<string, unknown>)[key]
     if (value !== undefined && target[key] === undefined) target[key] = value
+  }
+  // Bun has a Worker, but the markdown worker never answers under it, and the
+  // row waited 8 s on it (lib/markdownParse.ts), so every markdown page drew
+  // blank. That one fails at its first message instead, and the row parses on
+  // the main thread at once; any other worker is Bun's own.
+  const BunWorker = target.Worker as (new (url: string | URL, options?: object) => object) | undefined
+  if (BunWorker && !(BunWorker as { previewStub?: boolean }).previewStub) {
+    class FailingWorker {
+      onmessage: unknown = null
+      onerror: ((event: Event) => void) | null = null
+      postMessage(): void { queueMicrotask(() => this.onerror?.(new window.Event('error'))) }
+      terminate(): void {}
+      addEventListener(): void {}
+      removeEventListener(): void {}
+    }
+    target.Worker = Object.assign(function Worker(url: string | URL, options?: object) {
+      return /markdown\.worker/.test(String(url)) ? new FailingWorker() : new BunWorker(url, options)
+    }, { previewStub: true })
   }
   if (target.ResizeObserver === undefined) target.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
   const matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
@@ -108,6 +141,7 @@ async function clientMarkup(component: ComponentType<Props>, props: Props): Prom
   const { createRoot } = await import('react-dom/client')
   const { flushSync } = await import('react-dom')
   const container = window.document.createElement('div')
+  const before = new Set(window.document.body.children)
   window.document.body.appendChild(container)
   const root = createRoot(container)
   flushSync(() => root.render(createElement(component, props)))
@@ -122,8 +156,29 @@ async function clientMarkup(component: ComponentType<Props>, props: Props): Prom
     if (next === html) break
     html = next
   }
+  html += portalMarkup([...window.document.body.children].filter((element) => element !== container && !before.has(element)))
   root.unmount()
   container.remove()
+  return html
+}
+
+/** What the render put outside its container: an open menu, select,
+ *  popover, tooltip, dialog or sheet lives in a portal on the body. Each is
+ *  drawn in place under its fixture, in a box that stands in for the window:
+ *  a positioner loses the coordinates Floating UI gave it (jsdom measures
+ *  nothing, so they are all the top left corner) and lies in the flow, and a
+ *  dialog or sheet, which is fixed to the window, is fixed to the box. */
+export function portalMarkup(portals: Element[]): string {
+  let html = ''
+  for (const portal of portals) {
+    if (!portal.innerHTML.trim()) continue
+    for (const element of [portal, ...portal.querySelectorAll('[data-side]')]) {
+      if (element.matches('[data-side]')) element.removeAttribute('style')
+    }
+    // A panel with no positioner is fixed to the window: a dialog, a sheet.
+    const modal = portal.querySelector('[data-side]') === null
+    html += `<div class="preview-portal"${modal ? ' data-preview-window=""' : ''}>${portal.outerHTML}</div>`
+  }
   return html
 }
 
@@ -139,13 +194,14 @@ async function main(): Promise<void> {
       props: { type: 'string' },
       width: { type: 'string', default: '480' },
       out: { type: 'string', default: '/tmp/ui-preview' },
-      shot: { type: 'boolean', default: false }
+      shot: { type: 'boolean', default: false },
+      fresh: { type: 'boolean', default: false }
     }
   })
   const [target] = positionals
   const match = target?.match(/^(.+)#([^#]+)$/)
   if (positionals.length !== 1 || !match) {
-    throw new Error('Usage: bun scripts/ui-preview.ts <module>#<export> [--props \'<json>\'] [--width 480] [--out <dir>] [--shot]')
+    throw new Error('Usage: bun scripts/ui-preview.ts <module>#<export> [--props \'<json>\'] [--width 480] [--out <dir>] [--shot] [--fresh]')
   }
   const width = Number(values.width)
   if (!Number.isSafeInteger(width) || width <= 0) throw new Error('--width must be a positive integer')
@@ -169,8 +225,13 @@ async function main(): Promise<void> {
 
   const assets = resolve('out/renderer/assets')
   const cssFiles = existsSync(assets) ? (await readdir(assets)).filter((file) => file.endsWith('.css')).sort() : []
-  const css = (await Promise.all(cssFiles.map((file) => readFile(join(assets, file), 'utf8')))).join('\n')
-  if (!cssFiles.length) console.log('No built stylesheet at out/renderer/assets/*.css; writing previews without it.')
+  // --fresh: the app's own sheet compiled from source in the built one's
+  // place, so a class or a token written since the last build draws; the
+  // build's other sheets (the editors', Work's) are kept as they are.
+  const fresh = values.fresh
+  const sheets = await Promise.all(cssFiles.filter((file) => !(fresh && /^index-/.test(file))).map((file) => readFile(join(assets, file), 'utf8')))
+  const css = [...(fresh ? [await freshStylesheet()] : []), ...sheets].join('\n')
+  if (!cssFiles.length && !fresh) console.log('No built stylesheet at out/renderer/assets/*.css; writing previews without it.')
 
   const markup = new Map<string, string>()
   for (const fixture of fixtures) markup.set(fixture.name, await clientMarkup(component, stubCallbacks({ ...props, ...fixture.props }) as Props))
@@ -203,6 +264,9 @@ async function main(): Promise<void> {
           .preview-shot *, .preview-shot *::before, .preview-shot *::after { animation-duration: 0s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition: none !important; }
           .preview-fixture + .preview-fixture { margin-top: 24px; }
           .preview-label { margin-bottom: 8px; color: var(--muted-foreground, GrayText); font-size: 11px; }
+          /* A portal drawn in place (portalMarkup): the transform makes the box what a fixed panel is fixed to. */
+          .preview-portal { position: relative; transform: translate(0, 0); margin-top: 8px; }
+          .preview-portal[data-preview-window] { min-height: 640px; overflow: hidden; }
         `)),
       createElement('body', null,
         createElement('main', null,

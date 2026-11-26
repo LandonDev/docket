@@ -14,6 +14,8 @@ import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipPro
 import { TOOLTIP } from "@renderer/lib/ease";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 import { Item, ItemButton } from "./item";
+import { RadioChoice, RadioGroup } from "./radio-group";
+import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxItem, ComboboxList, ComboboxSearch, ComboboxTrigger } from "./combobox";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -637,5 +639,127 @@ describe("the phrase fade", () => {
     const css = readFileSync(resolve(__dirname, "../../assets/components.css"), "utf8");
     expect(css).toMatch(/\.stream-step\s*\{\s*animation:\s*stream-step-in var\(--dur-reveal\) var\(--ease-reveal\) both;/);
     expect(css).not.toMatch(/data-motion="reduced"\]\)\s*\{\s*\.stream-step\s*\{/);
+  });
+});
+
+describe("RadioGroup", () => {
+  function Roles({ onChange = () => {} }: { onChange?: (value: string) => void }) {
+    return (
+      <RadioGroup aria-label="It may" defaultValue="look" onValueChange={(value) => onChange(value as string)}>
+        <RadioChoice value="look" label="Look" description="Read threads and files" />
+        <RadioChoice value="run" label="Run threads" description="Start, steer and stop them" />
+        <RadioChoice value="admin" label="Also change settings" disabled />
+      </RadioGroup>
+    );
+  }
+
+  it("is one radiogroup of radios, each named by its label and described by its line", () => {
+    render(<Roles />);
+    expect(screen.getByRole("radiogroup", { name: "It may" })).toBeTruthy();
+    const look = screen.getByRole("radio", { name: "Look" });
+    expect(look.getAttribute("aria-checked")).toBe("true");
+    expect(document.getElementById(look.getAttribute("aria-describedby")!)?.textContent).toBe("Read threads and files");
+    expect(screen.getByRole("radio", { name: "Also change settings" }).getAttribute("aria-describedby")).toBeNull();
+  });
+
+  it("is one tab stop, and the arrow keys move the choice", async () => {
+    const onChange = vi.fn();
+    render(<Roles onChange={onChange} />);
+    const radios = screen.getAllByRole("radio");
+    expect(radios.filter((radio) => radio.tabIndex === 0)).toHaveLength(1);
+    await act(async () => radios[0].focus());
+    await act(async () => {
+      fireEvent.keyDown(radios[0], { key: "ArrowDown" });
+    });
+    expect(onChange).toHaveBeenCalledWith("run");
+    expect(screen.getByRole("radio", { name: "Run threads" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getAllByRole("radio").filter((radio) => radio.tabIndex === 0)).toHaveLength(1);
+  });
+
+  it("a press anywhere on a row picks it; a disabled row takes none", () => {
+    const onChange = vi.fn();
+    render(<Roles onChange={onChange} />);
+    fireEvent.click(screen.getByText("Start, steer and stop them"));
+    expect(onChange).toHaveBeenCalledWith("run");
+    fireEvent.click(screen.getByText("Also change settings"));
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("the dot fades on the tokens and nothing travels: one focus ring, a 24px hit area", () => {
+    render(<Roles />);
+    const look = screen.getByRole("radio", { name: "Look" });
+    expect(look.classList).toContain("focus-ring");
+    expect(look.classList).toContain("after:-inset-1");
+    const dot = look.querySelector("[data-slot=radio-group-indicator]")!;
+    expect(dot.className).toContain("transition-opacity");
+    expect(dot.className).toContain("duration-(--dur-fast)");
+    expect(dot.className).not.toMatch(/scale|translate/);
+  });
+});
+
+describe("Combobox", () => {
+  const BRANCHES = Array.from({ length: 12 }, (_, i) => `feature-${String(i + 1)}`);
+
+  async function openList() {
+    render(
+      <Combobox items={BRANCHES}>
+        <ComboboxTrigger aria-label="Branch">master</ComboboxTrigger>
+        <ComboboxContent>
+          <ComboboxSearch aria-label="Find a branch" />
+          <ComboboxEmpty>No matches</ComboboxEmpty>
+          <ComboboxList>{(branch: string) => <ComboboxItem key={branch} value={branch}>{branch}</ComboboxItem>}</ComboboxList>
+        </ComboboxContent>
+      </Combobox>,
+    );
+    await act(async () => {
+      fireEvent.click(document.querySelector("[data-slot=combobox-trigger]")!);
+    });
+    return screen.getByRole("combobox", { name: "Find a branch" });
+  }
+
+  it("the field is the combobox: the arrows move aria-activedescendant over the rows", async () => {
+    const field = await openList();
+    expect(field.getAttribute("aria-controls")).toBe(screen.getByRole("listbox").id);
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "ArrowDown" });
+    });
+    const first = field.getAttribute("aria-activedescendant");
+    expect(document.getElementById(first!)?.textContent).toBe("feature-1");
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "ArrowDown" });
+    });
+    expect(document.getElementById(field.getAttribute("aria-activedescendant")!)?.textContent).toBe("feature-2");
+  });
+
+  it("a list scrolling under a still pointer keeps the keyboard's row", async () => {
+    const field = await openList();
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "ArrowDown" });
+    });
+    const kept = field.getAttribute("aria-activedescendant");
+    // A row slides under a pointer that does not move: the browser sends
+    // enter and over, never a move.
+    const slid = screen.getByRole("option", { name: "feature-6" });
+    await act(async () => {
+      fireEvent.pointerEnter(slid);
+      fireEvent.mouseEnter(slid);
+      fireEvent.mouseOver(slid);
+      fireEvent.scroll(screen.getByRole("listbox"));
+    });
+    expect(field.getAttribute("aria-activedescendant")).toBe(kept);
+    expect(slid.hasAttribute("data-highlighted")).toBe(false);
+  });
+
+  it("draws on the popover's layer and motion, its list a native scroller with a horizontal policy", async () => {
+    await openList();
+    const popup = document.querySelector<HTMLElement>("[data-slot=combobox-content]")!;
+    expect(popup.parentElement?.className).toContain("z-(--layer-popover)");
+    expect(popup.className).toContain("duration-(--dur-base)");
+    expect(popup.className).toContain("data-ending-style:duration-(--dur-fast)");
+    expect(popup.className).toContain("motion-reduce:transition-opacity");
+    const list = screen.getByRole("listbox");
+    expect(list.className).toContain("overflow-y-auto");
+    expect(list.className).toContain("overflow-x-hidden");
+    expect(screen.getByRole("option", { name: "feature-1" }).className).toContain("data-highlighted:bg-muted");
   });
 });

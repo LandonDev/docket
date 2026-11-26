@@ -133,7 +133,8 @@
   jsdom document and read once its markup settles (400ms at most, so a count
   ticking up shows where it lands), under tsconfig.web.json so every renderer alias resolves,
   inside the built stylesheet in dark and light, written to /tmp/ui-preview
-  or `--out <dir>`, `--shot` adding PNGs at 864 and 400px through headless
+  or `--out <dir>`, `--fresh` compiling the stylesheet from source in the built one's place so a
+  class or token newer than `out/` draws, `--shot` adding PNGs at 864 and 400px through headless
   Chrome (`TEMP_CODE_CHROME`, else Playwright's cached chrome-headless-shell),
   shown with `html_preview` or read as images; a `*.fixtures.tsx` beside the
   component renders each fixture); one

@@ -70,7 +70,7 @@ function item<T extends string>(option: Choice<T>) {
 
 /** Options in runs by group, in the order each group first appears; the
  *  ungrouped run first. */
-function groupsOf<T extends string>(options: readonly Choice<T>[]): { group?: string; items: Choice<T>[] }[] {
+export function groupsOf<T extends string>(options: readonly Choice<T>[]): { group?: string; items: Choice<T>[] }[] {
   const runs: { group?: string; items: Choice<T>[] }[] = [];
   for (const option of options) {
     const run = runs.find((r) => r.group === option.group);
