@@ -666,6 +666,25 @@ public enum FilesGoToRules {
         return (rows, ranked.filter { $0.entries == nil }.map(\.job.name))
     }
 
+    /// Counts Go To's lookups, typed and Try Again's alike: only the newest one started publishes its rows, its
+    /// failures and its end, so an older one that answers late neither replaces them nor leaves a spinner with
+    /// nothing out.
+    public struct Lookups: Sendable {
+        public private(set) var latest = 0
+
+        public init() {}
+
+        /// A new lookup's number; every lookup started before it stops publishing.
+        public mutating func start() -> Int {
+            latest += 1
+            return latest
+        }
+
+        public func publishes(_ lookup: Int) -> Bool {
+            lookup == latest
+        }
+    }
+
     /// The words a lookup asks for: the field's text, trimmed.
     public static func query(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespaces)

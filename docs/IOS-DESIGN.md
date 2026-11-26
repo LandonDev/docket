@@ -3146,8 +3146,9 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   names each job's host has seen (`work.files.names`, recents first with
   no words); Return takes the first. Rows stand only for the words they
   answered: typed past them, they go and a spinner waits for the new
-  answer, so Return never opens an older match. A folder pushes, a file
-  opens.
+  answer, so Return never opens an older match. Only the newest lookup,
+  typed or Try Again's, sets the rows, the failed-read row and the
+  spinner's end. A folder pushes, a file opens.
 - **Search** is the system field on every list. On Files it filters the
   rows the phone already holds at once (every word, case and accents
   ignored), then takes each job's host's search as it answers, newest
@@ -3582,7 +3583,8 @@ the field keep their target: a tap on another thread, or the thread
 resolving, moves only an empty field; his press on the close turns a reply
 into a new comment. The field is locked while a post is on its way. Swipe:
 Resolve, or Reopen. Empty: one quiet line, "No comments". A failed read is the
-system's unavailable view with the host's words and Try Again. A key that
+system's unavailable view with the host's words and Try Again; over threads
+it kept, the failed-read row above them. A key that
 cannot act reads the threads and has no field.
 
 **Review Changes** (a document sheet titled with the count, "3 Changes"): one
@@ -3781,8 +3783,9 @@ any app into a Work workspace's own folder.
 - **Folder**: one row, the folder glyph in the secondary ink and the
   folder's name (the workspace's own at first, then the last one used
   there). It pushes a list of folders only, read from the host as he goes; a
-  level on its way is one row with a spinner and "Reading <folder>"; Choose
-  takes the folder shown.
+  level on its way is one row with a spinner and "Reading <folder>"; a level
+  that could not be read is the failed-read row, whose Try Again reads it
+  again in place; Choose takes the folder shown.
 - **Saving**: Save's place holds a 56 pt determinate bar that follows the
   bytes of every file together, each file weighed by its size; when the host has them the bar gives way to
   the tinted checkmark, with the success haptic, and the sheet closes itself.

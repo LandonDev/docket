@@ -4,8 +4,8 @@ import TempCodeContract
 
 /// Go to (⌘P, the desktop's): a field, and the names each job's host has seen that hold every word, recents
 /// first (`work.files.names`, twenty a job from its table, never a walk). The next keystroke cancels the asks
-/// still out, and rows answering older words are neither drawn nor opened. A folder pushes its list, a file opens; the
-/// sheet goes either way.
+/// still out, rows answering older words are neither drawn nor opened, and only the newest lookup, typed or Try
+/// Again's, publishes (`FilesGoToRules.Lookups`). A folder pushes its list, a file opens; the sheet goes either way.
 struct FilesGoTo: View {
     @Environment(AppModel.self) private var model
     @Environment(ShellNavigator.self) private var navigator
@@ -18,6 +18,7 @@ struct FilesGoTo: View {
     /// The words `rows` and `failed` answer.
     @State private var answered: String?
     @State private var asking = true
+    @State private var lookups = FilesGoToRules.Lookups()
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -28,14 +29,7 @@ struct FilesGoTo: View {
             List {
                 // A host that could not look is said beside what the others found, with Try Again.
                 if let note = FilesFound.notSearched(failed) {
-                    HStack(spacing: Layout.rowGap) {
-                        Text(note).textStep(.meta).fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: Layout.rowGap)
-                        PillButton("Try Again") { Task { await ask() } }
-                    }
-                    .listRowInsets(Layout.rowInsets)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("files-go-to-failed")
+                    FailedRead(words: note, retry: { await ask() }, identifier: "files-go-to-failed")
                 }
                 ForEach(rows) { row in
                     Button { open(row) } label: {
@@ -69,6 +63,7 @@ struct FilesGoTo: View {
     }
 
     private func ask() async {
+        let lookup = lookups.start()
         asking = true
         let words = FilesGoToRules.query(text)
         if !words.isEmpty { try? await Task.sleep(for: .milliseconds(150)) }
@@ -83,7 +78,7 @@ struct FilesGoTo: View {
                 answers.append((job: job, entries: entries))
             }
         }
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, lookups.publishes(lookup) else { return }
         // Each host ranks its own; across jobs the order of the jobs holds; a host that failed is named, never empty.
         (rows, failed) = FilesGoToRules.merge(answers, order: jobs)
         answered = words

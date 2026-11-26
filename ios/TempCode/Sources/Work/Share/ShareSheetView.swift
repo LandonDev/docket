@@ -287,12 +287,14 @@ struct ShareRefusedRow: View {
 }
 
 /// One level of the folder picker: the folders inside a folder, read from the host as he goes. A tap on a
-/// folder goes into it; Choose takes the folder shown.
+/// folder goes into it; Choose takes the folder shown. A level that could not be read says why, with Try Again.
 private struct ShareFolderList: View {
     let model: ShareSheetModel
     let folder: ShareFolder
     @Binding var path: [ShareFolder]
     @State private var folders: [ShareFolder]?
+    /// Why this level's last read failed; kept while Try Again reads, so the words stay put.
+    @State private var failure: String?
 
     var body: some View {
         List {
@@ -303,8 +305,9 @@ private struct ShareFolderList: View {
                 ForEach(folders, id: \.self) { child in
                     NavigationLink(value: child) { FolderLabel(name: child.name) }
                 }
-            } else if let failure = model.folderFailure {
-                Text(failure).textStep(.meta).listRowSeparator(.hidden)
+            } else if let failure {
+                ShareFailedRead(words: failure, retry: { await read() })
+                    .listRowSeparator(.hidden)
             } else {
                 // The level is on its way: one row with a spinner, where the folders will be.
                 HStack(spacing: Layout.rowGap) {
@@ -327,7 +330,52 @@ private struct ShareFolderList: View {
                 .accessibilityIdentifier("share-choose-folder")
             }
         }
-        .task { folders = await model.folders(inside: folder) }
+        .task { await read() }
         .accessibilityIdentifier("share-folders")
+    }
+
+    private func read() async {
+        folders = await model.folders(inside: folder)
+        failure = folders == nil ? model.folderFailure : nil
+    }
+}
+
+/// The app's failed-read row (`FailedRead`, Work/Shell/WorkPlaceScreen.swift), drawn here since the extension
+/// compiles none of the app's screens: the words wrapping whole, Try Again beside them or under them at
+/// accessibility sizes, a spinner in its place while it reads.
+private struct ShareFailedRead: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
+    let words: String
+    let retry: () async -> Void
+    @State private var reading = false
+
+    var body: some View {
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Layout.rowGap))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: Layout.rowGap))
+        layout {
+            Text(words)
+                .textStep(.meta)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if reading {
+                ProgressView()
+            } else {
+                // The sheet's own small action, as on a refused file's row.
+                Button("Try Again") {
+                    Task {
+                        reading = true
+                        await retry()
+                        reading = false
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(.vertical, Layout.rowVertical)
+        .frame(minHeight: Layout.rowHeight)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("share-folders-failed")
     }
 }

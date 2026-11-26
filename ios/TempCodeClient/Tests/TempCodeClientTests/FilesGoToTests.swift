@@ -43,6 +43,19 @@ struct FilesGoToTests {
         #expect(!FilesGoToRules.current(answered: nil, text: ""))
     }
 
+    /// Try Again pressed, then a name typed: the typed lookup started last, so the retry answering after it publishes
+    /// nothing, and the spinner ends with the typed one.
+    @Test func onlyTheNewestLookupPublishes() {
+        var lookups = FilesGoToRules.Lookups()
+        let retry = lookups.start()
+        let typed = lookups.start()
+        #expect(lookups.publishes(typed))
+        #expect(!lookups.publishes(retry))
+        let again = lookups.start()
+        #expect(lookups.publishes(again))
+        #expect(!lookups.publishes(typed))
+    }
+
     /// One spelling of a size on every phone screen (round 1, R1-F15): "KB", never "kB" beside it.
     @Test func aSizeHasOneSpelling() {
         #expect(FilesRules.size(15_389) == ByteCountFormatter.string(fromByteCount: 15_389, countStyle: .file))

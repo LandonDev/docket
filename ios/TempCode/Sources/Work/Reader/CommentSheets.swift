@@ -117,6 +117,11 @@ struct CommentsSheet: View {
 
     private var list: some View {
             List {
+                // A reread that failed over threads it kept: the host's words and Try Again above them, so they never
+                // pass for current. With nothing kept, the unavailable view below says it.
+                if let failure = comments.failure, !comments.open.isEmpty || !comments.resolved.isEmpty {
+                    FailedRead(words: failure, retry: { await comments.load() }, identifier: "comments-failed", insets: nil)
+                }
                 if comments.open.isEmpty, comments.resolved.isEmpty, comments.failure == nil {
                     // A small list's empty state is one quiet line, not a whole-screen view.
                     Text("No comments")
