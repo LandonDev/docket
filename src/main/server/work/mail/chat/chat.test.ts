@@ -458,12 +458,12 @@ describe('mail_offer', () => {
   })
 
   it("refuses rows, a task or an event that name mail outside the thread's sector", async () => {
-    const rows = { rows: { act: 'archive', title: 'Archive 2 notices', threadIds: ['m-life', 'm-cosmic'] } }
+    const rows = { rows: { act: 'archive', title: 'Billing notices', threadIds: ['m-life', 'm-cosmic'] } }
     expect(await offer(rows, toolCtx('chat'))).toMatchObject({ isError: true, content: [{ text: OUT_OF_SECTOR('m-cosmic') }] })
     expect(await offer({ task: { title: 'Pay it', threadId: 'm-gone' } }, toolCtx('chat'))).toMatchObject({ isError: true, content: [{ text: OUT_OF_SECTOR('m-gone') }] })
     expect(await offer({ event: { title: 'Call', start: '2026-11-24T10:00', threadId: 'm-cosmic' } }, toolCtx('chat'))).toMatchObject({ isError: true })
-    const ok = await offer({ rows: { act: 'archive', title: 'Archive 2 notices', threadIds: ['m-life', 'm-life-2'] } }, toolCtx('chat'))
-    expect(ok.structuredContent).toEqual({ mailOffer: { rows: { act: 'archive', title: 'Archive 2 notices', threadIds: ['m-life', 'm-life-2'] } } })
+    const ok = await offer({ rows: { act: 'archive', title: 'Billing notices', threadIds: ['m-life', 'm-life-2'] } }, toolCtx('chat'))
+    expect(ok.structuredContent).toEqual({ mailOffer: { rows: { act: 'archive', title: 'Billing notices', threadIds: ['m-life', 'm-life-2'] } } })
     expect((await offer({ task: { title: 'Pay it' } }, toolCtx('chat'))).structuredContent).toEqual({ mailOffer: { task: { title: 'Pay it' } } })
   })
 

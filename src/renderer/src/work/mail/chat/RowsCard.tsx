@@ -43,7 +43,7 @@ export function batchOf(rows: Pick<Rows, "act" | "snoozeUntil">): BatchAct | nul
 }
 
 /**
- * Rows the chat proposes an act on ("Archive 4 notices"): each a mail of the job with a tick, ticked to start
+ * Rows the chat proposes an act on ("Billing notices", the press naming the verb and count): each a mail of the job with a tick, ticked to start
  * (`TRIAGE_TICKED`); one press in the foot runs Mail's own bulk act on the ticked ones, with its one Undo. A row
  * this job's mail does not hold has no tick.
  */

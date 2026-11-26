@@ -99,7 +99,7 @@ export function ChatAnswered() {
         <div className="flex w-[560px] flex-col gap-4 p-6">
           <AgentMarkdown text={prose.text} />
           <OfferCard offer={{ draft: { draftId: "d1" } }} at={at} />
-          <OfferCard offer={{ rows: { act: "archive", title: "Archive 3 notices", threadIds: ["n1", "n2", "n3", "gone"] } }} at={at} />
+          <OfferCard offer={{ rows: { act: "archive", title: "Billing notices", threadIds: ["n1", "n2", "n3", "gone"] } }} at={at} />
           <OfferCard offer={{ task: { title: "Resend invoice 1042 with the PO", due: "2026-11-25", threadId: "t1" } }} at={at} />
           <OfferCard offer={{ event: { title: "Call with Marisol about billing", start: "2026-11-26T14:00:00", end: "2026-11-26T14:30:00" } }} at={at} />
         </div>
@@ -143,7 +143,7 @@ export function ChatRowsReading() {
     <TranscriptSessionContext.Provider value="s1">
       <MailClientProvider client={answered}>
         <div className="flex w-[560px] flex-col gap-4 p-6">
-          <OfferCard offer={{ rows: { act: "archive", title: "Archive 3 notices", threadIds: ["n1", "reading-1", "reading-2"] } }} at={{ sessionId: "s1", workspaceId: ID, sector: "unify" }} />
+          <OfferCard offer={{ rows: { act: "archive", title: "Billing notices", threadIds: ["n1", "reading-1", "reading-2"] } }} at={{ sessionId: "s1", workspaceId: ID, sector: "unify" }} />
         </div>
       </MailClientProvider>
     </TranscriptSessionContext.Provider>

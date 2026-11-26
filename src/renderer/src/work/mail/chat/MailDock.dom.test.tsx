@@ -39,6 +39,8 @@ vi.mock("../../../surfaces/threads/ThreadView", () => ({
   ),
 }));
 vi.mock("../../../surfaces/SessionPane", () => ({ LoadLine: () => null }));
+const linkHeld = vi.hoisted(() => ({ words: null as string | null }));
+vi.mock("../../../lib/connection/degraded", async (original) => ({ ...(await original<object>()), useHostHeld: () => linkHeld.words }));
 
 const { MailClientProvider, MailKitProvider } = await import("work-kit/mail");
 const { corpusThreads, createFixtureMailClient } = await import("work-kit/mail/fixtures");
@@ -252,6 +254,19 @@ describe("the chat beside the mail", () => {
     input.textContent = "Hello";
     fireEvent.input(input);
     expect(document.querySelector("[data-mail-starters]")).toBeNull();
+  });
+
+  // Council round 1 (R1-B3): a starter would send past the composer's block, so none stands while the host is held.
+  it("offers no starters while the host's link is held", async () => {
+    linkHeld.words = "The box is offline";
+    try {
+      mount();
+      act(() => patch(ID(), { chat: true }));
+      await waitFor(() => expect(dock()).not.toBeNull());
+      expect(screen.queryByRole("button", { name: "What needs me today?" })).toBeNull();
+    } finally {
+      linkHeld.words = null;
+    }
   });
 
   it("lies over the whole view where the mail would be left under 480px, the mail under it inert", async () => {

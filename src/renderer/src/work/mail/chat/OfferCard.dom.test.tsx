@@ -296,8 +296,8 @@ describe("a rewrite of his reply", () => {
 
 describe("rows to act on", () => {
   it("start ticked, name the count in the press, and run Mail's bulk act once on the ticked ones", async () => {
-    draw({ rows: { act: "archive", title: "Archive 3 notices", threadIds: ["t1", "t2", "t-elsewhere"] } });
-    expect(screen.getByText("Archive 3 notices")).toBeTruthy();
+    draw({ rows: { act: "archive", title: "Billing notices", threadIds: ["t1", "t2", "t-elsewhere"] } });
+    expect(screen.getByText("Billing notices")).toBeTruthy();
     await waitFor(() => expect(screen.getByRole("button", { name: "Archive 2" })).toBeTruthy());
     // A mail this job does not hold has no tick.
     expect(screen.getAllByRole("checkbox")).toHaveLength(2);
@@ -311,7 +311,7 @@ describe("rows to act on", () => {
   });
 
   it("draw a pending row's bones and keep the press's count until every row has read its mail", async () => {
-    draw({ rows: { act: "archive", title: "Archive 2 notices", threadIds: ["t1", "t-pending"] } });
+    draw({ rows: { act: "archive", title: "Billing notices", threadIds: ["t1", "t-pending"] } });
     // The mail still on its way: a tick, a subject and a date in bones, never a blank row.
     const bones = document.querySelector('[data-row="t-pending"][data-row-bones]')!;
     expect(bones.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(2);
@@ -325,7 +325,7 @@ describe("rows to act on", () => {
   it("say the past tense only once LifeOS took the write, and give the rows back with the reason when it refused", async () => {
     let refuse!: (err: Error) => void;
     batchAnswer = () => new Promise((_, reject) => (refuse = reject));
-    draw({ rows: { act: "archive", title: "Archive 2 notices", threadIds: ["t1", "t2"] } });
+    draw({ rows: { act: "archive", title: "Billing notices", threadIds: ["t1", "t2"] } });
     fireEvent.click(await screen.findByRole("button", { name: "Archive 2" }));
     // While the write is on its way: nothing claims it happened, and the ticks hold still.
     expect(document.body.textContent).not.toMatch(/Archived/);
@@ -344,7 +344,7 @@ describe("rows to act on", () => {
   });
 
   it("give the rows back once the toast's Undo went through, and keep Archived while it is refused", async () => {
-    draw({ rows: { act: "archive", title: "Archive 2 notices", threadIds: ["t1", "t2"] } });
+    draw({ rows: { act: "archive", title: "Billing notices", threadIds: ["t1", "t2"] } });
     fireEvent.click(await screen.findByRole("button", { name: "Archive 2" }));
     await waitFor(() => expect(document.body.textContent).toMatch(/Archived 2, \d/));
     // An Undo LifeOS refused leaves the card's word true: the mail is still archived.
@@ -357,7 +357,7 @@ describe("rows to act on", () => {
     cleanup();
     toasts.length = 0;
     undoAnswer = async () => null;
-    draw({ rows: { act: "archive", title: "Archive 2 notices", threadIds: ["t1", "t2"] } });
+    draw({ rows: { act: "archive", title: "Billing notices", threadIds: ["t1", "t2"] } });
     fireEvent.click(await screen.findByRole("button", { name: "Archive 2" }));
     await waitFor(() => expect(toasts.find((t) => t.message === "Archived")?.action).toBeTruthy());
     await act(async () => toasts.find((t) => t.message === "Archived")!.action!.onClick());
@@ -431,12 +431,13 @@ describe("an event's Added", () => {
     await add();
     expect(document.querySelector("[data-add-queued]")!.textContent).toBe("Queued");
     expect(screen.queryByText("Added")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open Agenda" })).toBeNull();
     answer({ status: "sending" });
     expect(document.querySelector("[data-add-queued]")).toBeTruthy();
     answer({ status: "done" });
     expect(screen.getByText("Added")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    // Council round 1 (R1-B31): LifeOS's row names no event, so the press says where it goes.
+    fireEvent.click(screen.getByRole("button", { name: "Open Agenda" }));
     expect(views).toContainEqual({ workspaceId: "w1", view: "agenda" });
     // Council round 11 (Opus Mail 1, P3): the card says where the event stands, where he pressed; no toast says it again.
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));

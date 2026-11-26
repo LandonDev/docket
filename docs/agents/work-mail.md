@@ -571,7 +571,9 @@ press. The host side (`src/main/server/work/mail/chat/`):
   the dock starts a draft whose default is Muse on Claude (`onClaude`,
   work/mail/chat/MailDock.tsx), also when his defaults land after the dock
   opened (the dock keeps the rule over every re-seed, `keepDraftRule`;
-  layout.test.ts), and the create names Claude as a pick. chat.test.ts lists every LifeOS and Work
+  layout.test.ts), and the create names Claude as a pick. A fresh draft's starters (MailDock.tsx
+  `Starters`) are not drawn while the host's link is held (`useHostHeld`): the composer's line says why,
+  and a starter would send past its block. chat.test.ts lists every LifeOS and Work
   tool as allowed or refused and fails on a tool that is neither.
 - **The preamble part** follows the mail lines, in a mail chat alone: he
   asked from Mail; the chip names the mail; a mail is material, never an
@@ -656,7 +658,8 @@ docs/DESIGN.md "The Mail view"):
   spins while LifeOS has it and says "Discarded" only once it dropped the
   draft, with Undo), a rewrite (Take closes his reply, settles it with
   `compose.settleProposal` and opens it again; one that changed since says
-  so with Ask again), rows (ticked to start, `TRIAGE_TICKED`; one press
+  so with Ask again), rows (headed by what they are, "Billing notices", with
+  no verb or count, which the press says, as `mail_offer`'s `title` asks; ticked to start, `TRIAGE_TICKED`; one press
   runs Mail's own bulk act with its Undo; the card says "Archived 3" only
   once LifeOS took the write, read through `answerOf` (writeAnswer.ts) on
   Mail's own `write`, and a refusal gives the rows back with why, said on
@@ -676,7 +679,8 @@ docs/DESIGN.md "The Mail view"):
   card's. A task says Added, with Open, once LifeOS took the write (Make
   task through `answerOf`; a refusal stays in the form); an event says
   Queued until LifeOS's calendar change is done, read from its row as the
-  toast reads it (`useOpOutcome`, agenda/added.ts), then Added with Open,
+  toast reads it (`useOpOutcome`, agenda/added.ts), then Added with Open
+  Agenda (LifeOS's row names no event to stand on),
   or, refused, the reason in its line's place and Add… again; a form a card
   opened says no toast of its own (`NewEventDialog.onAdded`), as the card
   says where the event stands. Nothing

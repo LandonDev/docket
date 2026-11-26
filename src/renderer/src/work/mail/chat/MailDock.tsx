@@ -3,6 +3,7 @@ import type { ContextChip } from "@shared/work";
 import type { MailChatFound } from "@shared/contract-work-mail";
 import { TruncateTip } from "../../../components/tip";
 import { registry } from "../../../lib/connection";
+import { useHostHeld } from "../../../lib/connection/degraded";
 import { chipPort } from "../../../lib/contextChips";
 import { newSession, type Session } from "../../../lib/session";
 import { sessionStore } from "../../../lib/tcserver/store";
@@ -50,7 +51,7 @@ export function MailDock({
       focus={focus}
       onChipTaken={onChipTaken}
       onClose={onClose}
-      composerTop={(id) => (rows.length ? <Starters sessionId={id} rows={rows} /> : null)}
+      composerTop={(id) => (rows.length ? <Starters sessionId={id} environmentId={workspace.environmentId} rows={rows} /> : null)}
       head={(head) => (
         <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border ps-4 pe-2">
           <TruncateTip text={subject.title}>
@@ -108,9 +109,10 @@ export function onClaude(draft: Session): Session {
 
 /**
  * The few things a fresh chat offers to ask, quiet rows over the composer: a press sends that text. They show only
- * on a draft with nothing typed, and go once he types or the thread exists.
+ * on a draft with nothing typed, and go once he types or the thread exists, or while the host's link is held: the
+ * composer's line says why, and a press would send past its block.
  */
-function Starters({ sessionId, rows }: { sessionId: string; rows: string[] }) {
+function Starters({ sessionId, environmentId, rows }: { sessionId: string; environmentId: string; rows: string[] }) {
   const actions = useSessionActions();
   const root = useRef<HTMLDivElement>(null);
   const [typed, setTyped] = useState(false);
@@ -124,7 +126,8 @@ function Starters({ sessionId, rows }: { sessionId: string; rows: string[] }) {
     dock.addEventListener("input", read);
     return () => dock.removeEventListener("input", read);
   }, []);
-  if (!draft || typed) return <div ref={root} hidden />;
+  const held = !!useHostHeld(environmentId);
+  if (!draft || typed || held) return <div ref={root} hidden />;
   const send = (text: string): void => void actions.onSubmit(sessionId, chipPort.get()?.send(sessionId, true, text) || text, []);
   return (
     <div ref={root} data-mail-starters className="mb-2 flex flex-col">

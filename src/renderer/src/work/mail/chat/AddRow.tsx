@@ -256,8 +256,10 @@ function Row({ task, event, at, keep }: { task?: TaskOffer; event?: EventOffer; 
       {added ? (
         <>
           <span className="text-xs text-muted-foreground">Added</span>
+          {/* A task opens in Tasks' list, where it now stands. LifeOS's row for an event names no event to stand on, so
+              its press says where it goes rather than promise the event. */}
           <Button variant="ghost" size="sm" onClick={() => openWorkView({ workspaceId: at.workspaceId, view: task ? "tasks" : "agenda" })}>
-            Open
+            {task ? "Open" : "Open Agenda"}
           </Button>
         </>
       ) : outcome?.status === "pending" ? (

@@ -84,7 +84,7 @@ export const MailOfferSchema = z.union([
       rows: z
         .object({
           act: z.enum(MAIL_ROW_ACTS),
-          title: words(200),
+          title: words(200).describe('What the rows are, with no verb and no count ("Billing notices"): the press says both.'),
           threadIds: z.array(id).min(1).max(50).describe('Mail thread ids.'),
           snoozeUntil: z.string().max(40).optional().describe(AT_HIS)
         })
