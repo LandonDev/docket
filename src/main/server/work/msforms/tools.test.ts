@@ -109,8 +109,8 @@ describe('the read tools', () => {
     const view = await aForm()
     expect((await tool('msform_list', {})).text).toContain(`${view.formId}: Spring sign-up, a draft`)
     const read = (await tool('msform_read', { form: view.formId })).text
-    expect(read).toContain('1. Choice "Which night?" with Monday, Tuesday, required')
-    expect(read).toContain('2. Text "Anything else?"')
+    expect(read).toContain('1. Choice “Which night?” with Monday, Tuesday, required')
+    expect(read).toContain('2. Text “Anything else?”')
     expect(read).toContain('Only people in the organization can answer')
   })
 
@@ -157,7 +157,7 @@ describe('making and changing', () => {
     expect(r.text).toContain("waits for the owner's Accept")
     expect(carrier.calls.some((c) => c.op === 'write')).toBe(false)
     const after = await call<MsFormView>('work.msforms.get', { workspaceId: 'w1', formId: view.formId })
-    expect(after.suggestions.map((s) => s.words)).toEqual(['Add a Date "When?", required'])
+    expect(after.suggestions.map((s) => s.words)).toEqual(['Add a Date “When?”, required'])
   })
 
   it('a draft under Agent writes: written at once, in one visit whose own Settings read shows it takes no answers', async () => {
@@ -177,7 +177,7 @@ describe('making and changing', () => {
     expect(after.suggestions.at(-1)?.held).toContain('Turn off Accept responses')
     // the write's own Settings read is kept: his canvas knows the form takes answers, and nothing reads it "stopped"
     expect(after.settings.accepting).toBe(true)
-    expect(after.suggestions.at(-1)?.words).toBe('Remove "Which night?"')
+    expect(after.suggestions.at(-1)?.words).toBe('Remove “Which night?”')
   })
 
   it("a change that waits opens the form's builder for his Accept, under a read grant", async () => {

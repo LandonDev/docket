@@ -3,7 +3,7 @@
  * The Forms view on a stand-in host: both kinds in one list, newest first, and a
  * Microsoft form gone since the list was read falls back to the list, read again.
  */
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FormListRow, MsFormView } from "@shared/contract-work-msforms";
 
@@ -31,8 +31,10 @@ vi.mock("../../lib/connection", async (original) => {
     onPush: () => () => undefined,
     onOpen: () => () => undefined,
   };
-  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, onLink: () => () => undefined, has: () => true } };
+  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, onLink: () => () => undefined, has: () => true, environment: () => ({ name: "The box" }) } };
 });
+/** A refusal the host words itself, said as it came, the computer named where it has none (`loadFailure`). */
+const CAUSE = "The host refused the read";
 vi.mock("../files/openFrom", () => ({
   openInFiles: async (_ws: unknown, what: unknown) => {
     host.opened.push(what);
@@ -95,8 +97,17 @@ describe("the Forms view", () => {
     host.bad = ["work.msforms.list"];
     render(<View {...props} />);
     expect(await screen.findByText("Volunteer sign-up")).toBeTruthy();
-    expect(screen.getByRole("status").textContent).toBe("Microsoft forms did not load");
+    // Council round 1, sitting E (R1-E11): the view's state line, with its cause and a Retry that asks again.
+    const line = document.querySelector('[data-view-state="failed"]') as HTMLElement;
+    expect(line.textContent).toContain("Microsoft forms did not load");
+    expect(line.textContent).toContain(CAUSE);
     expect(screen.queryByText("No forms yet")).toBeNull();
+    host.bad = [];
+    host.ms = [{ formId: FORM, tenant: "purdue0", title: "TempCode proof back", state: "draft", count: 0, lastAnswerAt: null, updatedAt: 20 }];
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("TempCode proof back")).toBeTruthy();
+    expect(screen.getByText("Volunteer sign-up")).toBeTruthy();
+    expect(document.querySelector('[data-view-state="failed"]')).toBeNull();
   });
 
   it("retries failed reads without first calling the list empty", async () => {
@@ -105,6 +116,8 @@ describe("the Forms view", () => {
     host.bad = ["work.forms.list", "work.msforms.list"];
     render(<View {...props} />);
     expect(await screen.findByText("Forms did not load")).toBeTruthy();
+    // Council round 1, sitting E (R1-E12): the cause under the title, in his words.
+    expect(screen.getByText(CAUSE)).toBeTruthy();
     expect(screen.queryByText("No forms yet")).toBeNull();
     host.bad = [];
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -117,6 +130,16 @@ describe("the Forms view", () => {
     render(<View {...props} />);
     expect(await screen.findByText("Forms did not load")).toBeTruthy();
     expect(screen.queryByText("Microsoft forms did not load")).toBeNull();
+  });
+
+  /** Council round 1, sitting E (R1-E13): at rest no spinner's room sits between the glyph and the words. */
+  it("draws New form at rest as every view's New: the glyph, then the words", () => {
+    making.stage = null;
+    render(<Head {...props} />);
+    const press = screen.getByRole("button", { name: "New form" });
+    expect(press.firstElementChild?.tagName.toLowerCase()).toBe("svg");
+    expect(press.querySelector("span")).toBeNull();
+    expect(press.textContent).toBe("New form");
   });
 
   it("says each stage of a make on New's own press while it runs", () => {

@@ -47,7 +47,7 @@ const VIEW = {
 const BOOK = { libraryId: "lib", path: "Esports/Spring intramural sign-up.xlsx", siteUrl: "https://purdue0.sharepoint.com/sites/RecWell", uniqueId: "u1", parentId: "p1", name: "Spring intramural sign-up.xlsx" };
 const FILE = { ref: { at: "file" as const, host: "env", path: "C:\\Users\\tcuser\\RecWell\\Esports\\Spring intramural sign-up.xlsx" }, name: "Spring intramural sign-up.xlsx" };
 const HISTORY: MsFormHistoryRow[] = [
-  { rev: 2, at: new Date(2026, 10, 24, 13, 5).getTime(), by: "agent:env:t1", words: ['Add a Date "When?", required'] },
+  { rev: 2, at: new Date(2026, 10, 24, 13, 5).getTime(), by: "agent:env:t1", words: ['Add a Date “When?”, required'] },
   { rev: 1, at: new Date(2026, 10, 24, 12, 0).getTime(), by: "owner", words: ["Made with a Choice question"] },
 ];
 
@@ -91,7 +91,7 @@ describe("More on a Microsoft form", () => {
     const { host, more } = draw(VIEW);
     await waitFor(() => expect(more().map((e) => e.label)).toContain("Question History…"));
     await act(async () => void more().find((e) => e.id === "history")!.run());
-    expect(await screen.findByText('Add a Date "When?", required')).toBeTruthy();
+    expect(await screen.findByText('Add a Date “When?”, required')).toBeTruthy();
     expect(screen.getByText(/^An agent · /).textContent).toContain("1:05");
     expect(screen.getByText(/^You · /)).toBeTruthy();
     expect(screen.getByText("Made with a Choice question")).toBeTruthy();

@@ -226,7 +226,7 @@ export function fromOurQuestion(q: { label: string; type: 'short' | 'long' | 'ch
 
 /** A question in his words, as the stepper, the Outbox card and `msform_read` say it. */
 export function questionWords(q: MsAnyQuestion): string {
-  if (isOther(q)) return `${q.kind} question "${q.title}"`
+  if (isOther(q)) return `${q.kind} question “${q.title}”`
   const kind =
     q.type === 'text'
       ? q.long
@@ -245,7 +245,7 @@ export function questionWords(q: MsAnyQuestion): string {
             : 'Section'
   const options = q.type === 'choice' && q.options?.length ? ` with ${q.options.join(', ')}` : ''
   const required = q.type !== 'section' && q.required ? ', required' : ''
-  return `${kind} "${q.title}"${options}${required}`
+  return `${kind} “${q.title}”${options}${required}`
 }
 
 /** A change to the question list, as an agent asks for it and the carrier's `write` runs it. */
@@ -262,13 +262,13 @@ export function changeWords(change: MsChange, list: readonly MsAnyQuestion[]): s
     case 'add':
       return `Add a ${questionWords(change.question)}`
     case 'remove':
-      return `Remove "${titleAt(change.at)}"`
+      return `Remove “${titleAt(change.at)}”`
     case 'move':
-      return `Move "${titleAt(change.at)}" to place ${change.to + 1}`
+      return `Move “${titleAt(change.at)}” to place ${change.to + 1}`
     case 'change': {
       const old = list[change.at]
-      if (old && !isOther(old) && old.title !== change.question.title && sameShape(old, change.question)) return `Rename "${old.title}" to "${change.question.title}"`
-      return `Change "${titleAt(change.at)}" to ${questionWords(change.question)}`
+      if (old && !isOther(old) && old.title !== change.question.title && sameShape(old, change.question)) return `Rename “${old.title}” to “${change.question.title}”`
+      return `Change “${titleAt(change.at)}” to ${questionWords(change.question)}`
     }
   }
 }
@@ -307,7 +307,7 @@ export function applyChange(list: readonly MsAnyQuestion[], change: MsChange): M
     }
     case 'change':
       at(change.at)
-      if (isOther(next[change.at])) throw new Error(`"${next[change.at].title}" is a kind of question only the Forms page changes.`)
+      if (isOther(next[change.at])) throw new Error(`“${next[change.at].title}” is a kind of question only the Forms page changes.`)
       next[change.at] = { ...change.question, ref: next[change.at].ref }
       return next
     case 'remove':
@@ -346,7 +346,7 @@ export function diffQuestions(before: readonly MsAnyQuestion[], after: readonly 
   const pairs: [number, number][] = []
   before.forEach((q, i) => {
     const j = matchOf(q, i)
-    if (j < 0) out.push(`Removed "${q.title}"`)
+    if (j < 0) out.push(`Removed “${q.title}”`)
     else {
       used.add(j)
       pairs.push([i, j])
@@ -356,8 +356,8 @@ export function diffQuestions(before: readonly MsAnyQuestion[], after: readonly 
     const a = before[i]
     const b = after[j]
     if (sameQuestion(a, b)) continue
-    if (!isOther(a) && !isOther(b) && a.title !== b.title && sameShape(a, b)) out.push(`Renamed "${a.title}" to "${b.title}"`)
-    else out.push(`Changed "${a.title}" to ${questionWords(b)}`)
+    if (!isOther(a) && !isOther(b) && a.title !== b.title && sameShape(a, b)) out.push(`Renamed “${a.title}” to “${b.title}”`)
+    else out.push(`Changed “${a.title}” to ${questionWords(b)}`)
   }
   after.forEach((q, j) => {
     if (!used.has(j)) out.push(`Added a ${questionWords(q)}`)

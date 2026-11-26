@@ -97,9 +97,9 @@ describe('questions', () => {
   })
 
   it('says a change in words', () => {
-    expect(changeWords({ op: 'add', question: night }, [name])).toBe('Add a Choice "Which night?" with Mon, Tue, Wed')
-    expect(changeWords({ op: 'change', at: 0, question: { ...name, title: 'Full name' } }, [name])).toBe('Rename "Name" to "Full name"')
-    expect(changeWords({ op: 'remove', at: 0 }, [name])).toBe('Remove "Name"')
+    expect(changeWords({ op: 'add', question: night }, [name])).toBe('Add a Choice “Which night?” with Mon, Tue, Wed')
+    expect(changeWords({ op: 'change', at: 0, question: { ...name, title: 'Full name' } }, [name])).toBe('Rename “Name” to “Full name”')
+    expect(changeWords({ op: 'remove', at: 0 }, [name])).toBe('Remove “Name”')
   })
 
   it('applies changes and keeps a ref on change', () => {
@@ -113,8 +113,8 @@ describe('questions', () => {
   it('diffs two lists by ref, then by title', () => {
     const before: MsAnyQuestion[] = [{ ...name, ref: 'r1' }, { ...night, ref: 'r2' }]
     const after: MsAnyQuestion[] = [{ ...name, ref: 'r1', title: 'Full name' }, { ...night, ref: 'r2' }, { title: 'When?', type: 'date', required: true }]
-    expect(diffQuestions(before, after)).toEqual(['Renamed "Name" to "Full name"', 'Added a Date "When?", required'])
-    expect(diffQuestions(after, before)).toEqual(['Removed "When?"', 'Renamed "Full name" to "Name"'])
+    expect(diffQuestions(before, after)).toEqual(['Renamed “Name” to “Full name”', 'Added a Date “When?”, required'])
+    expect(diffQuestions(after, before)).toEqual(['Removed “When?”', 'Renamed “Full name” to “Name”'])
     expect(diffQuestions(before, [before[1], before[0]])).toEqual(['Moved questions'])
     expect(diffQuestions(before, before)).toEqual([])
   })

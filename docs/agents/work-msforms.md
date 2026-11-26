@@ -390,4 +390,4 @@ Open, found by the proofs:
 
 ## When a read or link fails
 
-Forms shows one Retry when all the sources it can use fail. When one fails, Forms keeps the rows that came back and names the missing source. A known lost link gets a named line and holds New form until the link opens.
+Forms shows one Retry when all the sources it can use fail, the cause in his words under "Forms did not load" (`loadFailure`). When one fails, Forms keeps the rows that came back over the view's state line ("Microsoft forms did not load", its cause, Retry). A known lost link gets a named line and holds New form until the link opens. A change in words quotes a question's title in curly quotes (Add a Date “When?”, required), as every quoted name on screen.

@@ -19,6 +19,8 @@ import { openInFiles } from "../files/openFrom";
 import { selectTab, tabsNow } from "../files/store";
 import { openWorkView, workOpenPort } from "../../lib/workSwitch";
 import type { WorkViewProps } from "../views/registry";
+import { loadFailure } from "../routines/plays/data";
+import { ViewStateLine } from "../views/ViewStateLine";
 import { mergeForms, rowLine } from "./model";
 import { FORM_KIND_WORDS } from "./newForm";
 import { useFormMaking, useLibraryPlaces } from "./useFormMaking";
@@ -30,7 +32,8 @@ import { useFormMaking, useLibraryPlaces } from "./useFormMaking";
  * Teams or OneDrive place he picks there.
  */
 
-type Load = { status: "loading" } | { status: "error" } | { status: "ready"; rows: FormListRow[]; ms: MsFormView[]; missed: string | null };
+/** `missed`: one source failed, the other's rows kept; its title and the cause, in his words. */
+type Load = { status: "loading" } | { status: "error"; error: string } | { status: "ready"; rows: FormListRow[]; ms: MsFormView[]; missed: { word: string; detail: string } | null };
 
 /** An older host may lack a source. A refusal from a source it has still counts as a failed read. */
 function formSource<T>(request: Promise<T>): Promise<T | null> {
@@ -68,9 +71,10 @@ function useForms(env: string, workspaceId: string): [Load, () => void, () => Pr
       const [o, m] = await Promise.allSettled([ours, theirs]);
       if (!on || mine !== latest) return;
       const haveAnswer = (o.status === "fulfilled" && o.value !== null) || (m.status === "fulfilled" && m.value !== null);
-      if (!haveAnswer && (o.status === "rejected" || m.status === "rejected")) return setLoad({ status: "error" });
+      const failed = o.status === "rejected" ? o.reason : m.status === "rejected" ? m.reason : null;
+      if (!haveAnswer && failed !== null) return setLoad({ status: "error", error: loadFailure(env, failed, "forms") });
       const ms = (m.status === "fulfilled" ? m.value : null) ?? [];
-      const missed = o.status === "rejected" ? "Docket forms did not load" : m.status === "rejected" ? "Microsoft forms did not load" : null;
+      const missed = failed === null ? null : { word: o.status === "rejected" ? "Docket forms did not load" : "Microsoft forms did not load", detail: loadFailure(env, failed, "forms") };
       setLoad({ status: "ready", rows: mergeForms((o.status === "fulfilled" ? o.value : null) ?? [], ms), ms, missed });
     };
     read.current = fetch;
@@ -116,8 +120,15 @@ export function Head({ env, workspace }: WorkViewProps) {
 export function NewFormPress({ making, stage, disabled = false, ...props }: { making: boolean; stage: string | null; disabled?: boolean } & ComponentProps<typeof Button>) {
   return (
     <Button variant="ghost" size="sm" {...props} disabled={making || disabled}>
-      {making ? null : <Plus />}
-      <BusyLabel busy={making} label="New form" busyLabel={stage ?? undefined} />
+      {/* At rest the glyph and words as every view's New: `BusyLabel` keeps the spinner's room only while it spins. */}
+      {making ? (
+        <BusyLabel busy label="New form" busyLabel={stage ?? undefined} />
+      ) : (
+        <>
+          <Plus />
+          New form
+        </>
+      )}
     </Button>
   );
 }
@@ -134,6 +145,7 @@ export function View({ env, workspace }: WorkViewProps) {
     return (
       <EmptyState
         title="Forms did not load"
+        line={load.error}
         action={{
           label: "Retry",
           busy: retrying,
@@ -182,8 +194,8 @@ export function View({ env, workspace }: WorkViewProps) {
 
   return (
     <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
-      {/* On the rows' words: the list's 16px and a row's own 8px. */}
-      {load.missed ? <p role="status" className="mx-auto max-w-[672px] px-6 pt-3 text-[13px] text-muted-foreground">{load.missed}</p> : null}
+      {/* One source failed: the view's state line with its cause and Retry, over the other's rows. */}
+      {load.missed ? <ViewStateLine word={load.missed.word} detail={load.missed.detail} onRetry={readAgain} /> : null}
       <RowsContextMenu label="Form actions" lazyMount rowsFor={(id) => (id && load.ms.some((f) => f.formId === id) ? [{ kind: "item", id: "forget", label: "Remove from List" }] : null)} onPick={(pick, id) => void (pick === "forget" && id && forget(id))}>
         <ul aria-label="Forms" className="mx-auto flex max-w-[672px] flex-col gap-px px-4 py-4">
           {load.rows.map((row) => (

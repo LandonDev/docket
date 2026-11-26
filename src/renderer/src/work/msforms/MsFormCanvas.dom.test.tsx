@@ -221,14 +221,14 @@ describe("an agent's waiting changes", () => {
     const view: MsFormView = {
       ...BASE,
       suggestions: [
-        { id: "s1", change: { op: "add", question: { title: "When?", type: "date", required: true } }, words: 'Add a Date "When?", required', reason: "Dana asked for a date", by: "agent:env:t1", at: 0 },
-        { id: "s2", change: { op: "remove", at: 0 }, words: 'Remove "Which night works?"', by: "agent:env:t1", at: 0 },
+        { id: "s1", change: { op: "add", question: { title: "When?", type: "date", required: true } }, words: 'Add a Date “When?”, required', reason: "Dana asked for a date", by: "agent:env:t1", at: 0 },
+        { id: "s2", change: { op: "remove", at: 0 }, words: 'Remove “Which night works?”', by: "agent:env:t1", at: 0 },
       ],
     };
     const host = hostOf(view);
     const p = props(host);
     render(<Body {...p} />);
-    expect(await screen.findByText('Add a Date "When?", required')).toBeTruthy();
+    expect(await screen.findByText('Add a Date “When?”, required')).toBeTruthy();
     expect(screen.getByText("Dana asked for a date")).toBeTruthy();
     const review = (p.shell.review as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]).filter(Boolean).at(-1);
     expect(review).toMatchObject({ count: 2, index: 0 });
@@ -240,19 +240,19 @@ describe("an agent's waiting changes", () => {
 
   it("while they are written in Forms, the line above the page says where it stands, then gives way", async () => {
     let tell!: (s: Parameters<Parameters<MsFormHost["applying"]>[0]>[0]) => void;
-    const view: MsFormView = { ...BASE, suggestions: [{ id: "s1", change: { op: "remove", at: 0 }, words: 'Remove "Which night works?"', by: "agent:env:t1", at: 0 }] };
+    const view: MsFormView = { ...BASE, suggestions: [{ id: "s1", change: { op: "remove", at: 0 }, words: 'Remove “Which night works?”', by: "agent:env:t1", at: 0 }] };
     const host = hostOf(view, { applying: (on) => ((tell = on), () => undefined) });
     render(<Body {...props(host)} />);
-    expect(await screen.findByText('Remove "Which night works?"')).toBeTruthy();
+    expect(await screen.findByText('Remove “Which night works?”')).toBeTruthy();
     act(() => tell({ stage: "opening" }));
     expect(line()?.textContent).toBe("Opening the form in Forms…");
     act(() => tell({ stage: "changing", at: 2, of: 3 }));
     expect(line()?.textContent).toBe("Making change 2 of 3…");
     // the change's own words give way while it runs: one line, never two
-    expect(screen.queryByText('Remove "Which night works?"')).toBeNull();
+    expect(screen.queryByText('Remove “Which night works?”')).toBeNull();
     act(() => tell(null));
     expect(line()).toBeNull();
-    expect(screen.getByText('Remove "Which night works?"')).toBeTruthy();
+    expect(screen.getByText('Remove “Which night works?”')).toBeTruthy();
   });
 
   it("a thread's write under Agent writes says its stage too, with nothing waiting", async () => {
