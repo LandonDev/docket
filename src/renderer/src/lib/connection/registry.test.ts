@@ -352,8 +352,10 @@ describe("/ui's host name", () => {
     );
     await flush();
     expect(h.transports[0].requests.filter((r) => r.method === "work.outbox.decide")).toHaveLength(1);
-    // The link goes silent: two missed beats close it and the redial opens a second socket.
-    await h.clock.advance(20_000);
+    // The link goes silent: with the press out the heartbeat allows five missed beats (35 s), then closes and redials.
+    await h.clock.advance(34_999);
+    expect(h.transports).toHaveLength(1);
+    await h.clock.advance(1);
     await press;
     expect(outcome).toBe("connection closed");
     expect(h.transports).toHaveLength(2);

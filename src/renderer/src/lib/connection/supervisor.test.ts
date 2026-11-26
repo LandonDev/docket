@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   BACKOFF,
+  HEARTBEAT_GRACE_MISSES,
   HEARTBEAT_METHOD,
   HEARTBEAT_MISS_MS,
+  HEARTBEAT_MISSES,
   HEARTBEAT_MS,
   PROBE_LIMIT_MS,
   Supervisor,
@@ -452,6 +454,43 @@ describe("Supervisor heartbeat (M6)", () => {
     expect(asks(live)).toBe(1);
     await h.clock.advance(HEARTBEAT_MS - HEARTBEAT_MISS_MS);
     expect(asks(live)).toBe(2);
+  });
+});
+
+describe("Supervisor heartbeat never cuts a healthy link (M6 review, finding 9)", () => {
+  it("a frame dispatched after the miss deadline passed, before its check ran, keeps the socket", async () => {
+    const { h, live } = await openOne(true);
+    await h.clock.advance(HEARTBEAT_MS + HEARTBEAT_MISS_MS);
+    expect(asks(live)).toBe(2);
+    // The second deadline passes while the window is busy: its timer runs, and the check waits one macrotask.
+    const clock = h.clock as unknown as { timers: { at: number; fn: () => void; id: number }[]; t: number };
+    const due = clock.timers.filter((x) => x.at <= clock.t + HEARTBEAT_MISS_MS).sort((a, b) => a.at - b.at)[0]!;
+    clock.t = due.at;
+    clock.timers = clock.timers.filter((x) => x !== due);
+    due.fn();
+    expect(live.state).toBe("open");
+    // The frame that was queued behind it is dispatched first.
+    live.receive(64, h.clock.now());
+    await h.clock.advance(0);
+    expect(live.state).toBe("open");
+    expect(h.transports).toHaveLength(1);
+  });
+
+  it("while a press is out it waits three misses more (35 s) before closing; with only a safe read out, 20 s", async () => {
+    const held = await openOne(true);
+    void held.live.request("work.outbox.decide", { ids: ["held_1"] }).catch(() => undefined);
+    await held.h.clock.advance(HEARTBEAT_MS + HEARTBEAT_MISSES * HEARTBEAT_MISS_MS);
+    expect(held.live.state).toBe("open");
+    expect(asks(held.live)).toBe(HEARTBEAT_MISSES + 1);
+    await held.h.clock.advance(HEARTBEAT_GRACE_MISSES * HEARTBEAT_MISS_MS - 1);
+    expect(held.live.state).toBe("open");
+    expect(asks(held.live)).toBe(HEARTBEAT_MISSES + HEARTBEAT_GRACE_MISSES);
+    await held.h.clock.advance(1);
+    expect(held.live.state).toBe("closed");
+    const read = await openOne(true);
+    void read.live.request("session.events", { sessionId: "s" }).catch(() => undefined);
+    await read.h.clock.advance(HEARTBEAT_MS + HEARTBEAT_MISSES * HEARTBEAT_MISS_MS);
+    expect(read.live.state).toBe("closed");
   });
 });
 

@@ -1,4 +1,5 @@
 import type { WireProfile } from "@server/shared/wire";
+import { SAFE_READS } from "./link";
 import { Transport } from "./transport";
 import {
   IDLE_STATUS,
@@ -44,6 +45,9 @@ export const HEARTBEAT_MS = 10_000;
 export const HEARTBEAT_MISS_MS = 5_000;
 /** Misses in a row that close the socket and redial: a dead link is found 20 s after its last frame. */
 export const HEARTBEAT_MISSES = 2;
+/** More misses allowed while a call that is never asked again (a write, a press: anything outside SAFE_READS) is
+ *  out: a host stalled for a few seconds should not lose that call's answer to our close. 35 s from the last frame. */
+export const HEARTBEAT_GRACE_MISSES = 3;
 /** The heartbeat's ask: answered from memory, with no effect, to any key (capability `read`). */
 export const HEARTBEAT_METHOD = "away.get";
 /**
@@ -475,14 +479,25 @@ export class Supervisor {
     const before = session.bytesIn ?? 0;
     session.request(HEARTBEAT_METHOD, undefined).catch(() => undefined);
     this.heartbeatTimer = this.clock.setTimeout(() => {
-      this.heartbeatTimer = null;
-      if (this.session !== session || session.state !== "open") return;
-      if ((session.bytesIn ?? 0) !== before) return this.armHeartbeat(session);
-      if (misses + 1 < HEARTBEAT_MISSES) return this.beat(session, misses + 1);
-      const message = "heartbeat: the link went silent";
-      session.close({ kind: "local", message });
-      this.lost(session, { kind: "local", message });
+      // Judged one macrotask later: a window that was busy when the deadline passed may hold a frame not yet
+      // dispatched, and that frame is the link alive.
+      this.heartbeatTimer = this.clock.setTimeout(() => {
+        this.heartbeatTimer = null;
+        if (this.session !== session || session.state !== "open") return;
+        if ((session.bytesIn ?? 0) !== before) return this.armHeartbeat(session);
+        const allowed = HEARTBEAT_MISSES + (this.holdsUnrepeatable(session) ? HEARTBEAT_GRACE_MISSES : 0);
+        if (misses + 1 < allowed) return this.beat(session, misses + 1);
+        const message = "heartbeat: the link went silent";
+        session.close({ kind: "local", message });
+        this.lost(session, { kind: "local", message });
+      }, 0);
     }, this.options.heartbeatMissMs ?? HEARTBEAT_MISS_MS);
+  }
+
+  /** A call is out on the session that nothing asks again after a close: its answer is worth a longer wait. */
+  private holdsUnrepeatable(session: Transport): boolean {
+    const probe = this.options.probeMethod ?? PROBE_METHOD;
+    return (session.pendingMethods?.() ?? []).some((m) => m !== HEARTBEAT_METHOD && m !== probe && !SAFE_READS.has(m));
   }
 
   private clearHeartbeat(): void {

@@ -207,8 +207,12 @@
   silent socket only at its third 30 s tick, so a visible window beats its
   own heartbeat. When 10 s pass with no frame in, it asks `away.get` (from
   memory, no effect, `read`); 5 s with nothing at all in after the ask is a
-  miss, and two misses in a row close the socket (`local`) and redial at
-  once: a dead link is found 20 s after its last frame. Any frame counts,
+  miss (judged a macrotask after its deadline, so a frame the busy window
+  had not yet dispatched counts), and two misses in a row close the socket
+  (`local`) and redial at once: a dead link is found 20 s after its last
+  frame. While a call nothing asks again is out (anything outside
+  `SAFE_READS`: a send, a press), three misses more are allowed (35 s),
+  so a host stalled a few seconds does not lose that call's answer. Any frame counts,
   a push or part of a long answer. A hidden window sends no heartbeat
   (`ConnectionRegistry.setVisible`, from the window hooks), and coming on
   screen probes as before. A dial that reached no hello, or a socket the
