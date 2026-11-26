@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { leafIds, newTab } from "./layout";
 import { docketOpen, setDocketOpen } from "./docketOpen";
+import { pendingTranscriptJump, takeTranscriptJump } from "./transcriptJump";
 import { newSession } from "./session";
 import { initialWorkspaceTabsState, workspaceTabsStore } from "../stores/workspace";
 import { workspaceActions } from "../stores/workspaceActions";
@@ -44,6 +45,14 @@ describe("window.__docket.open", () => {
     expect(beside).toHaveBeenCalledWith("master", expect.objectContaining({ id: "child" }));
     expect(activeLeaves()).toEqual(["master", "child"]);
     expect(workspaceTabsStore.getState().tabs).toHaveLength(1);
+  });
+
+  it("asks the transcript to land on a row with seq, as a search hit does", async () => {
+    await docketOpen("master");
+    expect(pendingTranscriptJump("master")).toBeNull();
+    await docketOpen("master", { seq: 5000 });
+    expect(open).toHaveBeenLastCalledWith("master");
+    expect(takeTranscriptJump("master")).toEqual({ sessionId: "master", seq: 5000 });
   });
 
   it("opens a tab when there is no pane to split", async () => {

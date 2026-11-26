@@ -4,13 +4,15 @@
  * TEMP_CODE_PROFILE builds; scripts/measure-renderer-soak.ts runs a plain
  * production build). It goes through App's own open handler, so a script
  * opens what a click opens: a tab, or with `split` a pane beside the
- * focused one.
+ * focused one. With `seq` it first asks the transcript to land on that row,
+ * as a search hit does (lib/transcriptJump.ts).
  */
 import { leafIds } from "./layout";
+import { requestTranscriptJump } from "./transcriptJump";
 import type { Session } from "./session";
 import { workspaceTabsStore } from "../stores/workspace";
 
-export type DocketOpenOptions = { split?: boolean };
+export type DocketOpenOptions = { split?: boolean; seq?: number };
 
 export type DocketOpenDeps = {
   /** App's open handler: a tab for the thread, or the one already showing it. */
@@ -38,6 +40,7 @@ function focusedThread(): string | null {
 
 export async function docketOpen(sessionId: string, options: DocketOpenOptions = {}): Promise<void> {
   if (!deps) throw new Error("the app has not mounted yet");
+  if (options.seq !== undefined) requestTranscriptJump(sessionId, options.seq);
   const source = options.split ? focusedThread() : null;
   if (!source || source === sessionId) return deps.open(sessionId);
   const session = await deps.ensure(sessionId);
