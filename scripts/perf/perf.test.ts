@@ -63,9 +63,18 @@ describe('the kit keeps to itself', () => {
     expect(shape).toContain('const inherited = isolatedEnvironment(process.env)')
     for (const file of sources()) {
       const text = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+      // host.ts stands up a headless host with no window, which the journeys' pair cannot: it is held to the same two
+      // rules by name below.
+      if (file.endsWith('/host.ts')) continue
       // guarded.ts starts the one command it was handed, under the guard: never an instance of its own.
       expect(text, file).not.toMatch(file.endsWith('/guarded.ts') ? /WINVM_DIR\s*[:=]|node_modules\/\.bin\/electron/ : /WINVM_DIR\s*[:=]|node_modules\/\.bin\/electron|spawn\(/)
     }
+    const host = readFileSync(join(HERE, 'host.ts'), 'utf8')
+    expect(host).toContain('...isolatedEnvironment(process.env)')
+    // Its WINVM_DIR is a folder it made empty under the run's own root, never the environment's.
+    expect(host).toMatch(/const vm = join\([^)]*'no-vm'\)/)
+    expect(host).toMatch(/WINVM_DIR: vm\b/)
+    expect(host).not.toMatch(/process\.env\.WINVM/)
   })
 
   it('takes at most eight cores, the last ones, and a link as there-and-back over rate', () => {
