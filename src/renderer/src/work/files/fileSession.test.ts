@@ -328,6 +328,31 @@ describe("a text file open", () => {
     expect(h.session.dirty).toBe(true);
   });
 
+  it("a folder's word that comes while a save waits for its answer is looked at before the line says Saved (Sol S11)", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    const host = (h.session as unknown as { host: FileSessionHost }).host;
+    const real = host.request.bind(host);
+    let once = true;
+    host.request = async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+      const got = await real<T>(method, params);
+      if (method === "work.files.write" && once) {
+        // Ours landed; another writer replaces it before our answer is back, and the folder says so.
+        once = false;
+        h.theirs("theirs\n");
+        void h.session.check();
+      }
+      return got;
+    };
+    h.session.edit("mine\n");
+    await h.fire();
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    // The editor holds the file as it is, and the last line names that file's change, never our save's.
+    expect(h.session.getSnapshot()).toMatchObject({ is: "text", text: "theirs\n" });
+    const last = h.lines.at(-1)!;
+    expect(last).toMatchObject({ state: "saved", at: h.file.changed });
+  });
+
   it("keeps an unlisted open copy writable after a scoped look and a failed look", async () => {
     const h = standIn("first\n", { unlisted: true });
     await h.session.load();

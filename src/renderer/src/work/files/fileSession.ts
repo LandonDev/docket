@@ -389,6 +389,7 @@ export class FileSession {
     if (this.draft === null || this.conflicted || this.view.is !== "text") return Promise.resolve();
     const text = this.draft;
     const sent = this.pending;
+    const noted = this.noted;
     this.sentAt = this.now();
     this.saving = (async () => {
       const encoded = encodeText(text, this.file);
@@ -414,6 +415,8 @@ export class FileSession {
         }
         this.saving = null;
         this.sentAt = null;
+        // The folder said something changed while this save was out: the file is looked at before the line says Saved.
+        if (this.noted !== noted && !this.conflicted) return void (await this.check());
         this.line();
       } catch (err) {
         const lost = await digest;
@@ -467,7 +470,9 @@ export class FileSession {
    */
   async check(): Promise<void> {
     // A read of the whole file is out (the first, or a reload): the change is noted, and that read reads again.
-    if (this.reading > 0 || this.view.is === "loading") return void (this.noted += 1);
+    // A read of the whole file is out (the first, or a reload), or a save is: the change is noted, and that read
+    // reads again, or that save looks again before its line says Saved.
+    if (this.reading > 0 || this.view.is === "loading" || this.saving) return void (this.noted += 1);
     if (this.view.is !== "text" || this.saving || this.conflicted) return;
     const of = this.of;
     const version = this.version;

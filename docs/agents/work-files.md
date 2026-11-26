@@ -873,7 +873,9 @@ move, that comes while a read of the whole file is out (the first open, a
 Reload) is noted, and that read reads again before its text and its save
 line go in (`FileSession.noted`), so the line never says Saved for a file
 the folder has since replaced; his edits made meanwhile stay, and the line
-says the file changed. Before, a read whose answer crossed in parts was
+says the file changed. One that comes while a save waits for its answer
+is noted too, and the file is looked at again before the line says Saved.
+Before, a read whose answer crossed in parts was
 installed as Saved after the folder's push for a newer file had already
 passed it. Before, a plain file renamed from its open
 tab kept only the words from before the rename, and closing asked to lose
