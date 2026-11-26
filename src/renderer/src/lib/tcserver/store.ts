@@ -190,6 +190,8 @@ type Entry = {
   resyncHold?: boolean;
   /** The socket whose pushes `held` holds: a replay on a newer socket drops them (its own page brings what is real). */
   heldOn?: number;
+  /** Its last replay failed: the hold stays until a replay of it succeeds, whatever else releases holds. */
+  heldFailed?: boolean;
   /** Times this entry was unloaded: a fold that yielded across one stops (its rows are no longer this fold's). */
   unloads?: number;
   /** The replay of its gap on its way, and the socket it runs on: one on a newer socket waits it out. */
@@ -1922,8 +1924,10 @@ class SessionStore {
         // replay runs through the hold (`resyncHold`) and folds them after its page.
         if (!ok && entry.held) {
           entry.resyncHold = true;
+          entry.heldFailed = true;
           return;
         }
+        entry.heldFailed = false;
         const held = entry.held;
         entry.held = null;
         // The fold drops whatever history already covered.
@@ -1973,6 +1977,8 @@ class SessionStore {
   private releaseResyncHolds(environmentId: string): void {
     for (const entry of this.entries.values()) {
       if (!entry.resyncHold || entry.meta?.environmentId !== environmentId) continue;
+      // Its replay failed: what it holds may be past rows it never brought, so it waits for a replay that works.
+      if (entry.heldFailed) continue;
       const held = entry.held;
       entry.held = null;
       entry.resyncHold = false;
@@ -2347,6 +2353,7 @@ class SessionStore {
           for (const entry of this.entries.values()) {
             if (!entry.loaded || entry.held || entry.meta?.environmentId !== environmentId) continue;
             entry.held = [];
+            entry.heldOn = this.socketOf(entry);
             entry.resyncHold = true;
           }
           attached.listed = (attached.listed ?? Promise.resolve())

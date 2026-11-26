@@ -705,6 +705,36 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1", "late 2", "late 3"]);
   });
 
+  it("after the host's resync, a transcript whose replay failed keeps its hold until a replay of it works (Sol S7)", async () => {
+    link.pages = [[wireMeta({ id: "s" })]];
+    link.events.set("s", turns("s", 2));
+    await boot(link);
+    sessionStore.setMounted(["s"]);
+    await sessionStore.ensureLoaded("s");
+    const late = turns("s", 2, 5).map((r, i) => ({ ...r, event: { ...r.event, text: `late ${i}` } as EventRow["event"] }));
+    link.events.set("s", [...turns("s", 2), ...late]);
+    // The host shed rows 5 and 6, says resync, and pushes row 7; the replay's read fails.
+    const real = link.request.bind(link);
+    let failing = true;
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> => {
+      if (method === "session.events" && failing) {
+        link.calls.push({ method, params });
+        return Promise.reject(new ConnectionLostError("connection closed"));
+      }
+      return real<T>(method, params);
+    }) as typeof link.request;
+    link.push({ push: "resync" });
+    link.push({ push: "event", row: late[2]! });
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    // Row 7 is not folded past the missing 5 and 6.
+    expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2"]);
+    // The next resync's replay works: 5..8 fold once, in order.
+    failing = false;
+    link.push({ push: "resync" });
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1", "late 2", "late 3"]);
+  });
+
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
   async function masterWithChild(): Promise<{ asked: () => string[] }> {
     link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];
