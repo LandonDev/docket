@@ -831,8 +831,8 @@ try {
   const minted = box<{ token: string; id?: string; key?: { id: string } }>('remote.keys.create', { name: 'edits-lost proof window', audience: 'client', caps: ['read', 'operate', 'approve'] })
   keyId = minted.id ?? minted.key?.id ?? null
   await local('remote.environments.add', { url: BOX_URL, key: minted.token, name: 'box' })
-  await cdp.eval('window.__monocode.loadSavedEnvironments()')
-  const linked = await until('window reaches the box', 60_000, () => cdp!.eval<boolean>(`window.__monocode.registry.has(${JSON.stringify(boxId)}) && window.__monocode.registry.statusOf(${JSON.stringify(boxId)}).transport === 'open'`))
+  await cdp.eval('window.__docket.loadSavedEnvironments()')
+  const linked = await until('window reaches the box', 60_000, () => cdp!.eval<boolean>(`window.__docket.registry.has(${JSON.stringify(boxId)}) && window.__docket.registry.statusOf(${JSON.stringify(boxId)}).transport === 'open'`))
   if (!check("the window reaches the deployed box over a minted key, as his Mac's does", linked)) throw new Error('no link')
 
   const opened = await press('button, a, [role="button"], [role="treeitem"], [role="link"], div', 'Purdue', { ms: 60_000 })

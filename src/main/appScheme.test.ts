@@ -58,7 +58,7 @@ describe('appIndexUrl / mimeFor', () => {
     expect(mimeFor('/x/index.css')).toBe('text/css; charset=utf-8')
     expect(mimeFor('/x/codicon.ttf')).toBe('font/ttf')
     expect(mimeFor('/x/index.html')).toBe('text/html; charset=utf-8')
-    expect(mimeFor('/x/monocode.png')).toBe('image/png')
+    expect(mimeFor('/x/sample.png')).toBe('image/png')
     expect(mimeFor('/x/thing.unknown')).toBeUndefined()
   })
 })

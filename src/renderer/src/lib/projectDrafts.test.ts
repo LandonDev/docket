@@ -65,7 +65,7 @@ describe("projectDrafts", () => {
       ],
     });
     projectDrafts.flush();
-    const raw = localStorage.getItem("monocode.projectDrafts")!;
+    const raw = localStorage.getItem("docket.projectDrafts")!;
     expect(raw).not.toContain("AAA");
     expect(raw).not.toContain("blob:x");
     projectDrafts.reload();
@@ -79,7 +79,7 @@ describe("projectDrafts", () => {
     projectDrafts.put("plain", { ...base, attachments: [pasted] });
     expect(projectDrafts.get("plain")!.attachments).toEqual([pasted]);
     projectDrafts.flush();
-    expect(localStorage.getItem("monocode.projectDrafts")).not.toContain("paste.png");
+    expect(localStorage.getItem("docket.projectDrafts")).not.toContain("paste.png");
     projectDrafts.reload();
     expect(projectDrafts.get("plain")!.attachments).toEqual([]);
   });

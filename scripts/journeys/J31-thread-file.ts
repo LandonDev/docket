@@ -33,7 +33,7 @@ export default journey({
     }),
     step('Mention the file in its maker thread and open the sent chip', async (context) => {
       const { pair } = context
-      await pair.page.eval(`window.__monocode.open(${JSON.stringify(sessions.get(context))})`)
+      await pair.page.eval(`window.__docket.open(${JSON.stringify(sessions.get(context))})`)
       await pair.page.until('the maker thread to take the window', 15_000, () =>
         pair.page.eval(`document.body.innerText.includes(${JSON.stringify(THREAD)})`))
       await pair.page.clickOn('[data-composer-input]')

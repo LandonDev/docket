@@ -38,7 +38,7 @@ function toolKind(name: string): string {
 }
 
 /**
- * The server's event log, folded into MonoCode's transcript blocks. Pure:
+ * The server's event log, folded into transcript blocks. Pure:
  * one row in, a new state out (unchanged rows return the same state, so
  * React sees no change). Live pushes and a replay of the stored log fold
  * to the same blocks because text is keyed by `msgId:blockIndex` and tools

@@ -27,7 +27,7 @@ import {
  * instead of the web model store.
  */
 
-const PROBE_ID = "monocode-grok-probe";
+const PROBE_ID = "docket-grok-probe";
 const DISCOVERY_TIMEOUT_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 12_000;
 const REASONING: Reasoning[] = ["low", "medium", "high", "xhigh", "max", "ultra"];
@@ -85,12 +85,12 @@ function isReasoning(value: unknown): value is Reasoning {
 
 async function discoverGrokModels(): Promise<Discovered> {
   const fromAcp = await discoverViaAcp().catch((error: unknown) => {
-    console.debug("[monocode] grok ACP catalog failed", error);
+    console.debug("[docket] grok ACP catalog failed", error);
     return null;
   });
   if (fromAcp && fromAcp.models.length > 0) return fromAcp;
   const fromCli = await discoverViaCli().catch((error: unknown) => {
-    console.debug("[monocode] grok CLI catalog failed", error);
+    console.debug("[docket] grok CLI catalog failed", error);
     return [];
   });
   if (fromCli.length > 0) return { models: fromCli };

@@ -89,7 +89,7 @@ describe("settings sections", () => {
 
   it("loads a saved environments page as Hosts", () => {
     mockLocalStorage();
-    localStorage.setItem("monocode.settingsSection", "environments");
+    localStorage.setItem("docket.settingsSection", "environments");
     expect(loadSettingsSection()).toBe("remote");
     expect(isSettingsSectionId("environments")).toBe(false);
   });
@@ -97,7 +97,7 @@ describe("settings sections", () => {
   it("has no Build page; a saved one loads as the default", () => {
     expect(SETTINGS_SECTIONS.some((section) => (section.id as string) === "build")).toBe(false);
     mockLocalStorage();
-    localStorage.setItem("monocode.settingsSection", "build");
+    localStorage.setItem("docket.settingsSection", "build");
     expect(loadSettingsSection()).toBe("general");
   });
 });
@@ -159,7 +159,7 @@ describe("mid-turn default", () => {
     expect(loadMidTurnDefault()).toBe("queue");
     saveMidTurnDefault("steer");
     expect(loadMidTurnDefault()).toBe("steer");
-    localStorage.setItem("monocode.midTurnDefault", "nonsense");
+    localStorage.setItem("docket.midTurnDefault", "nonsense");
     expect(loadMidTurnDefault()).toBe("steer");
   });
 });

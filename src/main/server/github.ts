@@ -756,7 +756,7 @@ async function githubCommentNow(
   const inReplyTo = inReplyToInput.trim()
   if (inReplyTo) {
     const threadId = validReviewThreadId(inReplyTo)
-    return withTempMarkdown('monocode-comment', body, async (path) => {
+    return withTempMarkdown('docket-comment', body, async (path) => {
       const output = await ghRun(cwd, [
         'api',
         'graphql',
@@ -770,7 +770,7 @@ async function githubCommentNow(
       return reviewReplyUrl(output)
     })
   }
-  return withTempMarkdown('monocode-comment', body, async (path) => {
+  return withTempMarkdown('docket-comment', body, async (path) => {
     const output = await ghRun(cwd, [kind, 'comment', number.toString(), '--body-file', path])
     return outputUrl(output, 'GitHub did not return a comment URL')
   })
@@ -890,7 +890,7 @@ async function githubCreatePrNow(
 ): Promise<string> {
   const title = titleInput.trim()
   if (!title) throw new Error('Pull request title cannot be empty')
-  return withTempMarkdown('monocode-pr', bodyInput.trim(), async (path) => {
+  return withTempMarkdown('docket-pr', bodyInput.trim(), async (path) => {
     const output = await ghRun(cwd, [
       'pr',
       'create',

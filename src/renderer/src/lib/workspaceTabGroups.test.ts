@@ -103,9 +103,9 @@ describe("planCloseFocused", () => {
 
 describe("planWorkspaceTabClose", () => {
   const sessions = [
-    session("m1", "/projects/monocode"),
+    session("m1", "/projects/sample-project"),
     session("r1", "/projects/ruler"),
-    session("m2", "/projects/monocode"),
+    session("m2", "/projects/sample-project"),
   ];
   const tabs = [tab("tm1", "m1"), tab("tr1", "r1"), tab("tm2", "m2")];
 
@@ -189,7 +189,7 @@ describe("planWorkspaceTabClose", () => {
   });
 
   it("keys by project id, not by path, so a loose chat in the folder stays apart", () => {
-    const loose = session("loose", "/projects/monocode", null);
+    const loose = session("loose", "/projects/sample-project", null);
     const mixed = [...sessions, loose];
     const mixedTabs = [tabs[0], tab("tloose", "loose"), tabs[1]];
     expect(
@@ -232,13 +232,13 @@ describe("planWorkspaceTabClose", () => {
 
 describe("tabProjectKey", () => {
   const sessions = [
-    session("m1", "/projects/monocode"),
-    session("loose", "/projects/monocode", null),
+    session("m1", "/projects/sample-project"),
+    session("loose", "/projects/sample-project", null),
     session("blank", "~"),
   ];
 
   it("reads the first session leaf's project id", () => {
-    expect(tabProjectKey(tab("t", "m1"), sessions)).toBe("p:/projects/monocode");
+    expect(tabProjectKey(tab("t", "m1"), sessions)).toBe("p:/projects/sample-project");
   });
 
   it("is null for loose chats, blank drafts and file-only tabs", () => {
@@ -261,15 +261,15 @@ describe("tabProjectKey", () => {
       focusedId: "o1",
     };
     expect(filterTabsForProjectId([split], both, "p:/projects/other").map((t) => t.id)).toEqual(["s"]);
-    expect(filterTabsForProjectId([split], both, "p:/projects/monocode")).toEqual([]);
+    expect(filterTabsForProjectId([split], both, "p:/projects/sample-project")).toEqual([]);
     // A focused pane with no project falls back to the first that has one.
-    expect(tabProjectKey({ ...split, focusedId: "missing" }, both)).toBe("p:/projects/monocode");
+    expect(tabProjectKey({ ...split, focusedId: "missing" }, both)).toBe("p:/projects/sample-project");
   });
 
   it("filters tabs to one project", () => {
     const tabs = [tab("a", "m1"), tab("b", "loose"), tab("c", "blank")];
     expect(
-      filterTabsForProjectId(tabs, sessions, "p:/projects/monocode").map((t) => t.id),
+      filterTabsForProjectId(tabs, sessions, "p:/projects/sample-project").map((t) => t.id),
     ).toEqual(["a"]);
     expect(filterTabsForProjectId(tabs, sessions, null).map((t) => t.id)).toEqual([
       "b",
@@ -310,8 +310,8 @@ describe("filterTabsForWorkspace", () => {
 
 describe("applyPlaceSessionOnPane", () => {
   const sessions = [
-    session("m1", "/projects/monocode"),
-    session("m2", "/projects/monocode"),
+    session("m1", "/projects/sample-project"),
+    session("m2", "/projects/sample-project"),
     session("r1", "/projects/ruler"),
   ];
 
@@ -336,7 +336,7 @@ describe("applyPlaceSessionOnPane", () => {
   });
 
   it("replaces a blank target instead of splitting it", () => {
-    const blank = session("blank", "/projects/monocode");
+    const blank = session("blank", "/projects/sample-project");
     const next = applyPlaceSessionOnPane({
       tabs: [tab("tm1", "blank")],
       sessions: [...sessions, blank],
@@ -383,7 +383,7 @@ describe("applyPlaceSessionOnPane", () => {
     });
     expect(next?.tabs.map((entry) => entry.id)).toEqual(["tr1"]);
     expect(leafIds(next!.tabs[0]!.layout)).toEqual(["r1", "m1"]);
-    expect(tabProjectKey(next!.tabs[0]!, sessions)).toBe("p:/projects/monocode");
+    expect(tabProjectKey(next!.tabs[0]!, sessions)).toBe("p:/projects/sample-project");
   });
 });
 
@@ -457,11 +457,11 @@ describe("applyBackgroundOpen", () => {
 describe("planWorkspaceTabClose with the window's project", () => {
   const loose = session("l1", "~");
   const other = session("r1", "/projects/ruler");
-  const mine = session("m1", "/projects/monocode");
+  const mine = session("m1", "/projects/sample-project");
 
   it("a tab whose sessions name no project closes to a tab of the window's project, never another's", () => {
     const tabs = [tab("tr1", "r1"), tab("tm1", "m1"), tab("tl1", "l1")];
-    const plan = planWorkspaceTabClose({ tabs, sessions: [loose, other, mine], closingTabId: "tl1", scope: "project", fallbackKey: "p:/projects/monocode" });
+    const plan = planWorkspaceTabClose({ tabs, sessions: [loose, other, mine], closingTabId: "tl1", scope: "project", fallbackKey: "p:/projects/sample-project" });
     expect(plan).toEqual({ action: "close", nextActiveTabId: "tm1" });
   });
 

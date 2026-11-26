@@ -261,7 +261,7 @@ const until = async (label: string, ms: number, test: () => Promise<boolean> | b
 const logHas = (inst: Inst, text: string): boolean => existsSync(inst.log) && readFileSync(inst.log, 'utf8').includes(text)
 const logCount = (inst: Inst, text: string): number => (existsSync(inst.log) ? readFileSync(inst.log, 'utf8').split(text).length - 1 : 0)
 const rpc = (cdp: Cdp, method: string, params?: unknown): Promise<unknown> =>
-  cdp.eval(`window.__monocode.registry.linkOf('local').request(${JSON.stringify(method)}, ${JSON.stringify(params ?? {})})`)
+  cdp.eval(`window.__docket.registry.linkOf('local').request(${JSON.stringify(method)}, ${JSON.stringify(params ?? {})})`)
 interface Profile {
   name: string
   owner?: string
@@ -280,9 +280,9 @@ const codexIn = (s: Snapshot) => s.providers.codex.profiles.find((p) => p.name =
 const sessionOn = async (cdp: Cdp, id: string): Promise<{ id: string; account?: string | null } | undefined> => ((await rpc(cdp, 'session.list')) as { id: string; account?: string | null }[]).find((s) => s.id === id)
 async function connectWindow(inst: Inst, label: string): Promise<{ cdp: Cdp; env: string }> {
   const cdp = await attach(inst.debug, 120_000)
-  await until(`${label} local socket`, 60_000, () => cdp.eval<boolean>(`!!window.__monocode?.registry?.primary()?.connected`))
-  await until(`${label} first list`, 60_000, () => cdp.eval<boolean>(`window.__monocode.registry.statusOf('local').fresh === true`))
-  const env = (await cdp.eval(`window.__monocode.registry.statusOf('local').lastHello.environmentId`)) as string
+  await until(`${label} local socket`, 60_000, () => cdp.eval<boolean>(`!!window.__docket?.registry?.primary()?.connected`))
+  await until(`${label} first list`, 60_000, () => cdp.eval<boolean>(`window.__docket.registry.statusOf('local').fresh === true`))
+  const env = (await cdp.eval(`window.__docket.registry.statusOf('local').lastHello.environmentId`)) as string
   return { cdp, env }
 }
 

@@ -39,7 +39,7 @@ async function look(label: string, code: string): Promise<Look> {
   await run.page(`location.hash = ''`)
   await sleep(1500)
   const rail = await run.page<string[]>(`[...document.querySelectorAll('aside button, aside a, nav button, nav a, aside h2, aside [role=heading]')].filter((e) => e.getBoundingClientRect().left < 200 && e.offsetParent).map((e) => e.textContent.trim().replace(/\\d+$/, '')).filter(Boolean)`)
-  await run.page(`window.dispatchEvent(new CustomEvent('monocode:open-settings', { detail: 'general' }))`)
+  await run.page(`window.dispatchEvent(new CustomEvent('docket:open-settings', { detail: 'general' }))`)
   const settingsRail = '[aria-label="Settings"]:not([data-app-settings])'
   const settingsPath = JSON.stringify(settingsRail)
   if (!(await run.until('Settings rail', 15_000, () =>

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Block, ToolPreview } from "./session";
 import { commandPhrases, humanName, kindOf, sentenceName, runClauses, toolPhrase, toolPhraseParts } from "./toolPhrase";
 
-const CWD = "/Users/me/monocode";
+const CWD = "/Users/me/sample-project";
 
 function call(
   name: string,

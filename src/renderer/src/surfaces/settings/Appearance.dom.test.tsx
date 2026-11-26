@@ -38,14 +38,14 @@ describe("Appearance", () => {
     render(<AppearancePage />);
     await choose("Theme", "Light");
     expect(document.documentElement.classList.contains("theme-light")).toBe(true);
-    expect(localStorage.getItem("monocode.colorScheme")).toBe("light");
-    expect(localStorage.getItem("monocode.colorScheme.work")).toBeNull();
+    expect(localStorage.getItem("docket.colorScheme")).toBe("light");
+    expect(localStorage.getItem("docket.colorScheme.work")).toBeNull();
   });
 
   it("shows a choice made in another window", async () => {
     render(<AppearancePage />);
-    localStorage.setItem("monocode.colorScheme", "light");
-    await act(async () => void window.dispatchEvent(new StorageEvent("storage", { key: "monocode.colorScheme" })));
+    localStorage.setItem("docket.colorScheme", "light");
+    await act(async () => void window.dispatchEvent(new StorageEvent("storage", { key: "docket.colorScheme" })));
     expect(screen.getByRole("combobox", { name: "Theme" }).textContent).toContain("Light");
   });
 
@@ -53,26 +53,26 @@ describe("Appearance", () => {
     const stop = initMotion();
     render(<AppearancePage />);
     await choose("Motion", "Reduced");
-    expect(localStorage.getItem("monocode.motion")).toBe("reduced");
+    expect(localStorage.getItem("docket.motion")).toBe("reduced");
     expect(document.documentElement.dataset.motion).toBe("reduced");
     await choose("Motion", "Full");
     expect(document.documentElement.dataset.motion).toBe("full");
     await choose("Motion", "Follow this computer");
-    expect(localStorage.getItem("monocode.motion")).toBeNull();
+    expect(localStorage.getItem("docket.motion")).toBeNull();
     stop();
   });
 
   it("shows a motion choice made in another window", async () => {
     render(<AppearancePage />);
-    localStorage.setItem("monocode.motion", "full");
-    await act(async () => void window.dispatchEvent(new StorageEvent("storage", { key: "monocode.motion" })));
+    localStorage.setItem("docket.motion", "full");
+    await act(async () => void window.dispatchEvent(new StorageEvent("storage", { key: "docket.motion" })));
     expect(screen.getByRole("combobox", { name: "Motion" }).textContent).toContain("Full");
   });
 
   it("saves the editor's type size", async () => {
     render(<AppearancePage />);
     await choose("Editor font size", "14px");
-    expect(localStorage.getItem("monocode.editorFontSize")).toBe("14");
+    expect(localStorage.getItem("docket.editorFontSize")).toBe("14");
     expect(document.documentElement.style.getPropertyValue("--font-size-code")).toBe("14px");
   });
 
@@ -98,7 +98,7 @@ describe("Appearance", () => {
       expect(screen.getByRole("combobox", { name: "Code" }).textContent).toContain("Light");
       expect(screen.getByRole("combobox", { name: "Work" }).textContent).toContain("Light");
       await choose("Work", "Dark");
-      expect(localStorage.getItem("monocode.colorScheme.work")).toBe("dark");
+      expect(localStorage.getItem("docket.colorScheme.work")).toBe("dark");
       await choose("Code", "System");
       expect(screen.getByRole("combobox", { name: "Work" }).textContent).toContain("Dark");
     });
@@ -107,7 +107,7 @@ describe("Appearance", () => {
       // This window is on a code place.
       render(<AppearancePage />);
       await choose("Work", "Light");
-      expect(localStorage.getItem("monocode.colorScheme.work")).toBe("light");
+      expect(localStorage.getItem("docket.colorScheme.work")).toBe("light");
       expect(document.documentElement.classList.contains("theme-light")).toBe(false);
       await choose("Code", "Light");
       expect(document.documentElement.classList.contains("theme-light")).toBe(true);

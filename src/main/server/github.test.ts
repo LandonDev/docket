@@ -333,7 +333,7 @@ describe('GitHub gh bridge', () => {
           'comment',
           '12',
           '--body-file',
-          expect.stringContaining('monocode-comment-') as unknown as string
+          expect.stringContaining('docket-comment-') as unknown as string
         ],
         stdout: 'posted\nhttps://github.test/acme/web/issues/12#issuecomment-1',
         inspect: (args) => {
@@ -546,7 +546,7 @@ describe('GitHub gh bridge', () => {
     ]
     queue(
       {
-        args: expectedArgs(expect.stringContaining('monocode-pr-')),
+        args: expectedArgs(expect.stringContaining('docket-pr-')),
         stdout: 'https://github.test/acme/web/pull/88\n',
         inspect: (args) => {
           successPath = args[5]
@@ -554,7 +554,7 @@ describe('GitHub gh bridge', () => {
         }
       },
       {
-        args: expectedArgs(expect.stringContaining('monocode-pr-')),
+        args: expectedArgs(expect.stringContaining('docket-pr-')),
         error: failure(),
         stderr: 'base branch not found',
         inspect: (args) => {

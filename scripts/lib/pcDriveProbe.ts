@@ -7,7 +7,7 @@
 /** Installed once per page over CDP; `__bench.begin()` and `__bench.end()` bracket a step. */
 export const PROBE_JS = String.raw`(() => {
   if (window.__bench) return 'kept'
-  const reg = window.__monocode?.registry
+  const reg = window.__docket?.registry
   if (!reg) return 'no registry'
   const proto = Object.getPrototypeOf(reg.primary())
   const B = (window.__bench = { calls: [], on: false, gap: 0, task: 0, last: performance.now(), t0: 0, bytes: {} })

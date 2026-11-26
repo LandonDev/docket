@@ -4,7 +4,7 @@ import TempCodeContract
 @testable import TempCodeClient
 
 enum PhraseFixture {
-    static let cwd = "/Users/me/monocode"
+    static let cwd = "/Users/me/sample-project"
     static func call(_ name: String, _ input: JSONValue = .object([:]), id: String? = nil, live: Bool = false, partial: Bool = false, preview: ToolPreview? = nil, output: String? = nil, failed: Bool = false, display: ToolCallEvent.Display? = nil) -> ToolItem {
         ToolItem(seq: 1, ts: 0, callId: id ?? name, name: name, display: display, input: input, partial: partial, preview: preview, parentCallId: nil, inputOmitted: false, output: output.map(BodyState.whole) ?? .none, status: failed ? .failed : live ? .running : .done, reauth: nil, doneTs: live ? nil : 10)
     }
@@ -146,7 +146,7 @@ enum PhraseFixture {
 
     @Test func `a file path reads relative to its project`() {
         #expect(ToolPhrase.displayPath("\(cwd)/src/lib/a.ts", cwd: cwd) == "src/lib/a.ts")
-        #expect(ToolPhrase.displayPath(cwd, cwd: cwd) == "monocode")
+        #expect(ToolPhrase.displayPath(cwd, cwd: cwd) == "sample-project")
         #expect(ToolPhrase.displayPath("/srv/agents/work/a.ts") == "/srv/agents/work/a.ts")
     }
 

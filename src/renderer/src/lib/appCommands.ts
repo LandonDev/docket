@@ -141,7 +141,7 @@ export const DIALOG_SAFE: ReadonlySet<AppCommandId> = new Set<AppCommandId>([
 export const DOUBLE_SHIFT_MS = 400;
 
 const DIALOG = '[role="dialog"], [role="alertdialog"]';
-const TERMINAL = ".monocode-terminal";
+const TERMINAL = ".docket-terminal";
 const CODEMIRROR = ".cm-editor";
 const PICKER =
   "[data-model-picker], [data-file-picker], [data-symbol-picker], [data-branch-picker], [data-command-popover], [data-app-search]";

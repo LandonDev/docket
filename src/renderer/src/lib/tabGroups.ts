@@ -20,16 +20,16 @@ export function tabGroupColor(project: string): string {
   return TAB_GROUP_COLORS[(hash % (TAB_GROUP_COLORS.length - 1)) + 1];
 }
 
-const COLOR_KEY = "monocode:tab-group:colors";
-const CUSTOM_COLOR_KEY = "monocode:tab-group:custom-colors";
-const LABEL_KEY = "monocode:tab-group:labels";
-const LOGO_KEY = "monocode:tab-group:logos";
-const MASCOT_KEY = "monocode:tab-group:mascots";
+const COLOR_KEY = "docket:tab-group:colors";
+const CUSTOM_COLOR_KEY = "docket:tab-group:custom-colors";
+const LABEL_KEY = "docket:tab-group:labels";
+const LOGO_KEY = "docket:tab-group:logos";
+const MASCOT_KEY = "docket:tab-group:mascots";
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
-export const TAB_GROUP_LOGOS_CHANGED = "monocode:tab-group-logos-changed";
-export const TAB_GROUP_LABELS_CHANGED = "monocode:tab-group-labels-changed";
+export const TAB_GROUP_LOGOS_CHANGED = "docket:tab-group-logos-changed";
+export const TAB_GROUP_LABELS_CHANGED = "docket:tab-group-labels-changed";
 
 let logoDisplayRevision = 0;
 
@@ -629,7 +629,7 @@ export function insertTabInGroup<T extends GroupedTab>(
   return addTabToGroup([...without, tab], tab.id, groupId);
 }
 
-const COLLAPSED_KEY = "monocode:tab-groups:collapsed";
+const COLLAPSED_KEY = "docket:tab-groups:collapsed";
 
 export function loadCollapsedTabGroups(): Set<string> {
   try {

@@ -263,7 +263,7 @@ import type { ThreadRules } from "@server/shared/rules";
 import * as serverCommands from "./lib/tcserver/commands";
 import { requestTranscriptJump } from "./lib/transcriptJump";
 import { installAppFacade } from "./lib/appFacade";
-import { setMonocodeOpen } from "./lib/monocodeOpen";
+import { setDocketOpen } from "./lib/docketOpen";
 import {
   setTabSplitRatio,
 } from "./lib/workspaceFocus";
@@ -3203,7 +3203,7 @@ export default function App() {
       const from = workspaceByPath(workspaces, projectStore.getState().projectCwd);
       const target = workspaceToLandOn(pool, from, remembered, sameProjectPath);
       environment.follow(id, target?.path ?? null);
-      console.info(`[monocode:environment] switch to ${id}${target ? ` at ${target.path}` : " (no workspace there: a loose chat)"}`);
+      console.info(`[docket:environment] switch to ${id}${target ? ` at ${target.path}` : " (no workspace there: a loose chat)"}`);
       if (target) {
         onSelectProject(target.path);
         return;
@@ -3402,15 +3402,15 @@ export default function App() {
     });
   }, [execute, onSelectHistorySession, onSubmit]);
 
-  // `window.__monocode.open` (lib/monocodeOpen.ts): every build's way for a
+  // `window.__docket.open` (lib/docketOpen.ts): every build's way for a
   // measurement script to open a thread, through the same handlers a click uses.
   useEffect(() => {
-    setMonocodeOpen({
+    setDocketOpen({
       open: (id) => onSelectHistorySession(id),
       ensure: ensureOpenSession,
       beside: (sourceId, session) => openSessionBesideRef.current?.(sourceId, session, session.cwd),
     });
-    return () => setMonocodeOpen(null);
+    return () => setDocketOpen(null);
   }, [ensureOpenSession, onSelectHistorySession]);
 
   useEffect(() => {

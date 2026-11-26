@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Block } from "./session";
 import { commonDir, editVerbOf, groupPhrase } from "./groupPhrase";
 
-const CWD = "/Users/me/monocode";
+const CWD = "/Users/me/sample-project";
 
 function call(
   name: string,
@@ -61,7 +61,7 @@ describe("groupPhrase", () => {
   });
 
   it("folds reads by folder or project, by basename for one", () => {
-    expect(groupPhrase([read("src/lib/a.ts"), read("README.md")], CWD)).toBe("Read monocode files");
+    expect(groupPhrase([read("src/lib/a.ts"), read("README.md")], CWD)).toBe("Read sample-project files");
     expect(groupPhrase([read("src/a.ts"), read("src/a.ts", "again")], CWD)).toBe("Read a.ts");
     expect(groupPhrase([read("a.ts"), call("Read", { file_path: "/etc/hosts" })], CWD)).toBe("Read 2 files");
   });

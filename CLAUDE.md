@@ -40,10 +40,9 @@ env -u ELECTRON_RUN_AS_NODE \
   TEMP_CODE_USER_DATA="$HOME/Library/Application Support/temp-code-dev" \
   TEMP_CODE_DEBUG_PORT=9224 bun run dev
 ```
-- Own database, own window; CDP on 9224 for driving and screenshots
-  (`window.__app` exposes the store in dev builds). A fresh userData starts
-  with an empty rail, wherever it was launched from: add the folder with
-  Add workspace….
+- CDP on 9224. `window.__app` is the dev and profiling facade.
+  `window.__docket` exposes the registry, store and opener in every build.
+  In a fresh profile, add a folder with Add workspace….
 - These are ENFORCED in code: a dev build without TEMP_CODE_USER_DATA
   exits immediately (it would open the installed app's database — a
   second SQLite writer there freezes the user's live threads), and each
@@ -140,9 +139,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   dark"), and the file lists the edit that flips each when the owner asks. [docs/agents/appearance.md](docs/agents/appearance.md); the
   phone checked in light, one tint fixed and the rest listed:
   [appearance-phone.md](docs/agents/appearance-phone.md)
-- **Launch-time code caches and the bundle split** — boot.js and the compile
-  cache, the `tempcode-app://` scheme, lazy chunks (`defineChunk`,
-  surfaces/chunks.ts) under the index chunk's budget (`bun run check:bundle`).
+- **Launch and bundle split** — boot.js migrates renderer preferences before
+  paint. Compile caches, `tempcode-app://`, lazy chunks (`defineChunk`),
+  and the index budget (`bun run check:bundle`).
   [docs/agents/launch-code-caches.md](docs/agents/launch-code-caches.md)
 - **Launch mirror** — the rail paints from session summaries kept in the app
   database (src/main/server/launchMirror.ts) and reconciles with

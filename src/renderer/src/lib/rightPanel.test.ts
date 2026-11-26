@@ -227,7 +227,7 @@ describe("the store", () => {
     expect(rightPanel.get("t1").width).toBe(PANEL_MIN);
     rightPanel.setWidth("t1", 400);
     expect(rightPanel.get("t2").width).toBe(400);
-    const saved = JSON.parse(localStorage.getItem("monocode.rightPanel") ?? "{}") as { width: number; threads: Record<string, unknown> };
+    const saved = JSON.parse(localStorage.getItem("docket.rightPanel") ?? "{}") as { width: number; threads: Record<string, unknown> };
     expect(saved.width).toBe(400);
     expect(saved.threads.t1).toEqual({ open: false, section: null, width: 400 });
   });
@@ -250,10 +250,10 @@ describe("the store", () => {
   it("a write with nothing new emits nothing", () => {
     let n = 0;
     rightPanel.open("t1", "notes");
-    const before = JSON.stringify(localStorage.getItem("monocode.rightPanel"));
+    const before = JSON.stringify(localStorage.getItem("docket.rightPanel"));
     rightPanel.open("t1", "notes");
     n += 1;
-    expect(JSON.stringify(localStorage.getItem("monocode.rightPanel"))).toBe(before);
+    expect(JSON.stringify(localStorage.getItem("docket.rightPanel"))).toBe(before);
     expect(n).toBe(1);
   });
 });

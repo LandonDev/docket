@@ -173,7 +173,7 @@ describe("the week across hosts", () => {
     const ws = (id: string, environmentId: string, sector: string) => ({ id, environmentId, kind: "work", sector, name: sector, path: `/${environmentId}/${sector}` });
     vi.spyOn(workspaceStore, "getSnapshot").mockReturnValue({ ...snapshot, workspaces: [ws("w-cosmic", "env-box", "cosmic"), ws("w-hypixel", "env-box", "hypixel"), ws("w-purdue", "env-box", "purdue"), ws("m-cosmic", "env-mac", "cosmic")] } as never);
     // Purdue dragged to the top; the Mac's Cosmic sits last in the rail and must not move Cosmic down.
-    localStorage.setItem("monocode.projectRailOrder", JSON.stringify(["/env-box/purdue", "/env-box/cosmic", "/env-box/hypixel", "/env-mac/cosmic"]));
+    localStorage.setItem("docket.projectRailOrder", JSON.stringify(["/env-box/purdue", "/env-box/cosmic", "/env-box/hypixel", "/env-mac/cosmic"]));
     await loadWeek(WEEK);
     expect(reviewNow(WEEK).review!.jobs.map((j) => j.key).slice(0, 3)).toEqual(["purdue", "cosmic", "hypixel"]);
     // A pinned row leads the rail's list, so it leads here; an open page is told of a pin or a drag and follows at once.

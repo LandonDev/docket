@@ -122,7 +122,7 @@ names the far child).
   `project.setStartOn`, admin, forwarded to the settings home, in the
   settings bundle; the project sheet's New threads section with "Use global
   setting", linked projects only); `startOnOf` takes the copy stamped last.
-  No last-used host is remembered (`monocode.linkHosts` is gone):
+  No last-used host is remembered:
   `chrome/DraftHostPicker.tsx` in the composer retargets one unsent draft,
   making the copy through `project.ensureLinked` on pick (a chat outside
   every workspace goes to the picked host's home, `retargetLooseDraft`); the master board's

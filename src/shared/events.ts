@@ -130,7 +130,7 @@ export type Attachment = z.infer<typeof AttachmentSchema>
 
 /** A rendered face for a tool call (file read, diff, shell, search) the
  *  driver already worked out — the UI shows it instead of guessing from
- *  the raw input. Mirrors MonoCode's ToolPreview. */
+ *  the raw input. Matches the donor renderer's ToolPreview. */
 export const ToolPreviewSchema = z.object({
   kind: z.enum(['read', 'write', 'shell', 'search']),
   title: z.string().optional(),

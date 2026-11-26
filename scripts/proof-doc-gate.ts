@@ -138,12 +138,12 @@ type Pane = { editor: boolean; editorText: string; pane: string; bones: number; 
 /** Both themes of the window, told as the app tells it (the class and the scheme's event). */
 async function shot(run: Run, name: string): Promise<void> {
   for (const scheme of ['dark', 'light'] as const) {
-    await run.page(`(document.documentElement.classList.toggle('theme-light', ${scheme === 'light'}), window.dispatchEvent(new CustomEvent('monocode:schemechange', { detail: ${JSON.stringify(scheme)} })))`)
+    await run.page(`(document.documentElement.classList.toggle('theme-light', ${scheme === 'light'}), window.dispatchEvent(new CustomEvent('docket:schemechange', { detail: ${JSON.stringify(scheme)} })))`)
     await sleep(700)
     const { data } = (await run.send('Page.captureScreenshot', { format: 'png' })) as { data: string }
     writeFileSync(join(SHOTS, `${name}.${scheme}.png`), Buffer.from(data, 'base64'))
   }
-  await run.page(`(document.documentElement.classList.toggle('theme-light', false), window.dispatchEvent(new CustomEvent('monocode:schemechange', { detail: 'dark' })))`)
+  await run.page(`(document.documentElement.classList.toggle('theme-light', false), window.dispatchEvent(new CustomEvent('docket:schemechange', { detail: 'dark' })))`)
   await sleep(300)
 }
 const both = async (name: string): Promise<void> => {
@@ -164,7 +164,7 @@ async function poll(ms: number, test: () => Promise<boolean> | boolean): Promise
 /** Puts a thread on screen, asking again until the window knows it (a remote host's thread arrives with its link's list). */
 async function showIn(run: Run, sessionId: string, ready: string): Promise<boolean> {
   return run.until(`thread ${sessionId} on screen`, 90_000, async () => {
-    await run.page(`window.__monocode.open(${JSON.stringify(sessionId)}).then(() => true, () => false)`)
+    await run.page(`window.__docket.open(${JSON.stringify(sessionId)}).then(() => true, () => false)`)
     return poll(8000, () => run.page<boolean>(ready))
   })
 }
@@ -189,7 +189,7 @@ async function typeAfter(run: Run, word: string, words: string): Promise<boolean
 type Entry = { m: string; at: number; path: string | null; socket: string | null; done?: number; got?: string; frames?: string[]; sent?: string[]; closed?: { code: number; reason: string } | null; error?: string; schema?: number | null }
 /** Wraps `request` on the link to `env` and on every other link the window holds, so each `work.docs.*` call and its answer is kept in the page. */
 const recorder = (env: string): string =>
-  `(() => { const reg = window.__monocode.registry; const log = (window.__gateLog ??= []); for (const link of new Set([reg.linkOf(${JSON.stringify(env)}), ...(reg.links?.() ?? [])])) { if (link.__gate) continue; const orig = link.request.bind(link); link.request = (m, p, o) => { const r = orig(m, p, o); if (typeof m === 'string' && m.startsWith('work.docs.')) { const e = { m, at: Date.now(), path: p?.source?.path ?? null, socket: p?.socket ?? null }; if (m === 'work.docs.send') e.sent = [...(p?.frames ?? [])]; log.push(e); r.then((v) => { e.done = Date.now(); if (m === 'work.docs.connect') e.got = v?.socket; if (m === 'work.docs.recv') { e.frames = v?.frames ?? []; e.closed = v?.closed ?? null } if (m === 'work.docs.open') e.schema = v?.schema ?? null }, (err) => { e.done = Date.now(); e.error = String(err?.message ?? err) }) } return r }; link.__gate = true } return true })()`
+  `(() => { const reg = window.__docket.registry; const log = (window.__gateLog ??= []); for (const link of new Set([reg.linkOf(${JSON.stringify(env)}), ...(reg.links?.() ?? [])])) { if (link.__gate) continue; const orig = link.request.bind(link); link.request = (m, p, o) => { const r = orig(m, p, o); if (typeof m === 'string' && m.startsWith('work.docs.')) { const e = { m, at: Date.now(), path: p?.source?.path ?? null, socket: p?.socket ?? null }; if (m === 'work.docs.send') e.sent = [...(p?.frames ?? [])]; log.push(e); r.then((v) => { e.done = Date.now(); if (m === 'work.docs.connect') e.got = v?.socket; if (m === 'work.docs.recv') { e.frames = v?.frames ?? []; e.closed = v?.closed ?? null } if (m === 'work.docs.open') e.schema = v?.schema ?? null }, (err) => { e.done = Date.now(); e.error = String(err?.message ?? err) }) } return r }; link.__gate = true } return true })()`
 const relayLogOf = (run: Run): Promise<Entry[]> => run.page<Entry[]>('window.__gateLog ?? []')
 const relayLog = (): Promise<Entry[]> => relayLogOf(old)
 
@@ -286,11 +286,11 @@ try {
   if (keyId) host.later('revoke the run key', () => host.call('remote.keys.revoke', { id: keyId }))
   await old.call('remote.environments.add', { url: `http://127.0.0.1:${remotePort.host}`, key: key.token, name: 'HOST' })
   // Asked, not awaited: the page's promise can be left with no holder while the window takes the new host in (CDP then answers "Promise was collected"); the wait below is the condition.
-  await old.page('(void window.__monocode.loadSavedEnvironments(), true)')
-  const linked = await old.until('OLD reaches HOST', 90_000, () => old.page<boolean>(`window.__monocode.registry.has(${JSON.stringify(hostEnv)}) && window.__monocode.registry.statusOf(${JSON.stringify(hostEnv)}).transport === 'open'`))
+  await old.page('(void window.__docket.loadSavedEnvironments(), true)')
+  const linked = await old.until('OLD reaches HOST', 90_000, () => old.page<boolean>(`window.__docket.registry.has(${JSON.stringify(hostEnv)}) && window.__docket.registry.statusOf(${JSON.stringify(hostEnv)}).transport === 'open'`))
   if (!check("OLD's window reaches HOST over its saved link (a remote key there)", linked)) throw new Error('no link from OLD to HOST')
   await old.page(recorder(hostEnv))
-  await host.page(recorder(await host.page<string>('window.__monocode.registry.primaryEnvironmentId')))
+  await host.page(recorder(await host.page<string>('window.__docket.registry.primaryEnvironmentId')))
 
   // ── 1. HOST's documents ──
   const threadA = await host.thread(null, 'Classic run sheet', { firstMessage: 'Keep the run sheet.' })
@@ -324,7 +324,7 @@ try {
   // It is asked to open until it draws the words, or until the document on HOST no longer holds them: that is the damage this proof is for.
   const tOpen = Date.now()
   const oldDrawsA = await old.until("OLD draws the classic document, or HOST's copy changes", 90_000, async () => {
-    await old.page(`window.__monocode.open(${JSON.stringify(threadA)}).then(() => true, () => false)`)
+    await old.page(`window.__docket.open(${JSON.stringify(threadA)}).then(() => true, () => false)`)
     return poll(8000, async () => (await old.page<boolean>(`${editorText}.includes('Doors open at nine')`)) || !wholeA(await readA()))
   })
   await old.until("OLD's window has its first copy", 30_000, async () => settled(await relayLog(), pathA))
@@ -372,7 +372,7 @@ try {
   // ── 3. OLD opens the styled document ──
   const connectsB = async (): Promise<boolean> => framesOf(await relayLog(), pathB, STYLED_WORDS).closes.length > 0
   const refusedB = await old.until("OLD's relay on the styled document is closed", 90_000, async () => {
-    await old.page(`window.__monocode.open(${JSON.stringify(threadB)}).then(() => true, () => false)`)
+    await old.page(`window.__docket.open(${JSON.stringify(threadB)}).then(() => true, () => false)`)
     return poll(8000, connectsB)
   })
   const seenB = framesOf(await relayLog(), pathB, STYLED_WORDS)
@@ -456,13 +456,13 @@ try {
   const backId = back.id ?? back.key?.id
   if (backId) old.later('revoke the run key', () => old.call('remote.keys.revoke', { id: backId }))
   await host.call('remote.environments.add', { url: `http://127.0.0.1:${remotePort.old}`, key: back.token, name: 'OLD' })
-  await host.page('(void window.__monocode.loadSavedEnvironments(), true)')
-  const linkedBack = await host.until('HOST reaches OLD', 90_000, () => host.page<boolean>(`window.__monocode.registry.has(${JSON.stringify(oldEnv)}) && window.__monocode.registry.statusOf(${JSON.stringify(oldEnv)}).transport === 'open'`))
+  await host.page('(void window.__docket.loadSavedEnvironments(), true)')
+  const linkedBack = await host.until('HOST reaches OLD', 90_000, () => host.page<boolean>(`window.__docket.registry.has(${JSON.stringify(oldEnv)}) && window.__docket.registry.statusOf(${JSON.stringify(oldEnv)}).transport === 'open'`))
   if (check("HOST's window reaches OLD over its saved link", linkedBack)) {
     const threadC = await old.thread(null, 'Old host notes', { firstMessage: 'Keep the chairs list.' })
     const c = await old.call<ImportAnswer>('work.formats.import', { sessionId: threadC, from: { at: 'bytes', name: 'Old host notes.md', data: Buffer.from(OLD_HOST_MD).toString('base64') } }, 300_000)
     const opened = await host.page<{ ok: boolean; value?: Record<string, unknown>; error?: string }>(
-      `window.__monocode.registry.linkOf(${JSON.stringify(oldEnv)}).request('work.docs.open', { source: ${JSON.stringify(c.source)} }).then((value) => ({ ok: true, value }), (e) => ({ ok: false, error: String(e?.message ?? e) }))`
+      `window.__docket.registry.linkOf(${JSON.stringify(oldEnv)}).request('work.docs.open', { source: ${JSON.stringify(c.source)} }).then((value) => ({ ok: true, value }), (e) => ({ ok: false, error: String(e?.message ?? e) }))`
     )
     check("OLD's work.docs.open answers no schema", opened.ok && !('schema' in (opened.value ?? {})), opened.ok ? `keys: ${Object.keys(opened.value ?? {}).join(' ')}` : opened.error)
     const hostDrawsC = await showIn(host, threadC, `${editorText}.includes('list of chairs')`)

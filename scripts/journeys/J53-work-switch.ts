@@ -41,7 +41,7 @@ export default journey({
         await page.eval(`(() => {
           window.__journeyWorkWrites = [];
           window.__journeyUnwatchWork = ['local', ${JSON.stringify(pair.box.host)}].map(id => {
-            const link = window.__monocode.registry.linkOf(id);
+            const link = window.__docket.registry.linkOf(id);
             const request = link.request;
             link.request = function (method, ...args) {
               if (method === 'work.set') window.__journeyWorkWrites.push(id);

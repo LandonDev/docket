@@ -491,7 +491,7 @@ sections, its section memory and the title bar's agents cue (below). The six own
 drawer's map, the orchestrator log's state, the classic diff pane) are gone.
 
 - **Store.** `{ open, section, width }` per thread id, persisted in
-  localStorage (`monocode.rightPanel`; the width a new thread inherits is
+  localStorage (`docket.rightPanel`; the width a new thread inherits is
   the last one dragged to). `rightPanel.open/close/toggle/set/setWidth`
   write it; `rightPanel.show(section)` opens a section on the thread on
   screen (⌃D's Debug); `useRightPanel(id)`
@@ -819,7 +819,7 @@ before the host's meta lands (`chipThreadsOf` in chrome/ShellTitleBar.tsx).
   new one joins at the end (oldest first when several arrive together), and
   a status change never moves one (`orderChips` in lib/threadHeaderModel.ts).
   The order is saved per project (a loose strip under `loose:<workspace>`)
-  in localStorage (`monocode.stripOrder`, `stripOrderStore` in
+  in localStorage (`docket.stripOrder`, `stripOrderStore` in
   stores/header.ts: the first 64 ids per project, a chip past them following
   by age; an unchanged order rewritten once a day, and a project not shown
   for 30 days dropped on load) under the link id, so the copies of a linked
@@ -1001,7 +1001,7 @@ the ring and the mode's icon.
 Each project has one draft (lib/projectDrafts.ts), kept under the strip
 order's key, so a linked project's copies share it: its text, @ chips,
 attachments by path, model, effort, permission mode, type, rules and host
-are remembered in localStorage (`monocode.projectDrafts`, 64 projects, 30
+are remembered in localStorage (`docket.projectDrafts`, 64 projects, 30
 days) and come back when the person returns; pasted bytes live for the run
 only. ⌘N, the strip's +, the rail's New chat, New thread… of any type and
 Split all go to that one draft and focus its box, retyping it when a type

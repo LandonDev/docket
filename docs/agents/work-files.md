@@ -500,7 +500,7 @@ control, takes it away.
   shows the same draft with what he typed (the composer keeps a draft's
   words by id) and its chips. A draft whose send is under way is left to it.
 - **Over a quit and a launch** the draft and his words come back: each
-  dock's draft has a record of its own in `monocode.projectDrafts` under
+  dock's draft has a record of its own in `docket.projectDrafts` under
   `dockDraftKey(subject.key)` (lib/projectDrafts.ts), made when the draft
   is, and the composer writes his words to it as he types (Composer.tsx
   `saveProjectDraft`). The next launch's dock finds the record and rebuilds

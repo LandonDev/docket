@@ -5,7 +5,7 @@
  * List and ⌘⇧M all write it, and the native menu reads it (nativeMenuState).
  */
 
-export const MESSAGE_LIST_FOLDED_KEY = "monocode.messageListFolded";
+export const MESSAGE_LIST_FOLDED_KEY = "docket.messageListFolded";
 
 const listeners = new Set<() => void>();
 let folded = read();

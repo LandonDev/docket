@@ -10,9 +10,9 @@ import type { HarnessId } from "../../lib/session";
  */
 
 /** Set once the first screen was shown and closed, so it never opens by itself again. */
-export const SETUP_OFFERED_KEY = "monocode.setupOffered";
+export const SETUP_OFFERED_KEY = "docket.setupOffered";
 /** Set once the seeds landed, so a second read of the state never writes them over his own choices. */
-export const SETUP_SEEDED_KEY = "monocode.setupSeeded";
+export const SETUP_SEEDED_KEY = "docket.setupSeeded";
 
 /** A fresh install: no saved hosts, no workspaces and no accounts, each known (null is not yet read). */
 export function isFreshInstall(p: { savedHosts: number | null; workspaces: number | null; accounts: number | null }): boolean {

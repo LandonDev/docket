@@ -154,9 +154,9 @@ try {
     name: 'Export preview proof', audience: 'client', caps: ['read', 'operate', 'approve', 'admin']
   })
   await local(clientPort, 'remote.environments.add', { url: `http://127.0.0.1:${host.remote}`, key: token, name: 'Proof host' })
-  await cdp.eval('window.__monocode.loadSavedEnvironments()')
-  const link = `window.__monocode.registry.linkOf(${JSON.stringify(environmentId)})`
-  await waitFor('paired window connection', () => cdp.eval<boolean>(`window.__monocode.registry.has(${JSON.stringify(environmentId)}) && ${link}.connected`))
+  await cdp.eval('window.__docket.loadSavedEnvironments()')
+  const link = `window.__docket.registry.linkOf(${JSON.stringify(environmentId)})`
+  await waitFor('paired window connection', () => cdp.eval<boolean>(`window.__docket.registry.has(${JSON.stringify(environmentId)}) && ${link}.connected`))
   const remote = <T>(method: string, params: object) => cdp.eval<T>(`${link}.request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
   const made = await remote<FileDone>('work.files.make', {
     workspaceId: workspace.id, at: { at: 'place', id: 'folder' }, kind: 'document', name: title, op: randomUUID()

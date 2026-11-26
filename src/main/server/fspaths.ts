@@ -326,7 +326,7 @@ export async function fsRenamePath(path: string, name: string): Promise<string> 
   const destination = resolveUnder(parent, name)
   if (await sameEntry(from, destination)) {
     if (from === destination) return from
-    const temporary = join(parent, `.${fileLabel(from, 'tmp')}.monocode-rename-${Date.now()}`)
+    const temporary = join(parent, `.${fileLabel(from, 'tmp')}.docket-rename-${Date.now()}`)
     await rename(from, temporary)
     try {
       await rename(temporary, destination)
@@ -574,7 +574,7 @@ export async function fsWriteText(path: string, content: string): Promise<void> 
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const candidate = join(
       parent,
-      `.${name}.monocode-${process.pid}-${process.hrtime.bigint()}-${attempt}.tmp`
+      `.${name}.docket-${process.pid}-${process.hrtime.bigint()}-${attempt}.tmp`
     )
     try {
       handle = await open(candidate, 'wx')

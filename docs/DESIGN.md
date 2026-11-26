@@ -234,7 +234,7 @@ per theme, and follows a change live:
 
 Settings → Appearance holds a theme for each kind of place: **Code** and
 **Work**, each System, Light or Dark (`lib/appearance.ts`,
-`monocode.colorScheme` and `monocode.colorScheme.work`, per device). Work
+`docket.colorScheme` and `docket.colorScheme.work`, per device). Work
 follows Code until it is set. With Work off on every host the page shows
 one row, Theme.
 

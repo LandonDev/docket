@@ -174,8 +174,8 @@ export function DevConsole({ source, active }: { source: DevConsoleSource; activ
   }, [active]);
 
   return (
-    <div className="monocode-terminal flex h-full w-full min-h-0 min-w-0 flex-col">
-      <div ref={hostRef} className="monocode-terminal-host min-h-0 min-w-0 flex-1 overflow-hidden" />
+    <div className="docket-terminal flex h-full w-full min-h-0 min-w-0 flex-col">
+      <div ref={hostRef} className="docket-terminal-host min-h-0 min-w-0 flex-1 overflow-hidden" />
     </div>
   );
 }

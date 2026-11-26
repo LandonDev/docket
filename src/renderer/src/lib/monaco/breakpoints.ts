@@ -5,8 +5,8 @@ import { setEditorState } from "./editorState";
  * mirrored into the editor state for the debug pane.
  */
 
-const KEY = "monocode.debug.breakpoints";
-const CHANGE_EVENT = "monocode:breakpoints-change";
+const KEY = "docket.debug.breakpoints";
+const CHANGE_EVENT = "docket:breakpoints-change";
 
 const breakpoints = new Map<string, Set<number>>();
 

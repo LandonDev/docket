@@ -87,13 +87,13 @@ const until = async (cdp: Cdp, expr: string, ms: number, label: string): Promise
   throw new Error(`timed out: ${label}`)
 }
 const rpc = (cdp: Cdp, env: string, method: string, params: unknown): Promise<unknown> =>
-  cdp.eval(`window.__monocode.registry.linkOf(${JSON.stringify(env)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
+  cdp.eval(`window.__docket.registry.linkOf(${JSON.stringify(env)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
 const statusOf = (cdp: Cdp, env: string): Promise<{ transport: string; fresh: boolean; attempts: number; nextRetryAt: number | null; lastError: string | null }> =>
-  cdp.eval(`(() => { const s = window.__monocode.registry.statusOf(${JSON.stringify(env)}); return { transport: s.transport, fresh: s.fresh, attempts: s.attempts, nextRetryAt: s.nextRetryAt, lastError: s.lastError } })()`) as never
+  cdp.eval(`(() => { const s = window.__docket.registry.statusOf(${JSON.stringify(env)}); return { transport: s.transport, fresh: s.fresh, attempts: s.attempts, nextRetryAt: s.nextRetryAt, lastError: s.lastError } })()`) as never
 const blockIds = (cdp: Cdp, id: string): Promise<string[]> =>
-  cdp.eval(`(window.__monocode.sessionStore.get(${JSON.stringify(id)})?.blocks ?? []).map(b => b.id)`) as never
+  cdp.eval(`(window.__docket.sessionStore.get(${JSON.stringify(id)})?.blocks ?? []).map(b => b.id)`) as never
 const metaStatus = (cdp: Cdp, id: string): Promise<string | null> =>
-  cdp.eval(`window.__monocode.sessionStore.metaOf(${JSON.stringify(id)})?.status ?? null`) as never
+  cdp.eval(`window.__docket.sessionStore.metaOf(${JSON.stringify(id)})?.status ?? null`) as never
 const OPEN_STATUS = ['starting', 'running', 'watching', 'waiting']
 /** A turn was just sent: wait for its status push to say it started (up to
  *  15 s), then for it to settle. Reading right after `session.send` sees
@@ -121,8 +121,8 @@ const gitDir = (name: string): string => {
 }
 async function connectWindow(inst: Inst, label: string): Promise<Cdp> {
   const cdp = await attach(inst.debug, 120_000)
-  await until(cdp, `!!window.__monocode?.registry?.primary()?.connected`, 60_000, `${label} local socket`)
-  await until(cdp, `window.__monocode.registry.statusOf('local').fresh === true`, 60_000, `${label} first list`)
+  await until(cdp, `!!window.__docket?.registry?.primary()?.connected`, 60_000, `${label} local socket`)
+  await until(cdp, `window.__docket.registry.statusOf('local').fresh === true`, 60_000, `${label} first list`)
   return cdp
 }
 
@@ -135,7 +135,7 @@ try {
   log(`A and B up; logs ${A.log} ${B.log}`)
   const aStatus = await statusOf(a, 'local')
   check('A: the local environment is open and fresh with no attempts', aStatus.transport === 'open' && aStatus.fresh && aStatus.attempts === 0, JSON.stringify(aStatus))
-  const aEnvs = (await a.eval(`window.__monocode.registry.environments().map(e => e.id)`)) as string[]
+  const aEnvs = (await a.eval(`window.__docket.registry.environments().map(e => e.id)`)) as string[]
   check('A: exactly one environment before any host is added', aEnvs.length === 1 && aEnvs[0] === 'local', aEnvs.join(','))
   const aDir = gitDir('a')
   await sh(['git', 'init', '-q', aDir], { quiet: true })
@@ -143,10 +143,10 @@ try {
   check('A: workspace.create over the local link', typeof aWs?.id === 'string')
   const aSession = (await rpc(a, 'local', 'session.create', { provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', cwd: aDir, workspaceId: aWs.id, threadType: 'chat', agentType: 'implementer', title: 'A local thread' })) as { id: string }
   check('A: session.create over the local link', typeof aSession?.id === 'string')
-  await until(a, `window.__monocode.sessionStore.metaOf(${JSON.stringify(aSession.id)})?.environmentId === 'local'`, 10_000, 'A sees its own session stamped local')
+  await until(a, `window.__docket.sessionStore.metaOf(${JSON.stringify(aSession.id)})?.environmentId === 'local'`, 10_000, 'A sees its own session stamped local')
   check('A: the session meta carries environmentId local', true)
-  await a.eval(`window.__monocode.sessionStore.requestOpen(${JSON.stringify(aSession.id)})`)
-  await until(a, `window.__monocode.sessionStore.get(${JSON.stringify(aSession.id)})?.loaded === true`, 20_000, 'A opens its thread')
+  await a.eval(`window.__docket.sessionStore.requestOpen(${JSON.stringify(aSession.id)})`)
+  await until(a, `window.__docket.sessionStore.get(${JSON.stringify(aSession.id)})?.loaded === true`, 20_000, 'A opens its thread')
   await rpc(a, 'local', 'session.send', { sessionId: aSession.id, text: 'Reply with exactly: LOCAL-OK' })
   const aEnd = await settled(a, aSession.id, 150_000)
   const aBlocks = await blockIds(a, aSession.id)
@@ -155,7 +155,7 @@ try {
   check('A: the transcript is on screen', aText.includes('LOCAL-OK') || aText.includes('A local thread'), aEnd === 'idle' ? 'reply painted' : `turn ended ${aEnd}`)
 
   // ── B is a host with a key, a workspace and a thread ───────────────
-  const bHello = (await b.eval(`window.__monocode.registry.statusOf('local').lastHello.environmentId`)) as string
+  const bHello = (await b.eval(`window.__docket.registry.statusOf('local').lastHello.environmentId`)) as string
   const bKey = (await rpc(b, 'local', 'remote.keys.create', { name: 'A (e2e)', audience: 'client', caps: ['read', 'operate', 'approve', 'admin'] })) as { key: { id: string }; token: string }
   check('B: issues a key over its local link', typeof bKey?.token === 'string' && bKey.token.startsWith('tc_'))
   const bDir = gitDir('b')
@@ -170,55 +170,55 @@ try {
   check('A: the saved route is the fixed port socket on loopback', saved?.routes?.[0]?.url === `ws://127.0.0.1:${B.remote}/ws` && saved.routes[0].kind === 'loopback', JSON.stringify(saved?.routes))
   const listed = (await rpc(a, 'local', 'remote.environments.list', {})) as unknown[]
   check('A: the list never carries the key', !JSON.stringify(listed).includes(bKey.token.split('.')[1] ?? '@@'))
-  await a.eval(`window.__monocode.loadSavedEnvironments()`)
-  await until(a, `window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).transport === 'open'`, 30_000, 'A connects to B with a ticket')
-  await until(a, `window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).fresh === true`, 30_000, 'A lists B')
+  await a.eval(`window.__docket.loadSavedEnvironments()`)
+  await until(a, `window.__docket.registry.statusOf(${JSON.stringify(bHello)}).transport === 'open'`, 30_000, 'A connects to B with a ticket')
+  await until(a, `window.__docket.registry.statusOf(${JSON.stringify(bHello)}).fresh === true`, 30_000, 'A lists B')
   const envB = await statusOf(a, bHello)
   check('A: B is open and fresh under its id', envB.transport === 'open' && envB.fresh, JSON.stringify(envB))
-  const bRouteUrl = (await a.eval(`window.__monocode.registry.linkOf(${JSON.stringify(bHello)}).transport.url`)) as string
+  const bRouteUrl = (await a.eval(`window.__docket.registry.linkOf(${JSON.stringify(bHello)}).transport.url`)) as string
   check('A: the socket to B rode a single-use ticket', /\?ticket=/.test(bRouteUrl), bRouteUrl.replace(/ticket=.*/, 'ticket=…'))
-  await until(a, `window.__monocode.sessionStore.metas().some(m => m.id === ${JSON.stringify(bSession.id)} && m.environmentId === ${JSON.stringify(bHello)})`, 15_000, 'B\'s thread in A\'s store')
+  await until(a, `window.__docket.sessionStore.metas().some(m => m.id === ${JSON.stringify(bSession.id)} && m.environmentId === ${JSON.stringify(bHello)})`, 15_000, 'B\'s thread in A\'s store')
   check('A: B\'s thread is in the session store, stamped with B\'s environment', true)
   const bWsInA = (await a.eval(`!!(window.__app ? null : true) && document.body.innerText.includes(${JSON.stringify(bDir.split('/').pop())})`)) as boolean
   log(`B's workspace folder ${bWsInA ? 'shows' : 'does not show'} in A's chrome (the rail lists folders by name)`)
-  const envsInA = (await a.eval(`window.__monocode.registry.environments().map(e => e.id)`)) as string[]
+  const envsInA = (await a.eval(`window.__docket.registry.environments().map(e => e.id)`)) as string[]
   check('A: two environments, local first', envsInA.length === 2 && envsInA[0] === 'local' && envsInA[1] === bHello, envsInA.join(','))
 
   // ── A drives a turn on B through the routed link, then opens the transcript ──
-  await a.eval(`window.__monocode.sessionStore.requestOpen(${JSON.stringify(bSession.id)})`)
-  await until(a, `window.__monocode.sessionStore.get(${JSON.stringify(bSession.id)})?.loaded === true`, 20_000, 'A opens B\'s thread')
+  await a.eval(`window.__docket.sessionStore.requestOpen(${JSON.stringify(bSession.id)})`)
+  await until(a, `window.__docket.sessionStore.get(${JSON.stringify(bSession.id)})?.loaded === true`, 20_000, 'A opens B\'s thread')
   await rpc(a, bHello, 'session.send', { sessionId: bSession.id, text: 'Reply with exactly: REMOTE-ONE' })
   const bEnd = await settled(a, bSession.id, 150_000)
   const before = await blockIds(a, bSession.id)
   check('A: a turn sent to B over B\'s link folds into A\'s view of the transcript', before.length >= 1, `status ${bEnd}, ${before.length} blocks`)
-  await b.eval(`window.__monocode.sessionStore.ensureLoaded(${JSON.stringify(bSession.id)}, 'e2e')`)
-  await until(b, `window.__monocode.sessionStore.get(${JSON.stringify(bSession.id)})?.loaded === true`, 20_000, 'B loads its own thread')
+  await b.eval(`window.__docket.sessionStore.ensureLoaded(${JSON.stringify(bSession.id)}, 'e2e')`)
+  await until(b, `window.__docket.sessionStore.get(${JSON.stringify(bSession.id)})?.loaded === true`, 20_000, 'B loads its own thread')
   const bOwn = await blockIds(b, bSession.id)
   check('A and B agree on the transcript', JSON.stringify(before) === JSON.stringify(bOwn), `${before.length} vs ${bOwn.length} blocks`)
 
   // ── kill B: A keeps the registration and its data, and reconnects when B is back ──
   await killInstance(B)
-  await until(a, `['reconnecting','connecting'].includes(window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).transport)`, 20_000, 'A notices B is gone')
+  await until(a, `['reconnecting','connecting'].includes(window.__docket.registry.statusOf(${JSON.stringify(bHello)}).transport)`, 20_000, 'A notices B is gone')
   const down = await statusOf(a, bHello)
   check('A: B reads reconnecting with a retry scheduled and fresh false', down.transport === 'reconnecting' && !down.fresh && down.nextRetryAt !== null, JSON.stringify(down))
-  const kept = (await a.eval(`window.__monocode.sessionStore.metas().filter(m => m.environmentId === ${JSON.stringify(bHello)}).length`)) as number
+  const kept = (await a.eval(`window.__docket.sessionStore.metas().filter(m => m.environmentId === ${JSON.stringify(bHello)}).length`)) as number
   check('A: B\'s sessions stay in the store while B is down', kept >= 1, `${kept} metas`)
-  const stillThere = (await a.eval(`window.__monocode.registry.environments().some(e => e.id === ${JSON.stringify(bHello)})`)) as boolean
+  const stillThere = (await a.eval(`window.__docket.registry.environments().some(e => e.id === ${JSON.stringify(bHello)})`)) as boolean
   check('A: the registration survives the disconnect', stillThere)
   await sleep(3_000)
   const grew = await statusOf(a, bHello)
   check('A: attempts grow while B is down (backoff is on)', grew.attempts >= 1, `attempts ${grew.attempts}, next in ${grew.nextRetryAt ? Math.round((grew.nextRetryAt - Date.now()) / 1000) : '?'} s`)
   launch(B)
   const b2 = await connectWindow(B, 'B (relaunched)')
-  const bHello2 = (await b2.eval(`window.__monocode.registry.statusOf('local').lastHello.environmentId`)) as string
+  const bHello2 = (await b2.eval(`window.__docket.registry.statusOf('local').lastHello.environmentId`)) as string
   check('B: keeps its environment id across the restart', bHello2 === bHello)
-  await until(a, `window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).transport === 'open' && window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).fresh`, 90_000, 'A reconnects to B and re-lists')
+  await until(a, `window.__docket.registry.statusOf(${JSON.stringify(bHello)}).transport === 'open' && window.__docket.registry.statusOf(${JSON.stringify(bHello)}).fresh`, 90_000, 'A reconnects to B and re-lists')
   const back = await statusOf(a, bHello)
   check('A: reconnected to B and fresh again', back.transport === 'open' && back.fresh, JSON.stringify(back))
   await sleep(1_500)
   const after = await blockIds(a, bSession.id)
   check('A: the resumed transcript has the same rows, none duplicated', JSON.stringify(after) === JSON.stringify(before) && new Set(after).size === after.length, `${after.length} blocks`)
-  const dupMetas = (await a.eval(`window.__monocode.sessionStore.metas().filter(m => m.id === ${JSON.stringify(bSession.id)}).length`)) as number
+  const dupMetas = (await a.eval(`window.__docket.sessionStore.metas().filter(m => m.id === ${JSON.stringify(bSession.id)}).length`)) as number
   check('A: B\'s thread is listed once', dupMetas === 1, `${dupMetas}`)
   await sleep(31_000)
   const steady = await statusOf(a, bHello)
@@ -228,17 +228,17 @@ try {
   await rpc(a, bHello, 'session.send', { sessionId: bSession.id, text: 'Reply with exactly: REMOTE-TWO' })
   await sleep(700)
   await rpc(b2, 'local', 'remote.settings.set', { port: B_MOVED })
-  await until(a, `window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).transport === 'reconnecting'`, 20_000, 'A sees the socket drop')
+  await until(a, `window.__docket.registry.statusOf(${JSON.stringify(bHello)}).transport === 'reconnecting'`, 20_000, 'A sees the socket drop')
   check('A: the socket to B dropped mid-turn and A is reconnecting', true)
   await sleep(2_500)
   await rpc(b2, 'local', 'remote.settings.set', { port: B.remote })
-  await until(a, `window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).transport === 'open' && window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).fresh`, 90_000, 'A is back on B')
+  await until(a, `window.__docket.registry.statusOf(${JSON.stringify(bHello)}).transport === 'open' && window.__docket.registry.statusOf(${JSON.stringify(bHello)}).fresh`, 90_000, 'A is back on B')
   const end2 = await settled(a, bSession.id, 150_000)
   await sleep(1_500)
   const aFinal = await blockIds(a, bSession.id)
   // B's own shell unloads a thread no pane shows; load it again to compare.
-  await b2.eval(`window.__monocode.sessionStore.ensureLoaded(${JSON.stringify(bSession.id)}, 'e2e')`)
-  await until(b2, `window.__monocode.sessionStore.get(${JSON.stringify(bSession.id)})?.loaded === true`, 20_000, 'B reloads its thread')
+  await b2.eval(`window.__docket.sessionStore.ensureLoaded(${JSON.stringify(bSession.id)}, 'e2e')`)
+  await until(b2, `window.__docket.sessionStore.get(${JSON.stringify(bSession.id)})?.loaded === true`, 20_000, 'B reloads its thread')
   const bFinal = await blockIds(b2, bSession.id)
   check('A: after the drop, A\'s view of the turn equals B\'s own, with no duplicate rows', JSON.stringify(aFinal) === JSON.stringify(bFinal) && new Set(aFinal).size === aFinal.length, `status ${end2}; A ${aFinal.length} blocks, B ${bFinal.length}`)
   check('A: the second turn added rows after the resume', aFinal.length > before.length, `${before.length} → ${aFinal.length}`)
@@ -248,9 +248,9 @@ try {
   writeFileSync(SHOT, Buffer.from(shot.data, 'base64'))
   log(`screenshot of A: ${SHOT}`)
   await rpc(a, 'local', 'remote.environments.remove', { id: bHello })
-  await a.eval(`window.__monocode.loadSavedEnvironments()`)
-  await until(a, `!window.__monocode.registry.environments().some(e => e.id === ${JSON.stringify(bHello)})`, 10_000, 'A forgets B')
-  const left = (await a.eval(`window.__monocode.sessionStore.metas().filter(m => m.environmentId === ${JSON.stringify(bHello)}).length`)) as number
+  await a.eval(`window.__docket.loadSavedEnvironments()`)
+  await until(a, `!window.__docket.registry.environments().some(e => e.id === ${JSON.stringify(bHello)})`, 10_000, 'A forgets B')
+  const left = (await a.eval(`window.__docket.sessionStore.metas().filter(m => m.environmentId === ${JSON.stringify(bHello)}).length`)) as number
   check('A: explicit removal clears B\'s sessions from the store', left === 0, `${left} left`)
   a.close()
   b2.close()

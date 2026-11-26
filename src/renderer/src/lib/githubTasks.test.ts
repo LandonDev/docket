@@ -132,20 +132,20 @@ describe("dedupeInboxItems", () => {
         number: 10,
         updatedAt: "2026-08-27T10:00:00Z",
         projectPath: "/tmp/agent-terminal",
-        repo: "hardbeat920/monocode",
+        repo: "example-org/sample-project",
       }),
       item({
         number: 10,
         updatedAt: "2026-08-27T10:00:00Z",
-        projectPath: "/tmp/monocode",
-        repo: "HardBeat920/monocode",
+        projectPath: "/tmp/sample-project",
+        repo: "Example-Org/sample-project",
       }),
     ];
-    const deduped = dedupeInboxItems(rows, ["/tmp/monocode", "/tmp/agent-terminal"]);
+    const deduped = dedupeInboxItems(rows, ["/tmp/sample-project", "/tmp/agent-terminal"]);
     expect(deduped).toHaveLength(1);
-    expect(deduped[0]?.projectPath).toBe("/tmp/monocode");
+    expect(deduped[0]?.projectPath).toBe("/tmp/sample-project");
     expect(inboxItemKey(deduped[0]!)).toBe(
-      "github:hardbeat920/monocode:issue:10",
+      "github:example-org/sample-project:issue:10",
     );
   });
 });

@@ -20,7 +20,7 @@ describe("breakpoints", () => {
     expect(mod.toggleBreakpoint("/p/A.java", 4)).toBe(true);
     expect(mod.toggleBreakpoint("/p/A.java", 2)).toBe(true);
     expect(mod.breakpointLines("/p/A.java")).toEqual([2, 4]);
-    expect(JSON.parse(store.get("monocode.debug.breakpoints")!)).toEqual({ "/p/A.java": [4, 2] });
+    expect(JSON.parse(store.get("docket.debug.breakpoints")!)).toEqual({ "/p/A.java": [4, 2] });
     expect(mod.toggleBreakpoint("/p/A.java", 4)).toBe(false);
     expect(mod.breakpointLines("/p/A.java")).toEqual([2]);
   });
@@ -33,7 +33,7 @@ describe("breakpoints", () => {
   });
 
   it("reloads what was saved", () => {
-    store.set("monocode.debug.breakpoints", JSON.stringify({ "/p/C.java": [9, 3] }));
+    store.set("docket.debug.breakpoints", JSON.stringify({ "/p/C.java": [9, 3] }));
     mod.loadBreakpoints();
     expect(mod.breakpointLines("/p/C.java")).toEqual([3, 9]);
     expect(state.getEditorState().debugBreakpoints).toEqual({ "/p/C.java": [3, 9] });

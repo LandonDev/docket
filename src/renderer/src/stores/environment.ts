@@ -16,8 +16,8 @@ export type EnvironmentState = {
   lastWorkspace: Readonly<Record<string, string>>;
 };
 
-const CURRENT_KEY = (slot: string) => `monocode.environment.current.${slot}`;
-const LAST_WORKSPACE_KEY = "monocode.environment.lastWorkspace";
+const CURRENT_KEY = (slot: string) => `docket.environment.current.${slot}`;
+const LAST_WORKSPACE_KEY = "docket.environment.lastWorkspace";
 
 function slot(): string {
   try {

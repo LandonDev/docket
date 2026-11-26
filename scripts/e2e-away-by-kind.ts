@@ -148,14 +148,14 @@ async function main(): Promise<void> {
   const wait = (label: string, ms: number, test: () => unknown | Promise<unknown>) => until(label, ms, test, abort.signal)
   const rpc = async <T>(method: string, params: object = {}): Promise<T> => {
     const r = await page.eval<{ ok: boolean; value?: T; error?: string }>(`(async () => {
-      try { return { ok: true, value: await window.__monocode.registry.primary().request(${JSON.stringify(method)}, ${JSON.stringify(params)}) } }
+      try { return { ok: true, value: await window.__docket.registry.primary().request(${JSON.stringify(method)}, ${JSON.stringify(params)}) } }
       catch (e) { return { ok: false, error: String(e?.message ?? e) } }
     })()`)
     if (!r.ok) throw new Error(`${method}: ${r.error}`)
     return r.value as T
   }
   const ready = async (): Promise<void> => {
-    await wait('the window connected to its host', 120_000, () => page.eval<boolean>('!!window.__monocode?.registry?.primary()?.connected').catch(() => false))
+    await wait('the window connected to its host', 120_000, () => page.eval<boolean>('!!window.__docket?.registry?.primary()?.connected').catch(() => false))
     await wait('onboarding passed or the rail', 60_000, async () => {
       const skip = await page.centre('[role="dialog"] button', 'Skip')
       if (skip) await page.click(skip)
@@ -237,7 +237,7 @@ async function main(): Promise<void> {
 
   // ── A. Code only, flipped by a press on the row (this place is code) ──
   console.log('\n[A] Away for Code only, by a press on the rail row')
-  const placeKind = await page.eval<string>(`localStorage.getItem('monocode.placeKind') ?? 'code'`)
+  const placeKind = await page.eval<string>(`localStorage.getItem('docket.placeKind') ?? 'code'`)
   check('the window is in a code place', placeKind === 'code', placeKind)
   await page.clickOn(SWITCH)
   await wait('the host to hold Code only', 10_000, async () => JSON.stringify(await kinds()) === '{"code":true,"work":false}')
@@ -277,7 +277,7 @@ async function main(): Promise<void> {
   ] as const
   for (const theme of ['dark', 'light'] as const) {
     if (theme === 'light') {
-      await page.eval(`localStorage.setItem('monocode.colorScheme', 'light')`)
+      await page.eval(`localStorage.setItem('docket.colorScheme', 'light')`)
       await page.reload()
       await ready()
       await wait('the Away row after the reload', 30_000, () => page.eval<boolean>(`!!document.querySelector(${JSON.stringify(SWITCH)})`))
@@ -308,7 +308,7 @@ async function main(): Promise<void> {
     writeFileSync(join(shots, `away-menu-${theme}.png`), Buffer.from(png, 'base64'))
     await page.key('Escape')
   }
-  await page.eval(`localStorage.removeItem('monocode.colorScheme')`)
+  await page.eval(`localStorage.removeItem('docket.colorScheme')`)
   await rpc('away.set', { code: false, work: false })
   page.close()
 }

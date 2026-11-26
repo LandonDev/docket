@@ -30,7 +30,7 @@ import TempCodeContract
     }
 
     @Test func `folds reads by folder or project and uses the basename for one`() {
-        #expect(say([PhraseFixture.read("src/lib/a.ts"), PhraseFixture.read("README.md")]) == "Read monocode files")
+        #expect(say([PhraseFixture.read("src/lib/a.ts"), PhraseFixture.read("README.md")]) == "Read sample-project files")
         #expect(say([PhraseFixture.read("src/a.ts"), PhraseFixture.read("src/a.ts", id: "again")]) == "Read a.ts")
         #expect(say([PhraseFixture.read("a.ts"), PhraseFixture.call("Read", .object(["file_path": .string("/etc/hosts")]))]) == "Read 2 files")
         #expect(GroupPhrase.readsPhrase(["a.ts", "b.ts"], cwd: nil, live: false) == "Read 2 files")

@@ -14,7 +14,7 @@ import { json, shown } from './lib/tierThree'
 import { Window } from './lib/window'
 import { revealView } from './lib/more'
 
-const KEY = 'monocode.colorScheme.work'
+const KEY = 'docket.colorScheme.work'
 const DECK = 'Practice theme.pptx'
 const SHEET = 'Practice theme.xlsx'
 const DOC = 'Practice print.tcdoc'

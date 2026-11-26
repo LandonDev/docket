@@ -204,7 +204,7 @@ async function startInstance(origin: string): Promise<Started> {
   proc.stdout?.on('data', (c: Buffer) => appendFileSync(appLog, c))
   proc.stderr?.on('data', (c: Buffer) => appendFileSync(appLog, c))
   const health = until(300_000, () => healthy(origin), 100).then((ok) => (ok ? Date.now() : null))
-  const connected = `window.__monocode?.registry?.statusOf?.(window.__monocode.registry.primaryEnvironmentId)?.transport === 'open'`
+  const connected = `window.__docket?.registry?.statusOf?.(window.__docket.registry.primaryEnvironmentId)?.transport === 'open'`
   const up = await until(180_000, async () => {
     win ??= await attach(ports.debug, 15_000)
     try {
@@ -421,7 +421,7 @@ const guestType = async (text: string, after: string | null = null): Promise<voi
   await rig.guest!.type(text)
 }
 const showThread = async (): Promise<boolean> => {
-  await page(`window.__monocode.open(${JSON.stringify(rig.sessionId)})`)
+  await page(`window.__docket.open(${JSON.stringify(rig.sessionId)})`)
   return until(60_000, () => page<boolean>(SHEET ? `!!document.querySelector('canvas') && ${FIND_GRID}` : `!!${WIN_EDITOR} && ${WIN_EDITOR}.isContentEditable`), 250)
 }
 /** What the host's document holds, read through the host's own document read (`doc_read`, as a thread reads it). */

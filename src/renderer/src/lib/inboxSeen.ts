@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-const KEY = "monocode.inboxSeen";
-const LEGACY_KEY = "monocode.inboxSeenAt";
+const KEY = "docket.inboxSeen";
+const LEGACY_KEY = "docket.inboxSeenAt";
 
 export type InboxSeenEntry = {
   key: string;

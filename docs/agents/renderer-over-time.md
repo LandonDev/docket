@@ -44,7 +44,7 @@
   `bun run script:soak-host-check` proves the load reaches a socket, `--
   --scene typing` its live edits and the master's metas too); box
   mode pairs read-only and revokes at exit. The window opens through
-  `window.__monocode.open(sessionId, { split })` (every build; lib/monocodeOpen.ts)
+  `window.__docket.open(sessionId, { split })` (every build; lib/docketOpen.ts)
   and runs inactive and unthrottled (`TEMP_CODE_SOAK_WINDOW=1`, honoured
   only with TEMP_CODE_USER_DATA; src/main/soakWindow.ts), with the fresh
   install's first screen marked as offered before the page loads

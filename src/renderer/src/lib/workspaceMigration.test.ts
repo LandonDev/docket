@@ -39,7 +39,7 @@ describe("migrateWorkspaces", () => {
   beforeEach(mockLocalStorage);
   it("creates each folder once, skips rejects, then sets the flag", async () => {
     localStorage.setItem(
-      "monocode.recentProjects",
+      "docket.recentProjects",
       JSON.stringify([{ path: "/a", openedAt: 1 }, { path: "/b", openedAt: 2 }]),
     );
     const created: string[] = [];

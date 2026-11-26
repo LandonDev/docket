@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadTabGroupLabels, saveTabGroupLabel } from "./tabGroups";
 
-const KEY = "monocode:tab-group:labels";
+const KEY = "docket:tab-group:labels";
 const data = new Map<string, string>();
 const storage = {
   getItem: vi.fn((key: string) => data.get(key) ?? null),

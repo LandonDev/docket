@@ -5,7 +5,7 @@ import { invoke } from "./native";
  * The View menu steps it; each window applies the saved level on boot.
  */
 
-const KEY = "monocode.zoom";
+const KEY = "docket.zoom";
 const STEP = 0.1;
 const MIN = 0.5;
 const MAX = 2;

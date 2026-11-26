@@ -1,10 +1,10 @@
 import { prettyCwd } from "./paths";
 
-const KEY = "monocode.recentProjects";
-const RAIL_ORDER_KEY = "monocode.projectRailOrder";
-const RAIL_PINNED_KEY = "monocode.projectRailPinned";
-const ARCHIVED_KEY = "monocode.archivedProjects";
-const ARCHIVED_CHANGED = "monocode:archived-projects-changed";
+const KEY = "docket.recentProjects";
+const RAIL_ORDER_KEY = "docket.projectRailOrder";
+const RAIL_PINNED_KEY = "docket.projectRailPinned";
+const ARCHIVED_KEY = "docket.archivedProjects";
+const ARCHIVED_CHANGED = "docket:archived-projects-changed";
 const MAX = 20;
 
 export type RecentProject = {
@@ -207,7 +207,7 @@ export function saveProjectRailOrder(order: string[]) {
 }
 
 /** The rail's order or pins changed: a page that lists things in the rail's order (Work's Review) follows at once. */
-const RAIL_CHANGED = "monocode:rail-changed";
+const RAIL_CHANGED = "docket:rail-changed";
 function railChanged(): void {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(RAIL_CHANGED));
 }

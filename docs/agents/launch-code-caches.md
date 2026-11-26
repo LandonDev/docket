@@ -23,6 +23,12 @@
   `registerSchemes()` call (assets.ts). First boot on the new origin copies
   the `file://` localStorage over once (src/main/originMigration.ts, marker
   `<userData>/localstorage-migrated`).
+- The renderer's `public/boot.js` copies old preference keys to `docket.`
+  and `docket:` before the splash reads the theme or the modules load.
+  The packaged window, dev server and hosted `/ui` run this script on
+  their own origins. Existing Docket values win. The old keys stay for
+  older builds. Once `docket.preferencesMigrated` records the copy, later
+  loads leave resets and consumed notices alone.
 - Monaco file and review panes use `surfaces/FileHeader.tsx` for the folder
   and review stepper. A Monaco review tab opens on its first change, and
   the header's Revert change and Stage change act on the change the caret

@@ -9,7 +9,7 @@ import { clampDockSize, DOCK_SIZE_DEFAULT } from './projectTerminal'
  * launches the way the terminal dock does. Nothing ever opens it on its own.
  */
 
-const KEY = 'monocode.devPane'
+const KEY = 'docket.devPane'
 
 export interface DevPaneState {
   open: boolean

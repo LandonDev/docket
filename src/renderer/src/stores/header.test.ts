@@ -103,7 +103,7 @@ describe("strip order", () => {
     stripOrder.set("old", ["a"], now - STRIP_ORDER_TTL_MS - 1);
     stripOrder.set("fresh", ["b"], now - 1000);
     expect(Object.keys(loadStripOrder(now))).toEqual(["fresh"]);
-    localStorage.setItem("monocode.stripOrder", "{not json");
+    localStorage.setItem("docket.stripOrder", "{not json");
     expect(loadStripOrder(now)).toEqual({});
   });
 

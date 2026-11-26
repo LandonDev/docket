@@ -8,7 +8,7 @@ import { EFFORT_LABELS } from "./defaults";
 
 /**
  * The server's capability catalog and provider health, fanned into
- * MonoCode's model picker and availability gate. One `catalog.get` feeds
+ * The model picker and availability gate. One `catalog.get` feeds
  * every harness; one `doctor.get` (cached 30 s) answers "is it installed".
  */
 

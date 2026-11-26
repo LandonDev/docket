@@ -7,7 +7,7 @@
  * other checkouts' events. An unscoped event (a commit from a UI without a
  * cwd, a branch change) still reaches everyone.
  */
-const GIT_CHANGED = "monocode-git-changed";
+const GIT_CHANGED = "docket-git-changed";
 
 const scopeOf = (cwd: string | null | undefined): string | null =>
   cwd && cwd !== "~" ? cwd : null;

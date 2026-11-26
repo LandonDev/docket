@@ -242,10 +242,10 @@ async function main(): Promise<void> {
       }
       throw new Error(`timed out waiting for ${what}`)
     }
-    await waitFor('Array.isArray(window.__tcTasks) && window.__app?.profile && window.__monocode?.registry.primary()?.connected', 120_000, 'the app (is the tree a TEMP_CODE_PROFILE=1 build?)')
-    const local = await c.eval<string>('window.__monocode.registry.primary().environmentId')
+    await waitFor('Array.isArray(window.__tcTasks) && window.__app?.profile && window.__docket?.registry.primary()?.connected', 120_000, 'the app (is the tree a TEMP_CODE_PROFILE=1 build?)')
+    const local = await c.eval<string>('window.__docket.registry.primary().environmentId')
     const request = <T>(environmentId: string, method: string, params: unknown): Promise<T> =>
-      c.eval<T>(`window.__monocode.registry.linkOf(${JSON.stringify(environmentId)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
+      c.eval<T>(`window.__docket.registry.linkOf(${JSON.stringify(environmentId)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
 
     // Pair with the box: the code goes from ssh into the page and nowhere else.
     let boxId: string | null = null
@@ -254,13 +254,13 @@ async function main(): Promise<void> {
       if (typeof code !== 'string') throw new Error('the box made no pairing code')
       paired = true
       const pairedEnv = await c
-        .eval<{ id: string }>(`window.__monocode.registry.primary().request('remote.environments.pair', ${JSON.stringify({ origin: ORIGIN, code, name: CLIENT })}).then((r) => ({ id: r.id }))`)
+        .eval<{ id: string }>(`window.__docket.registry.primary().request('remote.environments.pair', ${JSON.stringify({ origin: ORIGIN, code, name: CLIENT })}).then((r) => ({ id: r.id }))`)
         .catch(() => {
           throw new Error('pairing with the box failed')
         })
       boxId = pairedEnv.id
-      await c.eval('window.__monocode.loadSavedEnvironments(window.__monocode.registry.primary()).then(() => true)')
-      await waitFor(`window.__monocode.registry.linkOf(${JSON.stringify(boxId)})?.connected && ${JSON.stringify(threads)}.every((id) => window.__monocode.sessionStore.metas().some((m) => m.id === id))`, 240_000, 'the box and its threads')
+      await c.eval('window.__docket.loadSavedEnvironments(window.__docket.registry.primary()).then(() => true)')
+      await waitFor(`window.__docket.registry.linkOf(${JSON.stringify(boxId)})?.connected && ${JSON.stringify(threads)}.every((id) => window.__docket.sessionStore.metas().some((m) => m.id === id))`, 240_000, 'the box and its threads')
     }
 
     // The wire: requests by method, bytes received, from here on.
@@ -325,7 +325,7 @@ async function main(): Promise<void> {
       await waitFor(`[...document.querySelectorAll('[data-session-drop="${id}"]')].find(${visible})`, 240_000, `thread ${id}`)
       await sleep(2000)
       await setPanel()
-      const meta = await c.eval<{ environmentId: string; projectId?: string; cwd?: string }>(`(() => { const m = window.__monocode.sessionStore.metas().find((m) => m.id === ${JSON.stringify(id)}); return { environmentId: m.environmentId, projectId: m.projectId, cwd: m.cwd } })()`)
+      const meta = await c.eval<{ environmentId: string; projectId?: string; cwd?: string }>(`(() => { const m = window.__docket.sessionStore.metas().find((m) => m.id === ${JSON.stringify(id)}); return { environmentId: m.environmentId, projectId: m.projectId, cwd: m.cwd } })()`)
       const projects = await request<{ id: string; name: string; workspaceId: string; cwd: string }[]>(meta.environmentId, 'project.list', {})
       const workspaces = await request<{ id: string; name: string; path: string }[]>(meta.environmentId, 'workspace.list', {})
       const project = projects.find((p) => p.id === meta.projectId)
@@ -354,7 +354,7 @@ async function main(): Promise<void> {
         const s = window.__app.store.getState().find((s) => s.cwd === ${JSON.stringify(scratchRepo)})
         if (!s?.load) throw new Error('the scratch draft has no load state')
         s.load.empty = false
-        window.__monocode.sessionStore.patch(s.id, { load: s.load })
+        window.__docket.sessionStore.patch(s.id, { load: s.load })
       })()`)
       await sleep(2000)
       await setPanel()

@@ -12,7 +12,7 @@ export type SubagentRowsState = {
   pinned: Record<string, boolean>;
 };
 
-const KEY = "monocode.tc.subagentRows";
+const KEY = "docket.tc.subagentRows";
 
 function load(): SubagentRowsState {
   try {

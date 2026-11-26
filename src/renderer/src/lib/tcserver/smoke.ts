@@ -14,7 +14,7 @@ export interface SmokeResult {
 /**
  * One scripted Claude turn through the sidecar: create a session, subscribe,
  * send "reply pong", collect the streamed text, resolve on turn-complete.
- * Run from devtools as `await __monocode.smoke("local")`.
+ * Run from devtools as `await __docket.smoke("local")`.
  */
 export async function smoke(environmentId: string, cwd?: string): Promise<SmokeResult> {
   const t0 = performance.now();

@@ -3,7 +3,7 @@
  * remove dialog instead of owning copies. The rail listens while mounted.
  */
 
-const EVENT = "monocode:project-rail-action";
+const EVENT = "docket:project-rail-action";
 
 export type ProjectRailAction =
   | { kind: "menu"; path: string; x: number; y: number }

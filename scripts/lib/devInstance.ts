@@ -119,7 +119,7 @@ export async function startDevInstance(opts: { root: string; dir: string; groups
   try {
     let connected = false
     for (let i = 0; i < 240 && !connected; i++) {
-      connected = await cdpEval<boolean>(port, '!!window.__monocode?.registry?.primary()?.connected').catch(() => false)
+      connected = await cdpEval<boolean>(port, '!!window.__docket?.registry?.primary()?.connected').catch(() => false)
       if (!connected) await sleep(500)
     }
     if (!connected) throw new Error('the dev instance never connected within 2 minutes')

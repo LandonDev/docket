@@ -72,12 +72,12 @@ const editorText = `(document.querySelector('.bn-editor')?.textContent ?? '')`
  */
 async function shot(name: string): Promise<void> {
   for (const scheme of ['dark', 'light'] as const) {
-    await run.page(`(document.documentElement.classList.toggle('theme-light', ${scheme === 'light'}), window.dispatchEvent(new CustomEvent('monocode:schemechange', { detail: ${JSON.stringify(scheme)} })))`)
+    await run.page(`(document.documentElement.classList.toggle('theme-light', ${scheme === 'light'}), window.dispatchEvent(new CustomEvent('docket:schemechange', { detail: ${JSON.stringify(scheme)} })))`)
     await sleep(700)
     const { data } = (await run.send('Page.captureScreenshot', { format: 'png', clip: { x: CLIP.clipLeft, y: 0, width: WIDTH - CLIP.clipLeft, height: 900, scale: 1 } })) as { data: string }
     writeFileSync(join(run.out, `${name}.${scheme}.png`), Buffer.from(data, 'base64'))
   }
-  await run.page(`(document.documentElement.classList.toggle('theme-light', false), window.dispatchEvent(new CustomEvent('monocode:schemechange', { detail: 'dark' })))`)
+  await run.page(`(document.documentElement.classList.toggle('theme-light', false), window.dispatchEvent(new CustomEvent('docket:schemechange', { detail: 'dark' })))`)
   await sleep(300)
 }
 const command = (id: string) => `window.dispatchEvent(new CustomEvent('work:command', { detail: { id: ${JSON.stringify(id)} } }))`
@@ -194,7 +194,7 @@ try {
   // The item opened anew at this width: the window is loaded again, his state untouched (he pressed nothing).
   await run.send('Page.reload')
   await sleep(1500)
-  const connected = await run.until('the window reconnects', 90_000, () => run.page<boolean>(`(() => { const ports = window.__monocode?.registry; return document.readyState === 'complete' && ports?.statusOf(ports.primaryEnvironmentId)?.transport === 'open' })()`))
+  const connected = await run.until('the window reconnects', 90_000, () => run.page<boolean>(`(() => { const ports = window.__docket?.registry; return document.readyState === 'complete' && ports?.statusOf(ports.primaryEnvironmentId)?.transport === 'open' })()`))
   if (!run.check('the reloaded window reconnects to its host', connected)) throw new Error('The document host did not reconnect')
   await sleep(2500)
   await run.show(thread)

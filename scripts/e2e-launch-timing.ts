@@ -437,7 +437,7 @@ async function launch(i: number): Promise<LaunchResult> {
       await sleep(100)
     }
     result.sessionList = await cdp
-      .eval<unknown>(`window.__monocode.registry.primary().request('session.list')`)
+      .eval<unknown>(`window.__docket.registry.primary().request('session.list')`)
       .then((rows) => Array.isArray(rows))
       .catch(() => false)
     if (seedApp) {

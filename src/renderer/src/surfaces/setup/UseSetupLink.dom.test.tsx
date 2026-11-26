@@ -63,8 +63,8 @@ describe("UseSetupLinkDialog", () => {
       // Nothing to show the folders in until the giver allows this computer.
       expect(within(step("folders")).queryByRole("button", { name: "Add folders…" })).toBeNull();
       // The seeds landed once.
-      expect(localStorage.getItem("monocode.colorScheme")).toBe("light");
-      expect(JSON.parse(localStorage.getItem("monocode.defaultModels")!)).toEqual({ claude: "claude:opus" });
+      expect(localStorage.getItem("docket.colorScheme")).toBe("light");
+      expect(JSON.parse(localStorage.getItem("docket.defaultModels")!)).toEqual({ claude: "claude:opus" });
       expect(localStorage.getItem(SETUP_SEEDED_KEY)).toBe("1");
 
       await act(async () => {
@@ -117,12 +117,12 @@ describe("UseSetupLinkDialog", () => {
 
   it("never writes the seeds over a window that already has them", async () => {
     localStorage.setItem(SETUP_SEEDED_KEY, "1");
-    localStorage.setItem("monocode.colorScheme", "dark");
+    localStorage.setItem("docket.colorScheme", "dark");
     const link = fakeDevicesLink(() => ({ ok: true }));
     try {
       render(<UseSetupLinkDialog onClose={() => {}} phase={{ at: "steps", state: started }} />);
       await waitFor(() => expect(step("link")).toBeTruthy());
-      expect(localStorage.getItem("monocode.colorScheme")).toBe("dark");
+      expect(localStorage.getItem("docket.colorScheme")).toBe("dark");
     } finally {
       link.restore();
     }

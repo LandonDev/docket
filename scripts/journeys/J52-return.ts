@@ -15,7 +15,7 @@ const RAIL = 'nav [data-rail-path] button'
 function kept(context: Context, label: string): Promise<void> {
   return context.pair.page.eval<Record<string, string | null>>(`({
     window: sessionStorage.getItem('work.return.v1'), returns: localStorage.getItem('work.return.v1'), files: localStorage.getItem('work.files.view.v1'),
-    drafts: localStorage.getItem('monocode.projectDrafts'), dock: document.querySelector('[data-files-dock]')?.getAttribute('data-files-dock') ?? null })`)
+    drafts: localStorage.getItem('docket.projectDrafts'), dock: document.querySelector('[data-files-dock]')?.getAttribute('data-files-dock') ?? null })`)
     .then((value) => writeFileSync(join(context.folder, 'kept-' + label + '.json'), JSON.stringify(value, null, 2)), () => undefined)
 }
 

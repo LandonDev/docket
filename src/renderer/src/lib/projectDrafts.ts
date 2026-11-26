@@ -57,7 +57,7 @@ export type DraftRecord = DraftPlace & {
 
 export type DraftRecords = Readonly<Record<string, DraftRecord>>;
 
-const STORAGE_KEY = "monocode.projectDrafts";
+const STORAGE_KEY = "docket.projectDrafts";
 const DOCK_PREFIX = "dock:";
 
 /** The key a dock subject's draft lives under (`DockSubject.key`). */

@@ -31,7 +31,7 @@ async function readWindow(c: Cdp, ids: string[], focus: string, wire: ReconnectW
     focusedBusy: boolean
     focusedAdvanced: boolean
   }>(`(() => {
-    const store = window.__monocode.sessionStore
+    const store = window.__docket.sessionStore
     const before = ${first}, through = ${last}, focus = ${JSON.stringify(focus)}
     const rows = Object.fromEntries(${JSON.stringify(ids)}.map((id) => [
       id, (store.entries.get(id)?.rows ?? [])
@@ -117,15 +117,15 @@ export async function recordReconnect(
   await c.send('Page.enable')
   await c.send('Page.addScriptToEvaluateOnNewDocument', { source: OBSERVER })
   await c.eval(OBSERVER)
-  const link = `window.__monocode.registry.linkOf(${JSON.stringify(environmentId)})`
+  const link = `window.__docket.registry.linkOf(${JSON.stringify(environmentId)})`
   await waitFor(c, `${link}?.connected && ${link}.profile === 'remote'`, 60_000, 'the remote wire profile')
-  const store = 'window.__monocode.sessionStore'
+  const store = 'window.__docket.sessionStore'
   const entry = (id: string): string => `${store}.entries.get(${JSON.stringify(id)})`
   const ordered = [...ids.filter((id) => id !== focus), focus]
   for (const [index, id] of ordered.entries()) {
     await waitFor(c, `${store}.metaOf(${JSON.stringify(id)})`, 60_000, `remote thread ${id}`)
     // Hold the promise on the page while CDP waits for the open handler.
-    await c.eval(`window.__reconnectOpen = window.__monocode.open(${JSON.stringify(id)}, { split: ${index > 0} }).then(() => true)`)
+    await c.eval(`window.__reconnectOpen = window.__docket.open(${JSON.stringify(id)}, { split: ${index > 0} }).then(() => true)`)
   }
   await waitFor(c, ids.map((id) => `(${store}.mounted.has(${JSON.stringify(id)}) && ${entry(id)}?.load.phase === 'loaded' && ${entry(id)}?.rows?.length > 0 && !${entry(id)}?.held)`).join(' && '),
     60_000, 'the six mounted remote transcripts to load and settle')
@@ -137,7 +137,7 @@ export async function recordReconnect(
   // His clicks on the window: each one probes the link (registry.probeAll('foreground')).
   const forward = (): (() => void) => {
     if (!options.probeEveryMs) return () => undefined
-    const timer = setInterval(() => void c.eval(`window.__monocode.registry.probeAll('foreground'), true`).catch(() => undefined), options.probeEveryMs)
+    const timer = setInterval(() => void c.eval(`window.__docket.registry.probeAll('foreground'), true`).catch(() => undefined), options.probeEveryMs)
     return () => clearInterval(timer)
   }
   options.link?.resetPeak()

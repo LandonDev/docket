@@ -10,8 +10,8 @@ import {
   THEME_PREFERENCE_DEFAULT,
 } from "./appearance";
 
-const SCHEME_KEY = "monocode.colorScheme";
-const ANCHOR_KEY = "monocode.transcriptAnchor";
+const SCHEME_KEY = "docket.colorScheme";
+const ANCHOR_KEY = "docket.transcriptAnchor";
 
 function mockLocalStorage() {
   const data = new Map<string, string>();
@@ -100,26 +100,26 @@ describe("theme preference setting", () => {
     saveThemePreference("code", "system");
     expect(loadThemePreference("work")).toBe("system");
     saveThemePreference("work", "dark");
-    expect(localStorage.getItem("monocode.colorScheme.work")).toBe("dark");
+    expect(localStorage.getItem("docket.colorScheme.work")).toBe("dark");
     expect(loadThemePreference("work")).toBe("dark");
     // Work's own choice never moves Code's, and Code's no longer moves Work's.
     expect(loadThemePreference("code")).toBe("system");
     saveThemePreference("code", "light");
     expect(loadThemePreference("work")).toBe("dark");
-    localStorage.removeItem("monocode.colorScheme.work");
+    localStorage.removeItem("docket.colorScheme.work");
   });
 
   it("ignores an unknown stored value for Work and follows Code", () => {
     saveThemePreference("code", "light");
-    localStorage.setItem("monocode.colorScheme.work", "sepia");
+    localStorage.setItem("docket.colorScheme.work", "sepia");
     expect(loadThemePreference("work")).toBe("light");
-    localStorage.removeItem("monocode.colorScheme.work");
+    localStorage.removeItem("docket.colorScheme.work");
   });
 
   it("knows the two keys that hold a theme", () => {
     expect(isThemeKey(SCHEME_KEY)).toBe(true);
-    expect(isThemeKey("monocode.colorScheme.work")).toBe(true);
-    expect(isThemeKey("monocode.placeKind")).toBe(false);
+    expect(isThemeKey("docket.colorScheme.work")).toBe(true);
+    expect(isThemeKey("docket.placeKind")).toBe(false);
     expect(isThemeKey(null)).toBe(false);
   });
 

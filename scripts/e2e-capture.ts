@@ -169,12 +169,12 @@ try {
   check('the field has the keyboard', await capture.eval<boolean>('document.activeElement?.tagName === "TEXTAREA"'))
 
   for (const scheme of ['dark', 'light'] as const) {
-    await page.eval(`localStorage.setItem("monocode.colorScheme.work", "${scheme}")`)
+    await page.eval(`localStorage.setItem("docket.colorScheme.work", "${scheme}")`)
     await sleep(300)
     const shot = (await capture.send('Page.captureScreenshot', { format: 'png' })) as { data: string }
     writeFileSync(join(SHOTS, `capture.${scheme}.png`), Buffer.from(shot.data, 'base64'))
   }
-  await page.eval('localStorage.removeItem("monocode.colorScheme.work")')
+  await page.eval('localStorage.removeItem("docket.colorScheme.work")')
 
   await capture.send('Input.insertText', { text: NONCE })
   await capture.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: '7', code: 'Digit7', windowsVirtualKeyCode: 55, modifiers: 2 })

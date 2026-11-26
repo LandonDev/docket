@@ -154,7 +154,7 @@ export function shownSection(asked: Section | null, available: PanelSections): S
 
 export type PanelState = { open: boolean; section: Section | null; width: number; /** "Debug this file" asked for the Debug section on this thread. */ debug: boolean };
 
-const KEY = "monocode.rightPanel";
+const KEY = "docket.rightPanel";
 const MAX_THREADS = 200;
 
 type Persisted = { width: number; threads: Record<string, { open: boolean; section: Section | null; width?: number; debug?: boolean }> };

@@ -26,7 +26,7 @@ export default journey({
       const mirror = await pair.rpc<{ id: string }>(pair.box, 'work.project.open', { workspaceId: workspace.id, lifeosProjectId: lan._id, name: PROJECT })
       const session = await pair.rpc<{ id: string }>(pair.box, 'session.create', { workspaceId: workspace.id, projectId: mirror.id, title: 'Ask Dana for switches', provider: 'claude', permission: 'auto', threadType: 'chat', scope: 'work' })
       threads.set(context, session.id)
-      await pair.page.eval(`window.__monocode.open(${JSON.stringify(session.id)})`)
+      await pair.page.eval(`window.__docket.open(${JSON.stringify(session.id)})`)
       await sendPrompt(pair.page, 'Ask Dana for two switches for the LAN.')
       const accounts = await sandbox.query<{ _id: string; address: string }[]>('mail:accounts')
       const account = accounts.find(({ address }) => address === 'spring-lan@example.org')

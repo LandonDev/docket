@@ -1,7 +1,7 @@
 import { joinCaps, keyCaps } from "./keys";
 import { requestSettings } from "./monaco/debugTab";
 
-const SECTION_KEY = "monocode.settingsSection";
+const SECTION_KEY = "docket.settingsSection";
 
 export type StaticSettingsSectionId =
   | "general"
@@ -170,7 +170,7 @@ export function saveSettingsSection(id: SettingsSectionId) {
   }
 }
 
-const CLAUDE_HOOKS_KEY = "monocode.claudeHooks";
+const CLAUDE_HOOKS_KEY = "docket.claudeHooks";
 
 export const CLAUDE_HOOKS_DEFAULT = true;
 
@@ -354,9 +354,9 @@ export function filterKeybindings(groups: KeybindingGroup[], query: string): Key
 
 // ── editor ───────────────────────────────────────────────────────────
 
-const AUTO_SAVE_KEY = "monocode.editor.autoSave";
+const AUTO_SAVE_KEY = "docket.editor.autoSave";
 export const AUTO_SAVE_DEFAULT = true;
-export const AUTO_SAVE_CHANGE_EVENT = "monocode:auto-save-change";
+export const AUTO_SAVE_CHANGE_EVENT = "docket:auto-save-change";
 
 export function loadAutoSave(): boolean {
   try {
@@ -386,10 +386,10 @@ export function subscribeAutoSave(onStoreChange: () => void) {
   return () => window.removeEventListener(AUTO_SAVE_CHANGE_EVENT, onStoreChange);
 }
 
-const FORMAT_ON_SAVE_KEY = "monocode.editor.formatOnSave";
+const FORMAT_ON_SAVE_KEY = "docket.editor.formatOnSave";
 export type FormatOnSave = { java: boolean; web: boolean };
 export const FORMAT_ON_SAVE_DEFAULT: FormatOnSave = { java: false, web: false };
-export const FORMAT_ON_SAVE_CHANGE_EVENT = "monocode:format-on-save-change";
+export const FORMAT_ON_SAVE_CHANGE_EVENT = "docket:format-on-save-change";
 
 export function loadFormatOnSave(): FormatOnSave {
   try {
@@ -424,9 +424,9 @@ export function subscribeFormatOnSave(onStoreChange: () => void) {
     window.removeEventListener(FORMAT_ON_SAVE_CHANGE_EVENT, onStoreChange);
 }
 
-const GHOST_TEXT_KEY = "monocode.editor.ghostText";
+const GHOST_TEXT_KEY = "docket.editor.ghostText";
 export const GHOST_TEXT_DEFAULT = false;
-export const GHOST_TEXT_CHANGE_EVENT = "monocode:ghost-text-change";
+export const GHOST_TEXT_CHANGE_EVENT = "docket:ghost-text-change";
 
 export function loadGhostText(): boolean {
   try {
@@ -456,7 +456,7 @@ export function subscribeGhostText(onStoreChange: () => void) {
   return () => window.removeEventListener(GHOST_TEXT_CHANGE_EVENT, onStoreChange);
 }
 
-const MID_TURN_DEFAULT_KEY = "monocode.midTurnDefault";
+const MID_TURN_DEFAULT_KEY = "docket.midTurnDefault";
 
 /** What Enter does while a turn runs; ⌘Enter does the other one. Steer by
  *  default: a follow-up reaches the running turn now (and releases a
@@ -466,7 +466,7 @@ export type MidTurnDefault = "queue" | "steer";
 export const MID_TURN_DEFAULT: MidTurnDefault = "steer";
 
 /** Fired on `window` when the mid-turn default flips. */
-export const MID_TURN_DEFAULT_CHANGE_EVENT = "monocode:mid-turn-default-change";
+export const MID_TURN_DEFAULT_CHANGE_EVENT = "docket:mid-turn-default-change";
 
 export function loadMidTurnDefault(): MidTurnDefault {
   try {

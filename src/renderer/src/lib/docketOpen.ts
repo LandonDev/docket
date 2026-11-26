@@ -1,5 +1,5 @@
 /**
- * `window.__monocode.open(sessionId, { split })`: a measurement script's way
+ * `window.__docket.open(sessionId, { split })`: a measurement script's way
  * to put a thread on screen in every build (`__app` exists only in dev and
  * TEMP_CODE_PROFILE builds; scripts/measure-renderer-soak.ts runs a plain
  * production build). It goes through App's own open handler, so a script
@@ -10,9 +10,9 @@ import { leafIds } from "./layout";
 import type { Session } from "./session";
 import { workspaceTabsStore } from "../stores/workspace";
 
-export type MonocodeOpenOptions = { split?: boolean };
+export type DocketOpenOptions = { split?: boolean };
 
-export type MonocodeOpenDeps = {
+export type DocketOpenDeps = {
   /** App's open handler: a tab for the thread, or the one already showing it. */
   open: (sessionId: string) => Promise<void>;
   /** The thread loaded into the store, null when its host does not know it. */
@@ -21,10 +21,10 @@ export type MonocodeOpenDeps = {
   beside: (sourceId: string, session: Session) => void;
 };
 
-let deps: MonocodeOpenDeps | null = null;
+let deps: DocketOpenDeps | null = null;
 
 /** App registers its handlers on mount and clears them on unmount. */
-export function setMonocodeOpen(next: MonocodeOpenDeps | null): void {
+export function setDocketOpen(next: DocketOpenDeps | null): void {
   deps = next;
 }
 
@@ -36,7 +36,7 @@ function focusedThread(): string | null {
   return tab.focusedId;
 }
 
-export async function monocodeOpen(sessionId: string, options: MonocodeOpenOptions = {}): Promise<void> {
+export async function docketOpen(sessionId: string, options: DocketOpenOptions = {}): Promise<void> {
   if (!deps) throw new Error("the app has not mounted yet");
   const source = options.split ? focusedThread() : null;
   if (!source || source === sessionId) return deps.open(sessionId);

@@ -441,10 +441,10 @@ until the setup starts. Shapes: `SetupItems`, `SetupStep`, `SetupPeek`,
 - **The first screen** (`SetupFirstRun.tsx`): opens by itself once, on a fresh
   install (no saved hosts, no workspaces, no accounts; `isFreshInstall`), and
   at every launch while a setup is under way, on its steps. Closing it sets
-  `monocode.setupOffered`.
+  `docket.setupOffered`.
 - **Seeds**: the first state that carries them writes the theme per kind of
   place and the default models into the window's storage once
-  (`writeSeedsOnce`, marked by `monocode.setupSeeded`), then applies the theme.
+  (`writeSeedsOnce`, marked by `docket.setupSeeded`), then applies the theme.
   The Work switch is the host's to set.
 - **Previews**: `Computers.tsx#ComputersBlock`,
   `dialogs/SetupComputerDialog.preview.tsx#SetupComputerPreview` and

@@ -30,7 +30,7 @@ async function cut({ pair }: Context): Promise<void> {
   pair.cutWindowLink(true)
   await pair.page.until('the window to lose the link while box stays up', 15_000, async () => {
     await pair.rpc(pair.box, 'work.get')
-    return pair.page.eval(`window.__monocode.registry.statusOf(${JSON.stringify(pair.box.host)}).transport !== 'open'`)
+    return pair.page.eval(`window.__docket.registry.statusOf(${JSON.stringify(pair.box.host)}).transport !== 'open'`)
   })
 }
 
@@ -61,7 +61,7 @@ async function crashAndBack(context: Context, between?: () => void, name = NAME)
   // The relaunched window reaches box again before Files is asked for: a press before it opens nothing.
   const host = JSON.stringify(pair.box.host)
   await pair.page.until('the relaunched window’s link to box', 60_000, () =>
-    pair.page.eval(`!!window.__monocode && window.__monocode.registry.has(${host}) && window.__monocode.registry.statusOf(${host}).transport === 'open'`))
+    pair.page.eval(`!!window.__docket && window.__docket.registry.has(${host}) && window.__docket.registry.statusOf(${host}).transport === 'open'`))
   await showPlace(context).catch(async () => {
     // The pane may have kept a new thread over Files: Files is asked for once more.
     await revealView(pair.page, 'button, a, [role="link"]', 'Files')

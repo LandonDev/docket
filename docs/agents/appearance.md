@@ -9,8 +9,8 @@ Settings → Appearance holds a theme for each kind of place: **Code** and
 **Work**, each System, Light or Dark, and the editor's type size. Nothing
 else: no accent, no contrast, no code theme, no density.
 
-- Stored per device in localStorage: `monocode.colorScheme` (Code) and
-  `monocode.colorScheme.work` (Work). `loadThemePreference(kind)` and
+- Stored per device in localStorage: `docket.colorScheme` (Code) and
+  `docket.colorScheme.work` (Work). `loadThemePreference(kind)` and
   `saveThemePreference(kind, value)` in `src/renderer/src/lib/appearance.ts`.
 - Code is Dark for anyone who never chose. Work follows Code until it has a
   choice of its own, and the Work row shows Code's choice until then.
@@ -71,7 +71,7 @@ looks. If it ever reads as a flash, pass `instant` and it is gone.
   the theme of the window it was made from. The page keeps that address in
   step as its place changes, so a reload paints the right theme first.
 - `src/renderer/public/boot.js` runs before the splash paints: it reads the
-  kind from the address (else `monocode.placeKind`, the last any window
+  kind from the address (else `docket.placeKind`, the last any window
   saved, for the web `/ui` and a first launch), resolves that kind's choice
   as `lib/appearance.ts` does, and sets the class. `boot.dom.test.ts` runs
   every combination of kind, choice and system against the library.
@@ -173,7 +173,7 @@ prototypes; no test holds it.
 ## Motion
 
 Settings → Appearance → Motion: Follow this computer (the default), Full or
-Reduced, one choice per window origin in localStorage (`monocode.motion`,
+Reduced, one choice per window origin in localStorage (`docket.motion`,
 absent for the default), as the themes are; a choice in one window reaches
 the others by the `storage` event. lib/motion.ts holds it: `initMotion`
 (main.tsx, the capture page) writes `data-motion="full|reduced"` on `<html>`

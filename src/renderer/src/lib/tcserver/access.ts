@@ -2,7 +2,7 @@ import type { RuntimeMode } from "../session";
 import type { PermissionPolicy } from "./types";
 
 /**
- * MonoCode's access picker ↔ the server's approval policy.
+ * The access picker ↔ the server's approval policy.
  *
  * | runtime mode        | policy | claude              | codex                           | cursor                       |
  * |---------------------|--------|---------------------|---------------------------------|------------------------------|

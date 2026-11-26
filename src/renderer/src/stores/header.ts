@@ -88,7 +88,7 @@ export function useHeldStripModel(headerModel: HeaderModel<ChipThread>): HeaderM
 export type StripOrderEntry = { ids: readonly string[]; seenAt: number };
 export type StripOrder = Readonly<Record<string, StripOrderEntry>>;
 
-const STRIP_ORDER_KEY = "monocode.stripOrder";
+const STRIP_ORDER_KEY = "docket.stripOrder";
 /** Ids kept per project: the first places; chips past it follow by age. */
 export const STRIP_ORDER_CAP = 64;
 /** A project the strip has not shown for this long drops out on load. */

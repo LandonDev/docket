@@ -256,7 +256,7 @@ const reconnect: Row = {
   needs: { fake: true },
   run: (ctx) => {
     const host = JSON.stringify(ctx.pair.box.host)
-    const open = `window.__monocode.registry.statusOf(${host}).transport === 'open'`
+    const open = `window.__docket.registry.statusOf(${host}).transport === 'open'`
     return thrice(ctx, () => ({
       region: '[data-files-view]',
       usable: `${open} && ${rows(1)}`,

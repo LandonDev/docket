@@ -68,7 +68,7 @@ export async function generateServerPrContent(
     );
     parsed = output ? parsePrContent(output) : null;
   } catch (error) {
-    console.debug("[monocode] pr content", error);
+    console.debug("[docket] pr content", error);
   }
   const title =
     parsed?.title || range.commitSummary.split(/\r?\n/)[0]?.trim() || `Update ${range.head}`;
@@ -88,7 +88,7 @@ export async function generateServerBranchName(
     const output = await generateText(hostOfCwd(cwd), buildBranchNamePrompt(message), cwd);
     return output ? parseBranchName(output) : null;
   } catch (error) {
-    console.debug("[monocode] branch name", error);
+    console.debug("[docket] branch name", error);
     return null;
   }
 }

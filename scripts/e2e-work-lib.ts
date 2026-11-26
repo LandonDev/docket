@@ -171,7 +171,7 @@ export function linkTools(data: string): void {
 
 /** These scratch windows start without a setup link. Dismiss only the first-run setup offer. */
 export const skipSetupOffer = `(() => {
-  localStorage.setItem('monocode.setupOffered', '1')
+  localStorage.setItem('docket.setupOffered', '1')
   for (const dialog of document.querySelectorAll('[role="dialog"]')) {
     if (!dialog.textContent.includes('Use a setup link')) continue
     const skip = [...dialog.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Skip')
@@ -328,7 +328,7 @@ export class Run {
     const log = join(this.root, 'instance.log')
     this.proc.stdout?.on('data', (c: Buffer) => appendFileSync(log, c))
     this.proc.stderr?.on('data', (c: Buffer) => appendFileSync(log, c))
-    const connected = `window.__monocode?.registry?.statusOf?.(window.__monocode.registry.primaryEnvironmentId)?.transport === 'open'`
+    const connected = `window.__docket?.registry?.statusOf?.(window.__docket.registry.primaryEnvironmentId)?.transport === 'open'`
     const up = await this.until('window connected', 180_000, async () => {
       this.cdp ??= await attach(this.port, 15_000, this.signal)
       try {
@@ -448,7 +448,7 @@ export class Run {
   }
   /** Opens a thread in the window, by id. */
   async show(sessionId: string): Promise<void> {
-    await this.page(`window.__monocode.open(${JSON.stringify(sessionId)})`)
+    await this.page(`window.__docket.open(${JSON.stringify(sessionId)})`)
     await sleep(2500)
   }
   /** A real press (pointer down and up) at the middle of the first control whose text is `text`; `rail` takes only the rail's. */

@@ -58,7 +58,7 @@ describe("the motion rule", () => {
   });
 
   it("reads an unknown stored value as the default", () => {
-    localStorage.setItem("monocode.motion", "sideways");
+    localStorage.setItem("docket.motion", "sideways");
     expect(loadMotionPreference()).toBe("system");
   });
 });

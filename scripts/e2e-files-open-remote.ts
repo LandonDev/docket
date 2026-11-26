@@ -8,7 +8,7 @@
  * "box" a headless one with a Work workspace whose copy switch is on and which may use mac's desktop.
  * mac saves box with a client key minted for the run (every capability, as his Mac's own key: its link registers the Mac bridge; revoked at the end), so
  * mac's window reaches box as a remote key, as his Mac's window reaches the real box. Every request
- * below goes out on that window's own link (`window.__monocode.registry`). Two routes are proven:
+ * below goes out on that window's own link (`window.__docket.registry`). Two routes are proven:
  *
  * The route before tabs, where the workspace's host keeps none, in the order the window makes its requests
  * (src/renderer/src/work/files/open.ts `openEntry`):
@@ -143,7 +143,7 @@ let cdp: Cdp | null = null
 /** One request from mac's window to box, on the window's own link: a remote key's request, as his Mac makes it. */
 async function fromWindow<T>(boxId: string, method: string, params: unknown): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
   return cdp!.eval(
-    `window.__monocode.registry.linkOf(${JSON.stringify(boxId)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)}).then((value) => ({ ok: true, value }), (e) => ({ ok: false, error: String(e && e.message || e) }))`
+    `window.__docket.registry.linkOf(${JSON.stringify(boxId)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)}).then((value) => ({ ok: true, value }), (e) => ({ ok: false, error: String(e && e.message || e) }))`
   )
 }
 
@@ -189,8 +189,8 @@ try {
   check("mac's link registered on box", registered)
   await rpc(mac, 'macBridge.policy.set', { environmentId: boxId, policy: 'read' })
 
-  await cdp.eval('window.__monocode.loadSavedEnvironments()')
-  const linked = await until('window reaches box', 60_000, () => cdp!.eval<boolean>(`window.__monocode.registry.has(${JSON.stringify(boxId)}) && window.__monocode.registry.statusOf(${JSON.stringify(boxId)}).transport === 'open'`))
+  await cdp.eval('window.__docket.loadSavedEnvironments()')
+  const linked = await until('window reaches box', 60_000, () => cdp!.eval<boolean>(`window.__docket.registry.has(${JSON.stringify(boxId)}) && window.__docket.registry.statusOf(${JSON.stringify(boxId)}).transport === 'open'`))
   if (!check("mac's window reaches box over its saved link (a remote key there)", linked)) throw new Error('no link')
 
   const libs = await rpc<{ host: string; libraries: { id: string; path: string }[] }>(mac, 'work.office.filesLibraries', {})

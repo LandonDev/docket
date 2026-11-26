@@ -25,7 +25,7 @@ export default journey({
       const account = accounts.find(({ address }) => address === 'spring-lan@example.org')
       if (!account) throw new Error('The sandbox has no Spring LAN mailbox')
       const session = await createThread(pair, workspace.id, 'Spring LAN switches')
-      await pair.page.eval(`window.__monocode.open(${JSON.stringify(session.id)})`)
+      await pair.page.eval(`window.__docket.open(${JSON.stringify(session.id)})`)
       await sendPrompt(pair.page, 'Ask Dana for two switches for the LAN.')
       const { id } = await addon<{ id: string }>(context, session.id, 'draft_mail', {
         account_id: account._id, to: [{ name: 'Dana Lee', address: 'dana@example.com' }],

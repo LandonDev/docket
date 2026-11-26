@@ -28,7 +28,7 @@ export default journey({
       pair.cutWindowLink(true)
       await page.until('the window to lose the link while box stays up', 15_000, async () => {
         await pair.rpc(pair.box, 'work.get')
-        return page.eval(`window.__monocode.registry.statusOf(${JSON.stringify(pair.box.host)}).transport !== 'open'`)
+        return page.eval(`window.__docket.registry.statusOf(${JSON.stringify(pair.box.host)}).transport !== 'open'`)
       })
       await page.key('Control+End')
       await page.typeKeys(LAST.slice(FIRST.length))
@@ -41,7 +41,7 @@ export default journey({
       pair.cutWindowLink(false)
       await pair.page.until('a fresh Work answer through the restored link', 22_000, async () => {
         const open = await pair.page.eval<boolean>(
-          `window.__monocode.registry.statusOf(${JSON.stringify(pair.box.host)}).transport === 'open'`
+          `window.__docket.registry.statusOf(${JSON.stringify(pair.box.host)}).transport === 'open'`
         )
         return open && (await pair.fromWindow('work.get')).ok
       })

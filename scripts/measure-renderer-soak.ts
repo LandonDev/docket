@@ -26,7 +26,7 @@
  *   out/ must be built); dev runs `electron-vite dev` (on 5173, else the next
  *   free port), which writes its own main build into the tree's out/.
  * --view board | stream | split: the master's board, the focused child's
- *   transcript, or both side by side (window.__monocode.open).
+ *   transcript, or both side by side (window.__docket.open).
  * --minutes, --every: the run and the sampling interval (default 10, 60 s),
  *   after a 30 s warm-up. --tree: the built tree to run (default this
  *   checkout). --port: the window's debug port (default 9251). --no-profile:
@@ -431,7 +431,7 @@ const PAGE_STATS = `(() => ({
   measures: performance.getEntriesByType('measure').length,
   marks: performance.getEntriesByType('mark').length,
   animations: document.getAnimations().length,
-  entries: window.__monocode.sessionStore.entries?.size ?? null,
+  entries: window.__docket.sessionStore.entries?.size ?? null,
   ...window.__soakDrain()
 }))()`
 
@@ -494,7 +494,7 @@ async function startSynthetic(c: Cdp): Promise<Shown> {
     log(`the window reaches the host at ${linkKiB} KiB/s`)
   }
   await c.eval(
-    `window.__monocode.registry.primary().request('remote.environments.add', ${JSON.stringify({ url, key: host.key, name: 'soak' })}).then(() => window.__monocode.loadSavedEnvironments(window.__monocode.registry.primary())).then(() => true)`
+    `window.__docket.registry.primary().request('remote.environments.add', ${JSON.stringify({ url, key: host.key, name: 'soak' })}).then(() => window.__docket.loadSavedEnvironments(window.__docket.registry.primary())).then(() => true)`
   )
   log(`paired with the synthetic host ${host.environmentId}`)
   return { environmentId: host.environmentId, masterId: host.masterId, threadId: host.focusedId, history: host.history }
@@ -505,23 +505,23 @@ async function pairBox(c: Cdp): Promise<Shown> {
     const made = await boxLocal<{ key: { id: string }; token: string }>('remote.keys.create', { name: CLIENT, audience: 'client', caps: ['read'] })
     boxCredential = { kind: 'key', id: made.key.id }
     await c.eval(
-      `window.__monocode.registry.primary().request('remote.environments.add', ${JSON.stringify({ url: 'http://127.0.0.1:7677', key: made.token, name: 'box' })}).then(() => window.__monocode.loadSavedEnvironments(window.__monocode.registry.primary())).then(() => true)`
+      `window.__docket.registry.primary().request('remote.environments.add', ${JSON.stringify({ url: 'http://127.0.0.1:7677', key: made.token, name: 'box' })}).then(() => window.__docket.loadSavedEnvironments(window.__docket.registry.primary())).then(() => true)`
     )
   } else {
     const code = boxSsh<{ code?: string; id?: string }>('remote.pairings.create', { name: CLIENT, audience: 'client', caps: ['read'], ttlMinutes: 30 })
     if (typeof code.code !== 'string') throw new Error('the box made no pairing code')
     boxCredential = { kind: 'pairing', id: code.id ?? '' }
     await c.eval(
-      `window.__monocode.registry.primary().request('remote.environments.pair', ${JSON.stringify({ origin: BOX_ORIGIN, code: code.code, name: CLIENT })}).then(() => window.__monocode.loadSavedEnvironments(window.__monocode.registry.primary())).then(() => true)`
+      `window.__docket.registry.primary().request('remote.environments.pair', ${JSON.stringify({ origin: BOX_ORIGIN, code: code.code, name: CLIENT })}).then(() => window.__docket.loadSavedEnvironments(window.__docket.registry.primary())).then(() => true)`
     )
   }
-  const local = await c.eval<string>('window.__monocode.registry.primary().environmentId')
-  await waitFor(c, `window.__monocode.registry.environments().some((e) => e.id !== ${JSON.stringify(local)} && window.__monocode.registry.linkOf(e.id)?.connected)`, 60_000, 'the box link')
-  const environmentId = await c.eval<string>(`window.__monocode.registry.environments().map((e) => e.id).find((id) => id !== ${JSON.stringify(local)})`)
-  await waitFor(c, `window.__monocode.sessionStore.metas().some((m) => m.environmentId === ${JSON.stringify(environmentId)})`, 120_000, "the box's threads")
+  const local = await c.eval<string>('window.__docket.registry.primary().environmentId')
+  await waitFor(c, `window.__docket.registry.environments().some((e) => e.id !== ${JSON.stringify(local)} && window.__docket.registry.linkOf(e.id)?.connected)`, 60_000, 'the box link')
+  const environmentId = await c.eval<string>(`window.__docket.registry.environments().map((e) => e.id).find((id) => id !== ${JSON.stringify(local)})`)
+  await waitFor(c, `window.__docket.sessionStore.metas().some((m) => m.environmentId === ${JSON.stringify(environmentId)})`, 120_000, "the box's threads")
   // The busiest pinned master and its newest running child, unless named.
   const picked = await c.eval<{ masterId: string | null; threadId: string | null }>(`(() => {
-    const metas = window.__monocode.sessionStore.metas().filter((m) => m.environmentId === ${JSON.stringify(environmentId)} && !m.archived)
+    const metas = window.__docket.sessionStore.metas().filter((m) => m.environmentId === ${JSON.stringify(environmentId)} && !m.archived)
     const running = (m) => m.status === 'running' || m.status === 'waiting'
     const masters = metas.filter((m) => m.isMaster).map((m) => ({ m, kids: metas.filter((k) => k.masterId === m.id && running(k)) })).sort((a, b) => b.kids.length - a.kids.length)
     const master = ${JSON.stringify(args.master)} ?? masters[0]?.m.id ?? null
@@ -536,16 +536,16 @@ async function pairBox(c: Cdp): Promise<Shown> {
 }
 
 async function openView(c: Cdp, shown: Shown): Promise<void> {
-  const known = (id: string): string => `window.__monocode.sessionStore.metaOf(${JSON.stringify(id)})`
+  const known = (id: string): string => `window.__docket.sessionStore.metaOf(${JSON.stringify(id)})`
   const pane = (id: string): string => `[...document.querySelectorAll('[data-session-drop="${id}"]')].some((e) => e.getBoundingClientRect().width > 0)`
   const ids = args.view === 'stream' ? [shown.threadId] : args.view === 'board' ? [shown.masterId] : [shown.masterId, shown.threadId]
   for (const id of ids) await waitFor(c, known(id), 60_000, `thread ${id} on the host`)
   if (args.view !== 'stream') {
-    await c.eval(`window.__monocode.open(${JSON.stringify(shown.masterId)}).then(() => true)`)
+    await c.eval(`window.__docket.open(${JSON.stringify(shown.masterId)}).then(() => true)`)
     await waitFor(c, `document.querySelector('[data-batch-foot]')`, 60_000, "the master's board")
   }
   if (args.view !== 'board') {
-    await c.eval(`window.__monocode.open(${JSON.stringify(shown.threadId)}, { split: ${args.view === 'split'} }).then(() => true)`)
+    await c.eval(`window.__docket.open(${JSON.stringify(shown.threadId)}, { split: ${args.view === 'split'} }).then(() => true)`)
     await waitFor(c, pane(shown.threadId), 60_000, `the transcript of ${shown.threadId}`)
   }
   log(`showing ${args.view} (${ids.join(', ')})`)
@@ -666,7 +666,7 @@ async function main(): Promise<void> {
   cdp = await Cdp.connect(page.webSocketDebuggerUrl!)
   const c = cdp
   await skipFirstRun(c)
-  await waitFor(c, `window.__monocode?.registry?.primary?.()?.connected && typeof window.__monocode.open === 'function'`, 90_000, 'the app (is the tree from this branch on?)')
+  await waitFor(c, `window.__docket?.registry?.primary?.()?.connected && typeof window.__docket.open === 'function'`, 90_000, 'the app (is the tree from this branch on?)')
   const shown = args.host === 'synthetic' ? await startSynthetic(c) : await pairBox(c)
   if (args.scene === 'reconnect') {
     if (!soakHost || !shown.history) throw new Error('the reconnect scene needs the synthetic host and its seed')
@@ -873,7 +873,7 @@ const TYPING_FIELD = `(() => {
 const typingObservers = (masterId: string): string => `(() => {
   if (window.__typing) return true
   const field = window.__typingField
-  const store = window.__monocode.sessionStore
+  const store = window.__docket.sessionStore
   const s = (window.__typing = { active: false, keys: [], events: [], tasks: [], frames: [] })
   const ch = new MessageChannel()
   const pending = new Map()
@@ -1313,11 +1313,11 @@ async function recordSend(c: Cdp, shown: Shown): Promise<void> {
   await c.eval(SEND_OBSERVERS)
   if (args.loadAll) {
     // The whole history paged in, as a reader who scrolled back through it would have it.
-    const pages = await c.eval<number>(`(async () => { const s = window.__monocode.sessionStore; let n = 0; while (n < 200 && (await s.loadOlder(${JSON.stringify(shown.masterId)}))) n++; return n })()`)
+    const pages = await c.eval<number>(`(async () => { const s = window.__docket.sessionStore; let n = 0; while (n < 200 && (await s.loadOlder(${JSON.stringify(shown.masterId)}))) n++; return n })()`)
     log(`paged in ${pages} earlier pages`)
     await sleep(2_000)
   }
-  const held = await c.eval<{ blocks: number; rows: number }>(`(() => ({ blocks: window.__monocode.sessionStore.get(${JSON.stringify(shown.masterId)})?.blocks.length ?? 0, rows: window.__typingField.closest('[data-session-drop]').querySelectorAll('[data-row]').length }))()`)
+  const held = await c.eval<{ blocks: number; rows: number }>(`(() => ({ blocks: window.__docket.sessionStore.get(${JSON.stringify(shown.masterId)})?.blocks.length ?? 0, rows: window.__typingField.closest('[data-session-drop]').querySelectorAll('[data-row]').length }))()`)
   log(`the master's transcript holds ${held.blocks} blocks, ${held.rows} rows mounted`)
   // The send's request and its answer, off the window's sockets.
   const frames: { at: number; dir: 'sent' | 'received'; id: string; method?: string }[] = []

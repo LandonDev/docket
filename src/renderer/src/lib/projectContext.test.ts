@@ -112,7 +112,7 @@ describe("selected project persistence", () => {
       { environmentId: "env_box", id: "w-solo", name: "solo", path: "/srv/work/solo", git: true, createdAt: 1 },
     ],
   };
-  const SELECTED = "monocode.tc.selectedProject";
+  const SELECTED = "docket.tc.selectedProject";
   const stored = () => JSON.parse(localStorage.getItem(SELECTED) ?? "{}") as Record<string, string>;
 
   it("round-trips per workspace path", () => {

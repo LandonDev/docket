@@ -193,10 +193,10 @@ if (!page) throw new Error('no page target')
 const ws = new WebSocket(page.webSocketDebuggerUrl)
 await new Promise((r) => (ws.onopen = r))
 const expression = `(async () => {
-  const link = window.__monocode.registry.primary()
+  const link = window.__docket.registry.primary()
   const workspace = await link.request('workspace.create', { path: ${JSON.stringify(folder)}, name: 'Scratch' })
   const created = await link.request('session.create', { workspaceId: workspace.id, threadType: 'chat', title: 'Scratch thread' })
-  await window.__monocode.open(created.id ?? created.session?.id)
+  await window.__docket.open(created.id ?? created.session?.id)
 })()`
 ws.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }))
 await new Promise((r) => (ws.onmessage = r))

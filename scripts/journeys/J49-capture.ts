@@ -70,7 +70,7 @@ export default journey({
       json(context, 'landed', { threadHost: threadHost ?? null, fileHost: fileHost ?? null, filePath, capture })
       if (!threadHost || !fileHost) throw new Error('Capture did not leave both a kept file and a thread: ' + (capture!.threadError ?? 'see landed.json'))
       context.evidencePage = undefined
-      await pair.page.eval(`void window.__monocode.open(${JSON.stringify(capture!.threadId)})`)
+      await pair.page.eval(`void window.__docket.open(${JSON.stringify(capture!.threadId)})`)
       await pair.page.until('the captured thread’s message and kept path on screen', 20_000, async () =>
         await shown(pair.page, 'body', TITLE) && await shown(pair.page, 'body', filePath!))
     })

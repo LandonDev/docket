@@ -135,7 +135,7 @@ function cellOf(file: string, ref: string): { value: string | undefined; bold: b
 // ── the window, by hand ──────────────────────────────────────────────────
 let cdp: Cdp | null = null
 const ev = <T>(js: string): Promise<T> => cdp!.eval<T>(js)
-const request = <T>(method: string, params: unknown): Promise<T> => ev<T>(`window.__monocode.registry.primary().request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
+const request = <T>(method: string, params: unknown): Promise<T> => ev<T>(`window.__docket.registry.primary().request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
 const until = async (label: string, ms: number, test: () => Promise<boolean> | boolean): Promise<boolean> => {
   const end = Date.now() + ms
   while (Date.now() < end) {
@@ -243,7 +243,7 @@ async function oneCase(tag: string, file: string, name: string, place: () => Pro
 launch()
 try {
   cdp = await attach(debug, 180_000)
-  const up = await until('the window is connected', 60_000, () => ev<boolean>('!!window.__monocode?.registry?.primary()?.connected'))
+  const up = await until('the window is connected', 60_000, () => ev<boolean>('!!window.__docket?.registry?.primary()?.connected'))
   if (!check('the instance is up and its window connected', up)) throw new Error(`no window; log ${join(root, 'app.log')}`)
   await cdp.send('Page.enable')
   await request('work.set', { enabled: true })

@@ -45,7 +45,7 @@ try {
   copyFileSync(join(REPO, 'src/main/server/work/sheets/harness/corpus/formulas.xlsx'), book)
   const roster = join(ws.path, 'Dummy roster.xlsx')
   copyFileSync(join(REPO, 'src/main/server/work/sheets/harness/corpus/formulas.xlsx'), roster)
-  const env = await run.page<string>('window.__monocode.registry.primaryEnvironmentId')
+  const env = await run.page<string>('window.__docket.registry.primaryEnvironmentId')
 
   // 1. Two items beside the chat.
   const sheet = await run.call<{ id: string }>('work.canvas.open', { sessionId: thread, kind: 'sheet', source: { at: 'file', host: env, path: book }, title: 'Dummy budget.xlsx' })

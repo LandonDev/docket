@@ -33,9 +33,9 @@ describe("the setup's rules", () => {
     const kept = new Map<string, string>();
     vi.stubGlobal("localStorage", { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) });
     expect(writeSeedsOnce({ appearance: { code: "neon", work: "light" }, defaultModels: ["x"] })).toBe(true);
-    expect(localStorage.getItem("monocode.colorScheme")).toBeNull();
-    expect(localStorage.getItem("monocode.colorScheme.work")).toBe("light");
-    expect(localStorage.getItem("monocode.defaultModels")).toBeNull();
+    expect(localStorage.getItem("docket.colorScheme")).toBeNull();
+    expect(localStorage.getItem("docket.colorScheme.work")).toBe("light");
+    expect(localStorage.getItem("docket.defaultModels")).toBeNull();
     expect(writeSeedsOnce({ appearance: { code: "dark" } })).toBe(false);
     vi.unstubAllGlobals();
   });

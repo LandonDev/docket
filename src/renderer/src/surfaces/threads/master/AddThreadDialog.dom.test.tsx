@@ -129,7 +129,7 @@ describe("AddThreadDialog", () => {
     expect(h.startThread).toHaveBeenCalledTimes(1);
     expect(h.startThread.mock.calls[0][0]).toMatchObject({ environmentId: "mini", projectId: "p-mini", masterId: "m", startedBy: "m" });
     // A pick retargets one draft; nothing is remembered for the next.
-    expect(localStorage.getItem("monocode.linkHosts")).toBeNull();
+    expect(localStorage.getItem("docket.linkHosts")).toBeNull();
   });
 
   it("a host with no checkout is disabled with the host's note, and a host with a copy needs no dry run", async () => {

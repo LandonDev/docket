@@ -2243,7 +2243,7 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   while open, at the dock's height (the terminal dock keeps its own open
   flag and comes back when a terminal tab is picked or a terminal is asked
   for; Hide closes both),
-  and remembers open and its height in localStorage `monocode.devPane`.
+  and remembers open and its height in localStorage `docket.devPane`.
   The console reads an agent's server's log from the file its process
   writes (portLog.ts: fd 1 or 2 of the listener or the shell above it; a
   file Claude already deleted is still read through the fd; else the file

@@ -97,10 +97,10 @@ const until = async (cdp: Cdp, expr: string, ms: number, label: string): Promise
   throw new Error(`timed out: ${label}`)
 }
 const rpc = (cdp: Cdp, env: string, method: string, params: unknown): Promise<unknown> =>
-  cdp.eval(`window.__monocode.registry.linkOf(${JSON.stringify(env)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
+  cdp.eval(`window.__docket.registry.linkOf(${JSON.stringify(env)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
 const statusOf = (cdp: Cdp, env: string): Promise<{ transport: string; fresh: boolean }> =>
-  cdp.eval(`(() => { const s = window.__monocode.registry.statusOf(${JSON.stringify(env)}); return { transport: s.transport, fresh: s.fresh } })()`)
-const currentEnvironment = (cdp: Cdp): Promise<string> => cdp.eval(`window.__monocode.environment.getState().currentId`)
+  cdp.eval(`(() => { const s = window.__docket.registry.statusOf(${JSON.stringify(env)}); return { transport: s.transport, fresh: s.fresh } })()`)
+const currentEnvironment = (cdp: Cdp): Promise<string> => cdp.eval(`window.__docket.environment.getState().currentId`)
 const bodyText = (cdp: Cdp): Promise<string> => cdp.eval(`document.body.innerText`)
 const clickSelector = (cdp: Cdp, selector: string): Promise<boolean> =>
   cdp.eval<boolean>(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true })()`)
@@ -127,7 +127,7 @@ const shot = async (cdp: Cdp, file: string): Promise<void> => {
   log(`screenshot ${file}`)
 }
 const OPEN_STATUS = ['starting', 'running', 'watching', 'waiting']
-const metaStatus = (cdp: Cdp, id: string): Promise<string | null> => cdp.eval(`window.__monocode.sessionStore.metaOf(${JSON.stringify(id)})?.status ?? null`) as never
+const metaStatus = (cdp: Cdp, id: string): Promise<string | null> => cdp.eval(`window.__docket.sessionStore.metaOf(${JSON.stringify(id)})?.status ?? null`) as never
 const settled = async (cdp: Cdp, id: string, ms: number): Promise<string | null> => {
   const start = Date.now() + 15_000
   while (Date.now() < start) {
@@ -156,14 +156,14 @@ async function connectWindow(inst: Inst, label: string): Promise<Cdp> {
   cdp.on('Runtime.consoleAPICalled', (params) => {
     const p = params as { type: string; args: { value?: unknown; description?: string }[] }
     const text = p.args.map((x) => (x.value !== undefined ? String(x.value) : (x.description ?? ''))).join(' ')
-    if (/\[monocode:(environment|server)\]|Uncaught|Error/.test(text)) log(`${label} console.${p.type}: ${text.replace(/ticket=[^\s&]+/g, 'ticket=…').slice(0, 220)}`)
+    if (/\[docket:(environment|server)\]|Uncaught|Error/.test(text)) log(`${label} console.${p.type}: ${text.replace(/ticket=[^\s&]+/g, 'ticket=…').slice(0, 220)}`)
   })
   cdp.on('Runtime.exceptionThrown', (params) => {
     const d = (params as { exceptionDetails: { text: string; exception?: { description?: string } } }).exceptionDetails
     log(`${label} exception: ${(d.exception?.description ?? d.text).slice(0, 300)}`)
   })
-  await until(cdp, `!!window.__monocode?.registry?.primary()?.connected`, 60_000, `${label} local socket`)
-  await until(cdp, `window.__monocode.registry.statusOf('local').fresh === true`, 60_000, `${label} first list`)
+  await until(cdp, `!!window.__docket?.registry?.primary()?.connected`, 60_000, `${label} local socket`)
+  await until(cdp, `window.__docket.registry.statusOf('local').fresh === true`, 60_000, `${label} first list`)
   return cdp
 }
 /** Settings → Hosts, from wherever the window is. */
@@ -187,7 +187,7 @@ try {
   log(`A and B up; logs ${A.log} ${B.log}`)
 
   // ── B: a key, a workspace, a thread ────────────────────────────────
-  const bHello = (await b.eval(`window.__monocode.registry.statusOf('local').lastHello.environmentId`)) as string
+  const bHello = (await b.eval(`window.__docket.registry.statusOf('local').lastHello.environmentId`)) as string
   const bKey = (await rpc(b, 'local', 'remote.keys.create', { name: 'A (k2 e2e)', audience: 'client', caps: ['read', 'operate', 'approve'] })) as { token: string }
   check('B: issues a key over its local link', typeof bKey?.token === 'string' && bKey.token.startsWith('tc_'))
   const bDir = gitDir('b')
@@ -227,16 +227,16 @@ try {
 
   // ── the switcher moves the window to B ─────────────────────────────
   await closeSettings(a)
-  await until(a, `window.__monocode.sessionStore.metas().some(m => m.id === ${JSON.stringify(bSession.id)})`, 15_000, "B's thread in A's store")
+  await until(a, `window.__docket.sessionStore.metas().some(m => m.id === ${JSON.stringify(bSession.id)})`, 15_000, "B's thread in A's store")
   await until(a, `!!document.querySelector('[data-environment-switcher]')`, 10_000, 'the switcher')
   check('A: the switcher names this machine first', ((await a.eval(`document.querySelector('[data-environment-switcher]').innerText`)) as string).includes('This Mac'))
   await clickSelector(a, '[data-environment-switcher]')
   await until(a, `!!document.querySelector('[data-environment-option=${JSON.stringify(bHello)}]')`, 5_000, 'the switcher menu')
   await shot(a, SHOTS.switcher)
   await clickSelector(a, `[data-environment-option=${JSON.stringify(bHello)}]`)
-  await until(a, `window.__monocode.environment.getState().currentId === ${JSON.stringify(bHello)}`, 10_000, 'the window on B')
+  await until(a, `window.__docket.environment.getState().currentId === ${JSON.stringify(bHello)}`, 10_000, 'the window on B')
   check('A: the window is on B after the switch', (await currentEnvironment(a)) === bHello)
-  await until(a, `window.__monocode.environment.getState().lastWorkspace[${JSON.stringify(bHello)}] === ${JSON.stringify(bDir)}`, 10_000, "the switch picked B's own workspace")
+  await until(a, `window.__docket.environment.getState().lastWorkspace[${JSON.stringify(bHello)}] === ${JSON.stringify(bDir)}`, 10_000, "the switch picked B's own workspace")
   check("A: the switch picked B's own workspace, not the folder both hosts share", true)
   // The rail's group labels render uppercase, so compare without case.
   const railText = (await bodyText(a)).toLowerCase()
@@ -244,7 +244,7 @@ try {
 
   // ── a turn on B from the composer ──────────────────────────────────
   // The sidebar names the thread by the title the server keeps for it.
-  const bTitle = (await a.eval(`window.__monocode.sessionStore.metaOf(${JSON.stringify(bSession.id)})?.title ?? ''`)) as string
+  const bTitle = (await a.eval(`window.__docket.sessionStore.metaOf(${JSON.stringify(bSession.id)})?.title ?? ''`)) as string
   // A workspace-level thread sits under the sidebar's Chats fold, which may start closed.
   await sleep(1_000)
   if (!(await a.eval<boolean>(hasText(a, bTitle)))) {
@@ -252,7 +252,7 @@ try {
   }
   await until(a, hasText(a, bTitle), 15_000, `B's thread "${bTitle}" in the sidebar`)
   check("A: B's thread row takes a click", await clickText(a, bTitle))
-  await until(a, `window.__monocode.sessionStore.get(${JSON.stringify(bSession.id)})?.loaded === true`, 20_000, "B's thread open in A")
+  await until(a, `window.__docket.sessionStore.get(${JSON.stringify(bSession.id)})?.loaded === true`, 20_000, "B's thread open in A")
   await until(a, `!!document.querySelector('[contenteditable="true"]')`, 10_000, 'the composer')
   await a.eval(`(() => { document.querySelector('[contenteditable="true"]').focus(); return true })()`)
   await a.send('Input.insertText', { text: 'Reply with exactly: K2-REMOTE-OK' })
@@ -278,23 +278,23 @@ try {
   const line = (await a.eval(`document.querySelector('[data-connection-line]').innerText`)) as string
   check('A: the line names B, counts down and offers a retry', line.includes('B') && line.includes('Retry now'), line.replace(/\n/g, ' '))
   await shot(a, SHOTS.degraded)
-  const envsStill = (await a.eval(`window.__monocode.registry.environments().map(e => e.id)`)) as string[]
+  const envsStill = (await a.eval(`window.__docket.registry.environments().map(e => e.id)`)) as string[]
   check('A: B stays registered while down', envsStill.includes(bHello))
 
   // ── B returns: the line goes and the field is live again ──────────
   launch(B)
   const b2 = await connectWindow(B, 'B (relaunched)')
-  await until(a, `window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).transport === 'open' && window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).fresh`, 90_000, 'A back on B')
+  await until(a, `window.__docket.registry.statusOf(${JSON.stringify(bHello)}).transport === 'open' && window.__docket.registry.statusOf(${JSON.stringify(bHello)}).fresh`, 90_000, 'A back on B')
   await until(a, `!document.querySelector('[data-connection-line]')`, 10_000, 'the degraded line gone')
   const restored = (await a.eval(`document.querySelector('[contenteditable="true"]')?.dataset.placeholder ?? ''`)) as string
   check('A: the composer takes messages again', !/retry|Reconnecting/i.test(restored), restored)
 
   // ── keyboard switching ────────────────────────────────────────────
   await key(a, '“', 'BracketLeft', META | ALT, 219)
-  await until(a, `window.__monocode.environment.getState().currentId === 'local'`, 10_000, '⌘⌥[ to this machine')
+  await until(a, `window.__docket.environment.getState().currentId === 'local'`, 10_000, '⌘⌥[ to this machine')
   check('A: ⌘⌥[ moves the window to this machine', (await currentEnvironment(a)) === 'local')
   await key(a, '‘', 'BracketRight', META | ALT, 221)
-  await until(a, `window.__monocode.environment.getState().currentId === ${JSON.stringify(bHello)}`, 10_000, '⌘⌥] back to B')
+  await until(a, `window.__docket.environment.getState().currentId === ${JSON.stringify(bHello)}`, 10_000, '⌘⌥] back to B')
   check('A: ⌘⌥] moves it back to B, on the workspace it was on there', (await currentEnvironment(a)) === bHello && (await bodyText(a)).includes(bDir.split('/').pop() as string))
 
   // ── the box, when asked: paired from a code minted there ──────────
@@ -309,7 +309,7 @@ try {
     await clickText(a, 'Add')
     await until(a, `document.querySelectorAll('[data-environment-row]').length === 3`, 40_000, "the box's row")
     const boxId = (await a.eval(`[...document.querySelectorAll('[data-environment-row]')].map(e => e.dataset.environmentRow).find(id => id !== 'local' && id !== ${JSON.stringify(bHello)})`)) as string
-    await until(a, `window.__monocode.registry.statusOf(${JSON.stringify(boxId)}).transport === 'open' && window.__monocode.registry.statusOf(${JSON.stringify(boxId)}).fresh`, 60_000, 'the box connected')
+    await until(a, `window.__docket.registry.statusOf(${JSON.stringify(boxId)}).transport === 'open' && window.__docket.registry.statusOf(${JSON.stringify(boxId)}).fresh`, 60_000, 'the box connected')
     const boxStatus = await statusOf(a, boxId)
     check('box: paired from the link, connected and listed', boxStatus.transport === 'open' && boxStatus.fresh, JSON.stringify(boxStatus))
     await shot(a, SHOTS.box)
@@ -317,8 +317,8 @@ try {
     const rows = Array.isArray(sessions) ? sessions : (sessions.sessions ?? [])
     check('box: its threads list over the link (read only)', Array.isArray(rows), `${rows.length} threads`)
     if (rows[0]) {
-      await a.eval(`window.__monocode.sessionStore.ensureLoaded(${JSON.stringify(rows[0].id)}, 'e2e')`)
-      await until(a, `window.__monocode.sessionStore.get(${JSON.stringify(rows[0].id)})?.loaded === true`, 30_000, 'a box thread loaded')
+      await a.eval(`window.__docket.sessionStore.ensureLoaded(${JSON.stringify(rows[0].id)}, 'e2e')`)
+      await until(a, `window.__docket.sessionStore.get(${JSON.stringify(rows[0].id)})?.loaded === true`, 30_000, 'a box thread loaded')
       check('box: one thread opens read-only in A', true)
     }
     await clickSelector(a, '[aria-label="box actions"]')
@@ -326,7 +326,7 @@ try {
     await until(a, hasText(a, 'forgets the host'), 5_000, 'the remove confirm')
     await clickText(a, 'Remove')
     await until(a, `!document.querySelector('[data-environment-row=${JSON.stringify(boxId)}]')`, 15_000, 'the box row gone')
-    check('box: removed here', !((await a.eval(`window.__monocode.registry.environments().map(e => e.id)`)) as string[]).includes(boxId))
+    check('box: removed here', !((await a.eval(`window.__docket.registry.environments().map(e => e.id)`)) as string[]).includes(boxId))
     // The key this Mac got from the code stays on the box: revoke it there.
     const keys = JSON.parse(await sh(['ssh', '-o', 'BatchMode=yes', 'box', 'tc-local remote.keys.list'], { quiet: true })) as { id: string; name: string; createdAt?: number }[]
     const mine = keys.filter((k) => k.name === hostname()).sort((x, y) => (y.createdAt ?? 0) - (x.createdAt ?? 0))[0]
@@ -340,14 +340,14 @@ try {
   // Revoke A's saved key, then repair it through the same Pair again form.
   const oldKeys = await rpc(b2, 'local', 'remote.keys.list', {}) as { id: string }[]
   await rpc(b2, 'local', 'remote.keys.revoke', { id: oldKeys[0].id })
-  await until(a, `window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).transport === 'unauthorized'`, 15_000, 'revoked saved key')
+  await until(a, `window.__docket.registry.statusOf(${JSON.stringify(bHello)}).transport === 'unauthorized'`, 15_000, 'revoked saved key')
   await openEnvironmentsPane(a)
   check('A: a revoked key offers Pair again', await a.eval<boolean>(`(() => { const row = document.querySelector('[data-environment-row="${bHello}"]'); const button = [...(row?.querySelectorAll('button') ?? [])].find(e => e.textContent.trim() === 'Pair again'); button?.click(); return !!button })()`))
   await until(a, `!!document.querySelector('[data-environment-field="link"]')`, 5_000, 'repair dialog')
   const replacement = await rpc(b2, 'local', 'remote.pairings.create', { name: 'K2 repair', audience: 'client', caps: ['read', 'operate', 'approve'] }) as { url: string }
   await typeInto(a, '[data-environment-field="link"]', replacement.url)
   await clickText(a, 'Pair')
-  await until(a, `window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).transport === 'open' && window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).fresh`, 30_000, 'repaired host reconnects without Retry')
+  await until(a, `window.__docket.registry.statusOf(${JSON.stringify(bHello)}).transport === 'open' && window.__docket.registry.statusOf(${JSON.stringify(bHello)}).fresh`, 30_000, 'repaired host reconnects without Retry')
   check('A: Pair again reconnects the unauthorized host on the same route', (await statusOf(a, bHello)).fresh)
   const repaired = await rpc(a, bHello, 'session.list', {}) as { sessions: { id: string }[] }
   check('A: the repaired host serves its own threads', repaired.sessions.some(s => s.id === bSession.id))
@@ -362,7 +362,7 @@ try {
   await until(a, hasText(a, 'forgets the host'), 5_000, 'the remove confirm')
   await clickText(a, 'Remove')
   await until(a, `!document.querySelector('[data-environment-row=${JSON.stringify(bHello)}]')`, 15_000, "B's row gone")
-  const envsAfter = (await a.eval(`window.__monocode.registry.environments().map(e => e.id)`)) as string[]
+  const envsAfter = (await a.eval(`window.__docket.registry.environments().map(e => e.id)`)) as string[]
   check('A: removal forgets B and the window falls back to this machine', envsAfter.length === 1 && envsAfter[0] === 'local' && (await currentEnvironment(a)) === 'local', envsAfter.join(','))
   const bKeys = (await rpc(b2, 'local', 'remote.keys.list', {})) as { id: string }[]
   check("B: its key is untouched by A's removal (nothing revoked remotely)", Array.isArray(bKeys) && JSON.stringify(bKeys.map(k => k.id).sort()) === JSON.stringify(keysBeforeRemoval.map(k => k.id).sort()))

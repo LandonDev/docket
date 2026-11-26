@@ -172,7 +172,7 @@ async function desktop(): Promise<never> {
     const pane = await read()
     job.check(`the app's pane draws the file as sheets at true size on a ${pane.canvas}px canvas: ${pane.sheets} sheets, "${pane.fact}"`, drew && Math.abs(pane.sheetWidth - 816) < 1, JSON.stringify(pane))
     for (const scheme of ['dark', 'light'] as const) {
-      await job.page(`(document.documentElement.classList.toggle('theme-light', ${scheme === 'light'}), window.dispatchEvent(new CustomEvent('monocode:schemechange', { detail: ${JSON.stringify(scheme)} })))`)
+      await job.page(`(document.documentElement.classList.toggle('theme-light', ${scheme === 'light'}), window.dispatchEvent(new CustomEvent('docket:schemechange', { detail: ${JSON.stringify(scheme)} })))`)
       await sleep(700)
       const { data } = (await job.send('Page.captureScreenshot', { format: 'png', clip: { x: 460, y: 0, width: WIDTH - 460, height: 900, scale: 1 } })) as { data: string }
       writeFileSync(join(job.out, `desktop-pane.${scheme}.png`), Buffer.from(data, 'base64'))

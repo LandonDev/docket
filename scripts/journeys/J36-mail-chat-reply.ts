@@ -38,7 +38,7 @@ export default journey({
         } catch (error) {
           // What the window holds of the thread when the card is missing: its blocks and the dock's words.
           evidence(context, 'missing-card', await pair.page.eval(`(() => {
-            const thread = window.__monocode.sessionStore.get(${JSON.stringify(sessionId)});
+            const thread = window.__docket.sessionStore.get(${JSON.stringify(sessionId)});
             return {
               blocks: thread?.blocks.map((b) => ({ id: b.id, role: b.role, kind: b.kind, tool: b.tool?.name, detail: b.tool?.detail?.slice?.(0, 200), text: b.text?.slice?.(0, 120) })),
               dock: document.querySelector(${JSON.stringify(DOCK)})?.innerText,
@@ -64,7 +64,7 @@ export default journey({
         const [dock, host, draft] = await Promise.allSettled([
           pair.page.eval(`(() => {
             const seat = document.querySelector(${JSON.stringify(DOCK)});
-            const thread = window.__monocode.sessionStore.get(${JSON.stringify(sessionId)});
+            const thread = window.__docket.sessionStore.get(${JSON.stringify(sessionId)});
             return {
               id: seat?.querySelector('[data-mail-dock]')?.getAttribute('data-mail-dock'),
               loading: seat?.querySelector('[data-transcript-loading]')?.getAttribute('data-transcript-loading'),

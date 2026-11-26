@@ -89,7 +89,7 @@ describe("filterInboxByMine", () => {
   });
 
   it("reads an older stored assignedToMe flag as mine.assigned", () => {
-    const data = new Map<string, string>([["monocode.inboxFilters", JSON.stringify({ assignedToMe: true })]]);
+    const data = new Map<string, string>([["docket.inboxFilters", JSON.stringify({ assignedToMe: true })]]);
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
       value: { getItem: (k: string) => data.get(k) ?? null, setItem: () => undefined, removeItem: () => undefined },

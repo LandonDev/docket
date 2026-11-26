@@ -1,28 +1,28 @@
 import { IS_MAC } from "./platform";
 
-const PROJECT_RAIL_OPEN_KEY = "monocode.projectRailOpen";
-const SCHEME_KEY = "monocode.colorScheme";
-const WORK_SCHEME_KEY = "monocode.colorScheme.work";
-const PLACE_KIND_KEY = "monocode.placeKind";
-const PROJECT_RAIL_WIDTH_KEY = "monocode.projectRailWidth";
-const TRANSCRIPT_ANCHOR_KEY = "monocode.transcriptAnchor";
-const EDITOR_FONT_SIZE_KEY = "monocode.editorFontSize";
+const PROJECT_RAIL_OPEN_KEY = "docket.projectRailOpen";
+const SCHEME_KEY = "docket.colorScheme";
+const WORK_SCHEME_KEY = "docket.colorScheme.work";
+const PLACE_KIND_KEY = "docket.placeKind";
+const PROJECT_RAIL_WIDTH_KEY = "docket.projectRailWidth";
+const TRANSCRIPT_ANCHOR_KEY = "docket.transcriptAnchor";
+const EDITOR_FONT_SIZE_KEY = "docket.editorFontSize";
 
 /** Keys of settings that are gone: the tint, Glass, sidebar opacity, main-pane
  *  glass, the Classic layout with its sidebar and tab order, and the two
  *  transcript toggles A7 retired. Boot clears them. */
 const RETIRED_KEYS = [
-  "monocode.themeHue",
-  "monocode.themeSaturation",
-  "monocode.sidebarOpacity",
-  "monocode.bodyGlass",
-  "monocode.glass",
-  "monocode.sidebarLayout",
-  "monocode.sidebarOpen",
-  "monocode.sidebarTabOrder",
-  "monocode.transcriptLayout",
-  "monocode.transcriptZen",
-  "monocode.tc.projectFolds",
+  "docket.themeHue",
+  "docket.themeSaturation",
+  "docket.sidebarOpacity",
+  "docket.bodyGlass",
+  "docket.glass",
+  "docket.sidebarLayout",
+  "docket.sidebarOpen",
+  "docket.sidebarTabOrder",
+  "docket.transcriptLayout",
+  "docket.transcriptZen",
+  "docket.tc.projectFolds",
 ];
 
 export type ColorScheme = "dark" | "light";
@@ -36,14 +36,14 @@ const SCHEME_KEYS: Record<PlaceKind, string> = { code: SCHEME_KEY, work: WORK_SC
 export const THEME_PREFERENCE_DEFAULT: ThemePreference = "dark";
 
 /** Fired on `window` whenever the color scheme flips (detail: ColorScheme). */
-export const SCHEME_CHANGE_EVENT = "monocode:schemechange";
+export const SCHEME_CHANGE_EVENT = "docket:schemechange";
 
 
 
 export const TRANSCRIPT_ANCHOR_DEFAULT = true;
 
 /** Fired on `window` whenever prompt-to-top anchoring flips (detail: boolean). */
-export const TRANSCRIPT_ANCHOR_CHANGE_EVENT = "monocode:transcriptanchorchange";
+export const TRANSCRIPT_ANCHOR_CHANGE_EVENT = "docket:transcriptanchorchange";
 
 export const PROJECT_RAIL_WIDTH_MIN = 180;
 export const PROJECT_RAIL_WIDTH_MAX = 360;
@@ -55,7 +55,7 @@ export type EditorFontSize = (typeof EDITOR_FONT_SIZES)[number];
 export const EDITOR_FONT_SIZE_DEFAULT: EditorFontSize = 13;
 
 /** Fired on `window` whenever the editor's type size changes (detail: EditorFontSize). */
-export const EDITOR_FONT_CHANGE_EVENT = "monocode:editorfontchange";
+export const EDITOR_FONT_CHANGE_EVENT = "docket:editorfontchange";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));

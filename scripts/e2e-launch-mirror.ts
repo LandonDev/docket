@@ -3,7 +3,7 @@
  * launch mirror"): two isolated instances of the BUILT tree. "box" is
  * headless with TEMP_CODE_PEER_DELAY_MS, so every request a peer makes
  * there waits; "mac" is a windowed instance under xvfb-run with a CDP port,
- * driven through `window.__monocode`. Nothing here touches a real HOME,
+ * driven through `window.__docket`. Nothing here touches a real HOME,
  * /Applications/TempCode.app or the box's live service.
  *
  *  1. box seeds a workspace, a project and THREADS threads; mac boots, saves
@@ -173,20 +173,20 @@ type Meta = { id: string; title: string; archived: boolean; environmentId: strin
 /** The desktop window over CDP: attach, then wait for the boot helpers. */
 async function window_(inst: Inst): Promise<Cdp> {
   const cdp = await attach(inst.debug, 120_000)
-  await until(`${inst.name} window helpers`, 60_000, () => cdp.eval<boolean>('!!window.__monocode?.sessionStore'))
+  await until(`${inst.name} window helpers`, 60_000, () => cdp.eval<boolean>('!!window.__docket?.sessionStore'))
   return cdp
 }
 const markAt = (cdp: Cdp, name: string): Promise<number | null> =>
   cdp.eval<number | null>(`(() => { const e = performance.getEntriesByName(${JSON.stringify(name)})[0]; return e ? e.startTime : null })()`)
 const boxMetas = (cdp: Cdp, env: string): Promise<Meta[]> =>
   cdp.eval<Meta[]>(
-    `window.__monocode.sessionStore.metas().filter((m) => m.environmentId === ${JSON.stringify(env)}).map((m) => ({ id: m.id, title: m.title, archived: m.archived, environmentId: m.environmentId, status: m.status }))`
+    `window.__docket.sessionStore.metas().filter((m) => m.environmentId === ${JSON.stringify(env)}).map((m) => ({ id: m.id, title: m.title, archived: m.archived, environmentId: m.environmentId, status: m.status }))`
   )
 const railText = (cdp: Cdp): Promise<string> => cdp.eval<string>(`document.querySelector('[aria-label="Workspaces"]')?.textContent ?? ''`)
 /** The window's connection state, for a timed-out wait: which hosts are registered, open, listed or mirrored. */
 const stateOf = (cdp: Cdp): Promise<string> =>
   cdp.eval<string>(
-    `(() => { const m = window.__monocode; const s = m.sessionStore; const envs = m.registry.environments().map((e) => e.id); return JSON.stringify({ envs, statuses: envs.map((id) => [id, m.registry.statusOf(id).transport, m.registry.statusOf(id).lastError]), attached: s.environmentIds(), listed: s.listedEnvironmentIds(), mirrored: envs.filter((id) => s.isMirrored(id)), metas: s.metas().length }) })()`
+    `(() => { const m = window.__docket; const s = m.sessionStore; const envs = m.registry.environments().map((e) => e.id); return JSON.stringify({ envs, statuses: envs.map((id) => [id, m.registry.statusOf(id).transport, m.registry.statusOf(id).lastError]), attached: s.environmentIds(), listed: s.listedEnvironmentIds(), mirrored: envs.filter((id) => s.isMirrored(id)), metas: s.metas().length }) })()`
   )
 const waitMark = async (cdp: Cdp, name: string, ms: number): Promise<boolean> => {
   const ok = await until(name, ms, async () => (await markAt(cdp, name)) !== null)
@@ -226,9 +226,9 @@ try {
   // ── 1. pair, list, and let the writer land the mirror ────────────────
   launch(mac, 'window')
   let cdp = await window_(mac)
-  await until('mac local link', 60_000, () => cdp.eval<boolean>(`window.__monocode.registry.link('local')?.connected === true`))
+  await until('mac local link', 60_000, () => cdp.eval<boolean>(`window.__docket.registry.link('local')?.connected === true`))
   await cdp.eval(
-    `window.__monocode.registry.primary().request('remote.environments.add', ${JSON.stringify({ url: `http://127.0.0.1:${box.remote}`, key: key.token, name: 'box' })}).then(() => window.__monocode.loadSavedEnvironments())`
+    `window.__docket.registry.primary().request('remote.environments.add', ${JSON.stringify({ url: `http://127.0.0.1:${box.remote}`, key: key.token, name: 'box' })}).then(() => window.__docket.loadSavedEnvironments())`
   )
   const listed = await until('mac lists box', 60_000, async () => (await boxMetas(cdp, boxEnv)).length >= THREADS)
   check(`mac saved box and listed its ${THREADS} threads through the slow peer`, listed)
@@ -274,7 +274,7 @@ try {
   await until('tc:ready (after)', 60_000, async () => (await markAt(cdp, 'tc:ready')) !== null)
   const afterAtReady = await boxMetas(cdp, boxEnv)
   const afterRail = await railText(cdp)
-  const mirroredStill = await cdp.eval<boolean>(`window.__monocode.sessionStore.isMirrored(${JSON.stringify(boxEnv)})`)
+  const mirroredStill = await cdp.eval<boolean>(`window.__docket.sessionStore.isMirrored(${JSON.stringify(boxEnv)})`)
   check(`after: the box's ${THREADS} rows are on screen at tc:ready, from the mirror`, afterAtReady.length === THREADS && mirroredStill, `${afterAtReady.length} rows, mirrored=${mirroredStill}`)
   check('after: the rail has the box section and its workspace before the box answers', afterRail.includes('box') && afterRail.includes('shop'), `rail says "${afterRail.slice(0, 120)}"`)
   check('after: the deleted thread still shows from the mirror (the host has not said yet)', afterAtReady.some((m) => m.id === deleted))
@@ -283,7 +283,7 @@ try {
   const a1 = await markAt(cdp, 'tc:rail-complete')
   numbers.after = a0 !== null && a1 !== null ? Math.round(a1 - a0) : null
   check('after: the first full paint did not wait for the box', numbers.after !== null && numbers.after < DELAY_MS / 2, `tc:ready → tc:rail-complete ${numbers.after} ms`)
-  const reconciled = await until('the reconcile lands', 60_000, async () => !(await cdp.eval<boolean>(`window.__monocode.sessionStore.isMirrored(${JSON.stringify(boxEnv)})`)))
+  const reconciled = await until('the reconcile lands', 60_000, async () => !(await cdp.eval<boolean>(`window.__docket.sessionStore.isMirrored(${JSON.stringify(boxEnv)})`)))
   const afterReconcile = await boxMetas(cdp, boxEnv)
   const byId = new Map(afterReconcile.map((m) => [m.id, m]))
   check('after: the host confirmed the mirror', reconciled)
@@ -291,11 +291,11 @@ try {
   check('after: the deleted thread left quietly', !byId.has(deleted))
   check('after: the archived thread is archived', byId.get(archived)?.archived === true)
   check('after: the thread born while away is present', byId.get('e2e-mirror-new')?.title === 'Born while away')
-  const cursor = await cdp.eval<{ seq: number; generation: string } | null>(`window.__monocode.sessionStore.cursorOf(${JSON.stringify(boxEnv)})`)
+  const cursor = await cdp.eval<{ seq: number; generation: string } | null>(`window.__docket.sessionStore.cursorOf(${JSON.stringify(boxEnv)})`)
   check('after: the resume spoke to the change log (the cursor is the box\'s current head)', cursor?.generation === head.generation && cursor?.seq === head.seq, `${JSON.stringify(cursor)} vs ${JSON.stringify(head)}, saved cursor ${JSON.stringify(second.cursor)}`)
   const untouched = ids.slice(3)
   const sameObjects = await cdp.eval<number>(
-    `(() => { const s = window.__monocode.sessionStore; return ${JSON.stringify(untouched)}.filter((id) => s.metaOf(id) && s.metaOf(id).title.startsWith('Mirror thread')).length })()`
+    `(() => { const s = window.__docket.sessionStore; return ${JSON.stringify(untouched)}.filter((id) => s.metaOf(id) && s.metaOf(id).title.startsWith('Mirror thread')).length })()`
   )
   check('after: the rows nothing touched kept their titles', sameObjects === untouched.length, `${sameObjects}/${untouched.length}`)
   await until('the mirror lands a third time', 30_000, () => !mirrorRows(mac, boxEnv).ids.includes(deleted))

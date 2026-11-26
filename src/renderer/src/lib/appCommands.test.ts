@@ -13,7 +13,7 @@ type Surface = "dialog" | "monaco" | "terminal" | "codemirror" | "composer" | "d
 const SELECTORS: Record<Exclude<Surface, null>, string> = {
   dialog: 'role="dialog"',
   monaco: ".monaco-editor",
-  terminal: ".monocode-terminal",
+  terminal: ".docket-terminal",
   codemirror: ".cm-editor",
   composer: "[data-composer]",
   driving: "[data-driving]",

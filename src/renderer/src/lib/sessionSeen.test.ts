@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const KEY = "monocode.tc.lastSeen";
+const KEY = "docket.tc.lastSeen";
 const OLD_KEY = "thread-last-seen";
-const FLOOR_KEY = "monocode.tc.seenFloor";
+const FLOOR_KEY = "docket.tc.seenFloor";
 
 function mockLocalStorage(initial: Record<string, string> = {}) {
   const data = new Map(Object.entries(initial));

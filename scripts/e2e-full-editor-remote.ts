@@ -193,16 +193,16 @@ try {
   const key = await rpc<{ token: string; id?: string; key?: { id: string } }>(box, 'remote.keys.create', { name: 'full editor remote (e2e)', audience: 'client', caps: ['read', 'operate', 'approve', 'admin'] })
   keyId = key.id ?? key.key?.id ?? null
   await rpc(mac, 'remote.environments.add', { url: `http://127.0.0.1:${box.remote}`, key: key.token, name: 'box' })
-  await cdp.eval('window.__monocode.loadSavedEnvironments()')
-  const linked = await until('window reaches box', 90_000, () => ev<boolean>(`window.__monocode.registry.has(${JSON.stringify(boxId)}) && window.__monocode.registry.statusOf(${JSON.stringify(boxId)}).transport === 'open'`))
+  await cdp.eval('window.__docket.loadSavedEnvironments()')
+  const linked = await until('window reaches box', 90_000, () => ev<boolean>(`window.__docket.registry.has(${JSON.stringify(boxId)}) && window.__docket.registry.statusOf(${JSON.stringify(boxId)}).transport === 'open'`))
   if (!check("mac's window reaches box by the minted admin key", linked)) throw new Error('no link')
-  const fromWindow = <T>(method: string, params: unknown): Promise<T> => ev<T>(`window.__monocode.registry.linkOf(${JSON.stringify(boxId)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
+  const fromWindow = <T>(method: string, params: unknown): Promise<T> => ev<T>(`window.__docket.registry.linkOf(${JSON.stringify(boxId)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
   const view = await fromWindow<{ reach?: { to: string; carried?: boolean; parts: string[] } }>('work.sheets.open', { itemId: item.id })
   check('box offers the full editor to another computer', view.reach?.to === 'full' && view.reach.carried === true, JSON.stringify(view.reach))
 
   // 1. The thread in mac's window, and the switch pressed by a real click.
-  await until('the thread is listed', 60_000, () => ev<boolean>(`window.__monocode.sessionStore.getSnapshot().some((s) => s.id === ${JSON.stringify(thread.id)})`))
-  await ev(`window.__monocode.open(${JSON.stringify(thread.id)})`)
+  await until('the thread is listed', 60_000, () => ev<boolean>(`window.__docket.sessionStore.getSnapshot().some((s) => s.id === ${JSON.stringify(thread.id)})`))
+  await ev(`window.__docket.open(${JSON.stringify(thread.id)})`)
   const trigger = (): Promise<{ x: number; y: number } | null> =>
     ev(`(() => { const el = [...document.querySelectorAll('[role="tab"]')].find((e) => e.textContent.trim() === 'Full editor' && e.getClientRects().length); if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } })()`)
   const offered = await until('the switch', 90_000, async () => !!(await trigger()))

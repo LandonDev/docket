@@ -29,6 +29,6 @@ describe("hit areas and insets", () => {
     // The line variant zeroes the list's padding; 8px on that variant plus the trigger's 4px is 12.
     expect(read("chrome/DockBar.tsx")).toContain("data-[variant=line]:px-2");
     expect(read("components/ui/tabs.tsx")).toContain("group-data-[variant=line]/tabs-list:px-1");
-    expect(read("index.css")).toMatch(/\.monocode-terminal \{[^}]*padding: 8px 12px;/);
+    expect(read("index.css")).toMatch(/\.docket-terminal \{[^}]*padding: 8px 12px;/);
   });
 });

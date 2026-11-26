@@ -52,6 +52,6 @@ describe("last seen", () => {
   it("writes what it noted to storage so a restart still knows", () => {
     noteSeen("mini", 42);
     expect(lastSeenAt("mini")).toBe(42);
-    expect(JSON.parse(storage.get("monocode.environments.lastSeen") ?? "{}")).toEqual({ mini: 42 });
+    expect(JSON.parse(storage.get("docket.environments.lastSeen") ?? "{}")).toEqual({ mini: 42 });
   });
 });

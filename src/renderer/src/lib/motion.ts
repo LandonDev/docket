@@ -21,9 +21,9 @@ import { useSyncExternalStore } from "react";
 export type MotionPreference = "system" | "full" | "reduced";
 export const MOTION_PREFERENCE_DEFAULT: MotionPreference = "system";
 
-const MOTION_KEY = "monocode.motion";
+const MOTION_KEY = "docket.motion";
 const QUERY = "(prefers-reduced-motion: reduce)";
-const CHANGE_EVENT = "monocode:motionchange";
+const CHANGE_EVENT = "docket:motionchange";
 
 const isPreference = (value: unknown): value is MotionPreference => value === "system" || value === "full" || value === "reduced";
 

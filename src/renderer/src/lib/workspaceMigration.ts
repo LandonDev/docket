@@ -9,7 +9,7 @@ import {
 } from "./recents";
 import { createWorkspace } from "./tcserver/projects";
 
-const FLAG = "monocode.tc.workspacesMigrated";
+const FLAG = "docket.tc.workspacesMigrated";
 
 /** Folders the rail knew before workspaces existed, each once, recents first. */
 export function planWorkspaceMigration(

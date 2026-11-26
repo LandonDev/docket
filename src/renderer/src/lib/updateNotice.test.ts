@@ -32,9 +32,9 @@ describe("installed update marker", () => {
     "removes malformed marker %j",
     (value) => {
       const store = memoryStore();
-      store.setItem("monocode.installedUpdate", value);
+      store.setItem("docket.installedUpdate", value);
       expect(consumeInstalledUpdate(store)).toBeNull();
-      expect(store.getItem("monocode.installedUpdate")).toBeNull();
+      expect(store.getItem("docket.installedUpdate")).toBeNull();
     },
   );
 
@@ -43,7 +43,7 @@ describe("installed update marker", () => {
     rememberInstalledUpdate("1.0.205", store);
     // The install failed and the old build came back: no notice, marker gone.
     expect(consumeInstalledUpdate(store, "1.0.200")).toBeNull();
-    expect(store.getItem("monocode.installedUpdate")).toBeNull();
+    expect(store.getItem("docket.installedUpdate")).toBeNull();
 
     rememberInstalledUpdate("1.0.205", store);
     expect(consumeInstalledUpdate(store, "1.0.205")).toEqual({ version: "1.0.205" });

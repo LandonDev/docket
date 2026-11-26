@@ -260,7 +260,7 @@ const FRAME: Record<SkeletonKind, string> = {
   pane: "h-full min-h-0 w-full overflow-hidden",
   diff: "flex h-full min-h-0 w-full flex-col overflow-hidden",
   "diff-rows": "w-full py-1",
-  terminal: "monocode-terminal flex h-full min-h-0 w-full flex-col",
+  terminal: "docket-terminal flex h-full min-h-0 w-full flex-col",
   frame: "flex h-full min-h-0 w-full p-3",
   transcript: "h-full min-h-0 w-full overflow-hidden px-4 pt-6",
   rows: "w-full",

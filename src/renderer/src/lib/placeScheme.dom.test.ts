@@ -216,7 +216,7 @@ describe("a window wears the theme of its place", () => {
     // No frame between the place and its theme: the store's own callback set the class.
     expect(light()).toBe(true);
     expect(currentPlaceKind()).toBe("work");
-    expect(localStorage.getItem("monocode.placeKind")).toBe("work");
+    expect(localStorage.getItem("docket.placeKind")).toBe("work");
     project.setProjectCwd("~");
     expect(light()).toBe(false);
     project.setProjectCwd(WORK_CHATS);
@@ -261,7 +261,7 @@ describe("a window wears the theme of its place", () => {
 
   it("opens on the kind in its own address, whatever another window saved last", () => {
     catalog = catalogOf([], false);
-    localStorage.setItem("monocode.placeKind", "code");
+    localStorage.setItem("docket.placeKind", "code");
     window.history.replaceState(null, "", "/?place=work");
     launch("/not/yet/known", { code: "dark", work: "light" });
     expect(currentPlaceKind()).toBe("work");
@@ -282,7 +282,7 @@ describe("a window wears the theme of its place", () => {
     project.setProjectCwd(WORK);
     expect(window.location.search).toBe("");
     // The saved kind serves the next load there.
-    expect(localStorage.getItem("monocode.placeKind")).toBe("work");
+    expect(localStorage.getItem("docket.placeKind")).toBe("work");
   });
 
   it("does not change when Settings, the Inbox, the Outbox, Search or Notes opens over the place", () => {
@@ -317,16 +317,16 @@ describe("a window wears the theme of its place", () => {
 
   it("applies a setting another window changed, for the kind of place this window is on", () => {
     launch(CODE, { code: "dark" });
-    localStorage.setItem("monocode.colorScheme.work", "light");
-    window.dispatchEvent(new StorageEvent("storage", { key: "monocode.colorScheme.work" }));
+    localStorage.setItem("docket.colorScheme.work", "light");
+    window.dispatchEvent(new StorageEvent("storage", { key: "docket.colorScheme.work" }));
     // Work's theme is not this window's business while it is on code.
     expect(light()).toBe(false);
-    localStorage.setItem("monocode.colorScheme", "light");
-    window.dispatchEvent(new StorageEvent("storage", { key: "monocode.colorScheme" }));
+    localStorage.setItem("docket.colorScheme", "light");
+    window.dispatchEvent(new StorageEvent("storage", { key: "docket.colorScheme" }));
     expect(light()).toBe(true);
     // Another window's place is not this window's.
-    localStorage.setItem("monocode.placeKind", "work");
-    window.dispatchEvent(new StorageEvent("storage", { key: "monocode.placeKind" }));
+    localStorage.setItem("docket.placeKind", "work");
+    window.dispatchEvent(new StorageEvent("storage", { key: "docket.placeKind" }));
     expect(currentPlaceKind()).toBe("code");
     expect(light()).toBe(true);
   });

@@ -181,14 +181,14 @@ describe("project actions", () => {
     });
 
     it("a box copy's path reads the leader's memory", () => {
-      localStorage.setItem("monocode.tc.selectedProject", JSON.stringify({ [MAC]: "pM" }));
+      localStorage.setItem("docket.tc.selectedProject", JSON.stringify({ [MAC]: "pM" }));
       projectStore.setState(initialProjectState({ projectCwd: "/elsewhere", selectedProjectId: null }));
       project.enterWorkspace(BOX);
       expect(projectStore.getState().projectCwd).toBe(BOX);
       expect(projectStore.getState().selectedProjectId).toBe("pM");
       // A pick on the box path is remembered for both copies.
       project.selectProject("pB");
-      expect(JSON.parse(localStorage.getItem("monocode.tc.selectedProject")!)).toEqual({ [MAC]: "pB" });
+      expect(JSON.parse(localStorage.getItem("docket.tc.selectedProject")!)).toEqual({ [MAC]: "pB" });
     });
 
     it("following a copy's path keeps the folder, the recents and the selection", () => {

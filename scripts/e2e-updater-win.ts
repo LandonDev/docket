@@ -259,7 +259,7 @@ async function waitFor(what: string, ms: number, probe: () => Promise<boolean>):
 /** The app's light or dark theme, switched as lib/appearance.ts `applyThemePreference` does. */
 async function scheme(cdp: Cdp, to: 'light' | 'dark'): Promise<void> {
   await cdp.eval(
-    `(() => { document.documentElement.classList.toggle('theme-light', ${to === 'light'}); window.dispatchEvent(new CustomEvent('monocode:schemechange', { detail: '${to}' })); })()`
+    `(() => { document.documentElement.classList.toggle('theme-light', ${to === 'light'}); window.dispatchEvent(new CustomEvent('docket:schemechange', { detail: '${to}' })); })()`
   )
   await sleep(1200)
 }

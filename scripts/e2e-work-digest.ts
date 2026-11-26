@@ -93,7 +93,7 @@ try {
   await run.shot('01b-today')
 
   // ── the list, the record of all Work told him: Settings → Work → Digest → Open the digest ──
-  await run.page(`window.dispatchEvent(new CustomEvent('monocode:open-settings', { detail: 'work' }))`)
+  await run.page(`window.dispatchEvent(new CustomEvent('docket:open-settings', { detail: 'work' }))`)
   const openedList = await run.until('the Digest settings button is visible', 20_000, () => run.page<boolean>(`(() => { const button = [...document.querySelectorAll('[data-app-settings] button')].find((b) => b.textContent.trim() === 'Open the digest' && b.getClientRects().length); if (!button) return false; button.click(); return true })()`))
   if (!run.check('Open the digest is pressed in Work Settings', openedList)) throw new Error('No Open the digest button in Work Settings')
   const sheet = await run.until('the list opens', 10_000, () => run.page<boolean>(`!!document.querySelector('[data-slot=sheet-content]') && document.querySelector('[data-slot=sheet-title]')?.textContent === 'Digest'`))
@@ -133,7 +133,7 @@ try {
   run.check('a held item he sent leaves the ledger', await run.until('its row goes', 15_000, async () => !(await ledger()).rows.some((r) => r.title.includes('Varsity'))))
 
   // ── Settings → Work → Digest ──
-  await run.page(`window.dispatchEvent(new CustomEvent('monocode:open-settings', { detail: 'work' }))`)
+  await run.page(`window.dispatchEvent(new CustomEvent('docket:open-settings', { detail: 'work' }))`)
   const section = await run.until('the Digest section', 20_000, () => run.page<boolean>(`[...document.querySelectorAll('[data-slot=page-section] h2')].some((h) => h.textContent.trim() === 'Digest')`))
   run.check('Settings → Work has a Digest section', section)
   await run.page(`[...document.querySelectorAll('[data-slot=page-section] h2')].find((h) => h.textContent.trim() === 'Digest')?.scrollIntoView({ block: 'start' })`)

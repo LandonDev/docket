@@ -267,7 +267,7 @@ describe('filesystem reads and writes', () => {
     expect((await lstat(link)).isSymbolicLink()).toBe(true)
     expect((await stat(target)).mode & 0o777).toBe(0o640)
     expect((await stat(target)).ino).not.toBe(oldInode)
-    expect((await readdir(root)).filter((name) => name.includes('.monocode-'))).toEqual([])
+    expect((await readdir(root)).filter((name) => name.includes('.docket-'))).toEqual([])
 
     const created = join(root, 'created.txt')
     await fsWriteText(created, 'created')

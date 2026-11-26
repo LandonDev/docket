@@ -250,7 +250,7 @@ export class Pair {
     try {
       return await page.eval(`(async () => {
         try {
-          const value = await window.__monocode.registry.linkOf(${JSON.stringify(this.box.host)})
+          const value = await window.__docket.registry.linkOf(${JSON.stringify(this.box.host)})
             .request(${JSON.stringify(method)}, ${JSON.stringify(params)});
           return { ok: true, value };
         } catch (error) {
@@ -357,9 +357,9 @@ export class Pair {
     const workspace = await this.workspace(name, options.sector)
     await this.link(this.win)
     if (this.desk) await this.link(this.desk)
-    await this.page.eval('window.__monocode.loadSavedEnvironments()')
+    await this.page.eval('window.__docket.loadSavedEnvironments()')
     const host = JSON.stringify(this.box.host)
-    await wait('the window link to box', () => this.page.eval(`window.__monocode.registry.has(${host}) && window.__monocode.registry.statusOf(${host}).transport === 'open'`))
+    await wait('the window link to box', () => this.page.eval(`window.__docket.registry.has(${host}) && window.__docket.registry.statusOf(${host}).transport === 'open'`))
     await this.rpc(this.box, 'defaults.set', { workspaceId: null, defaults: { ...DEFAULT_THREAD_DEFAULTS, permission: 'auto' } })
     return workspace
   }
@@ -528,11 +528,11 @@ export class Pair {
       if (pin.environment.id !== box.envId || !KEY_CAPS.device.every((cap) => pin.environment.caps.includes(cap)) || pin.environment.caps.includes('admin')) {
         throw new Error('The given computer did not receive its own device key')
       }
-      await page.eval('window.__monocode.loadSavedEnvironments()')
+      await page.eval('window.__docket.loadSavedEnvironments()')
       const host = JSON.stringify(this.box.host)
       await page.until('the given computer’s proved link to box', 35_000, () => page.eval(
-        `window.__monocode.registry.has(${host}) && window.__monocode.registry.statusOf(${host}).transport === 'open'
-          && window.__monocode.registry.linkOf(${host}).request('workspace.list').then(() => true, () => false)`
+        `window.__docket.registry.has(${host}) && window.__docket.registry.statusOf(${host}).transport === 'open'
+          && window.__docket.registry.linkOf(${host}).request('workspace.list').then(() => true, () => false)`
       ))
       this.givenWindow = page
       return page

@@ -132,7 +132,7 @@ const SAMPLER = (ms: number, word: string): string => `(async () => {
 async function oneCase(page: Cdp, label: string, windowsOn: boolean, choice: 'system' | 'full' | 'reduced', want: 'full' | 'reduced'): Promise<void> {
   log(`case: ${label}`)
   const said = await effects(windowsOn)
-  await page.eval(`(() => { if (${JSON.stringify(choice)} === 'system') localStorage.removeItem('monocode.motion'); else localStorage.setItem('monocode.motion', ${JSON.stringify(choice)}); window.dispatchEvent(new Event('monocode:motionchange')) })()`)
+  await page.eval(`(() => { if (${JSON.stringify(choice)} === 'system') localStorage.removeItem('docket.motion'); else localStorage.setItem('docket.motion', ${JSON.stringify(choice)}); window.dispatchEvent(new Event('docket:motionchange')) })()`)
   await sleep(1500)
   // As a person does: a new thread from the window's own button, the prompt typed into its composer and sent
   // with Enter, so the window shows the thread from its first frame (a thread made through the server stays off

@@ -7,7 +7,7 @@ import { registry, type ConnectionRegistry } from "./registry";
  * again when it closes, kept in localStorage so a restart still knows.
  */
 
-const KEY = "monocode.environments.lastSeen";
+const KEY = "docket.environments.lastSeen";
 
 let seen: Readonly<Record<string, number>> = load();
 const listeners = new Set<() => void>();

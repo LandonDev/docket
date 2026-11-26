@@ -14,9 +14,9 @@ import { useSyncExternalStore } from "react";
  * not light up every settled thread while later ones still read unread.
  */
 
-const KEY = "monocode.tc.lastSeen";
+const KEY = "docket.tc.lastSeen";
 const OLD_KEY = "thread-last-seen";
-const FLOOR_KEY = "monocode.tc.seenFloor";
+const FLOOR_KEY = "docket.tc.seenFloor";
 
 export type SeenMap = Record<string, number>;
 

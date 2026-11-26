@@ -569,7 +569,7 @@ describe("installActiveSessionSync", () => {
       });
       vi.spyOn(workspaceStore, "getSnapshot").mockReturnValue(linked);
       // What each folder remembered before the link: the box path a worktree project.
-      data.set("monocode.tc.selectedProject", JSON.stringify({ [MAC]: "pM", [BOX]: "pWt" }));
+      data.set("docket.tc.selectedProject", JSON.stringify({ [MAC]: "pM", [BOX]: "pWt" }));
       sessionStore.mutate([
         session("sM", { projectId: "pM", cwd: MAC }),
         session("sB", { environmentId: "env_box", projectId: "pB", cwd: BOX }),
@@ -598,7 +598,7 @@ describe("installActiveSessionSync", () => {
       expect(projectStore.getState().selectedProjectId).toBe("pB");
       expect(deck()).toEqual(["a", "b"]);
       // The box path's own entry was never read into the window or rewritten.
-      expect(JSON.parse(data.get("monocode.tc.selectedProject")!)).toEqual({ [MAC]: "pB", [BOX]: "pWt" });
+      expect(JSON.parse(data.get("docket.tc.selectedProject")!)).toEqual({ [MAC]: "pB", [BOX]: "pWt" });
 
       activateTab("a");
       await microtasks();

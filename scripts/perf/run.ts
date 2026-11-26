@@ -185,7 +185,7 @@ async function main(): Promise<number> {
     // The sockets opened before the counter was there are opened again under it.
     await pair.page.reload()
     await pair.page.until('the window link to box again', 60_000, () => pair.page.eval(
-      `window.__monocode?.registry.has(${JSON.stringify(pair.box.host)}) && window.__monocode.registry.statusOf(${JSON.stringify(pair.box.host)}).transport === 'open'`))
+      `window.__docket?.registry.has(${JSON.stringify(pair.box.host)}) && window.__docket.registry.statusOf(${JSON.stringify(pair.box.host)}).transport === 'open'`))
     if (pair.sandbox) await pair.checkSeededMail(workspace)
     if (f.load > 0) {
       const busy = await pair.workspace(`Perf load ${id.slice(-6)}`, 'ref')

@@ -34,7 +34,7 @@ export type HarnessAdapter = {
   stopSession(sessionId: string): Promise<void>;
   /** Drop resume state and kill the child (delete, harness switch, idle detach). */
   forgetSession(sessionId: string): Promise<void>;
-  /** Seed resume state from a restored MonoCode session. */
+  /** Seed resume state from a restored session. */
   bindSession(
     threadId: string,
     providerSessionId: string,
@@ -202,7 +202,7 @@ export async function refreshHarnessCatalogs(
       .map(async (adapter) => {
         if (!adapter.refreshCatalog || hasLiveCatalog(adapter.id)) return;
         await adapter.refreshCatalog().catch((error: unknown) => {
-          console.debug(`[monocode] ${adapter.id} catalog`, error);
+          console.debug(`[docket] ${adapter.id} catalog`, error);
         });
       }),
   );

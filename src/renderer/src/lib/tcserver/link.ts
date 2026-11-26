@@ -13,7 +13,7 @@ import {
 import { smoke } from "./smoke";
 import { focusSignal } from "./commands";
 import { sessionStore } from "./store";
-import { monocodeOpen } from "../monocodeOpen";
+import { docketOpen } from "../docketOpen";
 import { environmentStore } from "../../stores/environment";
 import { refreshCatalog } from "./catalog";
 import { dropHarnessModels, setDefaultCatalogEnvironment } from "../models";
@@ -25,20 +25,20 @@ type SavedEnvironmentRow = { id: string; name: string; routes: { url: string; ki
 declare global {
   interface Window {
     /** Devtools and the e2e scripts: the registry, the session store and the boot helpers. */
-    __monocode?: {
+    __docket?: {
       registry: typeof registry;
       sessionStore: typeof sessionStore;
       /** The window's current environment and the workspace last used per environment (thread K2). */
       environment: typeof environmentStore;
       loadSavedEnvironments: typeof loadSavedEnvironments;
       smoke: typeof smoke;
-      /** Opens a thread as a click would, beside the focused pane with `split` (lib/monocodeOpen.ts). */
-      open: typeof monocodeOpen;
+      /** Opens a thread as a click would, beside the focused pane with `split` (lib/docketOpen.ts). */
+      open: typeof docketOpen;
     };
   }
 }
 
-const TAG = "[monocode:server]";
+const TAG = "[docket:server]";
 
 /**
  * Boot hook: register environment zero and start the connection runtime.
@@ -50,7 +50,7 @@ const TAG = "[monocode:server]";
  */
 export function initServerLink(): void {
   if (typeof window !== "undefined") {
-    window.__monocode = { registry, sessionStore, environment: environmentStore, loadSavedEnvironments, smoke, open: monocodeOpen };
+    window.__docket = { registry, sessionStore, environment: environmentStore, loadSavedEnvironments, smoke, open: docketOpen };
     registry.installWindowHooks();
     installFocusHooks();
     trackLastSeen();

@@ -4,7 +4,7 @@
  * TEMP_CODE_PEER_DELAY_MS (every request a peer makes there waits that
  * long, 12 s by default); "mac" is a windowed instance with a CDP port,
  * paired with box through a minted admin key and driven through
- * `window.__monocode`. Nothing here touches a real HOME,
+ * `window.__docket`. Nothing here touches a real HOME,
  * /Applications/TempCode.app or the box's live service.
  *
  *  1. box seeds a workspace, a project and two threads with a user row each.
@@ -168,7 +168,7 @@ async function stop(inst: Inst): Promise<void> {
 
 async function window_(inst: Inst): Promise<Cdp> {
   const cdp = await attach(inst.debug, 120_000)
-  await until(`${inst.name} window helpers`, 60_000, () => cdp.eval<boolean>('!!window.__monocode?.sessionStore'))
+  await until(`${inst.name} window helpers`, 60_000, () => cdp.eval<boolean>('!!window.__docket?.sessionStore'))
   return cdp
 }
 
@@ -210,7 +210,7 @@ const startProbe = (cdp: Cdp, key: string, sessionId: string, marker: string): P
         rows: !!pane && [...pane.querySelectorAll('[data-block]')].some((el) => (el.textContent || '').includes(${JSON.stringify(marker)})),
         line: pane?.querySelector('[data-load-line]')?.textContent ?? null,
         connection: pane?.querySelector('[data-connection-line]')?.textContent ?? null,
-        phase: window.__monocode.sessionStore.get(${JSON.stringify(sessionId)})?.load?.phase ?? null,
+        phase: window.__docket.sessionStore.get(${JSON.stringify(sessionId)})?.load?.phase ?? null,
       });
     }, 50);
     return true;
@@ -286,19 +286,19 @@ try {
   // ── pair mac with the slow box ───────────────────────────────────────
   launch(mac, 'window')
   const cdp = await window_(mac)
-  await until('mac local link', 60_000, () => cdp.eval<boolean>(`window.__monocode.registry.link('local')?.connected === true`))
+  await until('mac local link', 60_000, () => cdp.eval<boolean>(`window.__docket.registry.link('local')?.connected === true`))
   await cdp.eval(
-    `window.__monocode.registry.primary().request('remote.environments.add', ${JSON.stringify({ url: `http://127.0.0.1:${box.remote}`, key: key.token, name: 'box' })}).then(() => window.__monocode.loadSavedEnvironments())`
+    `window.__docket.registry.primary().request('remote.environments.add', ${JSON.stringify({ url: `http://127.0.0.1:${box.remote}`, key: key.token, name: 'box' })}).then(() => window.__docket.loadSavedEnvironments())`
   )
   const listed = await until('mac lists box', 90_000, () =>
-    cdp.eval<boolean>(`${JSON.stringify(threads.map((t) => t.id))}.every((id) => !!window.__monocode.sessionStore.metaOf(id))`)
+    cdp.eval<boolean>(`${JSON.stringify(threads.map((t) => t.id))}.every((id) => !!window.__docket.sessionStore.metaOf(id))`)
   )
   check("mac saved box and listed its threads through the slow peer", listed)
 
   // ── 2. open A: skeleton, the slow line, the rows; never empty ─────────
   const a = threads[0]
   await startProbe(cdp, 'a', a.id, a.marker)
-  await cdp.eval(`window.__monocode.sessionStore.requestOpen(${JSON.stringify(a.id)})`)
+  await cdp.eval(`window.__docket.sessionStore.requestOpen(${JSON.stringify(a.id)})`)
   const aLoaded = await until('A shows its rows', DELAY_MS * 4 + 30_000, async () => (await samplesOf(cdp, 'a')).some((s) => s.rows))
   await sleep(500)
   await stopProbe(cdp, 'a')
@@ -325,12 +325,12 @@ try {
   // ── 3. open B, drop the link mid-wait: retrying, then the rows ─────────
   const b = threads[1]
   await startProbe(cdp, 'b', b.id, b.marker)
-  await cdp.eval(`window.__monocode.sessionStore.requestOpen(${JSON.stringify(b.id)})`)
+  await cdp.eval(`window.__docket.sessionStore.requestOpen(${JSON.stringify(b.id)})`)
   const waiting = await until('B is waiting on the box', 10_000, async () => (await samplesOf(cdp, 'b')).some((s) => s.skeleton))
   check('B: the pane opened on the skeleton', waiting)
   await sleep(3_000)
   const dropped = await cdp.eval<boolean>(
-    `(() => { const t = window.__monocode.registry.link(${JSON.stringify(boxEnv)})?.transport; if (!t) return false; t.close({ kind: 'network', message: 'dropped by the proof' }); return true })()`
+    `(() => { const t = window.__docket.registry.link(${JSON.stringify(boxEnv)})?.transport; if (!t) return false; t.close({ kind: 'network', message: 'dropped by the proof' }); return true })()`
   )
   check("B: mac's socket to box dropped while the load waited", dropped)
   const bLoaded = await until('B shows its rows', DELAY_MS * 5 + 60_000, async () => (await samplesOf(cdp, 'b')).some((s) => s.rows))

@@ -151,7 +151,7 @@ describe("DraftHostPicker", () => {
     fireEvent.click(option("box"));
     expect(h.sessions[0]).toMatchObject({ environmentId: "box", projectId: "p-box", workspaceId: "w-box", cwd: "/srv/agents/work/temp-code" });
     // A pick retargets one draft; nothing is remembered for the next.
-    expect(localStorage.getItem("monocode.linkHosts")).toBeNull();
+    expect(localStorage.getItem("docket.linkHosts")).toBeNull();
   });
 
   it("a host with no checkout is disabled with its note", async () => {
@@ -195,7 +195,7 @@ describe("DraftHostPicker", () => {
     expect(h.ensure).toHaveBeenLastCalledWith("mini", expect.objectContaining({ projectLinkId: "pl_a" }));
     expect(h.sessions[0]).toMatchObject({ environmentId: "mini", projectId: "p-mini", workspaceId: "w-mini", cwd: "/work/temp-code" });
     // A pick retargets one draft; nothing is remembered for the next.
-    expect(localStorage.getItem("monocode.linkHosts")).toBeNull();
+    expect(localStorage.getItem("docket.linkHosts")).toBeNull();
   });
 });
 

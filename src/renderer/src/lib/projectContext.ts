@@ -126,7 +126,7 @@ export function rebaseToWorkspace<T extends Pick<Session, "cwd" | "projectId" | 
 
 // ── selection persistence ──────────────────────────────────────────────
 
-const SELECTED_KEY = "monocode.tc.selectedProject";
+const SELECTED_KEY = "docket.tc.selectedProject";
 
 function readMap(storageKey: string): Record<string, string> {
   try {

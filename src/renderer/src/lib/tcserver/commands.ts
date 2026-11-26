@@ -55,7 +55,7 @@ export type UserTurnDisplay = { text?: string; attachments?: Attachment[] };
 
 const REASONING: ReadonlySet<string> = new Set(REASONING_LEVELS);
 
-/** The server's effort ladder from MonoCode's per-model setting. */
+/** The server's effort ladder from the app's per-model setting. */
 export function reasoningOf(session: Pick<Session, "modelSettings">): string | undefined {
   const effort = session.modelSettings.effort ?? session.modelSettings.reasoningEffort;
   if (!effort) return undefined;

@@ -321,12 +321,12 @@ export const DEFAULT_MODEL_ID: Record<HarnessId, string> = {
   muse: "muse:muse-wonder-1.0",
 };
 
-const FAVORITES_KEY = "monocode.favoriteModels";
-const MODEL_PICKER_TAB_KEY = "monocode.modelPickerTab";
-const HIDDEN_PICKER_PROVIDERS_KEY = "monocode.hiddenPickerProviders";
-const LAST_MODEL_KEY = "monocode.lastModel";
-const LAST_MODEL_SETTINGS_KEY = "monocode.lastModelSettings";
-const DEFAULT_MODELS_KEY = "monocode.defaultModels";
+const FAVORITES_KEY = "docket.favoriteModels";
+const MODEL_PICKER_TAB_KEY = "docket.modelPickerTab";
+const HIDDEN_PICKER_PROVIDERS_KEY = "docket.hiddenPickerProviders";
+const LAST_MODEL_KEY = "docket.lastModel";
+const LAST_MODEL_SETTINGS_KEY = "docket.lastModelSettings";
+const DEFAULT_MODELS_KEY = "docket.defaultModels";
 
 export type ModelPickerTab = "favorites" | HarnessId;
 

@@ -44,7 +44,7 @@ describe("Spinner", () => {
 
   it("turns under reduced motion too: a turn in place is the sign of work", () => {
     motion(true);
-    localStorage.setItem("monocode.motion", "reduced");
+    localStorage.setItem("docket.motion", "reduced");
     render(<Spinner />);
     expect(animate).toHaveBeenCalledWith(SPINNER_TURN.keyframes, SPINNER_TURN.timing);
     localStorage.clear();

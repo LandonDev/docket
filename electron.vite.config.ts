@@ -255,7 +255,7 @@ export default buildHeapHold(() => buildHosted()) ?? defineConfig({
         // imports under this root, so a future re-port stays a copy.
         '@aliax': resolve('src/renderer/src/aliax'),
         // The transplanted renderer imports server types as
-        // `@server/shared/*` (MonoCode's layout); they live in src/shared.
+        // `@server/shared/*` (the donor layout); they live in src/shared.
         '@server/shared': resolve('src/shared'),
         '@shared': resolve('src/shared'),
         // The markdown parse worker (lib/markdown.worker.ts) runs micromark

@@ -31,7 +31,7 @@ describe("editor font size", () => {
     expect(loadEditorFontSize()).toBe(14);
     expect(saveEditorFontSize(40)).toBe(14);
     expect(saveEditorFontSize(3)).toBe(12);
-    localStorage.setItem("monocode.editorFontSize", "15");
+    localStorage.setItem("docket.editorFontSize", "15");
     expect(loadEditorFontSize()).toBe(13);
   });
 
@@ -65,12 +65,12 @@ describe("initAppearance", () => {
       "transcriptLayout",
       "transcriptZen",
     ]) {
-      localStorage.setItem(`monocode.${key}`, "1");
+      localStorage.setItem(`docket.${key}`, "1");
     }
-    localStorage.setItem("monocode.colorScheme", "dark");
-    localStorage.setItem("monocode.editorFontSize", "14");
+    localStorage.setItem("docket.colorScheme", "dark");
+    localStorage.setItem("docket.editorFontSize", "14");
     initAppearance();
-    expect(Object.keys(localStorage).sort()).toEqual(["monocode.colorScheme", "monocode.editorFontSize"]);
+    expect(Object.keys(localStorage).sort()).toEqual(["docket.colorScheme", "docket.editorFontSize"]);
     // The theme is the place's, set by lib/placeScheme.ts: this sets no class of its own.
     expect(root.classList.contains("theme-light")).toBe(false);
     expect(root.style.getPropertyValue("--font-size-code")).toBe("14px");
@@ -91,7 +91,7 @@ describe("the kind of place a window opens on", () => {
   it("is the one in the window's own address, else the last one saved, else code", () => {
     expect(loadPlaceKind()).toBe("code");
     savePlaceKind("work");
-    expect(localStorage.getItem("monocode.placeKind")).toBe("work");
+    expect(localStorage.getItem("docket.placeKind")).toBe("work");
     expect(loadPlaceKind()).toBe("work");
     // Each window's address wins over what another window saved last.
     window.history.replaceState(null, "", "/?place=code");

@@ -227,10 +227,10 @@ try {
   check("mac's link registered on box", registered)
   // As his Mac lets the box run its Files verbs: a copy's bytes go back through work.files.writeBack.
   await rpc(mac, 'macBridge.policy.set', { environmentId: boxId, policy: 'read+run' })
-  await cdp.eval('window.__monocode.loadSavedEnvironments()')
-  const linked = await until('window reaches box', 60_000, () => cdp!.eval<boolean>(`window.__monocode.registry.has(${JSON.stringify(boxId)}) && window.__monocode.registry.statusOf(${JSON.stringify(boxId)}).transport === 'open'`))
+  await cdp.eval('window.__docket.loadSavedEnvironments()')
+  const linked = await until('window reaches box', 60_000, () => cdp!.eval<boolean>(`window.__docket.registry.has(${JSON.stringify(boxId)}) && window.__docket.registry.statusOf(${JSON.stringify(boxId)}).transport === 'open'`))
   if (!check("mac's window reaches box", linked)) throw new Error('no link')
-  const fromWindow = <T>(method: string, params: unknown): Promise<T> => ev<T>(`window.__monocode.registry.linkOf(${JSON.stringify(boxId)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
+  const fromWindow = <T>(method: string, params: unknown): Promise<T> => ev<T>(`window.__docket.registry.linkOf(${JSON.stringify(boxId)}).request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
   const tabs = (): Promise<TabRow[]> => fromWindow<{ tabs: TabRow[] }>('work.files.tabs', { workspaceId: ws.id }).then((t) => t.tabs)
   const tabNamed = async (name: string): Promise<TabRow | undefined> => (await tabs()).find((t) => t.name === name)
   const copies = async (): Promise<number> => (await tabs()).filter((t) => t.back).length

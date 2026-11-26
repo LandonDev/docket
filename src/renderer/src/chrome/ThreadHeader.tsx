@@ -27,7 +27,7 @@ const WorkCrumb = workHeadChunk.surface("WorkCrumb");
 
 /**
  * The deck title bar's thread surface: temp-code's strip and heading
- * controls inside MonoCode's shell. The chips' right-click and the ⋯ menu
+ * controls inside the app's shell. The chips' right-click and the ⋯ menu
  * are the thread's one menu (chrome/useThreadMenu.tsx); this keeps the
  * inline rename, Pause all and the panel toggle, and hands rename, archive,
  * delete, the type and the options back to App by thread id. The end group

@@ -40,7 +40,7 @@ export function commonDir(paths: string[]): string {
   return shared.join("/");
 }
 
-/** "Read types.ts", "Read 3 files in src/lib", "Read monocode files". */
+/** "Read types.ts", "Read 3 files in src/lib", "Read sample-project files". */
 export function readsPhrase(paths: string[], cwd: string | undefined, live: boolean): string {
   const verb = live ? "Reading" : "Read";
   const rel = paths.map((p) => displayPath(p, cwd));

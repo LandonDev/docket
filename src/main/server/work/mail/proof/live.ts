@@ -133,7 +133,7 @@ const page = <T>(e: string): Promise<T> => cdp!.eval<T>(e)
 const has = (text: string) => page<boolean>(`document.body.textContent.includes(${JSON.stringify(text)})`)
 /** Opens a thread in the window: by id, then its row and its tab in the strip, whichever the window takes. */
 async function showThread(id: string, title: string): Promise<void> {
-  await page(`window.__monocode.open(${JSON.stringify(id)})`)
+  await page(`window.__docket.open(${JSON.stringify(id)})`)
   await sleep(1500)
   // Its row in the column, pressed as a pointer does.
   await press(`[...document.querySelectorAll('aside button, aside [role=button], aside a')].find((e) => e.textContent.trim() === ${JSON.stringify(title)})`)
@@ -174,7 +174,7 @@ try {
   box = inst
   proof.launch(inst, { platform: 'linux', env: { TEMP_CODE_HEADLESS: '0', TEMP_CODE_DEBUG_PORT: String(PORT), TEMP_CODE_APP_TOKEN_SEED: SEED } })
   cdp = await attach(PORT, 120_000)
-  const up = await until('window connected', 120_000, () => page<boolean>(`window.__monocode?.registry?.statusOf?.(window.__monocode.registry.primaryEnvironmentId)?.transport === 'open'`))
+  const up = await until('window connected', 120_000, () => page<boolean>(`window.__docket?.registry?.statusOf?.(window.__docket.registry.primaryEnvironmentId)?.transport === 'open'`))
   if (!check('the instance is up', up)) throw new Error(proof.logOf(inst).slice(-2000))
   serverPort = (await page<number | null>('window.api.getServerPort()')) ?? 0
   await cdp.send('Page.enable')

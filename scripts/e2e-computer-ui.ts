@@ -152,7 +152,7 @@ async function shot(cdp: Cdp, selector: string, name: string): Promise<string | 
 }
 
 const setTheme = (cdp: Cdp, light: boolean): Promise<unknown> =>
-  cdp.eval(`(() => { const r = document.documentElement; r.classList.toggle('theme-light', ${light}); window.dispatchEvent(new CustomEvent('monocode:schemechange', { detail: ${light ? "'light'" : "'dark'"} })); return new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))) })()`)
+  cdp.eval(`(() => { const r = document.documentElement; r.classList.toggle('theme-light', ${light}); window.dispatchEvent(new CustomEvent('docket:schemechange', { detail: ${light ? "'light'" : "'dark'"} })); return new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))) })()`)
 
 async function run(): Promise<void> {
   rmSync(WORK, { recursive: true, force: true })
@@ -195,13 +195,13 @@ async function run(): Promise<void> {
   instance = spawn(join(REPO, 'node_modules/.bin/electron-vite'), ['preview', '--skipBuild'], { cwd: REPO, env, stdio: ['ignore', 'ignore', 'ignore'], detached: true })
   page = await attach(DEBUG_PORT, 120_000)
   const cdp = page
-  for (let i = 0; i < 120 && !(await cdp.eval<boolean>('!!window.__monocode?.registry?.primary()?.connected').catch(() => false)); i++) await sleep(500)
+  for (let i = 0; i < 120 && !(await cdp.eval<boolean>('!!window.__docket?.registry?.primary()?.connected').catch(() => false)); i++) await sleep(500)
   log('instance up and connected')
   const mainPid = pidsOn(DEBUG_PORT)[0] ?? 0
   await cdp.send('Page.enable')
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 2, mobile: false })
   const request = <T>(method: string, params: unknown): Promise<T> =>
-    cdp.eval<T>(`window.__monocode.registry.primary().request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
+    cdp.eval<T>(`window.__docket.registry.primary().request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
 
   mkdirSync(WS_DIR, { recursive: true })
   writeFileSync(join(WS_DIR, 'README.md'), '# computer preview proof\n')
@@ -219,10 +219,10 @@ async function run(): Promise<void> {
   })
   const id = meta.id
   log(`thread ${id}`)
-  await cdp.eval(`window.__monocode.open(${JSON.stringify(id)})`)
+  await cdp.eval(`window.__docket.open(${JSON.stringify(id)})`)
   await sleep(1_500)
   // The panel opens on ⌘⇧R (toggle_panel); its state is stored per thread, which says whether it took.
-  const panelOpen = (): Promise<boolean> => cdp.eval<boolean>(`(() => { try { return !!JSON.parse(localStorage.getItem('monocode.rightPanel') ?? 'null')?.threads?.[${JSON.stringify(id)}]?.open } catch { return false } })()`)
+  const panelOpen = (): Promise<boolean> => cdp.eval<boolean>(`(() => { try { return !!JSON.parse(localStorage.getItem('docket.rightPanel') ?? 'null')?.threads?.[${JSON.stringify(id)}]?.open } catch { return false } })()`)
   for (let i = 0; i < 3 && !(await panelOpen()); i++) {
     for (const type of ['rawKeyDown', 'keyUp'] as const)
       await cdp.send('Input.dispatchKeyEvent', { type, modifiers: 4 | 8, key: 'R', code: 'KeyR', windowsVirtualKeyCode: 82, nativeVirtualKeyCode: 15 })
@@ -286,7 +286,7 @@ async function run(): Promise<void> {
   }
 
   // ── the turn ends; the screenshot row ─────────────────────────────────
-  const settled = await until('settle', 300_000, () => cdp.eval<string | null>(`(() => { const s = window.__monocode.sessionStore.metaOf(${JSON.stringify(id)})?.status; return s === 'idle' || s === 'error' || s === 'done' ? s : null })()`))
+  const settled = await until('settle', 300_000, () => cdp.eval<string | null>(`(() => { const s = window.__docket.sessionStore.metaOf(${JSON.stringify(id)})?.status; return s === 'idle' || s === 'error' || s === 'done' ? s : null })()`))
   check('the turn settled', settled === 'idle' || settled === 'done', settled ?? 'still running')
   type Row = { event: { type: string; name?: string; partial?: boolean } }
   const page1 = await request<Row[] | { rows: Row[] }>('session.events', { sessionId: id, afterSeq: 0 })

@@ -114,7 +114,7 @@ try {
   if (briefThread) run.later('delete the brief thread', async () => {
     if (!briefDeleted) await run.call('session.delete', { sessionId: briefThread })
   })
-  const metaOf = (): Promise<{ title?: string; scope?: string } | null> => run.page(`(() => { const m = window.__monocode.sessionStore.metaOf(${JSON.stringify(briefThread)}); return m ? { title: m.title, scope: m.scope } : null })()`)
+  const metaOf = (): Promise<{ title?: string; scope?: string } | null> => run.page(`(() => { const m = window.__docket.sessionStore.metaOf(${JSON.stringify(briefThread)}); return m ? { title: m.title, scope: m.scope } : null })()`)
   await run.until('the window knows the thread', 20_000, async () => (await metaOf()) !== null)
   const meta = await metaOf()
   run.check('the host named it and made it a Work thread', meta?.title === `Prepare: ${TITLE}` && meta.scope === 'work', JSON.stringify(meta))

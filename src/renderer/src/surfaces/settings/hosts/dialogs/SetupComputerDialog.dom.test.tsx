@@ -22,8 +22,8 @@ const checkbox = (name: string) => screen.getByRole("checkbox", { name });
 describe("SetupComputerView", () => {
   it("makes a link from the name and the rows, then shows it with Copy, its end and Cancel", async () => {
     localStorage.clear();
-    localStorage.setItem("monocode.colorScheme", "light");
-    localStorage.setItem("monocode.defaultModels", JSON.stringify({ claude: "claude:opus" }));
+    localStorage.setItem("docket.colorScheme", "light");
+    localStorage.setItem("docket.defaultModels", JSON.stringify({ claude: "claude:opus" }));
     const link = fakeDevicesLink((method) => (method === "devices.setup.make" ? { link: LINK, expiresAt: Date.now() + 15 * 60_000, pairingId: "p1" } : { ok: true }));
     try {
       const onClose = vi.fn();

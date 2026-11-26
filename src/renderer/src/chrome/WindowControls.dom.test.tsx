@@ -44,7 +44,7 @@ describe("WindowControls", () => {
     expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content).toBe("#f7f7f5");
     // A theme switch says the new shell colour, so main can re-ink the glyphs.
     document.documentElement.style.setProperty("--sidebar", "#111111");
-    window.dispatchEvent(new CustomEvent("monocode:schemechange"));
+    window.dispatchEvent(new CustomEvent("docket:schemechange"));
     expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content).toBe("#111111");
     document.documentElement.style.removeProperty("--sidebar");
   });

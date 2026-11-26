@@ -266,7 +266,7 @@ try {
       }
     }
     if (!gated) {
-      await until(`!!window.__monocode?.server?.connected`, 30_000, 'the browser socket to open')
+      await until(`!!window.__docket?.server?.connected`, 30_000, 'the browser socket to open')
       check('the /ui bundle opened its WebSocket on the cookie', true)
     } else {
       log('/ui is behind Cloudflare Access: check it from a browser signed into Access')

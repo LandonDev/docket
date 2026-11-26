@@ -271,7 +271,7 @@ try {
   const theme = (light: boolean) =>
     cdp.eval(`(() => {
     document.documentElement.classList.toggle('theme-light', ${light})
-    window.dispatchEvent(new CustomEvent('monocode:schemechange', { detail: ${JSON.stringify(light ? 'light' : 'dark')} }))
+    window.dispatchEvent(new CustomEvent('docket:schemechange', { detail: ${JSON.stringify(light ? 'light' : 'dark')} }))
   })()`)
   await theme(false)
   const clientPort = await waitFor('client socket', () =>
@@ -299,11 +299,11 @@ try {
     key: token,
     name: 'Proof host'
   })
-  await cdp.eval('window.__monocode.loadSavedEnvironments()')
-  const link = `window.__monocode.registry.linkOf(${JSON.stringify(environmentId)})`
+  await cdp.eval('window.__docket.loadSavedEnvironments()')
+  const link = `window.__docket.registry.linkOf(${JSON.stringify(environmentId)})`
   await waitFor('paired window with the minted key', () =>
     cdp.eval<boolean>(`(() => {
-    if (!window.__monocode.registry.has(${JSON.stringify(environmentId)})) return false
+    if (!window.__docket.registry.has(${JSON.stringify(environmentId)})) return false
     const hello = ${link}.transport?.hello
     return !!hello?.key && hello.caps.slice().sort().join(',') === 'approve,operate,read'
   })()`)

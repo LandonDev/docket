@@ -381,7 +381,7 @@ describe("the rail", () => {
   });
 
   it("with every workspace pinned, the same, and no empty line", async () => {
-    localStorage.setItem("monocode.projectRailPinned", JSON.stringify([MAC_PATH]));
+    localStorage.setItem("docket.projectRailPinned", JSON.stringify([MAC_PATH]));
     const root = await mountRail([LOCAL], {}, undefined, { recents: [{ path: MAC_PATH, openedAt: 2 }] });
     expect(headers(root)).toContain("Pinned");
     expect(addRow(root)).toHaveLength(0);

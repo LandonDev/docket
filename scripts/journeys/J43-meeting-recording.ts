@@ -25,7 +25,7 @@ export default journey({
       const { id } = await createThread(pair, context.workspace.id, 'Practice meeting notes')
       const opening = workTool(pair, id, 'meeting_open', { file: path, title: 'Practice meeting' }, 300_000)
       void opening.then(reply => json(context, 'open-tool', reply), () => undefined)
-      await pair.page.eval(`void window.__monocode.open(${JSON.stringify(id)})`)
+      await pair.page.eval(`void window.__docket.open(${JSON.stringify(id)})`)
       await pair.page.until('the meeting canvas and its recording row', 35_000, async () =>
         !!await pair.page.centre('[data-meeting]') && (await meeting(context))?.origin === 'recording' && existsSync(path))
     }),

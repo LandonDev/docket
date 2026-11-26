@@ -22,8 +22,8 @@ describe("environment store", () => {
     environment.follow("box");
     expect(environmentStore.getState().currentId).toBe("box");
     expect(environmentStore.getState().lastWorkspace).toEqual({ box: "/srv/agents/work/app", local: "/Users/me/app" });
-    expect(storage.get("monocode.environment.current.test")).toBe("box");
-    expect(JSON.parse(storage.get("monocode.environment.lastWorkspace") ?? "{}")).toEqual({ box: "/srv/agents/work/app", local: "/Users/me/app" });
+    expect(storage.get("docket.environment.current.test")).toBe("box");
+    expect(JSON.parse(storage.get("docket.environment.lastWorkspace") ?? "{}")).toEqual({ box: "/srv/agents/work/app", local: "/Users/me/app" });
   });
   it("returns the same state object for a repeated follow", () => {
     environment.follow("box", "/a");
