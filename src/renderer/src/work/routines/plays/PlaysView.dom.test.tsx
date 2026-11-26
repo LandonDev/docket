@@ -187,6 +187,22 @@ describe("Plays that did not load", () => {
     expect(screen.queryByText("Plays did not load")).toBeNull();
   });
 
+  /** Council round 3, sitting E: New play stood live over the failure, but its dialog was not drawn there. */
+  it("opens New play's dialog over plays that did not load", async () => {
+    failThenHold();
+    render(
+      <>
+        <Head {...(props as object as Parameters<typeof Head>[0])} />
+        <View {...props} />
+      </>,
+    );
+    await settle();
+    expect(screen.getByText("Plays did not load")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New play" }));
+    await settle();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
   it("Run a play… keeps its failure with Retry spinning until the plays answer", async () => {
     const answer = failThenHold();
     render(<RunDialog env="box" workspaceId="ws" chip={mail} onClose={() => {}} />);

@@ -93,24 +93,34 @@ describe("an invoice", () => {
   });
 
   /**
-   * Council round 1, sitting E (R1-E6): under 30rem What printed over Quantity and its field shrank to nothing. Round 2:
-   * the numbers' labels stood a row away from their fields and the dates cut, so What goes under its numbers, named by
-   * its placeholder there, and Number, Date and Due take a row each.
+   * Council round 1, sitting E (R1-E6): under 30rem What printed over Quantity and its field shrank to nothing. Rounds 2
+   * and 3: the numbers' labels must stand over their own fields, the dates read whole, and Tab meet the fields in the
+   * order they stand. So under 30rem the shared head goes, What takes its own row first (named by its placeholder), the
+   * first line's numbers carry their own labels, and Number, Date and Due take a row each.
    */
-  it("in a narrow dialog puts What under its numbers and stacks Number, Date and Due (its own container rule)", async () => {
+  it("in a narrow dialog labels each field where it stands, in Tab's order (its own container rule)", async () => {
     const { dialog } = await open();
     const body = dialog.querySelector(".\\@container\\/invoice")!;
     expect(body).toBeTruthy();
     const line = dialog.querySelector('[data-invoice-line="0"]')!;
     expect(line.className).toContain("@max-[30rem]/invoice:grid-cols-[64px_minmax(0,1fr)_88px_28px]");
     const what = within(dialog).getByLabelText("What, line 1");
-    expect(what.className).toContain("@max-[30rem]/invoice:order-last");
     expect(what.className).toContain("@max-[30rem]/invoice:col-span-full");
-    // its name shows as the placeholder only where the head's What has gone
+    expect(what.className).not.toContain("order-last");
+    // What comes first in the line, as Tab meets it
+    const fields = [...line.querySelectorAll("input")].map((el) => el.getAttribute("aria-label"));
+    expect(fields).toEqual(["What, line 1", "Quantity, line 1", "Rate, line 1"]);
+    // its name shows as the placeholder only where the head has gone
     expect(what.getAttribute("placeholder")).toBe("What");
     expect(what.className).toContain("placeholder:text-transparent");
     expect(what.className).toContain("@max-[30rem]/invoice:placeholder:text-muted-foreground");
-    expect(within(body as HTMLElement).getByText("What").className).toContain("@max-[30rem]/invoice:hidden");
+    expect(within(body as HTMLElement).getAllByText("What")[0]!.parentElement!.className).toContain("@max-[30rem]/invoice:hidden");
+    // the first line's own labels, narrow only; a later line has none
+    for (const name of ["Quantity", "Rate", "Amount"]) {
+      const own = [...line.querySelectorAll("span")].filter((el) => el.textContent === name).pop()!;
+      expect(own.className).toContain("hidden");
+      expect(own.className).toContain("@max-[30rem]/invoice:block");
+    }
     expect(within(dialog).getByLabelText("Number").closest(".\\@max-\\[30rem\\]\\/invoice\\:grid-cols-1")).toBeTruthy();
   });
 

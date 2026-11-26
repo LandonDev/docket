@@ -199,6 +199,38 @@ describe("the Routines view", () => {
     expect(screen.queryByRole("button", { name: "New routine" })).toBeNull();
   });
 
+  /** Council round 3, sitting E: New routine stood live over a failed read, but the dialog it opens was not drawn there. */
+  it("opens New routine's dialog over a list that did not load", async () => {
+    host.list = () => Promise.reject(new Error("Work is off on this host"));
+    render(
+      <>
+        <Head {...(props as object as Parameters<typeof Head>[0])} />
+        <View {...props} />
+      </>,
+    );
+    await settle();
+    expect(screen.getByText("Routines did not load")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New routine" }));
+    await settle();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  /** Council round 3, sitting E: narrow, a pick hid the focused row and Back hid itself, the keyboard left on nothing. */
+  it("narrow, takes the keyboard to the detail's way back on a pick and to the row again on Back", async () => {
+    render(<View {...props} />);
+    await settle();
+    const list = document.querySelector("[data-routine-list]") as HTMLElement;
+    // jsdom lays nothing out: a list the narrow rule hides has no boxes.
+    const rects = vi.spyOn(list, "getClientRects").mockReturnValue([] as unknown as DOMRectList);
+    const pick = screen.getByRole("button", { name: /Morning brief/ });
+    pick.focus();
+    fireEvent.click(pick);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Routines" }));
+    rects.mockRestore();
+    fireEvent.click(screen.getByRole("button", { name: "Routines" }));
+    expect(document.activeElement).toBe(pick);
+  });
+
   it("narrow, shows the list until a pick, then the detail with a way back", async () => {
     render(<View {...props} />);
     await settle();

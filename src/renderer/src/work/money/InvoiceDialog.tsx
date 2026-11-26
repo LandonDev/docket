@@ -20,10 +20,10 @@ import { parseAmount } from "./model";
  * the other four, so its field never shrinks to nothing; Amount stays above the total either way.
  */
 const LINE_GRID = "grid grid-cols-[minmax(0,1fr)_72px_112px_96px_28px] gap-2 @max-[30rem]/invoice:grid-cols-[64px_minmax(0,1fr)_88px_28px]";
-// Under 30rem a line's What takes the row under its numbers, so the head's Quantity, Rate and Amount stand right over
-// their fields; there What says its name as the field's placeholder (the head's own What hides).
-const WHAT_CELL = "@max-[30rem]/invoice:order-last @max-[30rem]/invoice:col-span-full";
-const WHAT_HEAD = "@max-[30rem]/invoice:hidden";
+// Under 30rem the shared head goes: a line's What takes a row of its own, first as Tab meets it, named by its
+// placeholder; the first line's Quantity, Rate and Amount carry their own labels right over their fields.
+const WHAT_CELL = "@max-[30rem]/invoice:col-span-full";
+const NARROW_LABEL = "hidden text-xs font-medium text-muted-foreground @max-[30rem]/invoice:block";
 import { keepPrinted, newKey, printPage } from "./print";
 
 /**
@@ -231,8 +231,8 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
             </Field>
           ) : null}
           <div ref={linesRef} role="group" aria-label="Lines" className="flex flex-col gap-1 @max-[30rem]/invoice:gap-3">
-            <div className={cn(LINE_GRID, "text-xs font-medium text-muted-foreground")}>
-              <span className={WHAT_HEAD}>What</span>
+            <div className={cn(LINE_GRID, "text-xs font-medium text-muted-foreground @max-[30rem]/invoice:hidden")}>
+              <span>What</span>
               <span>Quantity</span>
               <span>Rate</span>
               <span className="text-end">Amount</span>
@@ -241,11 +241,20 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
             {form.lines.map((l, i) => {
               const counted = lineOf(l);
               return (
-                <div key={i} data-invoice-line={i} className={cn(LINE_GRID, "items-center")}>
+                <div key={i} data-invoice-line={i} className={cn(LINE_GRID, "items-center @max-[30rem]/invoice:items-end")}>
                   <Input aria-label={`What, line ${i + 1}`} placeholder="What" className={cn(WHAT_CELL, "placeholder:text-transparent @max-[30rem]/invoice:placeholder:text-muted-foreground")} value={l.what} autoComplete="off" onKeyDown={onLineKey(i)} onChange={(e) => setLine(i, { what: e.target.value })} />
-                  <Input aria-label={`Quantity, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.quantity} inputMode="decimal" autoComplete="off" className="tabular-nums" onChange={(e) => setLine(i, { quantity: e.target.value })} />
-                  <AmountInput aria-label={`Rate, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.rate} placeholder="0.00" onChange={(e) => setLine(i, { rate: e.target.value })} />
-                  <span className="text-end text-[13px] tabular-nums">{counted ? formatMoney(lineTotal(counted)) : ""}</span>
+                  <span className="flex min-w-0 flex-col gap-1">
+                    {i === 0 ? <span aria-hidden className={NARROW_LABEL}>Quantity</span> : null}
+                    <Input aria-label={`Quantity, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.quantity} inputMode="decimal" autoComplete="off" className="tabular-nums" onChange={(e) => setLine(i, { quantity: e.target.value })} />
+                  </span>
+                  <span className="flex min-w-0 flex-col gap-1">
+                    {i === 0 ? <span aria-hidden className={NARROW_LABEL}>Rate</span> : null}
+                    <AmountInput aria-label={`Rate, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.rate} placeholder="0.00" onChange={(e) => setLine(i, { rate: e.target.value })} />
+                  </span>
+                  <span className="flex min-w-0 flex-col gap-1 text-end">
+                    {i === 0 ? <span aria-hidden className={NARROW_LABEL}>Amount</span> : null}
+                    <span className="text-[13px] tabular-nums @max-[30rem]/invoice:leading-8">{counted ? formatMoney(lineTotal(counted)) : ""}</span>
+                  </span>
                   {i > 0 ? (
                     <Button variant="ghost" size="icon-sm" aria-label={`Remove line ${i + 1}`} className="text-muted-foreground" onClick={() => patch({ lines: form.lines.filter((_, j) => j !== i) })}>
                       <X />

@@ -135,6 +135,17 @@ export function View({ env, workspace }: WorkViewProps) {
   const [picked, setPicked] = useState<string | null>(null);
   const [form, setForm] = useState<{ row: RoutineRow | null } | null>(null);
   const linkDown = useHostLinkDown(env);
+  // Narrow, a pick hides the list and Back hides the detail: the keyboard goes with them, to the detail's way back and
+  // then to the row it came from, never left on a press that is gone.
+  const list = useRef<HTMLUListElement>(null);
+  const backFrom = useRef<string | null>(null);
+  useEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    if (picked !== null && el.getClientRects().length === 0) el.parentElement?.querySelector<HTMLElement>("[data-routine-back]")?.focus();
+    else if (picked === null && backFrom.current) [...el.querySelectorAll<HTMLElement>("[data-routine-row]")].find((row) => row.dataset.routineRow === backFrom.current)?.focus();
+    backFrom.current = null;
+  }, [picked]);
   newForm.useAnswer(() => !linkDown && setForm({ row: null }));
 
   const rows = useMemo(() => {
@@ -148,9 +159,17 @@ export function View({ env, workspace }: WorkViewProps) {
   const down = hostLive.down && downOf(hostLive.down);
   const lifeosWait = down ? downWords(down, host) : hostLive.waits ? connectingWords(host) : null;
 
+  // New routine is the header's press in every state the view draws, so its dialog stands beside each of them.
+  const dialog = form ? <RoutineDialog env={env} workspaceId={workspace.id} row={form.row} onClose={() => setForm(null)} onSaved={(row) => setPicked(row.id)} /> : null;
   if (linkDown) return <HostLinkLine word={linkDown} retryHost={env} />;
   if (load.status === "loading") return <ListSkeleton />;
-  if (load.status === "error") return <EmptyState title="Routines did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} />;
+  if (load.status === "error")
+    return (
+      <>
+        <EmptyState title="Routines did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} />
+        {dialog}
+      </>
+    );
   // Narrow, the detail shows only once a routine is picked; wide, the first is shown until then.
   const narrowDetail = picked !== null && current?.id === picked;
   return (
@@ -161,6 +180,7 @@ export function View({ env, workspace }: WorkViewProps) {
         <div className="@container/routines flex h-full min-h-0">
           {/* A list of buttons, the picked one marked current: Tab moves through them, as a listbox's arrows would not. */}
           <ul
+            ref={list}
             aria-label="Routines"
             data-routine-list=""
             className={cn(
@@ -175,11 +195,14 @@ export function View({ env, workspace }: WorkViewProps) {
             ))}
           </ul>
           {current ? (
-            <Detail key={current.id} env={env} row={current} play={playName(current.playId)} tick={tick} narrowShown={narrowDetail} onBack={() => setPicked(null)} onEdit={() => setForm({ row: current })} />
+            <Detail key={current.id} env={env} row={current} play={playName(current.playId)} tick={tick} narrowShown={narrowDetail} onBack={() => {
+                backFrom.current = picked;
+                setPicked(null);
+              }} onEdit={() => setForm({ row: current })} />
           ) : null}
         </div>
       )}
-      {form ? <RoutineDialog env={env} workspaceId={workspace.id} row={form.row} onClose={() => setForm(null)} onSaved={(row) => setPicked(row.id)} /> : null}
+      {dialog}
     </>
   );
 }
@@ -194,6 +217,7 @@ function RoutineItem({ row, current, picked, onPick, lifeosWait }: { row: Routin
   const shown = row.waiting === LIFEOS_WAIT && lifeosWait ? line.replace(/waiting on LifeOS$/, midLine(lifeosWait)) : line;
   return (
     <ItemButton
+      data-routine-row={row.id}
       aria-current={picked ? "true" : undefined}
       onClick={onPick}
       className={cn("flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5", current && !picked && "@max-[40rem]/routines:bg-transparent @max-[40rem]/routines:hover:bg-foreground/5")}
@@ -259,7 +283,7 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
   return (
     <div data-routine-detail="" className={cn("min-w-0 flex-1 overflow-x-hidden overflow-y-auto", !narrowShown && "@max-[40rem]/routines:hidden")}>
       <div className="hidden px-4 pt-2 @max-[40rem]/routines:block">
-        <Button variant="ghost" size="xs" onClick={onBack}>
+        <Button variant="ghost" size="xs" data-routine-back="" onClick={onBack}>
           <ChevronLeft className="size-3.5" />
           Routines
         </Button>

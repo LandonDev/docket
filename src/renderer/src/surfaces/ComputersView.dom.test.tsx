@@ -138,6 +138,13 @@ describe("the Computers page", () => {
     expect(layout(1, 1200)).toEqual({ strip: "none", stage: 1 });
     expect(layout(3, 1200)).toEqual({ strip: "side", stage: 1 });
     expect(layout(3, 520)).toEqual({ strip: "below", stage: 1 });
+    // two across under the stage, a row's captions share a line: the cells stretch and each caption sits at its tile's foot
+    const view = render(<ComputersPage tiles={Array.from({ length: 3 }, (_, i) => tile({ id: `box\nt${i}`, computer: `browser:t${i}` }))} onOpenSession={() => undefined} pictureOf={() => null} size={{ width: 520, height: 860 }} />);
+    const grid = view.container.querySelector<HTMLElement>('[data-slot="computer-tiles"]')!;
+    expect(grid.className).toContain("items-stretch");
+    const cell = [...grid.children].find((c) => !c.querySelector("[data-stage]"))!;
+    expect(cell.className).toContain("[&>article>div:last-child]:mt-auto");
+    view.unmount();
   });
 
   it("puts on the stage the one that needs him, else the one that acted last, and a press on a strip tile puts that one there with the same element", () => {
@@ -148,8 +155,11 @@ describe("the Computers page", () => {
     const staged = (): string | null => view.container.querySelector("[data-stage]")!.getAttribute("aria-label");
     expect(staged()).toBe("Newer");
     const olderTile = screen.getByRole("article", { name: "Older" });
+    screen.getByRole("button", { name: "Show Older" }).focus();
     fireEvent.click(screen.getByRole("button", { name: "Show Older" }));
     expect(staged()).toBe("Older");
+    // Council round 3, sitting E: its press leaves with it, so the keyboard goes to the stage's bar, never to nothing
+    expect(document.activeElement?.closest('[data-slot="computer-bar"]')).not.toBeNull();
     // the same element: only its place changed, so its picture is never made again
     expect(screen.getByRole("article", { name: "Older" })).toBe(olderTile);
     // nothing moves by itself: the newer one acting again leaves his pick where it is

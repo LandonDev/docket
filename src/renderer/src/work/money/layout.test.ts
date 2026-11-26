@@ -17,6 +17,8 @@ describe("one right edge for money", () => {
 
   it("under 640px ends By category's and Entries' amounts on one 48px edge", () => {
     expect(narrow(CATEGORY_GRID) + 16).toBe(48);
+    // under 480px the bar goes and the amount keeps money's edge
+    expect(CATEGORY_GRID).toContain("@max-[480px]/money:grid-cols-[minmax(0,1fr)_7rem_32px]");
     expect(narrow(ENTRIES_TAIL) + 12 - 8).toBe(48);
   });
 

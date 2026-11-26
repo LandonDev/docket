@@ -112,17 +112,17 @@ function ShareInHome({ url, itemId }: { url: string; itemId?: string | undefined
   );
 }
 
-/** Share on a project's bar (the Projects view): the same sheet, for a link that can only view. One of the bar's quiet 28px verbs. */
+/** Share on a project's settings (its Sharing row): the same sheet, for a link that can only view. The row's one press, secondary, as Rules' Edit beside it. */
 export function ProjectShare({ env, project }: { env: string; project: { id: string; name: string } }) {
   const target = useMemo<ShareTarget>(() => ({ source: { at: "lifeos", table: "projects", id: project.id } }), [project.id]);
-  return <ShareOpener env={env} target={target} title={project.name} size="sm" />;
+  return <ShareOpener env={env} target={target} title={project.name} size="sm" variant="secondary" />;
 }
 
 /**
  * `hold`: a press its owner keeps until it knows where Share goes, the button's and File → Share…'s and More's alike;
  * `held`: one is kept, and the button is busy; `opens` going up opens the sheet (a held press's answer).
  */
-function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs", hold, held = false, opens = 0 }: { env: string; target: ShareTarget; title: string; itemId?: string; purdue?: boolean; size?: "xs" | "sm"; hold?: (() => void) | undefined; held?: boolean; opens?: number }) {
+function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs", variant = "ghost", hold, held = false, opens = 0 }: { env: string; target: ShareTarget; title: string; itemId?: string; purdue?: boolean; size?: "xs" | "sm"; variant?: "ghost" | "secondary"; hold?: (() => void) | undefined; held?: boolean; opens?: number }) {
   const [open, setOpen] = useState(false);
   const asked = useShareAsked(itemId);
   const seen = useRef(asked);
@@ -140,7 +140,7 @@ function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs", 
   }, [opens]);
   return (
     <>
-      <Button data-share-button="" variant="ghost" size={size} className={size === "xs" ? "ms-auto" : undefined} aria-busy={held || undefined} onClick={() => (held ? undefined : hold ? hold() : setOpen(true))}>
+      <Button data-share-button="" variant={variant} size={size} className={size === "xs" ? "ms-auto" : undefined} aria-busy={held || undefined} onClick={() => (held ? undefined : hold ? hold() : setOpen(true))}>
         {/* A held press: the glyph turns to the spinner in its place (BusyLabel), so the button keeps its width. */}
         {held ? <BusyLabel busy label="" /> : <ShareGlyph />}
         Share

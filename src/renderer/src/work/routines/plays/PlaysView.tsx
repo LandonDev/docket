@@ -67,7 +67,15 @@ export function View({ env, workspace, sector }: WorkViewProps) {
 
   if (linkDown) return <HostLinkLine word={linkDown} retryHost={env} />;
   if (load.status === "loading") return <PlaysSkeleton />;
-  if (load.status === "error") return <EmptyState title="Plays did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} />;
+  // New play is the header's press in every state the view draws, so its dialog stands beside the failure too.
+  const playDialog = dialog ? <PlayDialog key={dialog.kind === "edit" ? dialog.row.id : dialog.kind === "starter" ? dialog.starter.key : dialog.kind} env={env} workspaceId={workspace.id} source={dialog} onClose={() => setDialog(null)} /> : null;
+  if (load.status === "error")
+    return (
+      <>
+        <EmptyState title="Plays did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} />
+        {playDialog}
+      </>
+    );
   const proposed = maySave ? load.value.filter((p) => p.proposed) : [];
   const plays = load.value.filter((p) => !p.proposed);
   const starters = maySave ? startersLeft(sector, load.value) : [];
@@ -127,7 +135,7 @@ export function View({ env, workspace, sector }: WorkViewProps) {
           </div>
         </div>
       )}
-      {dialog ? <PlayDialog key={dialog.kind === "edit" ? dialog.row.id : dialog.kind === "starter" ? dialog.starter.key : dialog.kind} env={env} workspaceId={workspace.id} source={dialog} onClose={() => setDialog(null)} /> : null}
+      {playDialog}
       {run ? <RunDialog key={run.id} env={env} workspaceId={workspace.id} play={run} onClose={() => setRun(null)} /> : null}
     </>
   );

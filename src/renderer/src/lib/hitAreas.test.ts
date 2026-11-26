@@ -26,6 +26,8 @@ describe("hit areas and insets", () => {
     // The tracker's lead-thread press and the computer bar's thread title: 24px tall on their 20px line.
     expect(read("work/tracker/TrackerPage.tsx")).toContain("block min-h-6 min-w-0 truncate rounded-sm py-0.5 text-start leading-5");
     expect(read("surfaces/threads/computer/ComputerBar.tsx")).toContain('className={cn("h-6 max-w-[50%] shrink-0 justify-start p-0 leading-5');
+    // A project's Thread setup disclosure: 24px on its 12px words.
+    expect(read("work/shell/ProjectSettings.tsx")).toContain('CollapsibleTrigger className="group/d inline-flex min-h-6 items-center');
   });
 
   it("end the right panel's header on its rows' 12px Stop column, and start a dock tab's label on the terminal's 12px", () => {

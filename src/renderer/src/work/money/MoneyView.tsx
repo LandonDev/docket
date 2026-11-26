@@ -11,7 +11,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { ItemButton } from "../../components/ui/item";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
-import { TruncateTip } from "../../components/tip";
+import { Tip, TruncateTip, useTruncated } from "../../components/tip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { tableRowCount, useKeptRows, WindowedTableRows, type TableRowPlace } from "../windowed";
 import { cn } from "../../lib/cn";
@@ -23,7 +23,7 @@ import type { WorkViewProps } from "../views/registry";
 import { atOf, heard, markPaid, openBook, openBooks, openReceipt, useMoney, withToast } from "./api";
 import { ConfirmFlow } from "./ConfirmFlow";
 import { EntryDialog } from "./EntryDialog";
-import { CATEGORY_GRID, ENTRIES_TAIL, headIsNarrow, NARROW_ONLY, OWED_FACT, OWED_GRID, OWED_LINE, WIDE_HEAD, WIDE_ONLY } from "./layout";
+import { CATEGORY_BAR, CATEGORY_GRID, ENTRIES_TAIL, headIsNarrow, NARROW_ONLY, OWED_FACT, OWED_GRID, OWED_LINE, WIDE_HEAD, WIDE_ONLY } from "./layout";
 import { filingToast, receiveFiles, sortFiles } from "./receive";
 import { ExportDialog } from "./ExportDialog";
 import { InvoiceDialog, invoiceTitle, type InvoiceKind } from "./InvoiceDialog";
@@ -587,7 +587,7 @@ function ByCategory({ read, selected, onPick }: { read: MoneyRead; selected: str
               <TruncateTip text={c.category}>
                 <span className="truncate">{c.category}</span>
               </TruncateTip>
-              <span className="flex h-2 items-center">
+              <span className={cn("flex h-2 items-center", CATEGORY_BAR)}>
                 <span className="h-2 rounded-e bg-(--chart-neutral)" style={{ width: `${Math.max(1, Math.round(c.share * 100))}%` }} />
               </span>
               <span className="text-end tabular-nums">{signedMoney(c.amount)}</span>
@@ -725,24 +725,31 @@ const openRow = (row: LedgerRow): void => set({ dialog: { kind: "row", row } });
 
 /** One entry, drawn again only when its row changed. */
 const EntryRow = memo(function EntryRow({ row, place, onReceipt }: { row: LedgerRow; place: TableRowPlace; onReceipt: (receipt: NonNullable<LedgerRow["receipt"]>) => void }) {
+  // The row is one press over its cells, so a Who or Category it cuts reads whole in the press's own tip, no stop of its own.
+  const who = useTruncated(row.who);
+  const category = useTruncated(row.category ?? "");
   return (
     <TableRow {...place} data-money-row={row.row} className="relative focus-within:bg-muted hover:bg-muted">
       <TableCell className="first:pl-2">
-        <Button
-          variant="link"
-          aria-label={`${row.who || "Entry"}, ${rowMoney(row)}${row.date ? `, ${formatDay(row.date)}` : ""}`}
-          onClick={() => openRow(row)}
-          // The row is the press: its stretched box takes the house ring (index.css's inset outline), never the date's own.
-          className="static h-auto p-0 font-normal text-muted-foreground tabular-nums outline-none! hover:no-underline after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:outline-solid focus-visible:after:-outline-offset-2 focus-visible:after:outline-accent"
-        >
-          {row.date ? formatDay(row.date, false) : ""}
-        </Button>
+        <Tip label={[row.who, row.category].filter(Boolean).join(", ")} disabled={!who.cut && !category.cut}>
+          <Button
+            variant="link"
+            aria-label={`${row.who || "Entry"}, ${rowMoney(row)}${row.date ? `, ${formatDay(row.date)}` : ""}`}
+            onClick={() => openRow(row)}
+            // The row is the press: its stretched box takes the house ring (index.css's inset outline), never the date's own.
+            className="static h-auto p-0 font-normal text-muted-foreground tabular-nums outline-none! hover:no-underline after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:outline-solid focus-visible:after:-outline-offset-2 focus-visible:after:outline-accent"
+          >
+            {row.date ? formatDay(row.date, false) : ""}
+          </Button>
+        </Tip>
       </TableCell>
-      <TableCell className="max-w-0">
+      <TableCell ref={who.ref} className="max-w-0">
         <span className="block truncate">{row.who}</span>
         {row.category ? <span className={cn("truncate text-xs leading-4 text-muted-foreground", NARROW_ONLY)}>{row.category}</span> : null}
       </TableCell>
-      <TableCell className={cn("max-w-0 truncate text-muted-foreground", WIDE_ONLY)}>{row.category}</TableCell>
+      <TableCell ref={category.ref} className={cn("max-w-0 truncate text-muted-foreground", WIDE_ONLY)}>
+        {row.category}
+      </TableCell>
       <TableCell className={cn("text-end", row.in && row.out ? "whitespace-normal" : null)}>
         {/* One form for every row, the dialog's: a row with money both ways reads "+$30.00 and $20.00", on two lines where it must. */}
         {rowMoney(row)}
@@ -792,11 +799,12 @@ function ProblemLine({ word, detail, action, onPress }: { word: string; detail: 
 function MoneySkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading money" className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-4 py-4">
-      <div className="flex gap-x-8 border-b border-border pb-4">
+      {/* The figures' own row (it wraps as theirs does), each bone a figure's width ("$445.00"), so none runs past the edge. */}
+      <div className="flex flex-wrap items-start gap-x-8 gap-y-3 border-b border-border pb-4">
         {["In", "Out", "Net"].map((label) => (
           <div key={label} className="flex flex-col">
             <span className="text-xs text-muted-foreground">{label}</span>
-            <Skeleton className="my-0.5 h-5 w-24" />
+            <Skeleton className="my-0.5 h-5 w-18" />
           </div>
         ))}
       </div>

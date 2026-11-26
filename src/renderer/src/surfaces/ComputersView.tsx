@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Button } from "@renderer/components/ui/button";
+import { Tip, useTruncated } from "@renderer/components/tip";
 import { FADE_IN } from "@renderer/components/ui/reveal";
 import { StatusMark } from "@renderer/components/ui/status";
 import { Desktop, Maximize2, PictureInPicture } from "../chrome/icons";
@@ -272,18 +273,23 @@ export function Tile({ tile, picture, stage = true, onStage }: TileProps) {
   const line = tileLine(tile);
   // where it runs is said once: a picture this desktop may not draw already names the machine
   const where = picture && tile.shownOn ? null : tile.where;
+  const caption = [tile.title, line ?? where].filter(Boolean).join(", ");
+  // a caption the strip cuts reads whole in the tile's press's tip
+  const cut = useTruncated(caption);
   return (
     <article data-slot="computer-tile" data-stage={stage || undefined} aria-label={tile.title} className={cn("relative flex min-w-0 flex-col", !stage && "gap-1.5 transition-transform duration-(--dur-fast) ease-(--ease-out) active:scale-[0.98]", FADE_IN)}>
       {picture}
       {stage ? null : (
-        <div className="flex min-w-0 flex-col">
+        <div ref={cut.ref} className="flex min-w-0 flex-col">
           <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-5 font-medium">
             {tile.entry.row.asking ? <StatusMark state="waiting" word={false} /> : null}
             <span className="min-w-0 truncate">{tile.title}</span>
           </span>
           <span className="truncate text-xs leading-4 text-muted-foreground">{line ?? where}</span>
           {/* the whole tile is the press that puts it on the stage */}
-          <Button variant="link" aria-label={`Show ${tile.title}`} onClick={onStage} className="absolute inset-0 h-auto rounded-lg p-0" />
+          <Tip label={caption} disabled={!cut.cut}>
+            <Button variant="link" aria-label={`Show ${tile.title}`} onClick={onStage} className="absolute inset-0 h-auto rounded-lg p-0" />
+          </Tip>
         </div>
       )}
     </article>
@@ -419,6 +425,16 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, fr
   }, [asked, tiles]);
   const front = stageOf(keyed, pick, kept);
   if (front !== kept) setKept(front);
+  // A tile put on the stage leaves the strip, its press with it: the keyboard goes to the stage's bar (the header beside
+  // the tiles' scroller), never to nothing.
+  const barRoot = useRef<HTMLDivElement>(null);
+  const toStage = useRef(false);
+  useEffect(() => {
+    if (!toStage.current) return;
+    toStage.current = false;
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (lost) barRoot.current?.parentElement?.parentElement?.querySelector<HTMLElement>('[data-slot="computer-bar"] button:not(:disabled)')?.focus();
+  }, [front]);
   const staged = tiles.find((tile) => tileKey(tile, tiles) === front);
   // ⌃⌘F takes the stage's computer full screen while it has a live picture here
   const offer = !pictureOf && staged && !staged.vm && !staged.shownOn ? { host: staged.entry.host, threadId: viewKey(staged), name: tileLabel(staged) } : null;
@@ -479,14 +495,23 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, fr
     <>
       {header}
       <div ref={pageRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
-        <div data-slot="computer-tiles" data-strip={layout.strip} className="grid items-start gap-4 p-4" style={grid}>
+        {/* Under the stage the strip runs two across: its cells stretch to the row and each caption sits at the tile's foot, so the captions of a row share a line. */}
+        <div ref={barRoot} data-slot="computer-tiles" data-strip={layout.strip} className={cn("grid gap-4 p-4", layout.strip === "below" ? "items-stretch" : "items-start")} style={grid}>
           {[...keyed]
             .sort((a, b) => a.key.localeCompare(b.key))
             .map(({ tile, key }) => {
               const on = key === front;
               return (
-                <div key={key} className={cn("min-w-0", on && "flex items-center justify-center")} style={on ? stagePlace : { gridColumn: layout.strip === "side" ? 2 : undefined, order: rank.get(key) }}>
-                  <Tile tile={tile} stage={on} onStage={() => setPick(key)} picture={pictures.get(key)} />
+                <div key={key} className={cn("min-w-0", on ? "flex items-center justify-center" : layout.strip === "below" && "[&>article]:h-full [&>article>div:last-child]:mt-auto")} style={on ? stagePlace : { gridColumn: layout.strip === "side" ? 2 : undefined, order: rank.get(key) }}>
+                  <Tile
+                    tile={tile}
+                    stage={on}
+                    onStage={() => {
+                      toStage.current = true;
+                      setPick(key);
+                    }}
+                    picture={pictures.get(key)}
+                  />
                 </div>
               );
             })}

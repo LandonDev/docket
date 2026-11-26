@@ -237,7 +237,7 @@ export function WorkProjectFields({
         </div>
       ) : null}
       <Collapsible open={open} onOpenChange={setOpen} data-thread-setup>
-        <CollapsibleTrigger className="group/d inline-flex items-center gap-1 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground">
+        <CollapsibleTrigger className="group/d inline-flex min-h-6 items-center gap-1 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground">
           Thread setup
           <ChevronRight className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
         </CollapsibleTrigger>

@@ -242,10 +242,15 @@ describe("an agent's waiting changes", () => {
     let tell!: (s: Parameters<Parameters<MsFormHost["applying"]>[0]>[0]) => void;
     const view: MsFormView = { ...BASE, suggestions: [{ id: "s1", change: { op: "remove", at: 0 }, words: 'Remove “Which night works?”', by: "agent:env:t1", at: 0 }] };
     const host = hostOf(view, { applying: (on) => ((tell = on), () => undefined) });
-    render(<Body {...props(host)} />);
+    const p = props(host);
+    render(<Body {...p} />);
+    const stepper = () => (p.shell.review as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]).filter(Boolean).at(-1);
     expect(await screen.findByText('Remove “Which night works?”')).toBeTruthy();
+    expect(stepper().verdictsHeld).toBe(false);
     act(() => tell({ stage: "opening" }));
     expect(line()?.textContent).toBe("Opening the form in Forms…");
+    // Council round 3, sitting E: Reject and Accept rest while the write runs, so no verdict goes on a list it changes.
+    expect(stepper().verdictsHeld).toBe(true);
     act(() => tell({ stage: "changing", at: 2, of: 3 }));
     expect(line()?.textContent).toBe("Making change 2 of 3…");
     // the change's own words give way while it runs: one line, never two
@@ -253,6 +258,7 @@ describe("an agent's waiting changes", () => {
     act(() => tell(null));
     expect(line()).toBeNull();
     expect(screen.getByText('Remove “Which night works?”')).toBeTruthy();
+    expect(stepper().verdictsHeld).toBe(false);
   });
 
   it("a thread's write under Agent writes says its stage too, with nothing waiting", async () => {

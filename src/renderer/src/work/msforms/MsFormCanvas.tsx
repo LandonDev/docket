@@ -133,8 +133,8 @@ export function Body(props: Props) {
 
   useReloadOnChange(item.id, view, store);
   useChrome(shell, host, store, view, changed, item.id, props.env);
-  const current = useReview(shell, host, store, view, half);
   const applying = useApplying(host);
+  const current = useReview(shell, host, store, view, half, !!applying);
   useEffect(() => {
     shell.ready?.(!!view);
   }, [shell, view]);
@@ -176,9 +176,11 @@ export function Body(props: Props) {
 
 /**
  * An agent's waiting changes on the frame's stepper (docs/DESIGN.md "Microsoft form"): Accept runs the carrier's write
- * with exactly that change, Reject drops it, Accept all and Reject all take every one. Only on the Form half.
+ * with exactly that change, Reject drops it, Accept all and Reject all take every one. Only on the Form half. While a
+ * write runs in Forms (from any window, or an agent's), Reject and Accept rest in place until it ends, so no verdict is
+ * sent on a list the write is changing; Previous and Next stay.
  */
-function useReview(shell: CanvasShell, host: MsFormHost, store: Store, view: MsFormView | null, half: Half): number {
+function useReview(shell: CanvasShell, host: MsFormHost, store: Store, view: MsFormView | null, half: Half, writing: boolean): number {
   const [current, setCurrent] = useState(0);
   const suggestions = view?.suggestions;
   const at = suggestions?.length ? Math.min(current, suggestions.length - 1) : 0;
@@ -195,11 +197,12 @@ function useReview(shell: CanvasShell, host: MsFormHost, store: Store, view: MsF
       index: at,
       count: suggestions.length,
       step: setCurrent,
+      verdictsHeld: writing,
       accept: (w) => decide(ids(w), [], "Couldn't make the change in Forms"),
       reject: (w) => decide([], ids(w), "Couldn't reject the change"),
     });
     return () => shell.review(null);
-  }, [shell, host, store, suggestions, half, at]);
+  }, [shell, host, store, suggestions, half, at, writing]);
   return at;
 }
 

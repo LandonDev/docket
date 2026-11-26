@@ -10,6 +10,7 @@ import { ItemButton } from "../../components/ui/item";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
+import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
 import { dayTime } from "../../lib/duration";
 import { shell } from "../../stores/shell";
@@ -21,7 +22,7 @@ import { openWorkView, workOpenPort } from "../../lib/workSwitch";
 import type { WorkViewProps } from "../views/registry";
 import { loadFailure } from "../routines/plays/data";
 import { ViewStateLine } from "../views/ViewStateLine";
-import { TruncateTip } from "../../components/tip";
+import { Tip, TruncateTip, useTruncated } from "../../components/tip";
 import { mergeForms, rowLine } from "./model";
 import { FORM_KIND_WORDS } from "./newForm";
 import { useFormMaking, useLibraryPlaces } from "./useFormMaking";
@@ -215,19 +216,21 @@ export function View({ env, workspace }: WorkViewProps) {
   );
 }
 
+/**
+ * A form: its title over its line. Only the row that is opening keeps room at its end for "Opening…", so a row at rest
+ * gives its line the whole width; what a narrow row still cuts reads whole in the row's tip.
+ */
 function Row({ row, busy, onPress }: { row: FormListRow; busy: boolean; onPress(): void }) {
-  const words = (
-    <>
-      <span className="truncate text-[13px] font-medium text-foreground">{row.title}</span>
-      <span className="truncate text-xs text-muted-foreground tabular-nums">{rowLine(row, dayTime)}</span>
-    </>
-  );
-  const shape = "flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5 pr-20";
+  const line = rowLine(row, dayTime);
+  const { ref, cut } = useTruncated(`${row.title}\n${line}`);
   return (
     <li data-forms-row {...(row.kind === "ms" ? { "data-menu-id": row.id } : {})} className="relative flex flex-col">
-      <ItemButton onClick={onPress} className={shape}>
-        {words}
-      </ItemButton>
+      <Tip label={`${row.title}, ${line}`} disabled={!cut}>
+        <ItemButton ref={ref} onClick={onPress} className={cn("flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5", busy && "pr-20")}>
+          <span className="truncate text-[13px] font-medium text-foreground">{row.title}</span>
+          <span className="truncate text-xs text-muted-foreground tabular-nums">{line}</span>
+        </ItemButton>
+      </Tip>
       {busy ? (
         <span className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1.5 text-xs text-muted-foreground">
           <Spinner aria-hidden className="size-3" />

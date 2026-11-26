@@ -133,7 +133,9 @@ describe("which sheet a project gets", () => {
     // setup folded.
     const labels = [...root.querySelectorAll("[data-slot=dialog-field] label, [data-slot=dialog-field-row] [data-slot=item-title]")].map((l) => l.textContent);
     expect(labels).toEqual(["Name", "State", "Target", "Sharing"]);
-    expect(within(root.querySelector("[data-project-sharing]") as HTMLElement).getByRole("button", { name: "Share" })).toBeTruthy();
+    const share = within(root.querySelector("[data-project-sharing]") as HTMLElement).getByRole("button", { name: "Share" });
+    // one shape for a row's press: secondary, as Rules' Edit (council round 3, sitting E)
+    expect(share.getAttribute("data-variant")).toBe("secondary");
     expect(hostCalls.find((c) => c.method === "work.guests.forItem")).toBeUndefined();
     expect(within(root).getByRole("button", { name: "Thread setup" }).getAttribute("aria-expanded")).toBe("false");
     expect(within(root).queryByRole("button", { name: "Edit" })).toBeNull();
