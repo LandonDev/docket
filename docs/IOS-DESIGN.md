@@ -3222,7 +3222,8 @@ People is a place of the Work tab, after Agenda in the Work list (docs/agents/wo
   do and until when; it opens nothing on the phone. Nothing open: one line. The page is asked at once, never
   waiting on the directory: LifeOS out of reach is "Can’t Reach LifeOS" with the host's words, a failed read
   "Can’t Read This Person", each with Try Again, and a person LifeOS does not hold "Can’t Find This Person".
-  At accessibility sizes a row's name and address wrap.
+  At accessibility sizes a row's name wraps; an address keeps one line, never hyphenated inside it, shrinking to fit
+  whole (to half its size, then its middle gives way), in the list and on the page.
 - **The bar** holds Write (LifeKitUI's own composer to their first address; its send is held like every send) and
   New Thread (the house's sheet with their person chip, in the job).
 

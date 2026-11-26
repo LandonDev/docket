@@ -99,7 +99,8 @@ private struct MessagesList: View {
             loading: Self.loading(host: host, pages: pages, rows: rows),
             empty: PlaceEmpty(title: "No Messages"),
             failure: Self.failure(host: host, pages: pages),
-            retry: { await retry(pages) },
+            // Try Again only where asking again can help: not for a sign-in or a connect (the shared rule).
+            retry: host.connecting || host.down.map(\.isSilence) == false ? nil : { await retry(pages) },
             jobs: filter,
             filter: filter.isEmpty ? nil : pick,
             refresh: { pages.forEach { $0.retryNow() } },

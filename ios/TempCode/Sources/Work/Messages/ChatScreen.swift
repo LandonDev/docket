@@ -111,8 +111,8 @@ private struct ChatConversation: View {
             } description: {
                 Text(why)
             } actions: {
-                // A session whose access ended asks nothing again: its words say why.
-                if !host.accessEnded { PillButton("Try Again") { Task { await host.prepare() } } }
+                // Try Again only for silence: a sign-in, a connect or an ended access asks nothing again (the shared rule).
+                if host.down?.isSilence == true { PillButton("Try Again") { Task { await host.prepare() } } }
             }
         } else if messages.isEmpty {
             ContentUnavailableView("No Messages Yet", systemImage: WorkPlace.messages.glyph)
@@ -595,7 +595,7 @@ private struct ChatCopyButton: View {
             Image(systemName: "doc.on.doc")
                 .font(.subheadline.weight(.semibold))
                 .dynamicTypeSize(...ComposerMetrics.glyphCap)
-                .foregroundStyle(enabled ? Color.white : Color(.tertiaryLabel))
+                .foregroundStyle(enabled ? Tint.onAccent : Color(.tertiaryLabel))
                 .frame(width: side, height: side)
                 .tcGlass(in: Circle(), tint: enabled ? Color.accentColor : nil)
                 .padding(ComposerMetrics.hitOutset(side))

@@ -32,6 +32,20 @@ struct LifeViewScreen: View {
     /// On Projects: one project's page, drawn once the job's session is ready (Today's Open project).
     var project: String? = nil
 
+    /// Settings → Connections on the host, where its LifeOS sign-in is made: the host asks admin for a Settings target
+    /// (reveal.ts), beyond reveal, as Connections' own "Open on" does.
+    private var maySignIn: Bool { host.client.work.may(.reveal) && host.client.environment.caps.contains(.admin) }
+
+    private func openSignIn() async {
+        let client = host.client
+        do {
+            try await client.work.reveal(RevealTarget(settings: .connections))
+            FleetToastCenter.shared.post(note: "Opened on \(client.environment.name)")
+        } catch {
+            FleetToastCenter.shared.post(message: ActionError.wrap(error).message)
+        }
+    }
+
     var body: some View {
         Group {
             switch host.phase {
@@ -41,8 +55,20 @@ struct LifeViewScreen: View {
             case .unavailable(let words):
                 ContentUnavailableView {
                     Label(words, systemImage: view.symbol)
+                } description: {
+                    // A sign-in this key may not open on the host is mended on a computer that manages it.
+                    if host.down?.wantsSignIn == true, !maySignIn { Text(LifeosWords.signInElsewhere(host: host.client.environment.name)) }
                 } actions: {
-                    if !host.accessEnded { Button("Try Again") { Task { await host.prepare() } } }
+                    // Try Again only for silence; a sign-in opens Connections on the host; a connect is a wait.
+                    if host.connecting {
+                        ProgressView()
+                    } else if let down = host.down {
+                        if down.isSilence {
+                            Button("Try Again") { Task { await host.prepare() } }
+                        } else if down.wantsSignIn, maySignIn {
+                            Button("Open on \(host.client.environment.name)") { Task { await openSignIn() } }
+                        }
+                    }
                 }
             case .ready:
                 if let store = host.store, let scene = host.scene {

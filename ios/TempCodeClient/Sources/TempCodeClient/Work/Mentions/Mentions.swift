@@ -105,8 +105,16 @@ public final class MentionAsk {
     public private(set) var hits: [MentionHit] = []
     /// The words that answer was for; nil before the first.
     public private(set) var answered: String?
-    /// One quiet line: the kinds the host could not search, or that the ask failed.
-    public private(set) var note: String?
+    /// One quiet line: the kinds the host could not search, or that the ask failed. Worded as it is read, so a line
+    /// about LifeOS follows the host's LifeOS status as it lands, never what it was at the answer.
+    public var note: String? {
+        if askFailed { return Self.searchFailed }
+        return failed.flatMap(failWords)
+    }
+    /// The kinds the last answer left out.
+    private var failed: [MentionAnswer.Failed]?
+    /// The last ask itself failed.
+    private var askFailed = false
 
     @ObservationIgnored private let fetch: @MainActor (String) async throws -> MentionAnswer
     @ObservationIgnored private let failWords: @MainActor ([MentionAnswer.Failed]) -> String?
@@ -140,11 +148,13 @@ public final class MentionAsk {
             let answer = try await fetch(query)
             guard !Task.isCancelled else { return }
             hits = answer.hits
-            note = failWords(answer.failed)
+            failed = answer.failed
+            askFailed = false
         } catch {
             guard !Task.isCancelled else { return }
             hits = []
-            note = Self.searchFailed
+            failed = nil
+            askFailed = true
         }
         answered = query
     }

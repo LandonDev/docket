@@ -29,6 +29,7 @@ struct PersonScreen: View {
 }
 
 private struct PersonPageView: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(ShellNavigator.self) private var navigator
     @Bindable var host: WorkLifeHost
     let client: EnvironmentClient
@@ -118,13 +119,15 @@ private struct PersonPageView: View {
         if let page {
             List {
                 Section {
-                    // Each address and number on its own line, never hyphenated inside an address: a long one keeps
-                    // its two ends and gives up its middle.
+                    // Each address and number on its own line, never hyphenated inside an address (a wrapped one is:
+                    // "dana@cos-micgames"). At accessibility sizes it shrinks to fit whole, to half its size; past that,
+                    // or at any size, a long one keeps its two ends and gives up its middle.
                     let reach = page.person.emails + page.person.phones
                     if !reach.isEmpty {
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(reach, id: \.self) { way in
                                 Text(way).textStep(.meta).lineLimit(1).truncationMode(.middle)
+                                    .minimumScaleFactor(typeSize.isAccessibilitySize ? 0.5 : 1)
                             }
                         }
                         .textSelection(.enabled)
@@ -154,8 +157,8 @@ private struct PersonPageView: View {
                 } description: {
                     Text(why)
                 } actions: {
-                    // A session whose access ended asks nothing again: its words say why.
-                    if !host.accessEnded { Button("Try Again", action: retry) }
+                    // Try Again only for silence: a sign-in, a connect or an ended access asks nothing again (the shared rule).
+                    if host.down?.isSilence == true { Button("Try Again", action: retry) }
                 }
             case .failed:
                 ContentUnavailableView {

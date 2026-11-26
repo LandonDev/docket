@@ -478,7 +478,7 @@ struct ComposerButton: View {
 
     private var glyphColor: Color {
         guard enabled else { return Color(.tertiaryLabel) }
-        return intent == .pause ? Color(.systemBackground) : Color.white
+        return intent == .pause ? Color(.systemBackground) : Tint.onAccent
     }
 
     var body: some View {

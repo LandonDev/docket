@@ -23,6 +23,8 @@ enum Tint {
     static let quiet = Color(.systemGray2)
     /// A glyph on a destructive fill (the voice note's listening mic): white in both modes.
     static let onDestructive = Color(.white)
+    /// A glyph on the accent fill (the composer's Send, a chat's Copy): white in both modes.
+    static let onAccent = Color(.white)
     /// Warning and destructive as small text on a group fill. In light mode
     /// they are a step darker than the system's increased-contrast orange and
     /// red, which measure 4.1:1 on `Surface.group`: these reach 4.9:1 and

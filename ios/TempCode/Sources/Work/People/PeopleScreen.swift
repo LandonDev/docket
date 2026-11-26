@@ -80,7 +80,8 @@ private struct PeopleList: View {
             loading: Self.loading(host: host, pages: pages.map(\.query)),
             empty: query.isEmpty ? PlaceEmpty(title: "No People") : PlaceEmpty(title: "No Results", line: "No one here is called “\(query)”."),
             failure: Self.failure(host: host, pages: pages.map(\.query)),
-            retry: { await retry(pages.map(\.query)) },
+            // Try Again only where asking again can help: not for a sign-in or a connect (the shared rule).
+            retry: host.connecting || host.down.map(\.isSilence) == false ? nil : { await retry(pages.map(\.query)) },
             jobs: filter,
             filter: filter.isEmpty ? nil : pick,
             search: $query,
@@ -148,14 +149,18 @@ private struct PersonRow: View {
                     .frame(width: Layout.dotSize, height: Layout.dotSize)
                     .frame(width: Layout.markWidth)
                 VStack(alignment: .leading, spacing: 2) {
-                    // At accessibility sizes the name and address wrap, so two people stay told apart.
+                    // At accessibility sizes the name wraps, so two people stay told apart. The address keeps one line,
+                    // never hyphenated inside it ("dana@cos-micgames"): it shrinks to fit whole, to half its size, and
+                    // past that gives up its middle, as a person's page says it.
                     Text(person.name)
                         .textStep(.title)
                         .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                     if let line = PeopleRules.rowLine(person) {
                         Text(line)
                             .textStep(.meta)
-                            .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .minimumScaleFactor(typeSize.isAccessibilitySize ? 0.5 : 1)
                     }
                 }
                 Spacer(minLength: 0)

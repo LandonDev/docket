@@ -92,7 +92,7 @@ final class WorkLifeHost: LifeActions {
         // LifeOS is signed out ends nothing here, so Today's Due rows stay for the m1 tick (iw13 had none to tick).
         if TestHooks.lifeFixtures { return }
         #endif
-        end(state: "signed-out", words: Self.words(.host("signed-out")))
+        end(state: "signed-out", words: words(.host("signed-out")))
     }
 
     /// The session ends: its stores stop and forget every query and value, a token or sign-in still out is dropped
@@ -241,11 +241,11 @@ final class WorkLifeHost: LifeActions {
             return
         } catch let refusal as LifeToken.Refusal {
             if case .host(let state) = refusal { refusedState = state }
-            phase = .unavailable(Self.words(refusal))
+            phase = .unavailable(words(refusal))
         } catch {
             // The every-job host's call itself refused (an older host, a key the host turns away): the places go per job.
             if workspaceId == nil { refusedWhole = true }
-            phase = .unavailable("LifeOS did not answer.")
+            phase = .unavailable(TodayDown.unanswered.words(host: client.environment.name))
         }
     }
 
@@ -331,17 +331,26 @@ final class WorkLifeHost: LifeActions {
         })
     }
 
-    private static func words(_ refusal: LifeToken.Refusal) -> String {
+    /// A refused token in the shared words (`TodayDown.words`), the computer it reads through named: "Not signed in to
+    /// LifeOS on the box", "LifeOS is still connecting on the box".
+    private func words(_ refusal: LifeToken.Refusal) -> String {
+        let host = client.environment.name
         switch refusal {
-        case .host("unreachable"): "LifeOS did not answer."
-        case .host("connecting"): "LifeOS is still connecting."
-        case .host("pairing"): "The LifeOS sign-in waits for your approval."
-        case .host("refused"): "LifeOS refused the sign-in."
-        case .host("off"): "LifeOS is off on this computer."
-        case .host: "Signed out of LifeOS"
-        case .malformed: "LifeOS did not answer."
+        case .host("connecting"): return LifeosWords.connecting(host: host)
+        case .host(let state): return (TodayDown.of(state: state) ?? .unanswered).words(host: host)
+        case .malformed: return TodayDown.unreachable.words(host: host)
         }
     }
+
+    /// Why the screens cannot read, by the shared rule: nil while it reads, loads, connects, or after its access ended
+    /// (which says so in its own words and offers nothing).
+    var down: TodayDown? {
+        guard case .unavailable = phase, !accessEnded, refusedState != "connecting" else { return nil }
+        return TodayDown.of(state: refusedState)
+    }
+
+    /// The host said its LifeOS is still connecting: a wait, with no press.
+    var connecting: Bool { phase != .ready && refusedState == "connecting" }
 
     // MARK: - LifeActions
 

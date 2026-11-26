@@ -272,7 +272,7 @@ struct CardButton: View {
                 }
             }
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(role == .prominent ? Color.white : Color.primary)
+            .foregroundStyle(role == .prominent ? Tint.onAccent : Color.primary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .frame(minHeight: 40)

@@ -153,17 +153,9 @@ enum TodayLife {
     }
 
     /// A refused session in the desktop's words (`downOf`), by the state the host refused with; nil for a wait (its
-    /// LifeOS still connecting). The host's own silence, or a state this build does not know, is unanswered.
+    /// LifeOS still connecting). The shared rule (`TodayDown.of(state:)`).
     private static func down(_ host: WorkLifeHost) -> TodayDown? {
-        switch host.refusedState {
-        case "connecting"?: nil
-        case "signed-out"?: .signedOut
-        case "pairing"?: .pairing
-        case "refused"?: .refused
-        case "off"?: .off
-        case "unreachable"?: .unreachable
-        default: .unanswered
-        }
+        TodayDown.of(state: host.refusedState)
     }
 
     /// A LifeOS failure's Retry: every Work host's whole session asks its queries again (`.lifeos`), or the one job's
