@@ -285,8 +285,9 @@ export function ReviewPageView({
           ) : view.settled ? null : (
             <>
               <HoursSkeleton rows={view.jobs || undefined} />
-              <RowsSkeleton title="Shipped" />
-              <RowsSkeleton title="Slipped" tall />
+              {/* Never more jobs' bones than the window knows of, so a one-job week does not drop Slipped when it lands. */}
+              <RowsSkeleton title="Shipped" groups={Math.min(2, view.jobs ?? 0) || undefined} />
+              <RowsSkeleton title="Slipped" groups={Math.min(2, view.jobs ?? 0) || undefined} tall />
             </>
           )}
         </div>

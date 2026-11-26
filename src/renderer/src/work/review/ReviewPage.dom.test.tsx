@@ -510,6 +510,17 @@ describe("the other states", () => {
     expect(rows(draw("loading").container)).toBe(6);
   });
 
+  it("draws Shipped's and Slipped's bones one group for a one-job week, two at most (council R2-A3)", () => {
+    const groups = (root: HTMLElement, title: string) =>
+      [...root.querySelectorAll("section")].find((s) => s.querySelector("h2")!.textContent === title)!.querySelectorAll(".flex.flex-col.gap-4 > div").length;
+    const { view, now } = fixtureView("loading");
+    const one = draw("loading", { view: { ...view, jobs: 1 }, now }).container;
+    expect([groups(one, "Shipped"), groups(one, "Slipped")]).toEqual([1, 1]);
+    cleanup();
+    const six = draw("loading").container;
+    expect([groups(six, "Shipped"), groups(six, "Slipped")]).toEqual([2, 2]);
+  });
+
   it("keeps the first lines in one rhythm: the red line with Retry is Retry's height, never overhung (council R1-A14)", () => {
     const { container } = draw("failed");
     const over = container.querySelector("[data-review-over]")!;
