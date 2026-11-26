@@ -23,7 +23,7 @@ export type SubscriptionHandlers = {
   /** The history request is leaving now (after any subscribe it waited on): the open's clock (openStamps.ts). */
   asked?(): void;
   /** `ok` false: the read failed. Its held pushes stay held for the next read, so the cursor stays behind the gap. */
-  end?(ok: boolean): void;
+  end?(ok: boolean, error?: unknown): void;
   /** `session.subscribe` was refused: the session is gone from the host. */
   gone?(reason: string): void;
 };
@@ -189,6 +189,7 @@ export class Subscriptions {
     }
     const run = (async (): Promise<EventsPage> => {
       let done = false;
+      let error: unknown;
       handlers.begin?.();
       const subscribe = async (): Promise<void> => {
         try {
@@ -266,8 +267,11 @@ export class Subscriptions {
         }
         done = true;
         return page;
+      } catch (err) {
+        error = err;
+        throw err;
       } finally {
-        handlers.end?.(done);
+        handlers.end?.(done, error);
       }
     })().finally(() => {
       if (this.inFlight.get(sessionId)?.run === run) this.inFlight.delete(sessionId);

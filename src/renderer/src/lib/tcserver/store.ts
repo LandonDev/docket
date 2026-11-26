@@ -198,6 +198,8 @@ type Entry = {
   /** A held transcript whose replay failed tries again on the load retry's delay (`retryHeld`). */
   heldRetry?: { timer: ReturnType<typeof setTimeout>; attempt: number } | null;
   heldAttempts?: number;
+  /** Its replay met the host's own refusal: no retry asks again until a replay of it works. */
+  heldRefused?: boolean;
   /** Times this entry was unloaded: a fold that yielded across one stops (its rows are no longer this fold's). */
   unloads?: number;
   /** The replay of its gap on its way, and the socket it runs on: one on a newer socket waits it out. */
@@ -1930,7 +1932,7 @@ class SessionStore {
         await this.foldSliced(entry, page.rows);
         openStamps.folded(id);
       },
-      end: (ok: boolean) => {
+      end: (ok: boolean, error?: unknown) => {
         // A replay on an older socket never drains the hold a newer one made.
         if (entry.heldOn !== socket) return;
         // A failed read: the rows pushed meanwhile may be past rows it never brought, so they stay held, and the next
@@ -1939,10 +1941,14 @@ class SessionStore {
           entry.resyncHold = true;
           entry.heldFailed = true;
           entry.resyncAt = undefined;
+          // The link's failure tries again; the host's own answer (the thread gone, the read refused) does not, as
+          // a load's does not: the hold and his unechoed sends stay as they are.
+          entry.heldRefused = error !== undefined && !isConnectionFailure(error);
           this.retryHeld(entry);
           return;
         }
         entry.heldFailed = false;
+        entry.heldRefused = false;
         entry.heldAttempts = 0;
         const at = entry.resyncAt;
         entry.resyncAt = undefined;
@@ -2023,7 +2029,7 @@ class SessionStore {
   /** A held transcript's replay, once more after the load retry's delay (1, 2, 4, 8, then every 15 s), on the live
    *  socket; the cursor stays behind the gap until one works. */
   private retryHeld(entry: Entry): void {
-    if (entry.heldRetry) return;
+    if (entry.heldRetry || entry.heldRefused) return;
     const attempt = entry.heldAttempts ?? 0;
     entry.heldRetry = {
       attempt,

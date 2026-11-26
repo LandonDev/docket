@@ -857,6 +857,38 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1", "late 2"]);
   });
 
+  it("a held replay the host refuses (the thread gone) does not ask again every 15 s; a dropped link does (Sol S28)", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const answer of ["refused", "dropped"] as const) {
+        sessionStore.reset();
+        link = new RemoteLink();
+        link.pages = [[wireMeta({ id: "s" })]];
+        link.events.set("s", turns("s", 2));
+        await boot(link);
+        sessionStore.setMounted(["s"]);
+        await sessionStore.ensureLoaded("s");
+        const real = link.request.bind(link);
+        link.request = (<T,>(method: string, params?: unknown): Promise<T> => {
+          if (method === "session.events") {
+            link.calls.push({ method, params });
+            return Promise.reject(answer === "refused" ? new Error("unknown session: s") : new ConnectionLostError("connection closed"));
+          }
+          return real<T>(method, params);
+        }) as typeof link.request;
+        link.push({ push: "resync" });
+        await vi.advanceTimersByTimeAsync(0);
+        const asked = (): number => link.calls.filter((c) => c.method === "session.events").length;
+        const first = asked();
+        await vi.advanceTimersByTimeAsync(60_000);
+        if (answer === "refused") expect(asked()).toBe(first);
+        else expect(asked()).toBeGreaterThan(first);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
   async function masterWithChild(): Promise<{ asked: () => string[] }> {
     link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];
