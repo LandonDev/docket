@@ -36,19 +36,22 @@ private struct MeetingPage: View {
 
     private var shown: MeetingPhone { meeting ?? initial }
     private var plays: Bool { shown.media != nil }
-    private var video: Bool { shown.media?.kind == .video }
+    /// This key may read the recording: only then do the player and a line's press to play from it exist.
+    private var mayPlay: Bool { client.work.may(.meetingsRecording) }
+    private var video: Bool { shown.media?.kind == .video && mayPlay }
     private var mayDecide: Bool { client.work.may(.meetingsDecide) }
     private var waiting: [MeetingActions.Action] { MeetingActions.waiting(shown) }
 
     var body: some View {
         ReaderSpread(enabled: video) {
-            if plays { MeetingPlayerBar(player: player) }
+            if plays, mayPlay { MeetingPlayerBar(player: player) }
         } with: {
             list
         } single: { thing, with in
             VStack(spacing: 0) {
                 if plays {
-                    thing
+                    // A recording this key may not read is said in the player's place.
+                    if mayPlay { thing } else { RecordingWithheld() }
                     Divider()
                 }
                 with
@@ -73,7 +76,7 @@ private struct MeetingPage: View {
             }
         }
         .task(id: item.id) {
-            guard plays, client.work.may(.meetingsRecording) else { return }
+            guard plays, mayPlay else { return }
             await player.open(item.id, canvas: client.work.canvas, video: video, duration: shown.durationSec)
         }
         .onDisappear { player.close() }
@@ -100,20 +103,17 @@ private struct MeetingPage: View {
             if !shown.segments.isEmpty {
                 Section {
                     ForEach(shown.segments, id: \.id) { line in
-                        Button { if player.state == .ready { player.play(from: line.start) } } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 8) {
-                                    Text(line.speaker.flatMap { names[$0] } ?? "Someone").textStep(.meta, weight: .semibold, tint: .primary)
-                                    Text(mediaClock(line.start)).textStep(.stamp).monospacedDigit().foregroundStyle(.secondary)
-                                }
-                                Text(line.text).font(.body).foregroundStyle(.primary)
+                        // A line plays from its time only where there is playback; else it is a plain row.
+                        if plays, mayPlay {
+                            Button { if player.state == .ready { player.play(from: line.start) } } label: {
+                                segmentLine(line, names: names)
                             }
-                            .padding(.vertical, 2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .accessibilityHint(player.state == .ready ? "Plays from here" : "")
+                        } else {
+                            segmentLine(line, names: names)
+                                .accessibilityElement(children: .combine)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityHint(player.state == .ready ? "Plays from here" : "")
                     }
                 } header: {
                     if !tasks.isEmpty { GroupHeader("Transcript") }
@@ -123,6 +123,20 @@ private struct MeetingPage: View {
         .listStyle(.plain)
         .animation(Motion.rowLeave, value: tasks.map(\.id))
         .refreshable { reload() }
+    }
+
+    /// A transcript line: who and when on one line, the words under it.
+    private func segmentLine(_ line: MeetingPhone.Segment, names: [String: String]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Text(line.speaker.flatMap { names[$0] } ?? "Someone").textStep(.meta, weight: .semibold, tint: .primary)
+                Text(mediaClock(line.start)).textStep(.stamp).monospacedDigit().foregroundStyle(.secondary)
+            }
+            Text(line.text).font(.body).foregroundStyle(.primary)
+        }
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private func taskRow(_ action: MeetingActions.Action) -> some View {
@@ -181,6 +195,17 @@ private struct MeetingPage: View {
 
 /// The browser (milestone 47): the page live, who drives and where, Take Over and Hand Back, and an act the
 /// browser holds for him as the one prominent button, which opens it in the Outbox.
+/// A meeting's recording this key may not read, said in the player's place.
+private struct RecordingWithheld: View {
+    var body: some View {
+        Text("This iPhone’s key can’t play the recording.")
+            .textStep(.meta)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Layout.textEdge)
+            .padding(.vertical, 12)
+    }
+}
+
 struct BrowserItemView: View {
     @Environment(ShellNavigator.self) private var navigator
     let client: EnvironmentClient
@@ -332,7 +357,8 @@ struct FormItemView: View {
                                     if column < row.count, !row[column].isEmpty {
                                         VStack(alignment: .leading, spacing: 1) {
                                             Text(question.label).textStep(.meta).foregroundStyle(.secondary)
-                                            Text(row[column]).font(.body)
+                                            // Submitted as a day and time, as the desktop's column says it; any other answer as given.
+                                            Text(FormWords.cell(row[column], column: column, columns: responses.columns.count, now: .now, calendar: .current)).font(.body)
                                         }
                                     }
                                 }
