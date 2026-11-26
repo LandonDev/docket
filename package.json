@@ -13,6 +13,7 @@
     "typecheck": "bun scripts/typecheck.ts",
     "journeys": "bun scripts/journeys/run.ts",
     "perf": "bun scripts/perf/run.ts",
+    "perf:host": "bun scripts/perf/host.ts",
     "icons": "bun scripts/make-icons.ts",
     "gen:swift": "bun scripts/gen-swift-contract.ts",
     "check:swift-contract": "bun scripts/gen-swift-contract.ts --check",

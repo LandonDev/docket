@@ -236,7 +236,7 @@ async function main(): Promise<number> {
     if (pair.sandbox && !code) await pair.checkSeededMail(workspace)
     if (f.load > 0) {
       const busy = code ? await pair.codeProject(`Perf load ${id.slice(-6)}`, 20) : await pair.workspace(`Perf load ${id.slice(-6)}`, 'ref')
-      await startLoad(pair, busy.id, f.load, code ? 'code' : 'work')
+      await startLoad(pair, busy.id, f.load, { scope: code ? 'code' : 'work', room: 8 })
     }
     const ctx = perfCtx({ pair, page: pair.page, counter, workspace, other, repo, folder, family: f.family, ...(seeded ? { seeded } : {}) })
     let spent = 0

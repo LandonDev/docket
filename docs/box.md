@@ -3101,6 +3101,13 @@ was rewritten with the new cursor.
 
 ## Answers under load
 
+`bun run perf:host --list` lists the headless host benchmarks. They use a
+scratch Docket instance and a loopback provider, with 40 stand-in threads
+for the load scenes. Run one scene through the box queue while load is
+below 16. The run's only ask to the live service is the watchdog's hello.
+See [the host bench](agents/work-perf.md#the-headless-host-bench) for the
+scenes, output files, and boot fixtures.
+
 On 2026-11-23 at about 7:45 p.m. Central, load 27 to 35 on 32 cores, the
 Mac timed out on six connects (its hello waits 4 s) and the box answered
 `checkpoint.status` in 108 s and `commands.list` in 104 s. What held them:

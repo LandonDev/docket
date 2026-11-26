@@ -86,6 +86,31 @@ workspace's folder, in a library on the window's machine, in one on a third mach
 a document, a Word file, a workbook, a deck, a PDF, a picture and a video, `tab-<kind>-A` (back to an open
 file's tab), `saved-text-<shape>`, `ask-box`, `ask-first-content`, `reconnect`.
 
+## The headless host bench
+
+Build the isolated app in the measurement worktree, then run one scene through the box queue while the one-minute load is below 16.
+
+```sh
+.temp-code/bin/heavy --low bunx electron-vite build
+.temp-code/bin/heavy --low bun run perf:host --scene connect
+.temp-code/bin/heavy --low bun run perf:host --scene loop --browser
+bun run perf:host --list
+```
+
+The bench pins itself, the headless Electron host, and its children to the last eight allowed CPUs. It makes its own scratch checkout, home, user data, ports, and empty VM folder. It gives the scratch host a cap of 40 and checks that all 40 dummy threads are running before it starts the scene. Remote sockets use keys minted by that host. The watchdog sends only hello to the live box. The bench stops if the watchdog trips, one-minute load reaches 16, or I/O pressure passes the plan's limit.
+
+| Scene | What it records |
+| --- | --- |
+| `connect` (H01) | Connect and focus request times from a remote socket while delayed scratch git reads hold the bulk queue. |
+| `loop` (H02) | One minute of delay measured on the host's main loop, with each block over 100 ms. `--browser` opens and reads a local dummy page through the box browser carrier. |
+| `read` (H03) | Remote transcript tail, catch-up after a disconnect, and a history page while two peers reconnect. Checks each page against its expected sequence range. |
+| `flush` (H04) | Event flushes the stall log records under four CPU burners. The log currently keeps flushes at 50 ms and above, so these times and the reported share cover only logged flushes. Slow disk needs root and is skipped. |
+| `settle` (H05) | Blocks over 50 ms in the ten seconds after one signal ends all 40 streams. The result includes any timed causes the stall log names. |
+| `watch` (H09) | File pushes to one remote subscriber, folder watches, and blocks over 50 ms while 40 writers make 1,000 changes in scratch worktrees. |
+| `--boot` (H06) | Time to the first hello, the first and focused resumed threads, and all 40 resumed threads. The default seed is 48 threads and 6,000 rows. `--seed-size real` uses 2,000 threads and 1,000,000 rows, with 30,000 in the longest thread. |
+
+`--boot --copy <userData>` measures only hello on a scrubbed copy. It needs the scrub tool's marker check and an empty resume ledger. Boot writes to the supplied scratch copy and uses its own HOME, disables the remote listener, and routes model calls to loopback. The bench writes results, including failures, under the main checkout's `.temp-code/plans/perf2/runs/host-<scene>-<stamp>.json`.
+
 ## The pass's numbers
 
 Before (Nov 24, 7633505ea) and after (Nov 25, 49bedd5e8 with the kit's Host fix) sit side by side in

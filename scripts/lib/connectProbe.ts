@@ -143,46 +143,86 @@ export interface ProbeClient {
   close(): void
 }
 
+type ClientOptions = {
+  signal?: AbortSignal
+  hello?: boolean
+  onPush?: (frame: Frame & { projectId?: string }) => void
+}
+
 /** A contract socket at `url` (the global WebSocket: node 22 and bun both have it). */
-export async function openClient(url: string, capMs = 10_000): Promise<ProbeClient> {
+export async function openClient(url: string, capMs = 10_000, options: ClientOptions = {}): Promise<ProbeClient> {
+  const { signal, hello, onPush } = options
+  signal?.throwIfAborted()
   const ws = new WebSocket(url)
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`no open from ${url.replace(/\?.*/, '')} in ${capMs} ms`)), capMs)
-    ws.addEventListener('open', () => (clearTimeout(timer), resolve()), { once: true })
-    ws.addEventListener('error', () => (clearTimeout(timer), reject(new Error(`socket error on ${url.replace(/\?.*/, '')}`))), { once: true })
-  })
+  const ready = Promise.withResolvers<void>()
+  const address = url.replace(/\?.*/, '')
+  const timer = setTimeout(() => ready.reject(new Error(`no ${hello ? 'hello' : 'open'} from ${address} in ${capMs} ms`)), capMs)
   let next = 1
-  const pending = new Map<string, (frame: Frame) => void>()
-  ws.addEventListener('message', (message) => {
-    const frame = JSON.parse(String(message.data)) as Frame
-    if (!frame.push && frame.id) pending.get(frame.id)?.(frame)
-  })
+  const pending = new Map<string, (frame: Frame | null) => void>()
+  const close = (): void => {
+    signal?.removeEventListener('abort', abort)
+    for (const done of pending.values()) done(null)
+    if (ws.readyState < WebSocket.CLOSING) ws.close()
+  }
+  const abort = (): void => {
+    ready.reject(signal?.reason)
+    close()
+  }
+  signal?.addEventListener('abort', abort, { once: true })
+  ws.onopen = () => { if (!hello) ready.resolve() }
+  ws.onerror = ws.onclose = () => {
+    ready.reject(new Error(`socket closed on ${address}`))
+    close()
+  }
+  ws.onmessage = (message) => {
+    let frame: Frame
+    try {
+      frame = JSON.parse(String(message.data)) as Frame
+    } catch (error) {
+      ready.reject(error)
+      close()
+      return
+    }
+    if (frame.push === 'hello') ready.resolve()
+    if (frame.push) onPush?.(frame)
+    else if (frame.id) pending.get(frame.id)?.(frame)
+  }
+  try {
+    await ready.promise
+  } catch (error) {
+    close()
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
   return {
     request(method, params, capMs) {
       const id = String(next++)
       const started = performance.now()
       return new Promise<Timed>((resolve) => {
-        const timer = setTimeout(() => {
-          pending.delete(id)
-          resolve({ ms: capMs, frame: null })
-        }, capMs)
-        pending.set(id, (frame) => {
+        const timer = setTimeout(() => finish(null, capMs), capMs)
+        const finish = (frame: Frame | null, ms = performance.now() - started): void => {
           clearTimeout(timer)
           pending.delete(id)
-          resolve({ ms: performance.now() - started, frame })
-        })
-        ws.send(JSON.stringify({ id, method, ...(params === undefined ? {} : { params }) }))
+          resolve({ ms, frame })
+        }
+        pending.set(id, finish)
+        try {
+          ws.send(JSON.stringify({ id, method, ...(params === undefined ? {} : { params }) }))
+        } catch {
+          finish(null)
+        }
       })
     },
-    close: () => ws.close()
+    close
   }
 }
 
 export const localUrl = (server: Pick<RunningServer, 'port'>): string => `ws://127.0.0.1:${server.port}`
 
 /** The fixed port as a paired desktop reaches it: a ticket for the key, then `/ws?ticket=…`. */
-export async function remoteSocketUrl(baseUrl: string, key: string): Promise<string> {
-  const res = await fetch(`${baseUrl}/api/ticket`, { method: 'POST', headers: { authorization: `Bearer ${key}` } })
+export async function remoteSocketUrl(baseUrl: string, key: string, signal?: AbortSignal): Promise<string> {
+  const res = await fetch(`${baseUrl}/api/ticket`, { method: 'POST', headers: { authorization: `Bearer ${key}` }, signal })
   if (!res.ok) throw new Error(`/api/ticket answered ${res.status}`)
   const { ticket } = (await res.json()) as { ticket: string }
   return `${baseUrl.replace(/^http/, 'ws')}/ws?ticket=${ticket}`

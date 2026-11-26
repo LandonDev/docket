@@ -624,7 +624,8 @@ const EVAL_TIMEOUT_MS = 60_000
  */
 export async function attach(
   port: number, ms: number, signal?: AbortSignal,
-  matchesPage: (url: string) => boolean = (url) => /\/index\.html(\?|#|$)/.test(url)
+  matchesPage: (url: string) => boolean = (url) => /\/index\.html(\?|#|$)/.test(url),
+  targetType = 'page'
 ): Promise<Cdp> {
   const end = Date.now() + ms
   let found: WebSocket | null = null
@@ -635,7 +636,7 @@ export async function attach(
       signal: signal ? AbortSignal.any([deadline, signal]) : deadline
     }).then((r) => r.json()).catch(() => []) as { type: string; url: string; webSocketDebuggerUrl?: string }[]
     signal?.throwIfAborted()
-    const url = (Array.isArray(list) ? list : []).find((t) => t.type === 'page' && matchesPage(t.url))?.webSocketDebuggerUrl
+    const url = (Array.isArray(list) ? list : []).find((t) => t.type === targetType && matchesPage(t.url))?.webSocketDebuggerUrl
     if (url) {
       const socket = new WebSocket(url)
       const open = await new Promise<boolean>((ok) => {
