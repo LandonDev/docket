@@ -1907,7 +1907,13 @@ class SessionStore {
         await this.foldSliced(entry, page.rows);
         openStamps.folded(id);
       },
-      end: () => {
+      end: (ok: boolean) => {
+        // A failed read: the rows pushed meanwhile may be past rows it never brought, so they stay held, and the next
+        // replay runs through the hold (`resyncHold`) and folds them after its page.
+        if (!ok && entry.held) {
+          entry.resyncHold = true;
+          return;
+        }
         const held = entry.held;
         entry.held = null;
         // The fold drops whatever history already covered.

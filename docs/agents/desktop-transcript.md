@@ -188,7 +188,9 @@
   one too (the threads only in the rail's Working list were each fetched
   again after every cut), unless a send of his is pending. A page folds
   in slices of FOLD_SLICE_MS (8 ms) with the window given back between
-  them; pushes stay held until the last slice. A cold load at launch takes
+  them; pushes stay held until the last slice, and past a read that
+  failed: they may be rows after ones it never brought, so the next replay
+  runs through that hold (`resyncHold`) and folds them after its page. A cold load at launch takes
   the same lane. No wait there is unbounded: background work waits for the
   shown thread's fetches at most FRONT_WAIT_MS (2 s) and on one fetch at
   most TURN_WAIT_MS (10 s); a transcript asked for again while it waits

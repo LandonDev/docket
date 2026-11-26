@@ -610,6 +610,34 @@ describe("remote profile: the catch-up after a reconnect", () => {
   });
 
 
+  it("a reconnect read that fails after the host pushed a later row keeps that row held: the cursor stays behind the gap until the retry's page (Sol S7)", async () => {
+    link.pages = [[wireMeta({ id: "s" })]];
+    link.events.set("s", turns("s", 2));
+    await boot(link);
+    sessionStore.followShown({ shown: () => "s", onChange: () => () => {} });
+    sessionStore.setMounted(["s"]);
+    await sessionStore.ensureLoaded("s");
+    const late = turns("s", 2, 5).map((r, i) => ({ ...r, event: { ...r.event, text: `late ${i}` } as EventRow["event"] }));
+    link.events.set("s", [...turns("s", 2), ...late]);
+    // The reconnect's read: the host subscribes, pushes row 7, and the page never comes (the socket's answer is lost).
+    const real = link.request.bind(link);
+    let failed = false;
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> => {
+      if (method === "session.events" && !failed) {
+        failed = true;
+        link.calls.push({ method, params });
+        link.push({ push: "event", row: late[2]! });
+        return Promise.reject(new ConnectionLostError("connection closed"));
+      }
+      return real<T>(method, params);
+    }) as typeof link.request;
+    link.open();
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(failed).toBe(true);
+    // The list's pass asked again (the early replay failed): rows 5..8 folded once, in order, row 7 not twice.
+    expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1", "late 2", "late 3"]);
+  });
+
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
   async function masterWithChild(): Promise<{ asked: () => string[] }> {
     link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];
