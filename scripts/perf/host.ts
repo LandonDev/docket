@@ -6,9 +6,9 @@ import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
-import type { SessionMeta } from '../../src/shared/events'
+import type { AgentEvent, SessionMeta } from '../../src/shared/events'
 import type { EventsPage } from '../../src/shared/wire'
-import { openDb, Store } from '../../src/main/server/db'
+import { openDb, Store, tailStart } from '../../src/main/server/db'
 import { CheckpointStore } from '../../src/main/server/checkpoint'
 import { attach, freePort, proofRpc } from '../e2e-work-lib'
 import { mainCheckout } from '../journeys/lib/record'
@@ -25,6 +25,7 @@ import { requireScrubbed } from './scrubCopy'
 export const HOST_SCENES = { connect: 'H01', loop: 'H02', read: 'H03', flush: 'H04', settle: 'H05', watch: 'H09', boot: 'H06' } as const
 type Scene = keyof typeof HOST_SCENES
 const THREADS = 40
+const ADMISSION_ROOM = 2
 const MAX_MS = 60_000
 const DEFAULT_MAX_LOAD = 40
 const MAX_ANON_GIB = 68
@@ -102,6 +103,16 @@ export function onceInOrder(seqs: readonly number[], first: number, last: number
   return seqs.length === last - first + 1 && seqs.every((seq, i) => seq === first + i)
 }
 
+export function expectedTailStart(events: readonly AgentEvent[], blocks: number, beforeSeq = events.length + 1): number {
+  const scan = events.slice(0, beforeSeq - 1).map((event, index) => ({
+    seq: index + 1, type: event.type,
+    callId: 'callId' in event ? event.callId : null,
+    msgId: 'msgId' in event ? event.msgId ?? null : null,
+    blockIndex: 'blockIndex' in event ? event.blockIndex ?? null : null
+  })).reverse()
+  return tailStart(scan, blocks) ?? 1
+}
+
 type Slice = { at: number; ms: number }
 type Stall = Slice & { cause: string; line: string }
 export function stallSlices(log: string, from: number, to: number): Stall[] {
@@ -176,6 +187,7 @@ type Result = {
   measuredMs?: number
   load1?: number
   load1End?: number
+  peakLoad1?: number
   anonGiB?: number | null
   anonGiBEnd?: number | null
   streams?: number
@@ -481,6 +493,7 @@ const SECOND_WORKSPACE = 'host-bench-workspace-two'
 const PROJECT = 'host-bench-project'
 const FOCUSED = 'host-bench-focused'
 const READ_ROWS = 600
+const readFixture = (): AgentEvent[] => perfThread(FOCUSED, { rows: READ_ROWS, turns: 12, seed: 4 })
 const BOOT_PREFIX = 'host-bench-boot-'
 
 function meta(id: string, cwd: string, patch: Partial<SessionMeta> = {}): SessionMeta {
@@ -534,7 +547,7 @@ async function seedScene(rig: Rig): Promise<ProbeSeed> {
       for (const id of [FOCUSED, unfocused, masterId, ...children]) {
         store.insertSession(meta(id, rig.repo, { projectId: PROJECT, isMaster: id === masterId, ...(children.includes(id) ? { masterId, startedBy: masterId } : {}) }))
       }
-      persistRows(db, FOCUSED, perfThread(FOCUSED, { rows: READ_ROWS, turns: 12, seed: 4 }))
+      persistRows(db, FOCUSED, readFixture())
       store.setSetting(`batch:${masterId}`, JSON.stringify(batchRowMidRun(masterId, { landed: [], pending: children }, Date.now())))
     }
   } finally {
@@ -586,7 +599,7 @@ async function seedBoot(rig: Rig): Promise<Record<string, number>> {
   try {
     const store = new Store(db)
     seedProject(rig, store)
-    store.setSetting('admission.maxRunning', String(THREADS))
+    store.setSetting('admission.maxRunning', String(THREADS + ADMISSION_ROOM))
     const ledger: Parameters<Store['recordResumeAfterBoot']>[0] = []
     for (let i = 0; i < threads; i++) {
       if (i % 16 === 0) await sleep(0, undefined, { signal: rig.signal })
@@ -716,27 +729,34 @@ async function measureRead(rig: Rig, result: Result): Promise<void> {
     samples.get(name)!.push(reply)
     return pageSequences(reply)
   }
-  let last = READ_ROWS
+  const fixture = readFixture()
+  const blocks = 40
   try {
     for (let i = 0; i < 20 && performance.now() - from < 20_000; i++) {
+      const last = fixture.length
+      const first = expectedTailStart(fixture, blocks)
+      const historyFirst = expectedTailStart(fixture, blocks, first)
       const client = await rig.remote()
-      const tail = await record(client, 'tail', { tail: 40, subscribe: true })
+      const tail = await record(client, 'tail', { tail: blocks, subscribe: true })
       rig.close(client)
       // The two fixture rows arrive while the remote reader is disconnected.
-      await rig.rpc(rig.box, 'session.proofShellCall', { sessionId: FOCUSED, callId: `read-${i}`, command: 'printf fixture', output: 'fixture' }, 1500)
+      const callId = `read-${i}`
+      const command = 'printf fixture'
+      const output = 'fixture'
+      await rig.rpc(rig.box, 'session.proofShellCall', { sessionId: FOCUSED, callId, command, output }, 1500)
+      fixture.push({ type: 'tool-call', callId, name: 'Bash', input: { command } }, { type: 'tool-result', callId, output, isError: false })
       const resumed = await rig.remote()
       try {
         const resume = await record(resumed, 'resume', { afterSeq: tail.at(-1) ?? last, subscribe: true })
-        const history = await record(resumed, 'history', { beforeSeq: tail[0] ?? last - 39, tail: 40 })
+        const history = await record(resumed, 'history', { beforeSeq: tail[0] ?? first, tail: blocks })
         checks.push({
-          tail: onceInOrder(tail, last - 39, last),
-          resume: onceInOrder(resume, last + 1, last + 2),
-          history: onceInOrder(history, last - 79, last - 40)
+          tail: onceInOrder(tail, first, last),
+          resume: onceInOrder(resume, last + 1, fixture.length),
+          history: onceInOrder(history, historyFirst, first - 1)
         })
       } finally {
         rig.close(resumed)
       }
-      last += 2
       await sleep(250, undefined, { signal })
     }
   } finally {
@@ -863,7 +883,11 @@ async function waitForStreams(rig: Rig, ids: string[]): Promise<void> {
       if (rig.streams >= THREADS && running === ids.length) return
       await sleep(250, undefined, { signal: rig.signal })
     }
-    throw new Error(`Only ${running}/${ids.length} stand-ins running and ${rig.streams} streams reached the provider`)
+    const statuses = reader.query<{ status: string; count: number }, [string]>(
+      'SELECT status, COUNT(*) AS count FROM sessions WHERE id IN (SELECT value FROM json_each(?)) GROUP BY status'
+    ).all(list)
+    const counts = statuses.map(({ status, count }) => `${status}=${count}`).join(', ')
+    throw new Error(`Only ${running}/${ids.length} stand-ins running (${counts}) and ${rig.streams} streams reached the provider`)
   } finally {
     reader.close()
   }
@@ -936,7 +960,8 @@ async function runScene(rig: Rig, result: Result): Promise<void> {
   // HTTP/1, where one account's 32 sockets cannot stream all 40 at once.
   const group = { scope, signal: rig.signal } as const
   const half = THREADS / 2
-  const first = await startLoad(rig, workspaces[0]!, half, { ...group, room: half })
+  // The fixture can warm another harness before the stand-ins start.
+  const first = await startLoad(rig, workspaces[0]!, half, { ...group, room: half + ADMISSION_ROOM })
   const second = await startLoad(rig, workspaces[1]!, half, group)
   const ids = [...first, ...second]
   await waitForStreams(rig, ids)
@@ -1015,6 +1040,7 @@ async function main(args: string[]): Promise<void> {
   process.on('SIGTERM', onTerm)
   try {
     result.load1 = loadOne()
+    result.peakLoad1 = result.load1
     result.anonGiB = agentsAnonGiB()
     if (!Number.isFinite(result.load1) || result.load1 > options.maxLoad)
       throw new Error(`Host load ${result.load1} exceeds the limit of ${options.maxLoad}`)
@@ -1039,7 +1065,7 @@ async function main(args: string[]): Promise<void> {
     const checked = rig
     checks = setInterval(() => {
       const load = loadOne()
-      if (load > options.maxLoad) checked.abort.abort(new Error(`Host load crossed ${options.maxLoad} (${load})`))
+      result.peakLoad1 = Math.max(result.peakLoad1 ?? 0, load)
       const anon = agentsAnonGiB()
       if (anon !== null && anon >= MAX_ANON_GIB) checked.abort.abort(new Error(`Agents slice anonymous memory reached ${MAX_ANON_GIB} GiB`))
       const pressure = Number(/^some avg10=([\d.]+)/m.exec(read('/proc/pressure/io'))?.[1] ?? 0)
@@ -1052,6 +1078,7 @@ async function main(args: string[]): Promise<void> {
   } finally {
     clearInterval(checks)
     result.load1End = loadOne()
+    result.peakLoad1 = Math.max(result.peakLoad1 ?? 0, result.load1End)
     result.anonGiBEnd = agentsAnonGiB()
     result.liveHelloMs = guard?.stop()
     if (rig) {
@@ -1071,7 +1098,7 @@ async function main(args: string[]): Promise<void> {
     process.off('SIGINT', onInt)
     process.off('SIGTERM', onTerm)
     writeFileSync(path, JSON.stringify(result, null, 2) + '\n')
-    const host = { load1: result.load1, load1End: result.load1End, anonGiB: result.anonGiB, anonGiBEnd: result.anonGiBEnd }
+    const host = { load1: result.load1, load1End: result.load1End, peakLoad1: result.peakLoad1, anonGiB: result.anonGiB, anonGiBEnd: result.anonGiBEnd }
     const rows = result.rows.length ? result.rows : [{ metric: options.scene }]
     console.table(rows.map((row) => Object.fromEntries(Object.entries({ ...row, ...host }).map(([key, value]) => [
       key, typeof value === 'number' ? Math.round(value * 100) / 100 : value

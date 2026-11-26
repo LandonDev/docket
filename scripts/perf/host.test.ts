@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { seedFakeAccount } from '../journeys/lib/fakeProvider'
 import { describe, expect, it } from 'vitest'
-import { bootLayout, bootRows, copyIndexRows, hostFlags, HOST_SCENES, lastAllowedCores, onceInOrder, over, percentile, stallSlices } from './host'
+import { bootLayout, bootRows, copyIndexRows, expectedTailStart, hostFlags, HOST_SCENES, lastAllowedCores, onceInOrder, over, percentile, stallSlices } from './host'
 import { loadStream } from './lib/load'
 import { requireScrubbed } from './scrubCopy'
 
@@ -66,6 +66,19 @@ describe('timing and row counts', () => {
     expect(onceInOrder([12, 14], 12, 14)).toBe(false)
     expect(onceInOrder([12, 13], 12, 14)).toBe(false)
     expect(onceInOrder([12, 13, 14, 15], 12, 14)).toBe(false)
+  })
+
+  it('expects every raw row in a tail counted in transcript blocks', () => {
+    const rows = [
+      { type: 'user-text', text: 'First' },
+      { type: 'tool-call', callId: 'one', name: 'Read', input: {} },
+      { type: 'tool-result', callId: 'one', output: 'Dummy', isError: false },
+      { type: 'assistant-text', text: 'Last', delta: false },
+      { type: 'turn-complete' }
+    ] as const
+    expect(expectedTailStart(rows, 2)).toBe(2)
+    expect(expectedTailStart(rows, 1, 4)).toBe(2)
+    expect(expectedTailStart(rows, 10)).toBe(1)
   })
 
   it('uses nearest rank without changing the original samples', () => {

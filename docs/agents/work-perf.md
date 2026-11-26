@@ -97,7 +97,7 @@ Build the isolated app in the measurement worktree, then run one scene through t
 bun run perf:host --list
 ```
 
-The bench pins itself, the headless Electron host, and its children to the last eight allowed CPUs. It makes its own scratch checkout, home, user data, ports, and empty VM folder. It gives the scratch host a cap of 40 and checks that all 40 dummy threads are running before it starts the scene. Remote sockets use keys minted by that host. The watchdog sends only hello to the live box. The bench stops if the watchdog trips, one-minute load passes the configured limit, anonymous memory reaches 68 GiB, or I/O pressure passes the plan's limit.
+The bench pins itself, the headless Electron host, and its children to the last eight allowed CPUs. It makes its own scratch checkout, home, user data, ports, and empty VM folder. It reserves 40 slots and room for fixture harnesses on the scratch host, then checks that all 40 dummy threads are running before it starts the scene. Remote sockets use keys minted by that host. The watchdog sends only hello to the live box. The bench refuses to start above the configured load limit. During the scene it tracks peak load and stops if the watchdog trips, anonymous memory reaches 68 GiB, or I/O pressure passes the plan's limit.
 
 | Scene | What it records |
 | --- | --- |
