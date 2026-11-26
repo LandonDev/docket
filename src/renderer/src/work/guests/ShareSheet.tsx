@@ -271,7 +271,8 @@ function LinkRow({ env, link, onChanged, onAddress, onRevoked }: { env: string; 
       <Face name={link.name} size="row" />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-[13px] text-foreground">{link.name}</span>
-        {error ? <ErrorLine error={error} /> : <span className="truncate text-xs text-muted-foreground tabular-nums">{linkFacts(link)}</span>}
+        {/* Its facts wrap in a narrow sheet, so the date it ends is never cut away; the menu stays on the row's centre. */}
+        {error ? <ErrorLine error={error} /> : <span data-share-link-facts className="text-xs text-pretty text-muted-foreground tabular-nums">{linkFacts(link)}</span>}
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`${link.name}'s link`} disabled={busy} />}>{busy ? <BusyLabel busy label="" /> : <MoreHorizontal />}</DropdownMenuTrigger>

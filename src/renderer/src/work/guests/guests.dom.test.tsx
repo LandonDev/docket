@@ -137,6 +137,18 @@ describe("Share", () => {
     expect(await screen.findByPlaceholderText("Name")).toBeTruthy();
   });
 
+  /** Polish 2 council round 1 (R1-C22): in a 400px sheet a row's facts were cut, its end date with them. */
+  it("lets a link's facts wrap, so the date it ends is never cut away", async () => {
+    const { ShareButton } = await import("./Share");
+    calls.links = [LINK];
+    render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} kind="document" title="Run of show" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByText("Sam Ortiz");
+    const facts = document.querySelector<HTMLElement>("[data-share-link-facts]")!;
+    expect(facts.textContent).toMatch(/until \w{3} \d+$/);
+    expect(facts.className).not.toContain("truncate");
+  });
+
   it("revokes a link and changes what it can do from the row's menu", async () => {
     const { ShareButton } = await import("./Share");
     calls.links = [LINK];

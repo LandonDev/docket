@@ -90,7 +90,8 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
 
   // `version`: with Replace, the file's version its question named; a newer file there is asked about again.
   const save = async (exists?: "replace" | "keep", version?: string): Promise<void> => {
-    if (!at || pending) return;
+    // Return in the Name field asks as Save does: never with no name (the host would write "Untitled").
+    if (!at || pending || !stem.trim()) return;
     setPending(true);
     const asks = { workspaceId: workspace.id, source, at: at.folder.at, name, format, link, place: at.folder.name, ...(exists ? { exists } : {}), ...(exists === "replace" && version ? { version } : {}) };
     const said = JSON.stringify(asks);
@@ -200,7 +201,7 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
       </div>
       <DialogFooter
         onCancel={close}
-        // Where it lands is a long line: cut beside Cancel and Save, never pushing them under it.
+        // Where it lands is a long line: beside Cancel and Save, never pushing them under it.
         fill
         confirmLabel="Save"
         busyLabel="Saving…"
@@ -214,7 +215,8 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
             </label>
           ) : null
         }
-        note={<span className="min-w-0 truncate text-xs text-muted-foreground">{saveAsOutcome({ name, place: at?.folder.name ?? null, link })}</span>}
+        // Two lines at most, within the buttons' height: where the file will live is read whole, not cut mid-word.
+        note={<span data-save-as-outcome className="line-clamp-2 min-w-0 text-xs leading-4 whitespace-normal text-muted-foreground">{saveAsOutcome({ name, place: at?.folder.name ?? null, link })}</span>}
         onConfirm={() => void save()}
       />
     </Modal>

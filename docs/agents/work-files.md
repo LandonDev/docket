@@ -823,7 +823,8 @@ press that fails anyway says why on the dialog's own line
 
 **The dialog's walk** (MoveDialog.tsx). It opens in the folder the things are
 in with Move Here greyed and no note ("already here" is no refusal of the
-place's). New Folder stands at the trail's end where the place makes folders
+place's). New Folder stands at the trail's end, 8px from it, where the place makes folders
+(on a row of its own where the box cannot hold 8rem of trail beside it)
 and the grammar lets it (`makeIn`, as New → Folder); the folder made is the
 one he then stands in. Its places are the sidebar's (`placeItems`: the
 workspace's folder, then each library under its team, with `placeIcon`'s
@@ -2669,7 +2670,8 @@ picks, and stays linked to that file: each later edit is written to it.
   the host writes it (`formatForFile`, src/shared/work/saveAs.ts); a `.doc` starts as Word with "A .doc is saved as
   .docx" first on the drops line. At the right the document's first page as the host draws its Word file (`work.files.preview` on the
   document, LibreOffice), small; none for Markdown and none under 620px. The footer: Just a copy (unticked: linked),
-  one line of what Save does ("Saves Plan.docx in General, kept up to date", or "Saves a copy of …"), Cancel and Save.
+  what Save does ("Saves Plan.docx in General, kept up to date", or "Saves a copy of …") on up to two lines within
+  the buttons' height, Cancel and Save. Return in Name saves only as Save would: never with no name.
   A LifeOS or Google document is exported once, never linked (`savesLinked`, src/shared/work/saveAs.ts, which the host's
   `linkableDoc` uses too): its sheet has no Just a copy, its line says "Saves a copy of …", and it sends `link: false`.
 - **The formats are the host's own.** Word, OpenDocument, Rich Text and Markdown are the exporter's (`EXPORT_FORMATS`

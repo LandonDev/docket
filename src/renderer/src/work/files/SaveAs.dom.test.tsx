@@ -181,6 +181,22 @@ describe("the Save As… sheet", () => {
     expect(world.toasts).toEqual([]);
   });
 
+  /** Polish 2 council round 1 (R1-C20, R1-C24, R1-C21): Return in an empty Name still asked for "Untitled.docx"; the
+   *  line of where it lands was cut mid-word; New Folder ran over a trail too long for a narrow box. */
+  it("never saves with no name on Return, says where it lands on up to two lines, and keeps New Folder off the trail", async () => {
+    const dialog = await sheet();
+    await intoGeneral(dialog);
+    const name = within(dialog).getByRole("textbox") as HTMLInputElement;
+    fireEvent.change(name, { target: { value: "   " } });
+    fireEvent.keyDown(name, { key: "Enter" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(saved()).toEqual([]);
+    expect(dialog.querySelector<HTMLElement>("[data-save-as-outcome]")!.className.split(" ")).toEqual(expect.arrayContaining(["line-clamp-2", "whitespace-normal"]));
+    const trail = within(dialog).getByRole("navigation", { name: "Folder" });
+    expect(trail.className.split(" ")).toEqual(expect.arrayContaining(["flex-wrap", "gap-x-2"]));
+    expect(trail.querySelector("ol")!.className).toContain("flex-[1_1_8rem]");
+  });
+
   it("asks Replace or Keep Both over a file of that name, and never writes over it unasked", async () => {
     world.exists = true;
     world.choice = "other";

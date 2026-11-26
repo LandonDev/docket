@@ -275,9 +275,10 @@ export function Folders({ workspaceId, target, entries, onInto, onPlaces, end, f
   const trail: FileCrumb[] = listing.trail.length ? listing.trail : [{ name: target.name, at: target.at }];
   return (
     <>
-      {/* The shared Breadcrumb at the dialog's 12px, its 14px chevrons; New Folder (`end`) stands at its end, outside the list. */}
-      <Breadcrumb aria-label="Folder" className="flex shrink-0 items-center gap-0.5 pb-1">
-        <BreadcrumbList className="min-h-0 flex-nowrap text-xs">
+      {/* The shared Breadcrumb at the dialog's 12px, its 14px chevrons; New Folder (`end`) stands at its end, outside the
+          list, 8px from the trail. Where the box cannot hold 8rem of trail beside it, it takes a row of its own. */}
+      <Breadcrumb aria-label="Folder" className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-0.5 pb-1">
+        <BreadcrumbList className="min-h-0 flex-[1_1_8rem] flex-nowrap text-xs">
           <BreadcrumbItem className="shrink-0">
             <BreadcrumbLink className="max-w-none shrink-0 text-xs font-medium" onClick={onPlaces}>
               Places

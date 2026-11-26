@@ -717,7 +717,8 @@ main frame alone (ios HostedItemView.swift).
   guests/sharePort.ts), and a Files row's Share… (`actsFor`'s `share`,
   FilesView). On top For, Can, Ends; Create link shows the address once with
   Copy and New link. Under it the item's live links: who, then what they can
-  do, made, last opened and until when in one muted comma line (`linkFacts`,
+  do, made, last opened and until when in one muted comma line, wrapped in a
+  narrow sheet so the end date stays (`linkFacts`,
   guests/api.ts: the one way a link's facts are said, never a run of dots),
   and a menu: Replace address… (asked first; the new address shows once, in
   the form's place, with Copy), Can view / comment / edit, Revoke… (asked
