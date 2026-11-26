@@ -183,8 +183,13 @@
     50 s window. Heap after GC at the start and the end, and the store's
     census (`STORE_CENSUS`): transcripts loaded against the panes mounted and
     the raw rows (`rows`, the remote profile's kept log) each loaded one
-    keeps. `DAY_RULE`: heap no more than 6 MB up, loaded no more than mounted
-    plus six.
+    keeps. The end census waits for the store's pending unload pass
+    (`DAY_TIMING.settleMs`, 10 s at most): the last thread left is still in
+    its grace (3 s to park its tab, 3 s to unload) and would count as kept.
+    Each loaded transcript past the kept set is named with why it stays
+    (`extraLoaded`: a load in flight, a send pending, no pass since it left).
+    `DAY_RULE`: heap no more than 6 MB up, loaded no more than mounted plus
+    six.
 - A push re-renders only what it changed, and these keep it so: an equal
   `session` push schedules no flush (store `mergeMeta` returns whether it
   changed anything); a thread row keeps its object while it reads the same
