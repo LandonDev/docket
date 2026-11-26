@@ -3015,7 +3015,7 @@ export async function startServer(
             }
             case 'relay.frames':
               peerCalls.touch(connection)
-              return sendFrame({ id: req.id, ok: true, result: hostRelay.onFrames(req.params.from, req.params.socketId, req.params.frames) })
+              return sendFrame({ id: req.id, ok: true, result: hostRelay.onFrames(req.params.from, req.params.socketId, req.params.frames, req.params.batchSeq) })
             case 'relay.closed':
               return sendFrame({ id: req.id, ok: true, result: hostRelay.onClosed(req.params.from, req.params.socketId, req.params.reason) })
             case 'relay.notice':

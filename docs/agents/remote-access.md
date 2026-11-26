@@ -70,6 +70,10 @@
   `relayedRefusal`). `work.lifeos.setToken` is local-only. On a given
   computer `GIVEN_HOST_LOCAL` (the LifeOS session, every credential method)
   is refused to every remote principal.
+- A host numbers its `relay.frames` batches per lane. If the ACK goes
+  missing, the host retries with the same number and the box ACKs it
+  without forwarding the frames twice. Older hosts can still send
+  batches without a number. Phone requests use the existing relay path.
 - `work.reveal` is a `screen` call to the destination host. It checks
   `approve`, the saved destination's read fence and `admin` for admin pages.
 - The path fence (remote/fence.ts, R2 H1/H2): for every remote principal,

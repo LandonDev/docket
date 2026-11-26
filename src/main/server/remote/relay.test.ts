@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Principal } from '@shared/capabilities'
-import type { ServerFrame, ServerPush } from '@shared/contract'
+import { ClientRequestSchema, type ServerFrame, type ServerPush } from '@shared/contract'
 import { RELAY_HOSTS_MAX, relayRefusal, type HostPresence, type RelayFacadeResult, type RelayOpenResult, type RelayPrincipal } from '@shared/contract-relay'
 import { PeerOfflineError, type PeerInfo } from './peerCalls'
+import { RelaySocket } from './relayServe'
 import { HostRelay, RELAY_STALE_MS, type LaneSocket, type RelayTransport } from './relay'
 
 const UTC = 'UTC'
@@ -435,6 +436,44 @@ describe('HostRelay lanes', () => {
     expect(() => relay.onFrames('env_other', socketId, [page])).toThrow('unknown socket')
   })
 
+  it('applies a numbered batch once after a lost ACK and accepts legacy batches', async () => {
+    vi.useFakeTimers()
+    const { ws, transport, relay } = lane()
+    await vi.advanceTimersByTimeAsync(0)
+    const socketId = transport.opens[0]!.socketId
+    const received: number[] = []
+    const host = new RelaySocket(socketId, async (text, batchSeq) => {
+      const req = ClientRequestSchema.parse({
+        id: 'batch', method: 'relay.frames', params: { from: 'env_mac', socketId, batchSeq, frames: text.map((frame) => JSON.parse(frame)) }
+      })
+      if (req.method !== 'relay.frames') throw new Error('expected relay.frames')
+      received.push(batchSeq)
+      expect(relay.onFrames(req.params.from, req.params.socketId, req.params.frames, req.params.batchSeq)).toEqual({ ok: true })
+      if (received.length === 1) throw new Error('ACK lost')
+    }, () => {}, { retryMs: 1 })
+    try {
+      const a = { push: 'sessions', sessions: [{ id: 'a' }] }
+      const b = { push: 'sessions', sessions: [{ id: 'b' }] }
+      host.send(JSON.stringify(a))
+      host.send(JSON.stringify(b))
+      await vi.advanceTimersByTimeAsync(10)
+      expect(received).toEqual([1, 1, 2])
+      expect(ws.sent.slice(1)).toEqual([a, b])
+
+      const legacy = ClientRequestSchema.parse({
+        id: 'legacy', method: 'relay.frames', params: { from: 'env_mac', socketId, frames: [a] }
+      })
+      if (legacy.method !== 'relay.frames') throw new Error('expected relay.frames')
+      const { from, frames, batchSeq } = legacy.params
+      relay.onFrames(from, socketId, frames, batchSeq)
+      relay.onFrames(from, socketId, frames, batchSeq)
+      expect(ws.sent.slice(1)).toEqual([a, b, a, a])
+    } finally {
+      host.close('test done')
+      relay.close()
+    }
+  })
+
   it('every failed hand-off answers linkDown, so the phone checks rather than believes; the link gone mid-way too', async () => {
     const { ws, transport, calls, now } = lane()
     await tick()
@@ -459,6 +498,31 @@ describe('HostRelay lanes', () => {
     expect(ws.answers()[2]).toEqual({ id: '2', ok: false, error: 'linkDown: the Mac is unreachable since 09:16' })
     expect(ws.answers()).toHaveLength(3)
     expect(ws.closed).toEqual({ code: 4010, reason: 'host unreachable' })
+  })
+
+  it('does not send a held act again when a dropped lane is opened again', async () => {
+    const caps = ['read', 'operate', 'approve'] as const
+    const { ws, calls, transport, relay } = lane({ caps: [...caps] })
+    try {
+      await tick()
+      let lost!: (err: Error) => void
+      transport.frameAnswer = () => new Promise<void>((_, reject) => { lost = reject })
+      const params = { ref: { at: 'host', id: 'held-test' } }
+      ws.request('send', 'work.outbox.send', params)
+      expect(transport.frames).toHaveLength(1)
+      calls.drop('env_mac')
+      lost(new PeerOfflineError('env_mac'))
+      expect(ws.answers()).toEqual([{ id: 'send', ok: false, error: expect.stringMatching(/^linkDown:/) }])
+
+      calls.register('env_mac')
+      const reopened = new FakeWs()
+      relay.attachRelayed(reopened, principal([...caps]), 'env_mac')
+      await tick()
+      expect(transport.opens).toHaveLength(2)
+      expect(transport.frames.map(({ frame }) => frame)).toEqual([{ id: 'send', method: 'work.outbox.send', params }])
+    } finally {
+      relay.close()
+    }
   })
 
   it('a link drop fails every pending request with linkDown and closes every lane of that host with 4010', async () => {

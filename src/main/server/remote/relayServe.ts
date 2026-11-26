@@ -58,12 +58,13 @@ export class RelaySocket extends EventEmitter {
   bufferedAmount = 0
   private readonly queue: { text: string; bytes: number }[] = []
   private inflight = false
+  private batchSeq = 0
   private first = true
   private retrying: NodeJS.Timeout | null = null
 
   constructor(
     readonly socketId: string,
-    private readonly flush: (frames: string[]) => Promise<void>,
+    private readonly flush: (frames: string[], batchSeq: number) => Promise<void>,
     private readonly onOverflow: () => void,
     private readonly opts: { maxBytes?: number; frameBytes?: number; retryMs?: number; log?: (line: string) => void } = {}
   ) {
@@ -117,8 +118,10 @@ export class RelaySocket extends EventEmitter {
       total += this.queue[i].bytes
     }
     this.inflight = true
+    const batchSeq = ++this.batchSeq
+    const frames = batch.map((b) => b.text)
     const attempt = (retried: boolean): void => {
-      this.flush(batch.map((b) => b.text)).then(
+      this.flush(frames, batchSeq).then(
         () => {
           this.inflight = false
           if (this.readyState !== 1) return
@@ -258,10 +261,10 @@ export class RelayServer {
         if (!request) throw new Error('the link is down')
         const socket = new RelaySocket(
           a.socketId,
-          (frames) =>
+          (frames, batchSeq) =>
             request(
               'relay.frames',
-              { from: this.deps.environmentId, socketId: a.socketId, frames: frames.map((f) => JSON.parse(f) as unknown) },
+              { from: this.deps.environmentId, socketId: a.socketId, batchSeq, frames: frames.map((f) => JSON.parse(f) as unknown) },
               { timeoutMs: RELAY_CALL_MS }
             ).then(() => undefined),
           () => void this.tellClosed(env.id, a.socketId, 'backpressure'),

@@ -385,7 +385,7 @@ export const RelayRequestSchemas = [
   /** The host's presence changed, or its heartbeat. The reply includes endpoints when the peer sent its own. */
   request('peer.presence', z.object({ from, presence: MacPresenceSchema, browserEndpoints: BrowserEndpointsSchema.optional() })),
   /** Frames the host's attach() sent on a relayed lane, in order. → { ok: true }, or an error naming an unknown socket. */
-  request('relay.frames', z.object({ from, socketId, frames: z.array(z.unknown()).min(1).max(500) })),
+  request('relay.frames', z.object({ from, socketId, frames: z.array(z.unknown()).min(1).max(500), batchSeq: z.number().int().positive().optional() })),
   /** The host closed its end of a lane. → { ok: true } */
   request('relay.closed', z.object({ from, socketId, reason: z.string().max(200) })),
   /** A notice of a thread on the host, for the box's APNs, hub and webhooks. → { ok: true } */

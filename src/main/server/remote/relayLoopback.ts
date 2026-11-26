@@ -56,7 +56,7 @@ export function loopbackLink(relay: HostRelay): LinkRequest {
     const p = params as Record<string, never>
     switch (method) {
       case 'relay.frames':
-        return relay.onFrames(p.from, p.socketId, p.frames)
+        return relay.onFrames(p.from, p.socketId, p.frames, p.batchSeq)
       case 'relay.closed':
         return relay.onClosed(p.from, p.socketId, p.reason)
       case 'peer.presence':

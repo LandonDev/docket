@@ -245,7 +245,7 @@ describe('RelayServer', () => {
     await tick()
     const frames = requests.filter((r) => r.method === 'relay.frames')
     expect(frames).toEqual([
-      { to: 'env_box', method: 'relay.frames', params: { from: 'env_mac', socketId: 's1', frames: [{ id: '1', ok: true, result: 'answered session.list as Phone via The box' }] } }
+      { to: 'env_box', method: 'relay.frames', params: { from: 'env_mac', socketId: 's1', batchSeq: 1, frames: [{ id: '1', ok: true, result: 'answered session.list as Phone via The box' }] } }
     ])
     await expect(call('relay.frame', { socketId: 'nope', frame: {} })).rejects.toThrow('unknown socket nope')
   })

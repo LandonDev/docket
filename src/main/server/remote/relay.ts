@@ -127,6 +127,7 @@ interface Lane {
   queued: ClientRequest[]
   /** Request ids forwarded and not yet answered. */
   pending: Set<string>
+  lastBatchSeq: number
   closed: boolean
 }
 
@@ -317,7 +318,7 @@ export class HostRelay {
   /** A phone's socket for a host: the hello at once, then the lane on the host. */
   attachRelayed(ws: LaneSocket, principal: Principal & { kind: 'remote' }, envId: string): void {
     const socketId = `l${randomBytes(9).toString('base64url')}`
-    const lane: Lane = { socketId, envId, ws, principal, opened: false, queued: [], pending: new Set(), closed: false }
+    const lane: Lane = { socketId, envId, ws, principal, opened: false, queued: [], pending: new Set(), lastBatchSeq: 0, closed: false }
     this.lanes.set(socketId, lane)
     const row = this.presenceOf(envId)
     this.send(lane, {
@@ -364,14 +365,17 @@ export class HostRelay {
   }
 
   /** Frames the host's attach() sent on a lane, verbatim to the phone. */
-  onFrames(from: string, socketId: string, frames: unknown[]): { ok: true } {
+  onFrames(from: string, socketId: string, frames: unknown[], batchSeq?: number): { ok: true } {
     const lane = this.lanes.get(socketId)
     if (!lane || lane.envId !== from) throw new Error(`unknown socket ${socketId}`)
+    // The sender waits for each batch's ACK before starting the next one.
+    if (batchSeq !== undefined && batchSeq <= lane.lastBatchSeq) return { ok: true }
     for (const frame of frames) {
       const id = (frame as { id?: unknown })?.id
       if (typeof id === 'string') lane.pending.delete(id)
       if (lane.ws.readyState === lane.ws.OPEN) lane.ws.send(JSON.stringify(frame))
     }
+    if (batchSeq !== undefined) lane.lastBatchSeq = batchSeq
     return { ok: true }
   }
 
