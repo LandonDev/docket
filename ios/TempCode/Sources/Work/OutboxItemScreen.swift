@@ -83,7 +83,7 @@ struct OutboxItemScreen: View {
             } else if let item, let client {
                 content(item, client: client)
             } else if let kept {
-                KeptItemView(row: kept, error: loadError, retry: { loadError = nil; Task { await load() } })
+                KeptItemView(row: kept, error: loadError, retry: { await load() })
             } else if let loadError {
                 // On a paired host the read can be tried again, as other Work item pages offer; with no host there is nothing to retry.
                 ContentUnavailableView {
@@ -275,11 +275,11 @@ struct OutboxItemScreen: View {
                         .accessibilityIdentifier("outbox-quote")
                 }
                 if item.kind == .computerAct {
-                    KeptPictureView(listed: item, whole: whole, failed: wholeError, retry: { Task { await load() } })
+                    KeptPictureView(listed: item, whole: whole, failed: wholeError, retry: { await load() })
                         .padding(.horizontal, Layout.textEdge)
                         .padding(.vertical, 16)
-                } else if OutboxModel.sendsFromDetailOnly(item.kind), whole == nil, let wholeError {
-                    readFailed("The mail did not load: \(wholeError)")
+                } else if let line = OutboxModel.wholeFailedLine(item.kind, whole: whole, error: wholeError) {
+                    readFailed(line)
                         .padding(.horizontal, Layout.textEdge)
                         .padding(.vertical, 16)
                 }
@@ -834,7 +834,7 @@ private struct KeptPictureView: View {
     let listed: OutboxItem
     let whole: OutboxItem?
     let failed: String?
-    let retry: () -> Void
+    let retry: () async -> Void
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
@@ -872,11 +872,7 @@ private struct KeptPictureView: View {
     }
 
     private var failure: some View {
-        HStack(spacing: 12) {
-            Text("The picture did not load").textStep(.meta, tint: Tint.destructiveText)
-            Spacer(minLength: 8)
-            PillButton("Try Again", action: retry)
-        }
+        FailedRead(words: "The picture did not load", retry: retry, identifier: "outbox-picture-failed", insets: nil, tint: Tint.destructiveText)
     }
 
     private func aspect(_ width: Double?, _ height: Double?) -> CGFloat? {
@@ -897,7 +893,7 @@ private struct KeptPictureView: View {
 private struct KeptItemView: View {
     let row: WorkCache.WaitingRow
     let error: String?
-    let retry: () -> Void
+    let retry: () async -> Void
 
     var body: some View {
         ScrollView {
@@ -919,12 +915,7 @@ private struct KeptItemView: View {
                         .padding(.top, 4)
                 }
                 if let error {
-                    HStack(spacing: 12) {
-                        Text(error).textStep(.meta, tint: Tint.destructiveText).fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 8)
-                        PillButton("Try Again", action: retry)
-                    }
-                    .padding(.top, 12)
+                    FailedRead(words: error, retry: retry, identifier: "outbox-item-kept-failed", insets: nil, tint: Tint.destructiveText)
                 } else {
                     ProgressView()
                         .padding(.top, 16)

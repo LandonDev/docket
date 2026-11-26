@@ -110,7 +110,7 @@ private struct PdfLayered: View {
                 }
             }
         }
-        .alert("Couldn’t do that", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+        .alert("Couldn’t Do That", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(error ?? "") }
         .sensoryFeedback(.impact(weight: .light), trigger: layer?.revision ?? 0)
@@ -203,7 +203,7 @@ struct SlidesItemView: View {
                     .id(loaded.key)
             }
         }
-        .alert("Couldn’t do that", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+        .alert("Couldn’t Do That", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(error ?? "") }
         .accessibilityIdentifier("slides-item")

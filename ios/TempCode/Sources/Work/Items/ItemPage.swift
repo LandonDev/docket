@@ -69,7 +69,7 @@ struct ItemPage: View {
         .navigationDestination(item: $previewing) { item in
             if let source = client.work.canvas.preview(for: item) { PagePreview(client: client, item: item, source: source).sidebarButtonPage() }
         }
-        .alert("Couldn’t do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+        .alert("Couldn’t Do That", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(failure ?? "") }
         .accessibilityIdentifier("item-page")

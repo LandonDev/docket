@@ -10,11 +10,13 @@ import TempCodeContract
 struct MeetingItemView: View {
     let client: EnvironmentClient
     let item: CanvasItem
+    @State private var refresh = RefreshFailure()
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.meeting(item.id) }) { meeting, reload in
+        ItemLoad(read: { try await client.work.canvas.meeting(item.id) }, onRead: { _ in refresh.answered() },
+                 onRefreshFailed: { refresh.failed($0) }) { meeting, reload in
             if let meeting, !meeting.segments.isEmpty || !MeetingActions.shown(meeting).isEmpty {
-                MeetingPage(client: client, item: item, initial: meeting, reload: reload)
+                MeetingPage(client: client, item: item, initial: meeting, refresh: refresh, reload: reload)
             } else {
                 ContentUnavailableView(meeting?.error ?? "No Transcript Yet", systemImage: "waveform", description: Text(meeting.map { "\($0.status.capitalized)." } ?? "Nothing has been recorded."))
             }
@@ -27,6 +29,7 @@ private struct MeetingPage: View {
     let client: EnvironmentClient
     let item: CanvasItem
     let initial: MeetingPhone
+    let refresh: RefreshFailure
     let reload: () -> Void
     @State private var meeting: MeetingPhone?
     @State private var player = MeetingPlayer()
@@ -81,7 +84,7 @@ private struct MeetingPage: View {
         }
         .onDisappear { player.close() }
         .onChange(of: initial) { _, now in meeting = now }
-        .alert("Couldn’t do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+        .alert("Couldn’t Do That", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(failure ?? "") }
         .sensoryFeedback(.impact(weight: .light), trigger: decided)
@@ -91,6 +94,10 @@ private struct MeetingPage: View {
         let names = Dictionary(shown.speakers.map { ($0.id, $0.name ?? $0.label) }, uniquingKeysWith: { a, _ in a })
         let tasks = MeetingActions.shown(shown)
         return List {
+            // His pull failed: the tasks and transcript under it are the last read's.
+            if let words = refresh.error {
+                Section { refresh.row(words, reload: reload, identifier: "meeting-refresh-failed") }
+            }
             if !tasks.isEmpty {
                 Section {
                     ForEach(tasks, id: \.id) { action in
@@ -249,20 +256,10 @@ struct BrowserItemView: View {
 
     private func list(_ state: BrowserState, model: BrowserStateModel) -> some View {
         List {
-            // a re-read that failed while the browser is shown: the content stays, with a short line and Retry
+            // a re-read that failed while the browser is shown: the content stays under the failed-read row
             if let refreshError = model.refreshError {
                 Section {
-                    HStack(spacing: 12) {
-                        Text("Couldn’t read the browser again: \(refreshError)").textStep(.meta, tint: Tint.destructiveText)
-                        Spacer(minLength: 8)
-                        // the phone's busy idiom: the spinner in the button's place while the read is out
-                        if model.reading > 0 {
-                            ProgressView()
-                        } else {
-                            PillButton("Try Again") { Task { await model.read() } }
-                        }
-                    }
-                    .accessibilityIdentifier("browser-reread-failed")
+                    FailedRead(words: refreshError, retry: { await model.read() }, identifier: "browser-reread-failed", tint: Tint.destructiveText)
                 }
             }
             Section {
@@ -344,13 +341,19 @@ struct BrowserItemView: View {
 struct FormItemView: View {
     let client: EnvironmentClient
     let item: CanvasItem
+    @State private var refresh = RefreshFailure()
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.responses(item.id) }) { responses, reload in
+        ItemLoad(read: { try await client.work.canvas.responses(item.id) }, onRead: { _ in refresh.answered() },
+                 onRefreshFailed: { refresh.failed($0) }) { responses, reload in
             if responses.rows.isEmpty {
                 ContentUnavailableView("No Responses", systemImage: "list.bullet.clipboard")
             } else {
                 List {
+                    // His pull failed: the responses under it are the last read's.
+                    if let words = refresh.error {
+                        Section { refresh.row(words, reload: reload, identifier: "form-refresh-failed") }
+                    }
                     Section {
                         ForEach(Array(responses.rows.enumerated()), id: \.offset) { index, row in
                             VStack(alignment: .leading, spacing: 6) {
@@ -378,6 +381,25 @@ struct FormItemView: View {
             }
         }
         .accessibilityIdentifier("form-item")
+    }
+}
+
+/// A pull that failed over the rows kept on screen (`ItemLoad.onRefreshFailed`): its reason as the failed-read row
+/// of every Work place in red, until a read lands. Try Again's spinner waits on the reload it starts.
+@MainActor @Observable
+final class RefreshFailure {
+    private(set) var error: String?
+    @ObservationIgnored private var retrying = false
+
+    func answered() { error = nil; retrying = false }
+    func failed(_ words: String) { error = words; retrying = false }
+
+    func row(_ words: String, reload: @escaping () -> Void, identifier: String) -> some View {
+        FailedRead(words: words, retry: { [self] in
+            retrying = true
+            reload()
+            while retrying && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(100)) }
+        }, identifier: identifier, tint: Tint.destructiveText)
     }
 }
 

@@ -2610,7 +2610,7 @@ milestone 46 built, where it lives now:
   its place, its time; never the payload; `OutboxKeeping`). On a cold
   launch the list paints them, one band per place, and the count counts
   them, until that host answers on this link. A kept row opens a read view
-  (its words and a spinner, or the read's error with Try Again) and has no
+  (its words and a spinner, or the read's error as the failed-read row) and has no
   swipe, menu or tick; the detail's bar waits for the item read fresh on
   this link (`work.outbox.get`).
 - **Inks.** The Outbox's bands, held detail and stamps draw meta and stamps in
@@ -2653,7 +2653,11 @@ milestone 46 built, where it lives now:
   item's is Discard and Ask the Thread Again. **Discard** asks once in an
   alert, "Discard this?" over what will not happen ("It will not be sent."), with one optional field, "Why, for the thread":
   the thread hears it was discarded, with his line when he wrote one. Edit
-  is a form sheet: each field a person reads and the message.
+  is a form sheet: each field a person reads and the message. A whole read
+  that fails over the list's copy is the failed-read row in red at the
+  foot, since the bar waits for that read (`OutboxModel.wholeFailedLine`:
+  "The mail did not load: …" for a mail; a computer act's picture says its
+  own, "The picture did not load", in the picture's place).
 - **After Send** the detail returns to the list (on the open Duo it stays
   until the item leaves; see The next item) and the item leaves it. An item
   opened from anywhere but the Outbox's list (Today's row, its pick on the
@@ -2910,7 +2914,9 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   the driver ("You are driving" or "The agent is driving") with Take Over
   or Hand Back, and an act it holds as the one prominent glass button,
   which opens the held detail; a form's responses
-  (each answer under its question); a dashboard's blocks (a figure's line
+  (each answer under its question); a meeting's, a form's and the
+  browser's read again that fails keeps what shows under the failed-read
+  row in red (`FailedRead`); a dashboard's blocks (a figure's line
   under its number and a chart's values at the stamp size in the label
   ink); history as a version list, each opening a compare with now, headed
   by the counts above zero alone ("2 changed"; `HistoryRestore.counts`),

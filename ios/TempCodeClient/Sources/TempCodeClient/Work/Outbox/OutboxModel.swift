@@ -93,6 +93,14 @@ public enum OutboxModel {
         return kind != .computerAct || keptPicture(whole.payload) != .missing
     }
 
+    /// The line over the list's copy when the whole read failed (`error`) and none is on screen: the detail's bar waits
+    /// for that read, so the failure is always said, a mail's as the mail that did not load. A computer act's picture
+    /// says its own failure in its place: nil.
+    public nonisolated static func wholeFailedLine(_ kind: OutboxItem.Kind, whole: OutboxItem?, error: String?) -> String? {
+        guard whole == nil, let error, kind != .computerAct else { return nil }
+        return sendsFromDetailOnly(kind) ? "The mail did not load: \(error)" : error
+    }
+
     /// A failed send that may have gone (`outcomeUnknown`): what he checks before Send Again, as the desktop says it.
     public nonisolated static func checkFirst(_ item: OutboxItem) -> String? {
         guard item.state == .failed, item.outcomeUnknown == true else { return nil }

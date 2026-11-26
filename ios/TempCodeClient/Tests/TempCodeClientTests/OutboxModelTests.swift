@@ -154,6 +154,16 @@ import TempCodeContract
         #expect(view.body?.readOnly == false)
     }
 
+    @Test func aWholeReadThatFailedOverTheListsCopyIsAlwaysSaidAMailsAsTheMail() {
+        // A Teams post opened from the live list: its bar waits on the whole read, so the failure is said.
+        #expect(OutboxModel.wholeFailedLine(.teamsPost, whole: nil, error: "Not connected") == "Not connected")
+        #expect(OutboxModel.wholeFailedLine(.mailSend, whole: nil, error: "Not connected") == "The mail did not load: Not connected")
+        // The picture says its own; a whole read on screen, or no failure, says nothing.
+        #expect(OutboxModel.wholeFailedLine(.computerAct, whole: nil, error: "Not connected") == nil)
+        #expect(OutboxModel.wholeFailedLine(.teamsPost, whole: item("a", kind: .teamsPost), error: "Not connected") == nil)
+        #expect(OutboxModel.wholeFailedLine(.teamsPost, whole: nil, error: nil) == nil)
+    }
+
     @Test func aFormAShareAndAFrameioPostReadAsTheirOwnRows() {
         let form = OutboxModel.actView(item("f1", kind: .formPublish, payload: .object(["itemId": .string("itm_1"), "title": .string("LAN sign-up"), "rev": .number(4), "questions": .number(6), "content": .string("Name (short answer, required)")])))
         #expect(form.fields.map(\.label) == ["Questions"])

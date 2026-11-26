@@ -149,7 +149,7 @@ struct FileReaderPage: View {
             .navigationDestination(isPresented: $previewing) {
                 if let live, let source = client.work.canvas.preview(for: live) { PagePreview(client: client, item: live, source: source).sidebarButtonPage() }
             }
-            .alert("Couldn’t do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            .alert("Couldn’t Do That", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(failure ?? "") }
             .accessibilityIdentifier("reader-page")
