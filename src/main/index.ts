@@ -26,7 +26,7 @@ import { listEnvironments } from './server/remote/environments'
 import type { LaunchMirrorSnapshot, MirrorWrite } from '@shared/launchMirror'
 import { forgetUnsavedHosts, readBootMirror, type BootRead } from './bootMirror'
 import { bootDesktop, deferred } from './desktopBoot'
-import { windowsGate } from './windowGate'
+import { openSavedThenGate, windowsGate } from './windowGate'
 import { preconnectAccount } from './server/preconnect'
 import { spawnExecBrokerChild } from './execBrokerSpawn'
 import { spawnGatewayChild } from './gatewaySpawn'
@@ -215,9 +215,8 @@ void bootDesktop<RunningServer>({
     bootMark('boot-mirror', `${Date.now() - t0}ms`)
   },
   openWindows: () => {
-    // The walls are up: a Dock click or New Window that came sooner runs now (windowGate.ts).
-    windowsGate.open()
-    const up = openSavedWindows()
+    // The walls are up: the saved windows open, then a Dock click or New Window that came sooner runs (windowGate.ts).
+    const up = openSavedThenGate(windowsGate, openSavedWindows)
     userWindowsOpened = true
     return up
   },

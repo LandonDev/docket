@@ -26,5 +26,16 @@ export function windowGate(): WindowGate {
   }
 }
 
+/**
+ * The boot's own windows, then the gate: the saved slots open first, so a Dock click held at the gate finds them
+ * and only brings one forward, and a held New Window takes a fresh slot after the saved list was read; no slot
+ * opens twice and no two windows share one.
+ */
+export function openSavedThenGate<T>(gate: WindowGate, openSaved: () => T): T {
+  const up = openSaved()
+  gate.open()
+  return up
+}
+
 /** The app's one gate. */
 export const windowsGate = windowGate()
