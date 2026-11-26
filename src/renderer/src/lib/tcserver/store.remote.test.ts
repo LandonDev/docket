@@ -676,6 +676,35 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(asked.params).toMatchObject({ afterSeq: 0, tail: expect.any(Number) });
   });
 
+  it("rows held from a socket whose replay failed never fold after a newer socket's page (Sol S18)", async () => {
+    link.pages = [[wireMeta({ id: "s" })]];
+    link.events.set("s", turns("s", 2));
+    await boot(link);
+    sessionStore.followShown({ shown: () => "s", onChange: () => () => {} });
+    sessionStore.setMounted(["s"]);
+    await sessionStore.ensureLoaded("s");
+    const late = turns("s", 2, 5).map((r, i) => ({ ...r, event: { ...r.event, text: `late ${i}` } as EventRow["event"] }));
+    // Socket A: the old host pushes a row 9 it never wrote down, and every read on A fails.
+    const real = link.request.bind(link);
+    let onA = true;
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> => {
+      if (method === "session.events" && onA) {
+        link.calls.push({ method, params });
+        link.push({ push: "event", row: row("s", 9, { type: "user-text", text: "ghost" }) });
+        return Promise.reject(new ConnectionLostError("connection closed"));
+      }
+      return real<T>(method, params);
+    }) as typeof link.request;
+    link.open();
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    // The host restarts with rows 5..8 kept; socket B's replay folds its page.
+    onA = false;
+    link.events.set("s", [...turns("s", 2), ...late]);
+    link.open();
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1", "late 2", "late 3"]);
+  });
+
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
   async function masterWithChild(): Promise<{ asked: () => string[] }> {
     link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];

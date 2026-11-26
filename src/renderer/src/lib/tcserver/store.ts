@@ -188,6 +188,8 @@ type Entry = {
   held: EventRow[] | null;
   /** Held since the host's `resync` push, before the replay's own hold: the replay runs through it. */
   resyncHold?: boolean;
+  /** The socket whose pushes `held` holds: a replay on a newer socket drops them (its own page brings what is real). */
+  heldOn?: number;
   /** Times this entry was unloaded: a fold that yielded across one stops (its rows are no longer this fold's). */
   unloads?: number;
   /** The replay of its gap on its way, and the socket it runs on: one on a newer socket waits it out. */
@@ -1881,15 +1883,18 @@ class SessionStore {
 
   /** The subscription set's view of one transcript: where its fold is and
    *  how a page lands. `page.reset` (D2) throws the fold away first. */
-  private handlersFor(entry: Entry) {
+  private handlersFor(entry: Entry, socket = this.socketOf(entry)) {
     const id = entry.session.id;
     return {
       cursor: () => entry.lastSeq,
       cursorTs: () => entry.lastTs,
       shown: () => this.onScreen(id),
       begin: () => {
-        // Rows held since a resync push stay held: they fold after the page.
+        // Rows held from an older socket go: a host that restarted may never have kept them, and this socket's page
+        // brings whatever is real. Rows held since a resync push on this socket stay held: they fold after the page.
+        if (entry.held && entry.heldOn !== socket) entry.held = null;
         entry.held ??= [];
+        entry.heldOn = socket;
         entry.resyncHold = false;
       },
       asked: () => openStamps.asked(id),
@@ -1911,6 +1916,8 @@ class SessionStore {
         openStamps.folded(id);
       },
       end: (ok: boolean) => {
+        // A replay on an older socket never drains the hold a newer one made.
+        if (entry.heldOn !== socket) return;
         // A failed read: the rows pushed meanwhile may be past rows it never brought, so they stay held, and the next
         // replay runs through the hold (`resyncHold`) and folds them after its page.
         if (!ok && entry.held) {
