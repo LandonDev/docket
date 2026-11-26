@@ -90,7 +90,7 @@ never share the Mac with the pack). It never holds back or fails the Mac's relea
 - `scripts/release-win.ts` makes the files from the `out/` the publish just built: cargo-xwin there,
   the win32 Claude CLI staged, tc-computer.exe cross-built, one electron-builder call on the Windows
   config (a config file of the run's own carries the output folder and `tempcodeBuild.sha`), the
-  packed app checked (`check-app`), its `resources/app-update.yml` read for github LandonDev/temp-code,
+  packed app checked (`check-app`), its `resources/app-update.yml` read for github LandonDev/docket,
   the four files checked against `latest.yml` (`check-files`). It exits 1 with one line saying which
   step failed.
 - `release-publish-win.sh` uploads to the live release: the installer, its blockmap and the zip, then

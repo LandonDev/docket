@@ -1,3 +1,4 @@
+import { repoKey } from "@shared/repoKey";
 import type { WorkspaceMeta } from "./tcserver/types";
 
 /**
@@ -35,7 +36,7 @@ const basename = (path: string): string => strip(path).split("/").pop() ?? path;
 export function pairKey(workspace: Pick<WorkspaceMeta, "path" | "githubRepo" | "linkId">): string {
   const link = workspace.linkId?.trim();
   if (link) return `link:${link}`;
-  const repo = workspace.githubRepo?.trim().toLowerCase();
+  const repo = repoKey(workspace.githubRepo);
   return repo ? `repo:${repo}` : `name:${basename(workspace.path).toLowerCase()}`;
 }
 

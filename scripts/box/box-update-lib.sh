@@ -17,7 +17,7 @@
 # BOX_UPDATE_FRESH_MODULES=1 forces the install; BOX_UPDATE_ASSET_BASE points
 # a proof at a local feed in place of GitHub's release downloads.
 
-BOX_UPDATE_REPO=${BOX_UPDATE_REPO:-LandonDev/temp-code}
+BOX_UPDATE_REPO=${BOX_UPDATE_REPO:-LandonDev/docket}
 BOX_UPDATE_ASSET_BASE=${BOX_UPDATE_ASSET_BASE:-https://github.com/$BOX_UPDATE_REPO/releases/download}
 
 # lockfile_digest <build> → sha256 of its bun.lock, or nothing without one.

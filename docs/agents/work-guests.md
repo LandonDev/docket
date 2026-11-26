@@ -18,7 +18,8 @@ with a test.
   its title, the role, when it was made, when it ends, when it was revoked,
   and the thread whose request his press granted (none for his own). The
   secret is 32 random bytes, shown once, in the address's fragment:
-  `https://tempcode.landonhale.com/g/<id>#k=<secret>`. No request, log or
+  `https://share.landonhale.com/g/<id>#k=<secret>` (the box's own name,
+  `https://docket.landonhale.com`, while no guest origin is set). No request, log or
   row holds it. A Mac-hosted workspace's LifeOS items are shared from the box
   as well (§19); any other host answers `served elsewhere: <env>` and the
   client asks that one (renderer/work/guests/api.ts).

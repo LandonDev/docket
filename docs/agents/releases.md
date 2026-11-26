@@ -2,6 +2,14 @@
 
 Two separate steps, on purpose, over one gate.
 
+The repo is `LandonDev/docket`, renamed on 2026-11-25 from `LandonDev/temp-code`
+(the same repo id; GitHub sends the old slug, its feed and `git` on to the new).
+A release made since says `repo: docket` in its `app-update.yml`; an installed
+copy that still says `temp-code` reaches the same feed through the redirect.
+Every place that publishes, reads the feed or fetches `release.json` names the
+new slug (scripts/repoSlug.test.ts), and the linker takes both slugs as one
+repo (src/shared/repoKey.ts).
+
 What's New and the release notes tab take the running version's notes
 from `release.json`. The update prompt can also show notes from the
 feed, either plain Markdown or a Keep a Changelog section. A tab saved
@@ -145,7 +153,7 @@ for an older release shows “No release notes for this version”.
    (the `check` phase; against /Applications/Docket.app, else TempCode.app, when one is there
    and never on a dry run; scripts/sqrlcheck.swift compiled once per version
    into ~/Library/Caches/temp-code-release) and refused
-   without an app-update.yml naming github LandonDev/temp-code; a bundle
+   without an app-update.yml naming github LandonDev/docket; a bundle
    that still lacks the file sets that feed itself (update.ts
    `applyFeedFallback`, `feedFallback` in updateInstall.ts). Then the draft
    goes live and the feed is read once a second until it names the

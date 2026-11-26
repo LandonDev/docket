@@ -12,7 +12,7 @@ import { hisZone } from '../clock'
 import type { Caller, WorkCtx } from '../modules'
 import { ActNotSent } from '../outbox/kinds'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
-import { GUEST_ORIGIN_SETTING, isIsolatedInstance, servesPublic } from '../service/config'
+import { BOX_PUBLIC_ORIGIN, GUEST_ORIGIN_SETTING, isIsolatedInstance, servesPublic } from '../service/config'
 import { canonicalPath, serviceOf, ServedElsewhere } from '../service/ctx'
 import type { ServiceSupervisor } from '../service/supervisor'
 import type { LinkSeen } from '../service/routes/seen'
@@ -59,7 +59,7 @@ export const FIRST_VIEW_MS = 10_000
 /** How long a project's link goes on showing its last read while LifeOS cannot be reached. */
 export const STALE_VIEW_MS = 60_000
 
-export const DEFAULT_ORIGIN = 'https://tempcode.landonhale.com'
+export const DEFAULT_ORIGIN = BOX_PUBLIC_ORIGIN
 
 /** Where a guest reaches this host: the tunnel's hostname on the box's installed host; a proof's origin when one is named. */
 export function publicOrigin(ctx: Pick<WorkCtx, 'service'>, env: NodeJS.ProcessEnv = process.env): string {

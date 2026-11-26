@@ -14,7 +14,7 @@ public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
     /// The name the person gave the host in Settings → Hosts; nil while they
     /// have not. Optional, so an older `environments.json` reads unchanged.
     public var customName: String?
-    /// `https://tempcode.landonhale.com`, or `http://127.0.0.1:7677` for a dev instance.
+    /// `https://docket.landonhale.com` (or the old `https://tempcode.landonhale.com`), or `http://127.0.0.1:7677` for a dev instance.
     public var origin: URL
     public var caps: [Capability]
     public var keyId: String

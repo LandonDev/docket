@@ -100,7 +100,7 @@ private final class ScriptedFetch: Sendable {
     }
 
     @Test func `the feed is master's release.json on GitHub`() {
-        #expect(MasterReleaseWatcher.url.absoluteString == "https://raw.githubusercontent.com/LandonDev/temp-code/master/release.json")
+        #expect(MasterReleaseWatcher.url.absoluteString == "https://raw.githubusercontent.com/LandonDev/docket/master/release.json")
         #expect(MasterReleaseWatcher.everyMs == 600_000)
         #expect(MasterReleaseWatcher.focusRecheckMs == 900_000)
     }

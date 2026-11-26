@@ -1,7 +1,7 @@
 # Docket
 
-[![Download for Mac (Apple silicon)](https://img.shields.io/badge/Download%20for%20Mac-Apple%20silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/LandonDev/temp-code/releases/latest)
-[![All releases](https://img.shields.io/github/v/release/LandonDev/temp-code?style=for-the-badge&label=Releases&color=555)](https://github.com/LandonDev/temp-code/releases)
+[![Download for Mac (Apple silicon)](https://img.shields.io/badge/Download%20for%20Mac-Apple%20silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/LandonDev/docket/releases/latest)
+[![All releases](https://img.shields.io/github/v/release/LandonDev/docket?style=for-the-badge&label=Releases&color=555)](https://github.com/LandonDev/docket/releases)
 
 Docket is a Mac desktop app for working with coding agents. It runs the
 official agent CLIs under your own logins and gives them one workspace:

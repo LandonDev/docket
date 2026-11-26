@@ -34,19 +34,19 @@ describe('the Work service connections', () => {
     const seen: string[] = []
     const rows = await guestsRows(on, signal, {
       service: service('running'),
-      fetch: fetcher({ 'http://127.0.0.1:7695/w/hosted/': 'service', 'https://tempcode.landonhale.com/w/hosted/': 'service', 'https://tempcode.landonhale.com/g/health-check': 'service' }, seen),
+      fetch: fetcher({ 'http://127.0.0.1:7695/w/hosted/': 'service', 'https://docket.landonhale.com/w/hosted/': 'service', 'https://docket.landonhale.com/g/health-check': 'service' }, seen),
       ...BOX
     })
     expect(rows.map((r) => [r.id, r.state, r.line])).toEqual([
       ['guests.service', 'working', undefined],
-      ['guests.hosted', 'working', 'Reached at tempcode.landonhale.com'],
-      ['guests.links', 'working', 'Reached at tempcode.landonhale.com']
+      ['guests.hosted', 'working', 'Reached at docket.landonhale.com'],
+      ['guests.links', 'working', 'Reached at docket.landonhale.com']
     ])
     expect(seen).toHaveLength(3)
   })
 
   it('a tunnel that does not answer, or answers with something other than the service, is broken', async () => {
-    const rows = await guestsRows(on, signal, { service: service('running'), fetch: fetcher({ 'http://127.0.0.1:7695/w/hosted/': 'service', 'https://tempcode.landonhale.com/w/hosted/': 502 }), ...BOX })
+    const rows = await guestsRows(on, signal, { service: service('running'), fetch: fetcher({ 'http://127.0.0.1:7695/w/hosted/': 'service', 'https://docket.landonhale.com/w/hosted/': 502 }), ...BOX })
     expect(rows.slice(1).map((r) => [r.id, r.state, r.line])).toEqual([
       ['guests.hosted', 'broken', 'The tunnel answered 502, not the Work service'],
       ['guests.links', 'broken', 'No answer: fetch failed']
@@ -69,7 +69,7 @@ describe('the Work service connections', () => {
   })
 
   it('serves guest links on the installed box, or where a public origin is named', () => {
-    expect(guestOrigin({}, 'linux')).toBe('https://tempcode.landonhale.com')
+    expect(guestOrigin({}, 'linux')).toBe('https://docket.landonhale.com')
     expect(guestOrigin({ TEMP_CODE_USER_DATA: '/tmp/dev' }, 'linux')).toBeNull()
     expect(guestOrigin({}, 'darwin')).toBeNull()
     expect(guestOrigin({ TEMP_CODE_WORK_PUBLIC_ORIGIN: 'https://x.trycloudflare.com/' }, 'darwin')).toBe('https://x.trycloudflare.com')

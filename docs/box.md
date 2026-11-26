@@ -147,8 +147,8 @@ directory. The Mac's existing config and other tunnel files stay untouched.
 recreate a tunnel if its credentials are missing.
 
 Cloudflared comes from Cloudflare's signed apt repo and runs as a systemd
-service. `/etc/cloudflared/config.yml` maps `tempcode.landonhale.com` to
-`http://127.0.0.1:7677`, then returns 404 for unmatched hosts. Metrics bind only
+service. `/etc/cloudflared/config.yml` maps `docket.landonhale.com` and the old
+`tempcode.landonhale.com` to `http://127.0.0.1:7677`, then returns 404 for unmatched hosts. Metrics bind only
 to `127.0.0.1:20241`. The connector opens outbound connections; UFW needs no
 extra inbound rule. Until thread C starts the listener, HTTPS returns the
 expected Cloudflare 502.
@@ -404,7 +404,8 @@ PATH, so `~/.profile` must keep adding `~/.local/bin`. Versions on
 codex 0.163.0, cursor-agent 2026.10.16, gh 2.45.0. Rerunning the stage
 upgrades codex when it is below the floor; the others self-update.
 
-Remote access: `remote.publicOrigin` is `https://tempcode.landonhale.com`.
+Remote access: `remote.publicOrigin` is `https://tempcode.landonhale.com` until
+the owner sets it to `https://docket.landonhale.com`; both names answer.
 Cloudflare Access fronts `/ui` only; `/healthz`, `/api/*`, `/pair` and `/ws`
 reach the listener directly, and every one of those routes carries its own
 authentication. To let a device in, mint a pairing on the box and open its
@@ -4335,7 +4336,7 @@ when it laid out a release asset (scripts/release-pack-out.sh writes it,
 there is no `.git`); a published Mac build carries the same key in the
 bundled package.json, which release-publish.sh passes through
 electron-builder's extraMetadata. The Mac's main process reads
-`https://raw.githubusercontent.com/LandonDev/temp-code/master/release.json`
+`https://raw.githubusercontent.com/LandonDev/docket/master/release.json`
 every ten minutes and again when a window comes forward after fifteen idle
 minutes (`src/main/deployDrift.ts`, the updater's cadence; nothing faster,
 no git, and a failed fetch keeps the last number); the local socket gets

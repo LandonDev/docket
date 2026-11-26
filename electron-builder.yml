@@ -129,4 +129,4 @@ nsis:
 publish:
   provider: github
   owner: LandonDev
-  repo: temp-code
+  repo: docket

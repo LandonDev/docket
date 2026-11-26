@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-REPO="LandonDev/temp-code"
+REPO="LandonDev/docket"
 VERSION=$(sed -n 's/^  "version": "\(1\.0\.[0-9]*\)",$/\1/p' package.json)
 SHA=$(git rev-parse HEAD)
 LOG="$(git rev-parse --absolute-git-dir)/temp-code-gate/windows.log"

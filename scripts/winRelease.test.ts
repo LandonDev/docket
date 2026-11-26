@@ -199,9 +199,10 @@ describe('the Windows pack', () => {
   })
 
   it("reads the packed app's feed config", () => {
-    expect(winFeedProblems('provider: github\nowner: LandonDev\nrepo: temp-code\nupdaterCacheDirName: temp-code-updater\n')).toEqual([])
-    expect(winFeedProblems('provider: github\r\nowner: LandonDev\r\nrepo: temp-code\r\n')).toEqual([])
-    expect(winFeedProblems('provider: github\nowner: someone\nrepo: temp-code\n')).toEqual(["does not say 'owner: LandonDev'"])
+    expect(winFeedProblems('provider: github\nowner: LandonDev\nrepo: docket\nupdaterCacheDirName: temp-code-updater\n')).toEqual([])
+    expect(winFeedProblems('provider: github\r\nowner: LandonDev\r\nrepo: docket\r\n')).toEqual([])
+    expect(winFeedProblems('provider: github\nowner: someone\nrepo: docket\n')).toEqual(["does not say 'owner: LandonDev'"])
+    expect(winFeedProblems('provider: github\nowner: LandonDev\nrepo: temp-code\n')).toEqual(["does not say 'repo: docket'"])
     expect(winFeedProblems(null)).toHaveLength(1)
   })
 })

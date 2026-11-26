@@ -7,7 +7,7 @@ docs/agents/prompt-overhead.md). A new subject's long account goes in
 
 ## One line: prod runs the newest published GitHub release
 - `/Applications/Docket.app` (once TempCode.app) runs the newest `v1.0.N` release on
-  github.com/LandonDev/temp-code (public). It updates itself through
+  github.com/LandonDev/docket (public). It updates itself through
   electron-updater: at launch, every 5 minutes, and when a window comes
   forward after 15 idle minutes it reads the feed's latest-mac.yml, offers
   the release, downloads only when asked, and restarts on request. A

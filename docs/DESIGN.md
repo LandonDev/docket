@@ -3086,7 +3086,7 @@ Around the canvas:
     cannot take now is shown as words, never as disabled controls. While
     Save writes, the fields hold still (disabled), so it never closes over
     a later edit.
-- **The guest's page** (tempcode.landonhale.com) is the same editor on the
+- **The guest's page** (share.landonhale.com) is the same editor on the
   same tokens under one 44px line: the item's name, whose it is, what the
   guest can do, until when, the faces of who else is in the file and the
   guest's own. A face there is the bar's 20px `Face`; the others lap 6px over

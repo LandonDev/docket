@@ -7,6 +7,7 @@ import { PlanSettingsSchema } from './plans'
 import { BuildConfigSchema } from './build'
 import { TurnPassSchema } from './turnpass'
 import { StartOnSchema, type StartOn } from './defaults'
+import { repoKey } from './repoKey'
 
 /**
  * One project across hosts (CLAUDE.md "One project across hosts").
@@ -17,7 +18,8 @@ import { StartOnSchema, type StartOn } from './defaults'
  * rules here and stamps the ids; nothing here touches a store or a socket.
  *
  * The rules, decided with the user on 2026-10-22:
- * - workspaces pair by GitHub repo (lowercase), else by folder name
+ * - workspaces pair by GitHub repo (lowercase, old and new slug of a renamed
+ *   repo as one: repoKey.ts), else by folder name
  *   (lowercase); at most one copy per host, the oldest row when several
  *   share a key;
  * - projects pair inside paired workspaces by name (trimmed, lowercase),
@@ -62,9 +64,9 @@ export interface LinkableProject {
 const strip = (path: string): string => path.replace(/\/+$/, '') || '/'
 const basename = (path: string): string => strip(path).split('/').pop() ?? path
 
-/** The key two workspaces share: the repo, else the folder name. */
+/** The key two workspaces share: the repo (a renamed one under its new slug, repoKey.ts), else the folder name. */
 export function workspaceMatchKey(ws: Pick<LinkableWorkspace, 'path' | 'githubRepo'>): string {
-  const repo = ws.githubRepo?.trim().toLowerCase()
+  const repo = repoKey(ws.githubRepo)
   return repo ? `repo:${repo}` : `name:${basename(ws.path).toLowerCase()}`
 }
 

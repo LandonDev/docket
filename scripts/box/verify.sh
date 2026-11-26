@@ -23,7 +23,9 @@ assert c[0]['arch']=='linux_amd64', c[0]['arch']
 assert any(x.get('origin_ip')=='104.194.11.2' for x in c[0].get('conns',[])), 'Box origin IP missing'
 print('PASS: one Linux connector from 104.194.11.2')
 PY
-curl -sSI --connect-timeout 10 --max-time 20 https://tempcode.landonhale.com > "$headers"
+for host in docket.landonhale.com tempcode.landonhale.com; do
+curl -sSI --connect-timeout 10 --max-time 20 "https://$host" > "$headers"
 grep -qi '^server: cloudflare' "$headers" || { cat "$headers"; exit 1; }
 head -n 1 "$headers"
 echo 'PASS: HTTPS reaches Cloudflare (502 expected before thread C starts 7677)'
+done

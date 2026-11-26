@@ -131,6 +131,12 @@ describe('ensureLinked: the resolution order', () => {
     expect(r.project).toMatchObject({ workspaceId: 'w1', linkId: 'pl_alpha' })
   })
 
+  it('else by the renamed repo under either slug', async () => {
+    const { deps } = catalog({ workspaces: [ws({ id: 'w1', path: '/srv/other/name', githubRepo: 'LandonDev/temp-code' })] })
+    const r = await ensureLinked(deps, args({ workspaceGithubRepo: 'LandonDev/docket' }))
+    expect(r.project).toMatchObject({ workspaceId: 'w1', linkId: 'pl_alpha' })
+  })
+
   it('an unlinked project of the same name in the workspace is adopted, not duplicated', async () => {
     const { deps, calls, projects } = catalog({
       workspaces: [ws({ id: 'w1', path: '/srv/agents/work/alpha', linkId: 'wl_alpha' })],

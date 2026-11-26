@@ -14,17 +14,17 @@ const ws = (environmentId: string, path: string, extra: Partial<WorkspaceMeta> =
   }) as WorkspaceMeta;
 
 describe("pairWorkspaces", () => {
-  it("pairs two hosts' copies by GitHub repo, else by folder name, one member per host", () => {
+  it("pairs two hosts' copies by GitHub repo (the renamed repo's old and new slug as one), else by folder name, one member per host", () => {
     const pairs = pairWorkspaces([
       ws("local", "/Users/me/IdeaProjects/temp-code", { githubRepo: "LandonDev/temp-code" }),
-      ws("box", "/srv/agents/work/temp-code/", { githubRepo: "landondev/TEMP-CODE" }),
+      ws("box", "/srv/agents/work/temp-code/", { githubRepo: "landondev/Docket" }),
       ws("local", "/Users/me/shop"),
       ws("box", "/srv/agents/work/shop"),
       ws("box", "/srv/agents/work/other/shop"),
       ws("local", "/Users/me/solo"),
     ]);
     expect(pairs.map((p) => [p.id, p.members.map((m) => `${m.environmentId}:${m.cwd}`)])).toEqual([
-      ["repo:landondev/temp-code", ["local:/Users/me/IdeaProjects/temp-code", "box:/srv/agents/work/temp-code"]],
+      ["repo:landondev/docket", ["local:/Users/me/IdeaProjects/temp-code", "box:/srv/agents/work/temp-code"]],
       ["name:shop", ["local:/Users/me/shop", "box:/srv/agents/work/shop"]],
       ["name:solo", ["local:/Users/me/solo"]],
     ]);

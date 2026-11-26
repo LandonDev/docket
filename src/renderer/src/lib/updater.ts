@@ -40,7 +40,7 @@ export type UpdaterSnapshot = {
 };
 
 /** The newest release's page, for when the updater cannot finish on its own (no release carries a .dmg). */
-export const MANUAL_DOWNLOAD_URL = "https://github.com/LandonDev/temp-code/releases/latest";
+export const MANUAL_DOWNLOAD_URL = "https://github.com/LandonDev/docket/releases/latest";
 
 /** An error with a version to retry: the button downloads it again. */
 export function canRetry(snapshot: UpdaterSnapshot): boolean {

@@ -14,6 +14,7 @@ import {
   archiveSession,
   callFacade,
   collapseStatus,
+  findRepo,
   getDiff,
   getSession,
   getTranscript,
@@ -239,6 +240,18 @@ describe('list_sessions', () => {
     const only = await listSessions(ctx(), { status: 'waiting', repo: 'scratch' })
     expect(only.sessions.map((s) => s.id)).toEqual([waiting.id])
     await expect(listSessions(ctx(), { repo: 'nope' })).rejects.toThrow(/no repo "nope"/)
+  })
+})
+
+describe('findRepo', () => {
+  it('finds the renamed repo by either slug, whichever its origin names', () => {
+    const reg = (githubRepo: string) =>
+      ({ listWorkspaces: () => [{ id: 'w1', name: 'app', path: '/srv/work/app', githubRepo }] }) as unknown as Parameters<typeof findRepo>[0]
+    for (const saved of ['LandonDev/temp-code', 'LandonDev/docket']) {
+      expect(findRepo(reg(saved), 'landondev/docket').id).toBe('w1')
+      expect(findRepo(reg(saved), 'LandonDev/temp-code').id).toBe('w1')
+    }
+    expect(() => findRepo(reg('LandonDev/temp-code'), 'someone/docket')).toThrow(/no repo/)
   })
 })
 

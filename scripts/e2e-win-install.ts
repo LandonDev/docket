@@ -161,7 +161,7 @@ async function run(): Promise<void> {
   const service = await guest([vm('run-in-session'), '--wait', '--timeout', '60', `${appRes()}\\resources\\native\\tc-computer.exe`, 'version'], 120_000)
   check('tc-computer.exe is inside and answers its version on the desktop', service.code === 0 && /^\d+\.\d+\.\d+/m.test(service.out), service.out.slice(0, 80))
   const feed = await ps(`Get-Content -Raw '${app.dir}\\resources\\app-update.yml'`)
-  check('the feed config names github LandonDev/temp-code', ['provider: github', 'owner: LandonDev', 'repo: temp-code'].every((l) => feed.out.includes(l)), feed.out.replace(/\s+/g, ' '))
+  check('the feed config names github LandonDev/docket', ['provider: github', 'owner: LandonDev', 'repo: docket'].every((l) => feed.out.includes(l)), feed.out.replace(/\s+/g, ' '))
 
   // ── a sign-in lent for one turn ──
   if (withThread) {

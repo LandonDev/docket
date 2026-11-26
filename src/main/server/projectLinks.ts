@@ -1,5 +1,6 @@
 import { existsSync, statSync } from 'node:fs'
 import { projectMatchKey, type EnsureLinkedArgs } from '@shared/projectLinks'
+import { repoKey } from '@shared/repoKey'
 import type { EnsureLinkedResult } from '@shared/wireSchemas'
 import type { ProjectMeta, ProjectMode, WorkspaceMeta } from '@shared/domain'
 import { stripSlash, type HistoryMapping } from './pathMap'
@@ -80,8 +81,8 @@ function findWorkspace(deps: EnsureLinkedDeps, args: EnsureLinkedArgs): Workspac
     const row = oldest(workspaces.filter((w) => stripSlash(w.path) === mapped.path))
     return { row, createAt: row ? null : mapped.path, lookedFor: mapped.path }
   }
-  const repo = args.workspaceGithubRepo?.trim().toLowerCase()
-  const byRepo = repo ? oldest(workspaces.filter((w) => w.githubRepo?.trim().toLowerCase() === repo)) : null
+  const repo = repoKey(args.workspaceGithubRepo)
+  const byRepo = repo ? oldest(workspaces.filter((w) => repoKey(w.githubRepo) === repo)) : null
   return { row: byRepo, createAt: null, lookedFor: mapped?.path ?? null }
 }
 

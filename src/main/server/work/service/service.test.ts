@@ -141,7 +141,7 @@ describe('the installed box is not an isolated instance', () => {
   it.skipIf(process.platform !== 'linux')("on the box a guest link's and a form's address is the tunnel's hostname; a dev instance's is its own", async () => {
     const { publicOrigin } = await import('../guests/links')
     const ctx = { service: { url: () => 'http://127.0.0.1:43953/' } } as unknown as Parameters<typeof publicOrigin>[0]
-    expect(publicOrigin(ctx, box)).toBe('https://tempcode.landonhale.com')
+    expect(publicOrigin(ctx, box)).toBe('https://docket.landonhale.com')
     expect(publicOrigin(ctx, devOnBox)).toBe('http://127.0.0.1:43953')
   })
   it('a dev instance on the Mac: isolated, any port, serves none', () => {
@@ -185,11 +185,12 @@ describe('where the service listens', () => {
 describe('which pages may open a socket', () => {
   const req = (origin?: string) => ({ headers: origin === undefined ? {} : { origin } }) as never
   const DOCKET = 'https://docket.landonhale.com'
-  const box: ServiceOrigins = { allowed: [BOX_PUBLIC_ORIGIN, DOCKET], guest: null, loopback: false }
-  const flipped: ServiceOrigins = { allowed: [BOX_PUBLIC_ORIGIN, DOCKET, 'https://share.landonhale.com'], guest: 'https://share.landonhale.com', loopback: false }
+  const TEMPCODE = 'https://tempcode.landonhale.com'
+  const box: ServiceOrigins = { allowed: [DOCKET, TEMPCODE], guest: null, loopback: false }
+  const flipped: ServiceOrigins = { allowed: [DOCKET, TEMPCODE, 'https://share.landonhale.com'], guest: 'https://share.landonhale.com', loopback: false }
   const isolated: ServiceOrigins = { allowed: ['http://127.0.0.1:7001'], guest: null, loopback: true }
 
-  it('the box names its hostname and its new name, a proof the origin it was given, an installed Mac none; only an isolated instance takes loopback for a guest', () => {
+  it('the box names its new hostname and the old one, a proof the origin it was given, an installed Mac none; only an isolated instance takes loopback for a guest', () => {
     expect(serviceOrigins(null, { TEMP_CODE_USER_DATA: BOX_DATA_DIR }, 'linux')).toEqual(box)
     expect(serviceOrigins('https://share.landonhale.com', { TEMP_CODE_USER_DATA: BOX_DATA_DIR }, 'linux')).toEqual(flipped)
     expect(serviceOrigins(null, { TEMP_CODE_USER_DATA: '/tmp/x', TEMP_CODE_WORK_PUBLIC_ORIGIN: 'http://127.0.0.1:7001/' }, 'linux')).toEqual(isolated)
@@ -205,7 +206,7 @@ describe('which pages may open a socket', () => {
 
   it("this host's own pages pass; another site's, a sandboxed frame's and a look-alike's do not", () => {
     for (const path of ['/w/doc/kd1', '/w/sheet/ks1', '/g/ws/L1', '/w/office', `/w/full/${'a'.repeat(64)}/x`]) {
-      expect(originAllowed(req(BOX_PUBLIC_ORIGIN), box, path), path).toBe(true)
+      expect(originAllowed(req(TEMPCODE), box, path), path).toBe(true)
       expect(originAllowed(req(DOCKET), box, path), path).toBe(true)
       for (const foreign of ['https://evil.example', 'null', 'https://tempcode.landonhale.com.evil.example', 'http://tempcode.landonhale.com', `${BOX_PUBLIC_ORIGIN}/`, 'https://docket.landonhale.com.evil.example', 'http://docket.landonhale.com'])
         expect(originAllowed(req(foreign), box, path), `${foreign} on ${path}`).toBe(false)
@@ -223,9 +224,9 @@ describe('which pages may open a socket', () => {
 
   it('once guest pages have their own origin, a guest socket takes that one alone; the old hostname still opens the owner\'s', () => {
     expect(originAllowed(req('https://share.landonhale.com'), flipped, '/g/ws/L1')).toBe(true)
-    expect(originAllowed(req(BOX_PUBLIC_ORIGIN), flipped, '/g/ws/L1')).toBe(false)
+    expect(originAllowed(req(TEMPCODE), flipped, '/g/ws/L1')).toBe(false)
     expect(originAllowed(req(DOCKET), flipped, '/g/ws/L1')).toBe(false)
-    expect(originAllowed(req(BOX_PUBLIC_ORIGIN), flipped, '/w/doc/kd1')).toBe(true)
+    expect(originAllowed(req(TEMPCODE), flipped, '/w/doc/kd1')).toBe(true)
     expect(originAllowed(req(DOCKET), flipped, '/w/doc/kd1')).toBe(true)
     expect(originAllowed(req('https://share.landonhale.com'), flipped, '/w/sheet/ks1')).toBe(true)
   })

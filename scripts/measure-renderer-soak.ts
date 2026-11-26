@@ -120,7 +120,7 @@ const userData = join(ROOT, `${args.label}.userData`)
 const home = join(ROOT, `${args.label}.home`)
 const MARKER = `TEMP_CODE_USER_DATA=${userData}`
 const CLIENT = 'renderer-soak'
-const BOX_ORIGIN = 'https://tempcode.landonhale.com'
+const BOX_ORIGIN = 'https://docket.landonhale.com'
 const BOX_SERVER_JSON = '/srv/agents/temp-code-data/server.json'
 const linux = process.platform === 'linux'
 const mac = process.platform === 'darwin'

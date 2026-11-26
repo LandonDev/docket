@@ -63,7 +63,7 @@ say "split: the Mac keeps its identity, history moves aside"
 TEMP_CODE_DATA="$data" "$here/split-data-dir.sh" split || fail "split stage"
 
 say "probe"
-code=$(curl -s -m 15 -o /dev/null -w '%{http_code}' https://tempcode.landonhale.com/api/hello || true)
+code=$(curl -s -m 15 -o /dev/null -w '%{http_code}' https://docket.landonhale.com/api/hello || true)
 [[ $code == 200 ]] || fail "the box did not answer hello ($code)"
 ssh -o BatchMode=yes "$box" 'systemctl is-active temp-code.service; echo "threads on the box: $(tc-local session.list | jq length)"' || true
 say "DONE: reopen TempCode.app; history shows under the box environment"

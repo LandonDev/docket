@@ -15,8 +15,12 @@
   names and the computer tools' self-guard (which refuses both) all see
   both names, and a peer's announcement stays as it is. `learnedOrigin` is
   not moved by a request through the other name, so pairing links keep the
-  name they had. Defaults, `remote.publicOrigin` and every link made still
-  say `tempcode.landonhale.com`. `share.landonhale.com` is no alias.
+  name they had. What is made from now on says `docket.landonhale.com`: the
+  Work service's box origin (`BOX_PUBLIC_ORIGIN`, work/service/config.ts),
+  forms' links, the guest links' fallback and the hosted pages' health
+  probe. `remote.publicOrigin` is the owner's setting, set on the box by
+  hand; links, keys and paired phones made under the old name keep it and
+  keep working. `share.landonhale.com` is no alias.
 - `TEMP_CODE_REMOTE_PORT=<n>` overrides the port for a dev instance (so it
   never fights the installed app for 7677); `0` turns the listener off. The
   settings `remote.enabled`, `remote.port`, `remote.publicOrigin` live in the

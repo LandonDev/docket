@@ -79,7 +79,7 @@ split() {
     have_box=0
     [[ -n ${TC_BOX_KEY:-} ]] || die 'TC_BOX_KEY is required: the box is not a saved environment here yet (mint the key on the box)'
   fi
-  origin=${TC_BOX_ORIGIN:-https://tempcode.landonhale.com}
+  origin=${TC_BOX_ORIGIN:-https://docket.landonhale.com}
   moved="$data.moved-$today"
   [[ -e $moved ]] && die "$moved already exists"
   fresh=$(mktemp -d "$data.split-XXXXXX")

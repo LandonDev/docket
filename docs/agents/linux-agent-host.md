@@ -15,7 +15,7 @@
   `/srv/agents/temp-code-builds/current`
   as `temp-code.service` (agents user, agents.slice, Xvfb, a private D-Bus),
   data in `/srv/agents/temp-code-data`, env in `/etc/temp-code.env`; the
-  tunnel maps `tempcode.landonhale.com` to its 7677. Deploy a ref with
+  tunnel maps `docket.landonhale.com` (and the old `tempcode.landonhale.com`) to its 7677. Deploy a ref with
   `ssh box 'box-update master'` (clone + build → trial → snapshot → commit,
   with rollback on failure) or `ssh box 'box-update v1.0.N'` (the release's
   prebuilt `temp-code-out-1.0.N.tar.gz`, verified against its sha256, no

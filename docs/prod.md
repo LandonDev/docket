@@ -51,7 +51,7 @@ administrators. `prod` has Docker access, which grants root-level host control.
 
 Coolify's `/app` and `/apps` paths go to loopback port 6001 for realtime;
 `/terminal/ws` goes to loopback port 6002. All other dashboard paths use 8000.
-`tempcode.landonhale.com` still goes to 7677. No new inbound firewall rule exists.
+`docket.landonhale.com` and `tempcode.landonhale.com` still go to 7677. No new inbound firewall rule exists.
 All host port publications bind `127.0.0.1`, including Traefik; nothing publishes
 80, 443, 8000, database ports, or Convex ports on a public address.
 

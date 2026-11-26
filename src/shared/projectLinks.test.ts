@@ -33,7 +33,7 @@ const pr = (id: string, workspaceId: string, name: string, patch: Partial<Linkab
 
 describe('keys', () => {
   it('a workspace keys by its repo, lowercased, else its folder name', () => {
-    expect(workspaceMatchKey(ws('a', '/Users/me/IdeaProjects/Temp-Code', { githubRepo: 'LandonDev/Temp-Code' }))).toBe('repo:landondev/temp-code')
+    expect(workspaceMatchKey(ws('a', '/Users/me/IdeaProjects/Temp-Code', { githubRepo: 'LandonDev/Temp-Code' }))).toBe('repo:landondev/docket')
     expect(workspaceMatchKey(ws('a', '/srv/agents/work/Temp-Code/'))).toBe('name:temp-code')
     expect(workspaceMatchKey(ws('a', '/x', { githubRepo: '  ' }))).toBe('name:x')
   })
@@ -48,9 +48,9 @@ describe('keys', () => {
 })
 
 describe('matchWorkspaces', () => {
-  it('pairs by repo first, then by folder name', () => {
+  it('pairs by repo first (a renamed repo by either slug), then by folder name', () => {
     const local = [ws('m1', '/Users/me/IdeaProjects/temp-code', { githubRepo: 'LandonDev/temp-code' }), ws('m2', '/Users/me/IdeaProjects/notes')]
-    const peer = [ws('b1', '/srv/agents/work/tc-clone', { githubRepo: 'landondev/temp-code' }), ws('b2', '/srv/agents/work/Notes'), ws('b3', '/srv/agents/work/other')]
+    const peer = [ws('b1', '/srv/agents/work/tc-clone', { githubRepo: 'landondev/docket' }), ws('b2', '/srv/agents/work/Notes'), ws('b3', '/srv/agents/work/other')]
     expect(matchWorkspaces(local, peer).map((p) => [p.local.id, p.peer.id])).toEqual([
       ['m1', 'b1'],
       ['m2', 'b2']

@@ -11,7 +11,7 @@ export type { MasterRelease }
  * and a failed fetch is silent: the last good value stands until the next
  * one lands. Headless hosts never fetch; the Mac compares for everyone.
  */
-export const MASTER_RELEASE_URL = 'https://raw.githubusercontent.com/LandonDev/temp-code/master/release.json'
+export const MASTER_RELEASE_URL = 'https://raw.githubusercontent.com/LandonDev/docket/master/release.json'
 export const MASTER_FETCH_EVERY_MS = 10 * 60 * 1000
 export const MASTER_FOCUS_RECHECK_MS = 15 * 60 * 1000
 const FETCH_TIMEOUT_MS = 15_000

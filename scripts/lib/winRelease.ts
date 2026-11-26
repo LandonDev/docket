@@ -178,5 +178,5 @@ export function winBuilderConfig(winConfig: string, output: string, sha: string)
 export function winFeedProblems(yml: string | null): string[] {
   if (yml === null) return ['missing: electron-builder writes it only when the targets include nsis or zip']
   const lines = yml.split(/\r?\n/).map((l) => l.trim())
-  return ['provider: github', 'owner: LandonDev', 'repo: temp-code'].filter((want) => !lines.includes(want)).map((want) => `does not say '${want}'`)
+  return ['provider: github', 'owner: LandonDev', 'repo: docket'].filter((want) => !lines.includes(want)).map((want) => `does not say '${want}'`)
 }

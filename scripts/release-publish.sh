@@ -91,7 +91,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-REPO="LandonDev/temp-code"
+REPO="LandonDev/docket"
 PROFILE="${APPLE_KEYCHAIN_PROFILE:-aliax}"
 
 # ── the phase lines ─────────────────────────────────────────────────────
@@ -359,10 +359,10 @@ ditto -x -k "$ZIP" "$STAGE/unzipped" || refuse "the zip does not extract"
 # in it, it would update from somewhere else.
 FEED_FILE="$STAGE/unzipped/$PRODUCT.app/Contents/Resources/app-update.yml"
 [ -f "$FEED_FILE" ] || refuse "the app in the zip has no Contents/Resources/app-update.yml (electron-updater's feed config)"
-for want in "provider: github" "owner: LandonDev" "repo: temp-code"; do
+for want in "provider: github" "owner: LandonDev" "repo: docket"; do
   grep -qx "$want" "$FEED_FILE" || refuse "Contents/Resources/app-update.yml does not say '$want'"
 done
-echo "app-update.yml names github LandonDev/temp-code"
+echo "app-update.yml names github LandonDev/docket"
 REFERENCE=$APP
 if [ "$DRY" = 0 ]; then
   for installed in /Applications/Docket.app /Applications/TempCode.app; do

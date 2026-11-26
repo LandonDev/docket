@@ -408,7 +408,7 @@ private extension Result {
 public final class MasterReleaseWatcher {
     public static let shared = MasterReleaseWatcher()
 
-    public nonisolated static let url = URL(string: "https://raw.githubusercontent.com/LandonDev/temp-code/master/release.json")!
+    public nonisolated static let url = URL(string: "https://raw.githubusercontent.com/LandonDev/docket/master/release.json")!
     public nonisolated static let everyMs: Double = 600_000
     public nonisolated static let focusRecheckMs: Double = 900_000
     public nonisolated static let timeoutSeconds: TimeInterval = 15

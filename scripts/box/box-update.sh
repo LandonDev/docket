@@ -11,7 +11,7 @@ data=/srv/agents/temp-code-data
 state=/var/lib/box-baseline
 home=/srv/agents/home
 path="$home/.local/bin:$home/.npm-global/bin:$home/.bun/bin:/usr/local/bin:/usr/bin:/bin"
-repo=https://github.com/LandonDev/temp-code
+repo=https://github.com/LandonDev/docket
 pending=$state/temp-code-update.pending
 trial= scratch= candidate= old= old_previous= flipped=0
 mkdir -p "$state"

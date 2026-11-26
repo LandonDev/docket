@@ -41,8 +41,12 @@ export function servesPublic(env: NodeJS.ProcessEnv = process.env): boolean {
 /** Setting: the origin guest pages are served on once they have their own (`work.guests.setOrigin`); unset, the host's public origin. */
 export const GUEST_ORIGIN_SETTING = 'work.guests.origin'
 
-/** The tunnel's hostname for the box's installed host (scripts/box/ingress.yml); guests/links.ts `DEFAULT_ORIGIN` is the same. */
-export const BOX_PUBLIC_ORIGIN = 'https://tempcode.landonhale.com'
+/**
+ * The tunnel's hostname for the box's installed host (scripts/box/ingress.yml), which links made
+ * from now on carry: the app's new name. The old one, `tempcode.landonhale.com`, answers the
+ * same for good, so every link made before keeps working (src/shared/publicHosts.ts).
+ */
+export const BOX_PUBLIC_ORIGIN = 'https://docket.landonhale.com'
 
 /**
  * Which pages may open a socket on this host's public listener (routes/route.ts `originAllowed`): the origin its

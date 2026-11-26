@@ -45,7 +45,7 @@ import { join, resolve } from 'node:path'
 import { Cdp, REPO, pageTarget, portFree, sleep } from './lib/packagedApp'
 
 const ROOT = '/tmp/tc-switch-measure'
-const ORIGIN = 'https://tempcode.landonhale.com'
+const ORIGIN = 'https://docket.landonhale.com'
 const CLIENT = 'switch-measure'
 const argv = process.argv.slice(2)
 const flag = (name: string, fallback?: string): string | undefined => {

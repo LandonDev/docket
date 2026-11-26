@@ -5,7 +5,8 @@ temp-code threads.
 
 ## Connect
 
-- Endpoint: `https://tempcode.landonhale.com/mcp` (MCP streamable HTTP, JSON-RPC
+- Endpoint: `https://docket.landonhale.com/mcp` (the old
+  `https://tempcode.landonhale.com/mcp` answers as well) (MCP streamable HTTP, JSON-RPC
   over POST; the server answers in the response, no server stream).
 - Auth: header `x-api-key: tc_…` (or `Authorization: Bearer tc_…`). The key is a
   bot key (audience `mcp`) made in temp-code under Settings → Hosts → Clients →
@@ -14,7 +15,7 @@ temp-code threads.
   256 KiB per request body. HTTP rejects bad keys with 401, app-audience
   keys with 403, large bodies with 413 and rate limits with 429 plus
   `Retry-After`. A refused tool call is a tool result starting with `error:`.
-- Claude Code: `claude mcp add --transport http temp-code https://tempcode.landonhale.com/mcp --header "x-api-key: tc_…"`.
+- Claude Code: `claude mcp add --transport http temp-code https://docket.landonhale.com/mcp --header "x-api-key: tc_…"`.
 
 ## Words
 

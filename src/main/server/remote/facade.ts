@@ -3,6 +3,7 @@ import { basename } from 'node:path'
 import { z } from 'zod'
 import { accessCeiling, allows, type Capability, type Principal } from '@shared/capabilities'
 import { ADDON_APPROVE_REFUSAL, mayAllow } from '@shared/addons'
+import { repoKey } from '@shared/repoKey'
 import { relayState, type HostPresence, type PowerState, type RelayState, type ScreenState } from '@shared/contract-relay'
 import { CATALOG, modelInfo, resolveModel, visibleCatalog, type ProviderId } from '@shared/catalog'
 import type { FileChange, ProjectMeta, WorkspaceMeta } from '@shared/domain'
@@ -409,7 +410,7 @@ export function findRepo(reg: SessionRegistry, ref: string): WorkspaceMeta {
     workspaces.find((w) => w.id === wanted) ??
     workspaces.find((w) => same(w.name, wanted)) ??
     workspaces.find((w) => w.path === wanted || w.path === wanted.replace(/\/+$/, '')) ??
-    workspaces.find((w) => same(w.githubRepo, wanted)) ??
+    workspaces.find((w) => !!repoKey(w.githubRepo) && repoKey(w.githubRepo) === repoKey(wanted)) ??
     workspaces.find((w) => same(basename(w.path), wanted))
   if (!hit) {
     const names = workspaces.map((w) => w.name).join(', ') || '(none added yet)'

@@ -521,7 +521,10 @@ script with no build: the Work service serves `addins/office/` at
 manifest names `https://tempcode.landonhale.com/w/addin/taskpane.html`.
 Office's web views may not reach this machine's loopback (Chromium's Local
 Network Access), so the add-in connects out to the public address, through
-the tunnel, to `wss://tempcode.landonhale.com/w/office`. **Whichever host the
+the tunnel, to `wss://tempcode.landonhale.com/w/office`. The manifest stays
+on the old name, which answers for good: the pane keeps its key in local
+storage, which is per origin, so a manifest on `docket.landonhale.com` would
+mean pairing every Office again and uploading the manifest again. **Whichever host the
 tunnel points at holds the add-ins**, which is the box today: the Mac's own
 Excel with the add-in is reached through the box.
 

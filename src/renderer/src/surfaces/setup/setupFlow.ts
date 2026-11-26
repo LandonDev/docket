@@ -47,7 +47,7 @@ export function writeSeedsOnce(seeds: { appearance?: unknown; defaultModels?: un
 
 const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
-/** "tempcode.landonhale.com" from the box's origin, as the confirm names it. */
+/** "docket.landonhale.com" from the box's origin, as the confirm names it. */
 export function hostOf(origin: string): string {
   try {
     return new URL(origin).host || origin;

@@ -50,7 +50,7 @@ Tests/TempCodeClientTests
 ## The pieces
 
 **PairedEnvironment** is one host: the environment id its `hello` reports,
-a name, the origin (`https://tempcode.landonhale.com`, or
+a name, the origin (`https://docket.landonhale.com` (or the old `https://tempcode.landonhale.com`), or
 `http://127.0.0.1:7677` for a dev instance), the key's capabilities. The key
 itself lives only in the **KeyStore** under the environment id: the Keychain
 on the phone (`KeychainKeyStore`, after first unlock, this device only), memory

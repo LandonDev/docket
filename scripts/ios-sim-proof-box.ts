@@ -6,14 +6,14 @@
  * prints the code or a key; the proof script scrubs its own output.
  *
  *   bun scripts/ios-sim-proof-box.ts
- *   TC_ORIGIN overrides https://tempcode.landonhale.com; TC_SIM, TC_PROOF_DIR,
+ *   TC_ORIGIN overrides https://docket.landonhale.com; TC_SIM, TC_PROOF_DIR,
  *   TC_TEST_SEARCH and TC_TEST_THREAD pass through to the proof script.
  */
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
 const repo = resolve(import.meta.dir, '..')
-const ORIGIN = (process.env.TC_ORIGIN ?? 'https://tempcode.landonhale.com').replace(/\/+$/, '')
+const ORIGIN = (process.env.TC_ORIGIN ?? 'https://docket.landonhale.com').replace(/\/+$/, '')
 const runName = `ios proof ${Date.now()}`
 
 function local(method: string, params: unknown = {}): unknown {

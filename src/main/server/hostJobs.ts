@@ -78,7 +78,7 @@ export const DEPLOY_NOT_INSTALLED = `Deploy from the app is not installed on thi
 export const PICKUP_MS = 15_000
 const POLL_MS = 400
 const KILL_GRACE_MS = 5_000
-const RELEASE_REPO_FEED = 'https://github.com/LandonDev/temp-code/releases/latest/download/latest-mac.yml'
+const RELEASE_REPO_FEED = 'https://github.com/LandonDev/docket/releases/latest/download/latest-mac.yml'
 
 // ── the log ─────────────────────────────────────────────────────────────
 

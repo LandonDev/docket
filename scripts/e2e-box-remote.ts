@@ -9,12 +9,12 @@
  * TC_PAIR_CODES can supply codes for another origin; automatic setup is box-only.
  * Mint the codes on the box: tc-local remote.pairings.create
  *   '{"name":"e2e key","audience":"client","caps":["operate"]}'  (twice)
- * TC_ORIGIN overrides https://tempcode.landonhale.com.
+ * TC_ORIGIN overrides https://docket.landonhale.com.
  */
 import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { Cdp, sleep } from './lib/packagedApp'
 
-const ORIGIN = (process.env.TC_ORIGIN ?? 'https://tempcode.landonhale.com').replace(/\/+$/, '')
+const ORIGIN = (process.env.TC_ORIGIN ?? 'https://docket.landonhale.com').replace(/\/+$/, '')
 let CODES = (process.env.TC_PAIR_CODES ?? '')
   .split(',')
   .map((s) => s.trim())

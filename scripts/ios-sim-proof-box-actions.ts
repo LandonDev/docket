@@ -12,13 +12,13 @@
  * here prints a code or a key; the proof script scrubs its own output.
  *
  *   bun scripts/ios-sim-proof-box-actions.ts
- *   TC_ORIGIN overrides https://tempcode.landonhale.com; TC_SIM and TC_PROOF_DIR pass through.
+ *   TC_ORIGIN overrides https://docket.landonhale.com; TC_SIM and TC_PROOF_DIR pass through.
  */
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
 const repo = resolve(import.meta.dir, '..')
-const ORIGIN = (process.env.TC_ORIGIN ?? 'https://tempcode.landonhale.com').replace(/\/+$/, '')
+const ORIGIN = (process.env.TC_ORIGIN ?? 'https://docket.landonhale.com').replace(/\/+$/, '')
 const runName = `ios actions ${Date.now()}`
 const SCRATCH = '/srv/agents/work/l5-phone-scratch'
 

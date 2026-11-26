@@ -104,7 +104,7 @@ The Work service serves it (`service/routes/form.ts`; the route list is in
   Questions half as a filler sees it in both themes. A form that did not
   load offers Retry; when a Retry pressed from the keyboard draws the form,
   the focus goes to the form's title, unless he moved it meanwhile.
-- **The link.** `linkOf` (forms/forms.ts): `https://tempcode.landonhale.com/f/<id>`
+- **The link.** `linkOf` (forms/forms.ts): `https://docket.landonhale.com/f/<id>`
   on the box's installed host, the one behind the tunnel; the service's local
   address on any other host or an isolated instance;
   `TEMP_CODE_WORK_PUBLIC_ORIGIN` overrides both (a proof's quick tunnel).
