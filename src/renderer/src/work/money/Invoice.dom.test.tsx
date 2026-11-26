@@ -32,6 +32,8 @@ vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original
 const opened = vi.fn();
 vi.mock("../../lib/workSwitch", async (original) => ({ ...(await original<object>()), openWorkView: opened }));
 
+// The dialog's rules by the date field's value; the field itself is proven in components/ui and work/dateField.dom.test.tsx.
+vi.mock("../../components/ui/date-field", async () => ({ DateField: (await import("../../work/testDateField")).DateFieldStandIn }));
 const { InvoiceDialog } = await import("./InvoiceDialog");
 const { sendInvoice, sentAs } = await import("./send");
 

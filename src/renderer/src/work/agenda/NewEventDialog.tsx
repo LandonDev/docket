@@ -6,6 +6,7 @@ import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
+import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { loadToast } from "../../components/ui/toaster";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -191,7 +192,7 @@ function Body({
         <div data-event-when className="@container/when">
           <div className="grid grid-cols-2 gap-2 @[400px]/when:grid-cols-[minmax(0,1fr)_120px_120px]">
             <Field label="Day" className="col-span-2 @[400px]/when:col-span-1">
-              <Input type="date" value={form.day} onChange={(e) => patch({ day: e.target.value })} />
+              <DateField required value={form.day} onChange={(day) => patch({ day })} />
             </Field>
             <Field label="From">
               <Input type="time" value={form.from} onChange={(e) => patch({ from: e.target.value })} />

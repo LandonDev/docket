@@ -5,6 +5,7 @@ import type { SectorKey } from "@shared/work";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
+import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { loadToast } from "../../components/ui/toaster";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -170,7 +171,7 @@ function Body({
           <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" />
         </Field>
         <Field label="Due">
-          <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+          <DateField value={due} onChange={setDue} />
         </Field>
         <ErrorLine error={error} />
       </ModalBody>

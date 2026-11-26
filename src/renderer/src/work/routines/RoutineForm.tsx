@@ -8,6 +8,7 @@ import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
 import { ChoiceToggle, type ToggleChoice } from "../../components/choice-toggle";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
@@ -275,7 +276,7 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
           </FieldRow>
           {form.ends === "day" ? (
             <Field label="Ends on">
-              <Input type="date" value={form.until} onChange={(e) => patch({ until: e.target.value })} />
+              <DateField required value={form.until} onChange={(until) => patch({ until })} />
             </Field>
           ) : null}
         </div>

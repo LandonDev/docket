@@ -41,6 +41,8 @@ vi.mock("../../lib/connection", async (original) => ({
 const toast = Object.assign(vi.fn(), { error: vi.fn(), loading: vi.fn(() => "t"), dismiss: vi.fn() });
 vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original<object>()), loadToast: async () => toast }));
 
+// The dialog's rules by the date field's value; the field itself is proven in components/ui and work/dateField.dom.test.tsx.
+vi.mock("../../components/ui/date-field", async () => ({ DateField: (await import("../../work/testDateField")).DateFieldStandIn }));
 const { Head, View, setMoneyPeriod } = await import("./MoneyView");
 const { CHANGED_WORDS } = await import("./api");
 const { ALL_ROWS, EMPTY_READ, NOVEMBER, readOf } = await import("./money.fixtures");

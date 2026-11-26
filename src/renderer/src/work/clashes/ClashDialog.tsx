@@ -8,6 +8,7 @@ import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
@@ -544,7 +545,7 @@ export function StepForm({
           <div data-step-when className="@container/when">
             <div className="grid grid-cols-2 gap-2 @[400px]/when:grid-cols-[minmax(0,1fr)_112px_112px]">
               <Field label="Day" className="col-span-2 @[400px]/when:col-span-1">
-                <Input autoFocus type="date" disabled={pending} value={form.day} onChange={(e) => patch({ day: e.target.value })} />
+                <DateField required autoFocus disabled={pending} value={form.day} onChange={(day) => patch({ day })} />
               </Field>
               <Field label="From" hint={hints.from}>
                 <Input type="time" disabled={pending} aria-invalid={bad === "from" || undefined} value={form.from} onChange={(e) => patch({ from: e.target.value })} />

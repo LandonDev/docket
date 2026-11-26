@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Reac
 import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
+import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -525,7 +526,7 @@ export function PickTime({ onPick, onClose }: { onPick: (at: number) => void; on
         <ModalBody>
           <div className="grid grid-cols-[minmax(0,1fr)_120px] gap-2">
             <Field label="Day">
-              <Input type="date" autoFocus value={day} onChange={(e) => setDay(e.target.value)} className="tabular-nums" />
+              <DateField required autoFocus value={day} onChange={setDay} />
             </Field>
             <Field label="Time">
               <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="tabular-nums" />

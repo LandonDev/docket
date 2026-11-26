@@ -6,6 +6,7 @@ import { CheckRow, Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
 import { ChoiceToggle } from "../../components/choice-toggle";
+import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/cn";
 import { atOf, openBook, saveEntry } from "./api";
@@ -199,7 +200,7 @@ function EntryBody({
           <AmountInput ref={amount} value={form.amount} placeholder="0.00" onChange={(e) => patch({ amount: e.target.value })} />
         </Field>
         <Field label="Date">
-          <Input type="date" value={form.date} onChange={(e) => patch({ date: e.target.value })} className="tabular-nums" />
+          <DateField required value={form.date} onChange={(date) => patch({ date })} />
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">

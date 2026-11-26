@@ -49,6 +49,8 @@ vi.mock("../../components/ui/toaster", () => ({
 const mail = vi.hoisted(() => ({ drafts: [] as unknown[], to: [] as (string | undefined)[], entered: [] as string[] }));
 vi.mock("../mail/mailto", () => ({ writeMail: (draft: unknown, workspaceId?: string) => void (mail.drafts.push(draft), mail.to.push(workspaceId)) }));
 
+// The dialog's rules by the date field's value; the field itself is proven in components/ui and work/dateField.dom.test.tsx.
+vi.mock("../../components/ui/date-field", async () => ({ DateField: (await import("../../work/testDateField")).DateFieldStandIn }));
 const { ClashDialog } = await import("./ClashDialog");
 const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
 const { openWorkView, workViewNow, workEnterPort } = await import("../../lib/workSwitch");

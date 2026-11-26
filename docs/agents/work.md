@@ -177,6 +177,14 @@ mount grows with every pillar, which is why the relay's method table
 host's presence schemas live in `src/shared/macPresence.ts` so the Mac
 bridge's contract, which the first paint does read, does not import it.
 
+A day in a Work dialog (Send later, New event, New task, Money's entry, trip
+and invoice, a routine's Ends on, a play's Date, a clash's Day) is the shared
+`DateField` (components/ui/date-field.tsx: work-kit's calendar, Mail's, in a
+popover), never Chromium's `type="date"`, whose popup wears neither theme. Each
+dialog imports it, so it rides that dialog's lazy chunk; a time stays
+`<Input type="time">`. `work/dateField.dom.test.tsx` proves one in place and
+that no Work file keeps a native date input.
+
 ## The screens: the rail, the column, Settings
 
 Milestone 8 (the approved pages `rail.html`, `add.html`, `workspace.html`,

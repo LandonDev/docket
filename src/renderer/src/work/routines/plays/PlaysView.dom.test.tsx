@@ -29,6 +29,8 @@ vi.mock("../../../lib/connection", async (original) => ({
 }));
 
 vi.mock("../../../lib/linkMay", async (original) => (await import("../../../lib/linkMay.testkit")).linkMayMock(await original()));
+// The dialog's rules by the date field's value; the field itself is proven in components/ui and work/dateField.dom.test.tsx.
+vi.mock("../../../components/ui/date-field", async () => ({ DateField: (await import("../../../work/testDateField")).DateFieldStandIn }));
 const { GIVEN_KEY, READ_KEY, resetTestKey, testKey } = await import("../../../lib/linkMay.testkit");
 const { Head, View } = await import("./PlaysView");
 const { forgetPlays } = await import("./data");

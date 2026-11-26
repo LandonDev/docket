@@ -4,6 +4,7 @@ import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
+import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { heardTrip, request } from "./api";
 import { newKey } from "./print";
@@ -181,7 +182,7 @@ function Body({ env, workspaceId, offer, day, onClose, onSaved, pending, setPend
           </Field>
         ) : null}
         <Field label="Date">
-          <Input type="date" value={form.date} onChange={(e) => patch({ date: e.target.value })} className="tabular-nums" />
+          <DateField required value={form.date} onChange={(date) => patch({ date })} />
         </Field>
         <Field label="Name">
           <Input value={form.title} autoComplete="off" onChange={(e) => patch({ title: e.target.value })} />

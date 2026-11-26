@@ -5,6 +5,7 @@ import { DialogFooter, ErrorLine } from "../../../chrome/ConfirmDialog";
 import { Field } from "../../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../../chrome/Modal";
 import { BusyLabel, Button } from "../../../components/ui/button";
+import { DateField } from "../../../components/ui/date-field";
 import { Input } from "../../../components/ui/input";
 import { ItemButton } from "../../../components/ui/item";
 import { Skeleton } from "../../../components/ui/skeleton";
@@ -168,7 +169,7 @@ function Inputs({ env, workspaceId, chip, play, onClose, pending, setPending }: 
         {left.map((take, i) =>
           take === "date" ? (
             <Field key={take} label="Date">
-              <Input type="date" autoFocus={i === 0} value={date} onChange={(e) => setDate(e.target.value)} />
+              <DateField required autoFocus={i === 0} value={date} onChange={setDate} />
             </Field>
           ) : take === "text" ? (
             <Field key={take} label="Text">

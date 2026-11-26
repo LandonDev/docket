@@ -6,6 +6,7 @@ import { Field } from "../../chrome/DialogField";
 import { Plus, X } from "../../chrome/icons";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { Button } from "../../components/ui/button";
+import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
@@ -193,25 +194,21 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
               <Input value={form.number} autoComplete="off" className="tabular-nums" onChange={(e) => patch({ number: e.target.value })} />
             </Field>
             <Field label="Date">
-              <Input
-                type="date"
+              <DateField
+                required
                 value={form.date}
-                className="tabular-nums"
-                onChange={(e) => {
-                  const date = e.target.value;
+                onChange={(date) => {
                   // The due date keeps its distance from the date until he sets it himself.
                   patch(dueTouched || !next || !date ? { date } : { date, due: addDays(date, next.dueDays) });
                 }}
               />
             </Field>
             <Field label={kind === "invoice" ? "Due" : "Needed by"}>
-              <Input
-                type="date"
+              <DateField
                 value={form.due}
-                className="tabular-nums"
-                onChange={(e) => {
+                onChange={(due) => {
                   setDueTouched(true);
-                  patch({ due: e.target.value });
+                  patch({ due });
                 }}
               />
             </Field>
