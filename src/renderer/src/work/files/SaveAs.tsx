@@ -272,7 +272,7 @@ function FirstPage({ workspace, source, format }: { workspace: WorkspaceMeta; so
         ) : page.is === "page" ? (
           <img alt="" src={page.url} className="w-[168px] bg-(--paper) outline-1 outline-(--image-outline)" />
         ) : page.is === "loading" ? (
-          <Skeleton className="aspect-[8.5/11] w-[168px] rounded-none" />
+          <Skeleton className="aspect-[8.5/11] w-[168px] rounded-none bg-skeleton-stage" />
         ) : (
           // A page that could not be drawn is the format's glyph: the picture is a glance, not a state to read.
           <KindGlyph kind={format === "pdf" ? "pdf" : "document"} className="size-8 shrink-0" />

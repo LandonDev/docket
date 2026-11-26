@@ -79,6 +79,9 @@ export interface Person {
   color: string;
 }
 
+/** A document's or a sheet's own link: its title is the page's heading. A project's names its screens in its body. */
+export const titleTagOf = (kind: Opened["kind"] | undefined): "h1" | "span" => (kind === "doc" || kind === "sheet" ? "h1" : "span");
+
 export function GuestApp() {
   const scheme = useScheme();
   const session = useMemo(() => {
@@ -156,7 +159,7 @@ export function GuestApp() {
 
   if (state.at === "failed") return <Ended why={state.why} owner={session?.mode.kind === "owner"} kept={session?.remembered() ?? kept} retry={() => load(true)} retrying={retrying} />;
   const opened = state.at === "open" ? state.opened : null;
-  const TitleTag = opened?.kind === "doc" ? "h1" : "span";
+  const TitleTag = titleTagOf(opened?.kind);
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
       {chrome === "full" ? (

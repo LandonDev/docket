@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoAfter, keyAct, motionBetween, nextPress, NOTES_DEFAULT, NOTES_SIZES, placeText, showReducer, startShowState, stepNotes, type ShowAct, type ShowState, type Slide } from "./state";
+import { atStart, autoAfter, keyAct, motionBetween, nextPress, NOTES_DEFAULT, NOTES_SIZES, placeText, showReducer, startShowState, stepNotes, type ShowAct, type ShowState, type Slide } from "./state";
 import { clockOf, elapsedOf, overTarget, pauseTimer, restartTimer, resumeTimer, startTimer } from "./timer";
 
 const slide = (n: number, over: Partial<Slide> = {}): Slide => ({ id: 255 + n, number: n, page: n, title: `Slide ${n}`, notes: "", hidden: false, ...over });
@@ -126,6 +126,16 @@ describe("a show's state", () => {
     expect(s.ended).toBe(false);
     expect(run(s, { t: "next" }).ended).toBe(true);
     expect(placeText(s)).toBe("");
+  });
+});
+
+describe("where Previous has nothing to do (council R4-D1)", () => {
+  it("is the first shown slide at its first step, with no blank and no end", () => {
+    const s = startShowState(deck(3, { 1: { hidden: true } }), "start");
+    expect(atStart(s)).toBe(true);
+    expect(atStart(run(s, { t: "next" }))).toBe(false);
+    expect(atStart(run(s, { t: "blank" }))).toBe(false);
+    expect(atStart(run(s, { t: "next" }, { t: "next" }))).toBe(false);
   });
 });
 

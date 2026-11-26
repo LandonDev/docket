@@ -1352,7 +1352,7 @@ function DeckSkeleton({ row }: { row: boolean }) {
         <div className="flex min-w-0 flex-1 flex-col [container-type:size]">
           {/* On the stage band at the size Fit gives the loaded slide (`stageWidth`: the room, short enough for the notes), so nothing moves when the deck lands. */}
           <div data-slides-skeleton-stage className="flex justify-center bg-(--slide-stage) px-4 pt-4 pb-(--slide-stage-inset)">
-            <Skeleton className="aspect-video w-[min(calc(100cqw-32px),max(200px,calc((100cqh-150px)*16/9)))]" />
+            <Skeleton className="aspect-video w-[min(calc(100cqw-32px),max(200px,calc((100cqh-150px)*16/9)))] bg-skeleton-stage" />
           </div>
           <div className="flex flex-col gap-2 px-5 pt-4">
             <Skeleton className="h-2.5 w-12" />
@@ -1404,7 +1404,7 @@ export function TabEnd({ item, source, env }: CanvasBodyProps<SlidesState>) {
  */
 export function Bar({ item, env, source, host: given, engine }: CanvasBodyProps<SlidesState> & SlidesDeps) {
   const store = deckStoreOf(item.id);
-  const { view, error, side, look, zoom } = useDeck(store);
+  const { view, error, side, look, zoom, previewing } = useDeck(store);
   const inPowerPoint = useInPowerPoint(view, source, env);
   if (!view) return error ? null : <Skeleton className="h-3 w-30" />;
   // A deck he can only read has its one row in its line (Present, and the zoom, at its end): the bar draws nothing.
@@ -1417,7 +1417,8 @@ export function Bar({ item, env, source, host: given, engine }: CanvasBodyProps<
     if (look !== "slide" && !view.hand && !presentHere) return null;
     return (
       <div className="ms-auto flex shrink-0 items-center gap-1">
-        {look === "slide" ? <ZoomMenu zoom={zoom} onZoom={(next) => store.set({ zoom: next })} /> : null}
+        {/* Over Preview the stage's zoom would act on no picture in view: Preview's own Zoom is the one then. */}
+        {look === "slide" && !previewing ? <ZoomMenu zoom={zoom} onZoom={(next) => store.set({ zoom: next })} /> : null}
         {view.hand ? <HistoryButton host={host} session={handOf(item.id, host, store)} engine={engine ?? pdfjsEngine} /> : null}
         {presentHere ? (
           <InPowerPointRow.Provider value={inPowerPoint}>

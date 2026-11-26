@@ -213,6 +213,11 @@ describe("a page that does not open", () => {
     expect(screen.getByRole("heading").textContent).toBe("This link no longer opens anything");
   });
 
+  it("makes a document's or a sheet's title the page's heading, never a project's (council R4-D3)", async () => {
+    const { titleTagOf } = await import("./GuestApp");
+    expect([titleTagOf("doc"), titleTagOf("sheet"), titleTagOf("project"), titleTagOf(undefined)]).toEqual(["h1", "h1", "span", "span"]);
+  });
+
   it("says a host out of reach, or still starting after the wait, cannot be reached, with Retry: never that the link ended", async () => {
     const { Ended } = await import("./GuestApp");
     for (const why of ["down", "starting"] as const) {

@@ -326,7 +326,8 @@ describe("the presenter's view", () => {
     expect(within(root).queryByText("None")).toBeNull();
     expect(within(root).getByRole("status").textContent).toBe("The slideshow's display was disconnected");
     // Nothing to step or blank yet; End show stays (council R3-D1).
-    for (const name of ["Previous", "Next", "Blank"]) expect((within(root).getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+    for (const name of ["Next", "Blank"]) expect((within(root).getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(root).getByRole("button", { name: "Previous" }).getAttribute("aria-disabled")).toBe("true");
     expect((within(root).getByRole("button", { name: "End show" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

@@ -627,6 +627,9 @@ describe("the Templates view", () => {
       const tip = document.querySelector("[data-state-tip]")!;
       expect(tip.getAttribute("data-slot")).toBe("tooltip-trigger");
       expect(tip.querySelector('[data-view-state="failed"]')).not.toBeNull();
+      // Cut, it is a Tab stop with its ring, so the keyboard reads the reason too (council R4-C1).
+      expect(tip.getAttribute("tabindex")).toBe("0");
+      expect(tip.className.split(" ")).toContain("focus-ring");
     } finally {
       spy.mockRestore();
       vi.restoreAllMocks();

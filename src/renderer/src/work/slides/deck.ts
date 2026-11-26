@@ -152,6 +152,8 @@ export interface DeckState {
   sheetTab: SheetTab;
   /** The stage's zoom: `fit` fills the pane, the notes still starting on screen; a number is the slide at that share of its own size. Kept while the window lives. */
   zoom: StageZoom;
+  /** Preview lies over the deck (preview/DeckPreview.tsx): the stage's own zoom is no press then, since it acts on no picture in view. */
+  previewing: boolean;
   /** Find on the deck's words (find.ts): its bar open or not, what he typed and how, the match in hand; `ask` counts each ⌘F, so the field takes the focus again. Kept closed, so the next ⌘F opens on the last words. */
   find: DeckFind;
 }
@@ -169,7 +171,7 @@ export type SheetTab = "format" | "animate";
 export type StageZoom = "fit" | number;
 
 export class DeckStore {
-  private state: DeckState = { view: null, error: null, current: null, side: "tempcode", look: "slide", sheet: false, sheetTab: "format", zoom: "fit", find: { open: false, query: "", options: { matchCase: false, wholeWord: false }, current: -1, ask: 0 } };
+  private state: DeckState = { view: null, error: null, current: null, side: "tempcode", look: "slide", sheet: false, sheetTab: "format", zoom: "fit", previewing: false, find: { open: false, query: "", options: { matchCase: false, wholeWord: false }, current: -1, ask: 0 } };
   private listeners = new Set<() => void>();
   get = (): DeckState => this.state;
   subscribe = (listener: () => void): (() => void) => {

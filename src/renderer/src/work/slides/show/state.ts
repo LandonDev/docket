@@ -170,6 +170,11 @@ export function placeText(state: ShowState): string {
   return slide ? `${slide.number}/${state.slides.length}` : "";
 }
 
+/** Whether Previous has nothing to do: no blank to lift, no end to come back from, no earlier build or shown slide. */
+export function atStart(state: ShowState): boolean {
+  return !state.blank && !state.ended && state.step === 0 && shownFrom(state.slides, state.at, -1) < 0;
+}
+
 /** The place as a screen reader says it: "Slide 4 of 12, Packages", "End of show", "The screen is black". */
 export function placeLabel(state: ShowState): string {
   const slide = state.slides[state.at];

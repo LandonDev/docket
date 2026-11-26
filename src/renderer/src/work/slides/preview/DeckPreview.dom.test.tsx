@@ -146,6 +146,10 @@ describe("the ways in", () => {
     fireEvent.keyDown(document.querySelector("[data-preview]")!, { key: "Escape" });
     act(() => askPreview("deck-cmd"));
     await waitFor(() => expect(document.querySelector('[data-preview="pics"]')).toBeTruthy());
+    // While Preview lies over the stage, the deck's bar holds no stage zoom (council R4-D2); it comes back with the stage.
+    expect(deckStoreOf("deck-cmd").get().previewing).toBe(true);
+    fireEvent.keyDown(document.querySelector("[data-preview]")!, { key: "Escape" });
+    expect(deckStoreOf("deck-cmd").get().previewing).toBe(false);
   });
 
   it("Present's menu has Preview where a deck gives one, and not elsewhere", async () => {

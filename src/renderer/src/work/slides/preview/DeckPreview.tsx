@@ -120,6 +120,12 @@ export function DeckPreviewLayer({ env, itemId, shell, request = linkRequest, ch
     if (next) setAsked((n) => n + 1);
   }, []);
   useEffect(() => onPreviewAsk(itemId, show), [itemId, show]);
+  // The deck's bar hears that Preview lies over the stage: its stage zoom steps aside while it does.
+  const previewing = on !== false;
+  useEffect(() => {
+    store.set({ previewing });
+    return () => store.set({ previewing: false });
+  }, [store, previewing]);
   const ready = !!view;
   useEffect(() => {
     if (!ready) return;

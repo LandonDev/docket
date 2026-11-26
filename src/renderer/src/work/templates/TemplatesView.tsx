@@ -5,7 +5,8 @@ import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
 import { Briefcase, Copy, Eye, FilePlus, Globe, Minus, MoreHorizontal, Pencil, TextCursor, Trash2 } from "../../chrome/icons";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
-import { Tip, TruncateTip } from "../../components/tip";
+import { Tip, useTruncated } from "../../components/tip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
@@ -305,12 +306,7 @@ export function View({ env, workspace }: WorkViewProps) {
           <ShelfSkeleton layout="page" count={8} />
         </div>
       ) : load.status === "error" ? (
-        // The shared line cuts its detail to one line; while it is cut, the whole of it is the line's tip.
-        <TruncateTip text={load.error}>
-          <div data-state-tip="">
-            <ViewStateLine word="Templates did not load" detail={load.error} onRetry={retry} />
-          </div>
-        </TruncateTip>
+        <FailedLine error={load.error} onRetry={retry} />
       ) : groups.length === 0 ? (
         // Add… is the header's; an empty shelf he narrowed says so and offers the way back.
         <EmptyState
@@ -343,5 +339,25 @@ export function View({ env, workspace }: WorkViewProps) {
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The shelf's failed read: the shared line cuts its reason to one line; while it is cut, the line is a Tab stop with
+ * the whole reason in its tip, on hover and on focus alike, so the keyboard reads what the pointer does.
+ */
+function FailedLine({ error, onRetry }: { error: string; onRetry: () => void | Promise<void> }) {
+  const { ref, cut } = useTruncated(error);
+  const line = (
+    <div ref={ref} data-state-tip="" tabIndex={cut ? 0 : undefined} className="focus-ring">
+      <ViewStateLine word="Templates did not load" detail={error} onRetry={onRetry} />
+    </div>
+  );
+  if (!cut) return line;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={line} />
+      <TooltipContent>{error}</TooltipContent>
+    </Tooltip>
   );
 }

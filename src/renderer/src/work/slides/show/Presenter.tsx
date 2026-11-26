@@ -10,7 +10,7 @@ import type { PdfDoc } from "../../pdf/engine";
 import { useRoom, type Room } from "./Audience";
 import { aspectOf, fit, SlidePicture, Thumb } from "./pictures";
 import { MediaTransport, SlideMedia, usePicture, useStage } from "./stage";
-import { nextPress, NOTES_SIZES, placeLabel, placeText, type ShowAct, type ShowState } from "./state";
+import { atStart, nextPress, NOTES_SIZES, placeLabel, placeText, type ShowAct, type ShowState } from "./state";
 import { clockOf, elapsedOf, overTarget, TARGETS, type ShowTimer, type Target } from "./timer";
 import { notesShown } from "../notesText";
 
@@ -142,8 +142,9 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
           </>
         )}
         <span className="min-w-2 flex-1" />
-        {/* Before the deck is read there is no slide to step or blank: those rest; End show and the timer stay. */}
-        <Button variant="ghost" size="icon-sm" aria-label="Previous" disabled={stepless} onClick={() => dispatch({ t: "prev" })}>
+        {/* Before the deck is read there is no slide to step or blank: those rest; End show and the timer stay. At the
+            first step Previous rests too, still a Tab stop, so the focus is not lost from under the keys. */}
+        <Button variant="ghost" size="icon-sm" aria-label="Previous" disabled={stepless || atStart(state)} focusableWhenDisabled className="aria-disabled:opacity-50" onClick={() => dispatch({ t: "prev" })}>
           <ChevronLeft />
         </Button>
         <span data-show-place aria-live="polite" aria-label={placeLabel(state)} className="min-w-11 px-1 text-center text-xs leading-4 tabular-nums">
@@ -261,7 +262,7 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
  */
 function Ended({ size, words, label, onPress, quiet = false }: { size: { width: number; height: number }; words: string; label: string; onPress(): void; quiet?: boolean }) {
   return (
-    <button type="button" data-show-ended aria-label={label} onClick={onPress} style={size} className={`grid place-items-center rounded-sm text-[13px] leading-5 text-muted-foreground ${quiet ? "bg-muted" : "bg-(--matte)"}`}>
+    <button type="button" data-show-ended aria-label={label} onClick={onPress} style={size} className={`grid place-items-center rounded-sm text-[13px] leading-5 ${quiet ? "bg-muted text-muted-foreground" : "bg-(--matte) text-matte-muted-foreground"}`}>
       {words}
     </button>
   );
