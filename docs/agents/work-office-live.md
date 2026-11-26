@@ -94,7 +94,8 @@ every form of one file, so an add-in's `document.url`, Word's `FullName` and the
 - The header's line in a live tab (`liveLine`): "In Team RecWell"; "Opening in Word…" with a 4px bar along the
   header's foot while the guest comes up (stages: the file's page, Office's editor frame, ready); "Signing in to
   Microsoft…" while the guest is on another site, never the site's address. It never says saved: Office does. A
-  failure is the body's `Empty` with Retry. A guest whose ticket was refused never attached: its Retry drops it and
+  failure is the body's `Empty`, "Couldn't open it in Word for the web" (the mode's own name, `liveLabel`) with the
+  reason and Retry; `Live.preview.tsx#LiveFailedPreview` draws it. A guest whose ticket was refused never attached: its Retry drops it and
   makes it again where it was, asking a fresh ticket (`LiveLayer.retry`), so the press ends in the file or the reason.
 - `work.office.live.of {workspaceId, tabId}` answers `{mode, address, why?, app, tenant, desktops}`. The mode is kept
   per file in `work_office_live (workspace_id, ref_key, mode, at)` by the tab's stable key, with a library default in

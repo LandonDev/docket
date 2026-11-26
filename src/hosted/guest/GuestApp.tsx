@@ -254,7 +254,8 @@ function ChildPage({ session, item, onBack, onGone }: { session: Session; item: 
       <div className="grid flex-1 place-items-center px-6">
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>It did not open</EmptyTitle>
+            <EmptyTitle>{isDoc ? "Couldn't open this document" : "Couldn't open this sheet"}</EmptyTitle>
+            <EmptyDescription>Try again in a minute.</EmptyDescription>
           </EmptyHeader>
           <Button variant="secondary" size="sm" onClick={() => load()}>
             <RefreshCw />

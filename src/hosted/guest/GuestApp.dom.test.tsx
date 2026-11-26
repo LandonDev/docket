@@ -23,11 +23,12 @@ const projection = (docs = [{ id: "kdocrun", title: "Run of show" }]): GuestProj
 });
 
 /** The service: the link's projection now (null: the link is gone), and a listed document's text. */
-const service = { now: projection() as GuestProjection | null, text: "Check-in opens at the north doors." };
+const service = { now: projection() as GuestProjection | null, text: "Check-in opens at the north doors.", docDown: false };
 
 beforeEach(() => {
   service.now = projection();
   service.text = "Check-in opens at the north doors.";
+  service.docDown = false;
   window.history.pushState(null, "", `/g/L1#k=${"k".repeat(43)}`);
   vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
     const body = JSON.parse(String(init.body)) as { table?: string; id?: string };
@@ -35,6 +36,7 @@ beforeEach(() => {
     if (!service.now) return answer(403, { error: "gone" });
     if (new URL(url).pathname.endsWith("/open")) return answer(200, { kind: "project", role: "view", name: "Dana Lee", title: "Spring LAN", owner: "Landon Hale", expiresAt: Date.UTC(2026, 11, 18), me: "guest:L1", projection: service.now });
     if (!service.now.docs.some((d) => d.id === body.id)) return answer(403, { error: "gone" });
+    if (service.docDown) return answer(500, { error: "down" });
     return answer(200, { kind: "doc", role: "view", title: "Run of show", expiresAt: 0, me: "guest:L1", doc: body.id, markdown: service.text });
   });
 });
@@ -95,6 +97,17 @@ describe("a project's link on the guest's page", () => {
     service.now = null;
     await act(async () => void (await vi.advanceTimersByTimeAsync(15_000)));
     expect(await screen.findByText("This link no longer opens anything")).toBeTruthy();
+  });
+
+  it("says a document that did not open as the page's own failures are said, with Retry", async () => {
+    service.docDown = true;
+    render(<GuestApp />);
+    fireEvent.click(await first("Run of show"));
+    expect(await screen.findByText("Couldn't open this document")).toBeTruthy();
+    expect(screen.getByText("Try again in a minute.")).toBeTruthy();
+    service.docDown = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Check-in opens at the north doors.")).toBeTruthy();
   });
 
   it("puts a task page's way back first in the line, where a document's is, and Escape goes back from either", async () => {

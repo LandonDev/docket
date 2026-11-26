@@ -288,7 +288,11 @@ project's bar or in its settings, or asked for by an agent with
   its key where the screens' crumb was. Faces wear the image outline, as
   the desktop's do. A document is shown as text (`DocText`), read again every 15 seconds; one the
   project no longer lists is closed at the page's next read, and a link
-  that ended shows the end.
+  that ended shows the end. One that did not open says "Couldn't open this
+  document" (or sheet), "Try again in a minute.", with Retry, as the page's
+  own failures are said. `GuestApp.preview.tsx` draws the page over a
+  stand-in host: a project's link, that failure, and an Edit link's
+  document and sheet as far as they draw with no socket.
 - **The owner's hosted editor** has no project: `work.guests.ticket`
   refuses one.
 

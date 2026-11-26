@@ -127,7 +127,7 @@ export function LiveBody({ itemId, ask, app, covered, full, layer = liveLayer }:
       ) : failed ? (
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>{liveLabel(app)} did not open</EmptyTitle>
+            <EmptyTitle>Couldn't open it in {liveLabel(app)}</EmptyTitle>
             <EmptyDescription>{failed}</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>

@@ -3,7 +3,9 @@ import { PageRow } from "../../../components/page";
 import { SettingSwitch } from "../../../components/setting-switch";
 import { Button } from "../../../components/ui/button";
 import { FileHeader } from "../../files/FileTabView";
+import { LiveBody } from "./LiveBody";
 import { LiveControl } from "./LiveControl";
+import type { LiveLayer, LiveState } from "./layer";
 
 const OF = { mode: "live" as const, address: "https://purdue0.sharepoint.com/sites/RecWell/Shared%20Documents/Plan.docx?web=1", app: "word" as const, tenant: "purdue0", desktops: [] };
 const noop = (): void => undefined;
@@ -48,6 +50,30 @@ export function LivePreview() {
           </div>
         </PageRow>
       </div>
+    </div>
+  );
+}
+
+/** A live file that did not load: the tab's header at rest over the body's centred failure with Retry. */
+export function LiveFailedPreview() {
+  const failed: LiveState = { stage: "start", site: null, failed: "This Mac could not reach Microsoft." };
+  const layer = { can: () => true, subscribe: () => noop, state: () => failed, show: noop, hide: noop, focus: noop, retry: noop } as unknown as LiveLayer;
+  return (
+    <div className="flex h-[360px] w-full flex-col bg-background">
+      <FileHeader
+        name="Plan.docx"
+        line={null}
+        where="Team RecWell"
+        running={null}
+        onRun={noop}
+        rows={[]}
+        onPick={noop}
+        ask={{ disabled: false, pressed: false, run: noop }}
+        note={null}
+        progress={null}
+        end={<LiveControl of={OF} app="word" live busy={false} desktops={[]} onSwitch={noop} onNoAddress={noop} />}
+      />
+      <LiveBody itemId="preview-live-failed" ask={OF.address} app="word" covered={false} full={false} layer={layer} />
     </div>
   );
 }

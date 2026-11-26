@@ -32,6 +32,8 @@ describe("a live file's Retry", () => {
   it("keeps the failure with Retry spinning until the file comes up, then draws nothing over it", () => {
     const host = fakeLayer({ stage: "start", site: null, failed: "It did not load (ERR_TIMED_OUT)." });
     render(<LiveBody itemId="i1" ask="https://x.sharepoint.com/a.docx" app="word" covered={false} full={false} layer={host.layer} />);
+    // Titled as every viewer's failure is, with the mode's own name.
+    expect(screen.getByText("Couldn't open it in Word for the web")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(screen.getByText("It did not load (ERR_TIMED_OUT).")).toBeTruthy();
     const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
