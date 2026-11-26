@@ -8,3 +8,10 @@
  */
 export const APP_NAME = 'Docket'
 export const OS_APP_NAME = 'TempCode'
+/**
+ * Every name the OS has known this app's bundle, program and process by, the new one first: a
+ * reader that recognises the app by name (its own window refused to computer use, appshots'
+ * exclusions, the scripts that find an install) accepts each, since an install made before the
+ * rename keeps its old name until it is installed again.
+ */
+export const KNOWN_APP_NAMES = ['Docket', 'TempCode'] as const

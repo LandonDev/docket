@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { nanoid } from 'nanoid'
 import type { Attachment } from '@shared/events'
+import { KNOWN_APP_NAMES } from '@shared/appName'
 import type { RunningServer } from './server'
 import { isCaptureWindow } from './captureWindow'
 import { bundleFile } from './server/appRoot'
@@ -70,16 +71,20 @@ async function permissions(prompt: boolean): Promise<AppshotPermissions> {
   }
 }
 
+/** The pgrep searches that find every copy of the app: the installed one by
+ *  each name it has had (Docket, and TempCode for an install from before the
+ *  rename) and any dev instance by its checkout's name. */
+export function excludeSearches(): string[][] {
+  return [...KNOWN_APP_NAMES.map((name) => ['-x', name]), ['-f', 'temp-code']]
+}
+
 /** Every temp-code window must be excluded from the pick — the installed
  *  app's and any dev instance's — so a capture over us shoots the window
  *  behind. pgrep over-matches (agent shells in the repo); harmless, they
  *  own no windows. */
 async function excludePids(): Promise<string> {
   const pids = new Set<number>([process.pid])
-  for (const args of [
-    ['-x', 'TempCode'],
-    ['-f', 'temp-code']
-  ]) {
+  for (const args of excludeSearches()) {
     try {
       const { stdout } = await exec('pgrep', args)
       for (const line of stdout.split('\n')) {

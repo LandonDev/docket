@@ -10,7 +10,8 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { connect } from 'node:net'
 import { basename, join, resolve } from 'node:path'
-import { anonGiB, APP_DIR, GUEST_LOCAL, inSession, isUp, launch, openHostPorts, ps, rpc, rpcAt, sleep, standIn, stop, tunnel, until, vm, Window, type StandIn } from './pcRig'
+import { anonGiB, GUEST_LOCAL, installedApp, inSession, isUp, launch, openHostPorts, ps, rpc, rpcAt, sleep, standIn, stop, tunnel, until, vm, Window, type StandIn } from './pcRig'
+import { APP_PROCESSES } from './winAppNames'
 
 export const BENCH = '/tmp/tc-pc-rig/bench'
 export const SHARE = '/tmp/tc-pc-rig/jshare'
@@ -171,10 +172,10 @@ export function closeTunnels(): void {
   for (const t of tunnels.splice(0)) t.kill()
 }
 
-/** TempCode on tcuser's desktop, its CDP and server reached through SSH forwards. */
+/** The app on tcuser's desktop, its CDP and server reached through SSH forwards. */
 export async function startPc(): Promise<Window> {
-  const started = await inSession([`${APP_DIR}\\TempCode.exe`])
-  if (started.code !== 0) throw new Error(`TempCode did not start: ${started.out.slice(0, 200)}`)
+  const started = await inSession([(await installedApp()).exe])
+  if (started.code !== 0) throw new Error(`the app did not start: ${started.out.slice(0, 200)}`)
   return attachPc()
 }
 export async function attachPc(): Promise<Window> {
@@ -190,20 +191,20 @@ export async function attachPc(): Promise<Window> {
 }
 export async function stopPc(): Promise<void> {
   closeTunnels()
-  await ps('Get-Process TempCode -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 2')
+  await ps(`Get-Process ${APP_PROCESSES} -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 2`)
 }
 
 /** A fresh install of the installer as tcuser, its data gone first; the harness marker and its CDP port set. */
 export async function installPc(installer: string, log: (m: string) => void): Promise<string> {
   const version = /temp-code-(1\.0\.\d+)-setup\.exe$/.exec(installer)?.[1]
-  if (!version) throw new Error(`not a TempCode installer: ${installer}`)
-  await ps(`Get-Process TempCode -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 2; Remove-Item -Recurse -Force '${USER_DATA}', "$env:APPDATA\\aliax" -EA 0`)
+  if (!version) throw new Error(`not the app's installer: ${installer}`)
+  await ps(`Get-Process ${APP_PROCESSES} -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 2; Remove-Item -Recurse -Force '${USER_DATA}', "$env:APPDATA\\aliax" -EA 0`)
   const copied = await vm('scp', [installer, 'guest:Downloads/'], 900_000)
   if (copied.code !== 0) throw new Error(copied.out.slice(-200))
   const t0 = Date.now()
   const installed = await vm('ssh', [`Downloads\\${basename(installer)} /S`], 1_800_000)
   if (installed.code !== 0) throw new Error(`the installer failed: ${installed.out.slice(-200)}`)
-  const v = (await ps(`(Get-Content -Raw '${APP_DIR}\\resources\\app\\package.json' | ConvertFrom-Json).version`)).out.trim()
+  const v = (await ps(`(Get-Content -Raw '${(await installedApp()).dir}\\resources\\app\\package.json' | ConvertFrom-Json).version`)).out.trim()
   if (v !== version) throw new Error(`installed ${v}, not ${version}`)
   await ps(`Remove-Item -Force "$env:USERPROFILE\\Downloads\\${basename(installer)}" -EA 0`)
   const fw = await openHostPorts([PORT.box])

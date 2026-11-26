@@ -8,8 +8,9 @@
  *   --rig-up   the rig is up and yours: use it, leave it running
  *   --no-thread  skip the Claude turn (no sign-in is lent to the guest)
  *
- * What it checks: the installer runs silently with no admin and lands in %LOCALAPPDATA%\Programs\TempCode
- * (nothing under Program Files), with the Start menu shortcut; the app carries the win32 claude.exe (it
+ * What it checks: the installer runs silently with no admin and lands in %LOCALAPPDATA%\Programs\Docket
+ * (or the TempCode folder of an install from before the rename; nothing under Program Files), with the Start
+ * menu shortcut under the exe's name; the app carries the win32 claude.exe (it
  * answers --version), node-pty's x64 prebuild with ConPTY, and tc-computer.exe (it answers `version`); the
  * app starts on the desktop, its data under %LOCALAPPDATA%\temp-code, its feed config naming GitHub; its
  * updater reads the real feed (strictly, for a released installer); a Claude thread runs one turn and
@@ -24,6 +25,7 @@ import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { attach, REPO, sleep } from './lib/packagedApp'
 import { rigConfig, rigPaths, STANDARD_USER } from '../src/main/server/work/winvm/machine/config'
+import { APP_PROCESSES, appOf, findAppExePs } from './lib/winAppNames'
 
 const ROOT = '/tmp/tc-win-install'
 const SHOTS = join(ROOT, 'shots')
@@ -45,8 +47,9 @@ if (!version) throw new Error(`${installerName} is not temp-code-1.0.N-setup.exe
 
 const GUEST_HOME = `C:\\Users\\${STANDARD_USER}`
 const GUEST_LOCAL = `${GUEST_HOME}\\AppData\\Local`
-const APP_DIR = `${GUEST_LOCAL}\\Programs\\TempCode`
-const APP_RES = `${APP_DIR}\\resources\\app`
+/** The install, found under either name once the installer has run (winAppNames.ts). */
+let app = appOf(`${GUEST_LOCAL}\\Programs\\Docket\\Docket.exe`)
+const appRes = (): string => `${app.dir}\\resources\\app`
 /** Electron's own name for the app's folder, the package's name, moved under %LOCALAPPDATA% (windowFrame.ts `localUserData`). */
 const DATA_DIR = `${GUEST_LOCAL}\\temp-code`
 const GUEST_CDP = 9333
@@ -137,21 +140,27 @@ async function run(): Promise<void> {
   const t0 = Date.now()
   const installed = await guest([vm('ssh'), `Downloads\\${installerName} /S`], 1_800_000)
   check('the installer runs silently as the standard user and exits 0', installed.code === 0, `${((Date.now() - t0) / 1000).toFixed(0)}s ${installed.out.slice(0, 200)}`)
-  const installedVersion = async (): Promise<string> => (await ps(`(Get-Content -Raw '${APP_RES}\\package.json' | ConvertFrom-Json).version`)).out.trim()
-  check(`it installs ${version} into %LOCALAPPDATA%\\Programs\\TempCode`, await waitFor('the install', 600_000, async () => (await installedVersion()) === version), await installedVersion())
-  const machineWide = await ps(`Test-Path 'C:\\Program Files\\TempCode'; Test-Path 'C:\\Program Files (x86)\\TempCode'`)
+  const installedVersion = async (): Promise<string> => {
+    const exe = (await ps(findAppExePs(GUEST_LOCAL))).out.trim()
+    if (!exe) return ''
+    app = appOf(exe)
+    return (await ps(`(Get-Content -Raw '${appRes()}\\package.json' | ConvertFrom-Json).version`)).out.trim()
+  }
+  const landed = await waitFor('the install', 600_000, async () => (await installedVersion()) === version)
+  check(`it installs ${version} into %LOCALAPPDATA%\\Programs, as ${app.exe.slice(GUEST_LOCAL.length + 10)}`, landed, await installedVersion())
+  const machineWide = await ps(`${['Program Files', 'Program Files (x86)'].map((dir) => `Test-Path 'C:\\${dir}\\${app.name}'`).join('; ')}`)
   check('nothing was written under Program Files', machineWide.out.trim().split(/\s+/).every((l) => l === 'False'), machineWide.out)
-  const shortcut = await ps(`Test-Path "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\TempCode.lnk"`)
-  check('the Start menu has its TempCode shortcut', shortcut.out.trim() === 'True', shortcut.out)
+  const shortcut = await ps(`Test-Path "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\${app.name}.lnk"`)
+  check(`the Start menu has its ${app.name} shortcut`, shortcut.out.trim() === 'True', shortcut.out)
 
   // ── what the app carries ──
-  const cli = await guest([vm('ssh'), `"${APP_RES}\\node_modules\\@anthropic-ai\\claude-agent-sdk-win32-x64\\claude.exe" --version`], 120_000)
+  const cli = await guest([vm('ssh'), `"${appRes()}\\node_modules\\@anthropic-ai\\claude-agent-sdk-win32-x64\\claude.exe" --version`], 120_000)
   check('the bundled win32 claude.exe answers --version', cli.code === 0 && /\d+\.\d+\.\d+/.test(cli.out), cli.out.split('\n')[0])
-  const pty = await ps(`'pty.node','conpty.node','conpty\\conpty.dll','conpty\\OpenConsole.exe' | ForEach-Object { Test-Path "${APP_RES}\\node_modules\\node-pty\\prebuilds\\win32-x64\\$_" }`)
+  const pty = await ps(`'pty.node','conpty.node','conpty\\conpty.dll','conpty\\OpenConsole.exe' | ForEach-Object { Test-Path "${appRes()}\\node_modules\\node-pty\\prebuilds\\win32-x64\\$_" }`)
   check("node-pty's win32-x64 prebuild is there with ConPTY", pty.out.trim().split(/\s+/).every((l) => l === 'True'), pty.out.replace(/\s+/g, ' '))
-  const service = await guest([vm('run-in-session'), '--wait', '--timeout', '60', `${APP_RES}\\resources\\native\\tc-computer.exe`, 'version'], 120_000)
+  const service = await guest([vm('run-in-session'), '--wait', '--timeout', '60', `${appRes()}\\resources\\native\\tc-computer.exe`, 'version'], 120_000)
   check('tc-computer.exe is inside and answers its version on the desktop', service.code === 0 && /^\d+\.\d+\.\d+/m.test(service.out), service.out.slice(0, 80))
-  const feed = await ps(`Get-Content -Raw '${APP_DIR}\\resources\\app-update.yml'`)
+  const feed = await ps(`Get-Content -Raw '${app.dir}\\resources\\app-update.yml'`)
   check('the feed config names github LandonDev/temp-code', ['provider: github', 'owner: LandonDev', 'repo: temp-code'].every((l) => feed.out.includes(l)), feed.out.replace(/\s+/g, ' '))
 
   // ── a sign-in lent for one turn ──
@@ -171,7 +180,7 @@ async function run(): Promise<void> {
 
   // ── the app on the desktop, with a debug port of its own ──
   await ps(`[Environment]::SetEnvironmentVariable('TEMP_CODE_DEBUG_PORT', '${GUEST_CDP}', 'User')`)
-  const started = await guest([vm('run-in-session'), `${APP_DIR}\\TempCode.exe`], 120_000)
+  const started = await guest([vm('run-in-session'), app.exe], 120_000)
   check("the app starts on the standard user's desktop", started.code === 0, started.out.slice(0, 200))
   const openTunnel = (forwards: string[]): ReturnType<typeof Bun.spawn> =>
     Bun.spawn(
@@ -219,9 +228,9 @@ async function run(): Promise<void> {
     const captured = await cdp.eval<{ ok?: boolean; error?: string }>("window.aliax.capture('claude-code')").catch((e: Error) => ({ ok: false, error: e.message }))
     check('the lent account is saved in the app (Accounts)', captured?.ok !== false, JSON.stringify(captured).slice(0, 160))
     // The gateway reads the saved accounts when it starts: start the app again so it holds this one.
-    await ps('Get-Process TempCode -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 4')
+    await ps(`Get-Process ${APP_PROCESSES} -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 4`)
     for (const t of extraTunnels.splice(0)) t.kill()
-    const again = await guest([vm('run-in-session'), `${APP_DIR}\\TempCode.exe`], 120_000)
+    const again = await guest([vm('run-in-session'), app.exe], 120_000)
     check('the app starts again with the account saved', again.code === 0, again.out.slice(0, 120))
     const restarted = await attach(CDP, 180_000)
     await sleep(5000)
@@ -261,7 +270,7 @@ try {
 } finally {
   {
     const gone = await ps(
-      `Get-Process TempCode,claude,tc-computer -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 3; Remove-Item -Force "$env:USERPROFILE\\.claude\\.credentials.json" -EA 0; Remove-Item -Recurse -Force '${DATA_DIR}', "$env:USERPROFILE\\.aliax" -EA 0; Test-Path "$env:USERPROFILE\\.claude\\.credentials.json"`
+      `Get-Process ${APP_PROCESSES},claude,tc-computer -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 3; Remove-Item -Force "$env:USERPROFILE\\.claude\\.credentials.json" -EA 0; Remove-Item -Recurse -Force '${DATA_DIR}', "$env:USERPROFILE\\.aliax" -EA 0; Test-Path "$env:USERPROFILE\\.claude\\.credentials.json"`
     )
     check('the lent sign-in and the app data are gone from the guest', gone.out.trim().split('\n').pop() === 'False', gone.out.slice(-80))
   }

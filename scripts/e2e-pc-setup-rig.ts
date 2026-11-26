@@ -21,7 +21,8 @@
 import { randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
-import { anonGiB, APP_DIR, GUEST_HOME, GUEST_LOCAL, inSession, openHostPorts, ps, Record, REPO, rpc, rpcAt, sleep, tunnel, until, vm, Window } from './lib/pcRig'
+import { anonGiB, GUEST_HOME, GUEST_LOCAL, inSession, installedApp, openHostPorts, ps, Record, REPO, rpc, rpcAt, sleep, tunnel, until, vm, Window } from './lib/pcRig'
+import { APP_PROCESSES } from './lib/winAppNames'
 import { DUMMY, lentSignIn, PORTS, startStandins, type Standins } from './lib/pcRigStandins'
 
 const arg = (name: string): string | undefined => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined)
@@ -75,8 +76,8 @@ const stepsOf = async (): Promise<string> => {
 }
 
 async function startPc(): Promise<void> {
-  const started = await inSession([`${APP_DIR}\\TempCode.exe`])
-  if (started.code !== 0) throw new Error(`TempCode did not start: ${started.out.slice(0, 200)}`)
+  const started = await inSession([(await installedApp()).exe])
+  if (started.code !== 0) throw new Error(`the app did not start: ${started.out.slice(0, 200)}`)
   for (const t of tunnels.splice(0)) t.kill()
   tunnels.push(tunnel([`${CDP}:127.0.0.1:${GUEST_CDP}`]))
   await sleep(3000)
@@ -107,10 +108,10 @@ async function run(): Promise<void> {
   })
 
   await step(`install ${basename(installer)} as tcuser, fresh`, async () => {
-    // Nothing of a run before: TempCode's data and vault, and any LifeOS with its data and uninstall entry.
+    // Nothing of a run before: the app's data and vault, and any LifeOS with its data and uninstall entry.
     await ps(
       [
-        `Get-Process TempCode,LifeOS -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 2`,
+        `Get-Process ${APP_PROCESSES},LifeOS -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 2`,
         `Remove-Item -Recurse -Force '${USER_DATA}', "$env:APPDATA\\aliax" -EA 0`,
         `Get-ChildItem "$env:LOCALAPPDATA\\Programs" -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'LifeOS.exe') } | Remove-Item -Recurse -Force -EA 0`,
         `Get-ChildItem $env:LOCALAPPDATA, $env:APPDATA -Directory -Filter 'lifeos*' -EA 0 | Remove-Item -Recurse -Force -EA 0`,
@@ -122,8 +123,9 @@ async function run(): Promise<void> {
     const t0 = Date.now()
     const installed = await vm('ssh', [`Downloads\\${basename(installer)} /S`], 1_800_000)
     rec.check('the installer runs silently as the standard user and exits 0', installed.code === 0, `${Math.round((Date.now() - t0) / 1000)} s`)
-    const v = await ps(`(Get-Content -Raw '${APP_DIR}\\resources\\app\\package.json' | ConvertFrom-Json).version`)
-    rec.check(`${version} is in %LOCALAPPDATA%\\Programs\\TempCode`, v.out.trim() === version, v.out)
+    const app = await installedApp()
+    const v = await ps(`(Get-Content -Raw '${app.dir}\\resources\\app\\package.json' | ConvertFrom-Json).version`)
+    rec.check(`${version} is in ${app.dir.slice(GUEST_LOCAL.length + 1)}`, v.out.trim() === version, v.out)
     const fw = await openHostPorts([PORTS.box, PORTS.lifeos, PORTS.lifeos + 1, PORTS.feed])
     rec.check("the guest's firewall lets it reach the stand-ins' ports, for this run", fw.code === 0, fw.out)
     // The harness marker and the stand-ins' addresses, honoured by the app only under TEMP_CODE_USER_DATA.
@@ -369,7 +371,7 @@ try {
 } catch (err) {
   rec.check('the run finished', false, err instanceof Error ? err.message : String(err))
 } finally {
-  await ps(`Get-Process TempCode,LifeOS -EA 0 | Stop-Process -Force -EA 0; Remove-Item -Force "$env:USERPROFILE\\Downloads\\${basename(installer)}" -EA 0; foreach ($k in 'TEMP_CODE_USER_DATA','TEMP_CODE_DEBUG_PORT','TEMP_CODE_LIFEOS_URL','TEMP_CODE_LIFEOS_FEED') { [Environment]::SetEnvironmentVariable($k, $null, 'User') }`).catch(() => null)
+  await ps(`Get-Process ${APP_PROCESSES},LifeOS -EA 0 | Stop-Process -Force -EA 0; Remove-Item -Force "$env:USERPROFILE\\Downloads\\${basename(installer)}" -EA 0; foreach ($k in 'TEMP_CODE_USER_DATA','TEMP_CODE_DEBUG_PORT','TEMP_CODE_LIFEOS_URL','TEMP_CODE_LIFEOS_FEED') { [Environment]::SetEnvironmentVariable($k, $null, 'User') }`).catch(() => null)
   for (const t of tunnels) t.kill()
   pc?.close()
   mac?.close()

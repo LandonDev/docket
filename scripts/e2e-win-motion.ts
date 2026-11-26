@@ -23,10 +23,10 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { attach, REPO, sleep, type Cdp } from './lib/packagedApp'
 import { rigConfig, rigPaths, STANDARD_USER } from '../src/main/server/work/winvm/machine/config'
+import { APP_PROCESSES, findAppExePs } from './lib/winAppNames'
 
 const ROOT = '/tmp/tc-win-motion'
 const GUEST_HOME = `C:\\Users\\${STANDARD_USER}`
-const APP_DIR = `${GUEST_HOME}\\AppData\\Local\\Programs\\TempCode`
 const DATA_DIR = `${GUEST_HOME}\\AppData\\Local\\temp-code`
 const GUEST_CDP = 9333
 const CDP = 9342
@@ -174,8 +174,8 @@ async function oneCase(page: Cdp, label: string, windowsOn: boolean, choice: 'sy
 async function run(): Promise<void> {
   rmSync(ROOT, { recursive: true, force: true })
   mkdirSync(ROOT, { recursive: true })
-  const installed = await ps(`Test-Path '${APP_DIR}\\TempCode.exe'`)
-  if (installed.out.trim() !== 'True') throw new Error('TempCode is not installed in the rig: run scripts/e2e-win-install.ts --rig-up first')
+  const exe = (await ps(findAppExePs(`${GUEST_HOME}\\AppData\\Local`))).out.trim()
+  if (!exe) throw new Error('the app is not installed in the rig: run scripts/e2e-win-install.ts --rig-up first')
   writeFileSync(join(ROOT, 'tc-spi.ps1'), SPI)
   await guest([vm('scp'), join(ROOT, 'tc-spi.ps1'), 'guest:tc-spi.ps1'], 60_000)
 
@@ -190,9 +190,9 @@ async function run(): Promise<void> {
   rmSync(lent, { force: true })
   if (!check('a Claude sign-in is lent to the guest', sent.code === 0, sent.out.slice(0, 120))) return
 
-  await ps(`[Environment]::SetEnvironmentVariable('TEMP_CODE_DEBUG_PORT', '${GUEST_CDP}', 'User'); Get-Process TempCode -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 3`)
+  await ps(`[Environment]::SetEnvironmentVariable('TEMP_CODE_DEBUG_PORT', '${GUEST_CDP}', 'User'); Get-Process ${APP_PROCESSES} -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 3`)
   const start = async (): Promise<Cdp> => {
-    await guest([vm('run-in-session'), `${APP_DIR}\\TempCode.exe`], 120_000)
+    await guest([vm('run-in-session'), exe], 120_000)
     await sleep(4000)
     const page = await attach(CDP, 180_000)
     await sleep(4000)
@@ -204,7 +204,7 @@ async function run(): Promise<void> {
   let page = await start()
   const captured = await page.eval<{ ok?: boolean; error?: string }>("window.aliax.capture('claude-code')").catch((e: Error) => ({ ok: false, error: e.message }))
   check('the lent account is saved in the app', captured?.ok !== false, JSON.stringify(captured).slice(0, 160))
-  await ps('Get-Process TempCode -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 4')
+  await ps(`Get-Process ${APP_PROCESSES} -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 4`)
   page = await start()
 
   await oneCase(page, 'Windows animations off, Follow this computer', false, 'system', 'reduced')
@@ -220,7 +220,7 @@ try {
 } finally {
   await effects(true).catch(() => null)
   const gone = await ps(
-    `Get-Process TempCode,claude,tc-computer -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 3; Remove-Item -Force "$env:USERPROFILE\\.claude\\.credentials.json" -EA 0; Remove-Item -Recurse -Force '${DATA_DIR}', "$env:USERPROFILE\\.aliax" -EA 0; Test-Path "$env:USERPROFILE\\.claude\\.credentials.json"`,
+    `Get-Process ${APP_PROCESSES},claude,tc-computer -EA 0 | Stop-Process -Force -EA 0; Start-Sleep 3; Remove-Item -Force "$env:USERPROFILE\\.claude\\.credentials.json" -EA 0; Remove-Item -Recurse -Force '${DATA_DIR}', "$env:USERPROFILE\\.aliax" -EA 0; Test-Path "$env:USERPROFILE\\.claude\\.credentials.json"`,
   )
   check('the lent sign-in and the app data are gone from the guest', gone.out.trim().split('\n').pop() === 'False', gone.out.slice(-80))
   await ps(`[Environment]::SetEnvironmentVariable('TEMP_CODE_DEBUG_PORT', $null, 'User')`).catch(() => null)

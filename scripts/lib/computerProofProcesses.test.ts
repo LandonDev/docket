@@ -29,10 +29,12 @@ describe('staleComputerProofPids', () => {
     `, 99)).toEqual([20, 21, 22, 23, 24])
   })
 
-  it('never matches installed TempCode, an unmarked service, a helper, or a shell mentioning a proof', () => {
+  it('never matches installed Docket, or TempCode from before the rename, an unmarked service, a helper, or a shell mentioning a proof', () => {
     expect(staleComputerProofPids(`
       30 1 /Applications/TempCode.app/Contents/Resources/native/tc-computer serve TEMP_CODE_COMPUTER_PROOF=1 TC_PROOF_UNGATED=1
       31 1 /Applications/TempCode.app/Contents/MacOS/TempCode
+      29 1 /Applications/Docket.app/Contents/Resources/native/tc-computer serve TEMP_CODE_COMPUTER_PROOF=1 TC_PROOF_UNGATED=1
+      28 1 /Applications/Docket.app/Contents/MacOS/Docket
       32 1 /Users/me/TempCode.app/Contents/resources/native/tc-computer serve TEMP_CODE_COMPUTER_PROOF=1
       33 1 ${bin} serve
       34 1 /tmp/tc-computer-proof/computer-proof-probe screen

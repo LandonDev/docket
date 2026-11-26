@@ -9,11 +9,13 @@ import { describe, expect, it } from 'vitest'
  * uses a constant, or joins this list.
  */
 const HELD: Record<string, [string, string][]> = {
-  'src/shared/appName.ts': [["OS_APP_NAME = 'TempCode'", 'the bundle name macOS and Windows show']],
+  'src/shared/appName.ts': [
+    ["OS_APP_NAME = 'TempCode'", 'the bundle name macOS and Windows show'],
+    ["KNOWN_APP_NAMES = ['Docket', 'TempCode']", 'the name an install from before the rename keeps']
+  ],
   'src/main/printOut.ts': [["'TempCode-print'", 'a temp folder name']],
   'src/main/downloads.ts': [['`TempCode download', 'a part file name in Downloads']],
   'src/main/pty.ts': [["TERM_PROGRAM = 'TempCode'", 'shells and prompts key on TERM_PROGRAM']],
-  'src/main/appshots.ts': [["'-x', 'TempCode'", 'the process name (findings row 53)']],
   'src/main/addonHostSpawn.ts': [["'TempCode Add-ons'", 'a process name in Activity Monitor and the process guard']],
   'src/main/execBrokerSpawn.ts': [["'TempCode Exec'", 'a process name']],
   'src/main/gatewaySpawn.ts': [["'TempCode Gateway'", 'a process name']],

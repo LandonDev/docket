@@ -132,11 +132,14 @@ describe('refusedTarget', () => {
       expect(refusedTarget({ pid: 9, bundleId }, 'read', 7)).toBeNull()
       expect(refusedLaunch(bundleId)).toBe("Windows' password and consent prompts are the person's to answer")
     }
-    expect(refusedTarget({ pid: 8, bundleId: 'tempcode.exe' }, 'read', 7)).toBe("Docket's own window is off limits to computer use")
-    expect(refusedLaunch('TempCode.exe')).toBe("Docket's own window is off limits to computer use")
+    // the exe by either name: an install from before the rename keeps TempCode.exe
+    for (const exe of ['docket.exe', 'tempcode.exe']) expect(refusedTarget({ pid: 8, bundleId: exe }, 'read', 7)).toBe("Docket's own window is off limits to computer use")
+    for (const exe of ['Docket.exe', 'TempCode.exe']) expect(refusedLaunch(exe)).toBe("Docket's own window is off limits to computer use")
     // named by a path or without .exe, the file's own name decides
     expect(refusedLaunch('C:\\Windows\\System32\\consent.exe')).toBe("Windows' password and consent prompts are the person's to answer")
     expect(refusedLaunch('C:/Users/me/AppData/Local/Programs/TempCode/TempCode.exe')).toBe("Docket's own window is off limits to computer use")
+    expect(refusedLaunch('C:/Users/me/AppData/Local/Programs/TempCode/Docket.exe')).toBe("Docket's own window is off limits to computer use")
+    expect(refusedLaunch('C:\\Users\\me\\AppData\\Local\\Programs\\Docket\\Docket.exe')).toBe("Docket's own window is off limits to computer use")
     expect(refusedLaunch('consent')).toBe("Windows' password and consent prompts are the person's to answer")
     expect(refusedLaunch('C:\\Windows\\notepad.exe')).toBeNull()
     expect(refusedOpenItem('C:\\Users\\me\\Total.txt')).toBeNull()
@@ -145,7 +148,7 @@ describe('refusedTarget', () => {
 
   it("sends the Mac's refused bundles to the Mac's service and a PC's exes to the Windows service", () => {
     expect(refusedLaunchList('darwin')).toEqual([...REFUSED_LAUNCH_BUNDLES])
-    expect(refusedLaunchList('win32')).toEqual(['tempcode.exe', 'consent.exe', 'credentialuibroker.exe', 'logonui.exe'])
+    expect(refusedLaunchList('win32')).toEqual(['docket.exe', 'tempcode.exe', 'consent.exe', 'credentialuibroker.exe', 'logonui.exe'])
   })
 
   it("refuses a Work thread a screen of another computer or a phone, which may show TempCode with his approve key (the hold's ninth review)", () => {
@@ -172,6 +175,7 @@ describe('refusedTarget', () => {
 
   it('refuses computer_apps { launch } of a refused app', () => {
     expect(refusedLaunch('TempCode')).toMatch(/^Docket's own window/)
+    expect(refusedLaunch('Docket')).toMatch(/^Docket's own window/)
     expect(refusedLaunch(TEMPCODE_BUNDLE_ID)).toMatch(/^Docket's own window/)
     expect(refusedLaunch('com.apple.securityagent')).toMatch(/^macOS's password/)
     expect(refusedLaunch('TextEdit')).toBeNull()

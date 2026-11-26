@@ -28,7 +28,7 @@ today=$(date +%Y-%m-%d)
 die() { echo "ERROR: $*" >&2; exit 1; }
 quit_check() {
   if [[ $data -ef "$support/temp-code" || $data -ef "$support/TempCode" ]]; then
-    pgrep -fq '/Applications/TempCode.app/Contents/MacOS/TempCode' && die 'TempCode.app is running; quit it first'
+    pgrep -fq '/Applications/(Docket|TempCode)\.app/Contents/MacOS/(Docket|TempCode)' && die 'the installed app is running; quit it first'
   fi
   pgrep -fq 'electron-vite|out/main/boot.js' && echo 'warning: a dev instance is running; make sure it is not on the prod data dir' >&2
   if [[ -L $data/SingletonLock ]]; then

@@ -29,7 +29,7 @@ fail() { say "FAILED: $*"; notify "Failed" "Nothing more was changed. Read ~/Lib
 trap 'rc=$?; [[ $rc == 0 ]] || { say "FAILED at line $LINENO (exit $rc)"; notify "Failed" "Read ~/Library/Logs/tempcode-cutover.log before reopening TempCode"; }' EXIT
 
 app_running() {
-  pgrep -fq '/Applications/TempCode.app/Contents/MacOS/TempCode' && return 0
+  pgrep -fq '/Applications/(Docket|TempCode)\.app/Contents/MacOS/(Docket|TempCode)' && return 0
   if [[ -L $data/SingletonLock ]]; then
     lock=$(readlink "$data/SingletonLock"); pid=${lock##*-}
     kill -0 "$pid" 2>/dev/null && return 0

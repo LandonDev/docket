@@ -7,7 +7,15 @@ vi.mock('electron', () => ({
 }))
 vi.mock('./windows', () => ({ targetWindow: vi.fn(() => null) }))
 
-const { appshotReady } = await import('./appshots')
+const { appshotReady, excludeSearches } = await import('./appshots')
+
+it('finds the installed app by both its names, so a copy from before the rename stays out of the shot', () => {
+  expect(excludeSearches()).toEqual([
+    ['-x', 'Docket'],
+    ['-x', 'TempCode'],
+    ['-f', 'temp-code']
+  ])
+})
 
 it('a window announcing appshot-ready any number of times is watched for its end once', () => {
   const destroyed: (() => void)[] = []

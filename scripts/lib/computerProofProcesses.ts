@@ -32,7 +32,7 @@ export function staleComputerProofPids(ps: string, self: number): number[] {
     const probe = /^\/(?:private\/)?(?:tmp|var\/folders)\/[^\n]*\/TC Probe( Steal)?\.app\/Contents\/MacOS\/TC Probe\1(?:\s|$)/.test(row.command)
     const service = /^\/(?:Users|srv|private|tmp|var)\/[^\n]*\/resources\/native\/tc-computer (?:serve|hold-lock)(?:\s|$)/.test(row.command)
     if (!probe && !service) return false
-    if (/^\/.*\/TempCode\.app\/Contents\//.test(row.command)) return false
+    if (/^\/.*\/(?:Docket|TempCode)\.app\/Contents\//.test(row.command)) return false
     let owned = /(?:^|\s)(?:TEMP_CODE_COMPUTER_PROOF=1|TC_PROOF_UNGATED=1)(?:\s|$)/.test(row.command) ||
       /(?:^|\s)(?:HOME|TEMP_CODE_USER_DATA)=\/(?:private\/)?(?:tmp|var\/folders\/\S+)\/tc-computer-bridge-mac-[^\s]+/.test(row.command)
     const seen = new Set([row.pid])

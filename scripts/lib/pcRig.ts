@@ -2,7 +2,7 @@
  * What the PC rig proofs share (scripts/e2e-pc-j-drive.ts, scripts/e2e-pc-setup-rig.ts): the rig as tcuser
  * (docs/agents/windows-vm.md), stand-in instances of the BUILT tree on this box, CDP into a window, and keys typed
  * through QMP where only a native dialog listens. Nothing here touches the box's live service, its data, a real
- * HOME or vault, or /Applications/TempCode.app.
+ * HOME or vault, or the installed app.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { appendFileSync, closeSync, existsSync, openSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -11,6 +11,7 @@ import { join, resolve } from 'node:path'
 import { rigConfig, rigPaths, STANDARD_USER } from '../../src/main/server/work/winvm/machine/config'
 import { qmp, sendKey } from '../../src/main/server/work/winvm/machine/qmp'
 import { Cdp, pageTarget } from './packagedApp'
+import { appOf, findAppExePs } from './winAppNames'
 
 /** The tree whose built out/ a stand-in runs: this one, or RIG_REPO's. */
 export const REPO = process.env.RIG_REPO ?? resolve(import.meta.dir, '..', '..')
@@ -19,7 +20,6 @@ export const rig = rigConfig()
 export const paths = rigPaths(rig)
 export const GUEST_HOME = `C:\\Users\\${STANDARD_USER}`
 export const GUEST_LOCAL = `${GUEST_HOME}\\AppData\\Local`
-export const APP_DIR = `${GUEST_LOCAL}\\Programs\\TempCode`
 
 // ── a record of the run: checks, times, pictures ───────────────────────────
 
@@ -70,6 +70,13 @@ export const vm = (script: string, args: string[], timeoutMs?: number): Promise<
 /** PowerShell as tcuser (or the admin with `admin`), on stdin. */
 export const ps = (script: string, timeoutMs?: number, admin = false): Promise<{ code: number; out: string }> => vm('ssh', [...(admin ? ['-a'] : []), '--ps', script], timeoutMs)
 /** A program on tcuser's desktop (session 1); with `wait`, its output and exit code. */
+/** The installed app in the guest under either name (winAppNames.ts): its folder, exe and name. */
+export async function installedApp(): Promise<ReturnType<typeof appOf>> {
+  const exe = (await ps(findAppExePs(GUEST_LOCAL))).out.trim()
+  if (!exe) throw new Error(`the app is not installed under ${GUEST_LOCAL}\\Programs`)
+  return appOf(exe)
+}
+
 export const inSession = (argv: string[], wait = false, timeoutS = 120): Promise<{ code: number; out: string }> =>
   vm('run-in-session', [...(wait ? ['--wait', '--timeout', String(timeoutS)] : []), ...argv], (timeoutS + 60) * 1000)
 

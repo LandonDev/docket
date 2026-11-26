@@ -1,3 +1,4 @@
+import { KNOWN_APP_NAMES } from '@shared/appName'
 import { resolvesToTempCodeOrigin, TEMPCODE_ORIGIN_REFUSAL, type TempCodeOrigins } from '../remote/tempcodeOrigins'
 import { errorLine } from '@shared/computer/errorWords'
 import { hostErrorLine } from '@shared/computer/hostErrors'
@@ -23,8 +24,10 @@ import type { ElementBook } from './elements'
 
 /** The installed app's bundle id: no instance reads or acts on any TempCode window. */
 export const TEMPCODE_BUNDLE_ID = 'dev.landon.tempcode'
-/** The same on Windows, where the service names an app by its exe, lower-cased (§29.2). */
-export const TEMPCODE_WINDOWS_EXE = 'tempcode.exe'
+/** The same on Windows, where the service names an app by its exe, lower-cased (§29.2): docket.exe, and tempcode.exe for an install from before the rename. */
+export const TEMPCODE_WINDOWS_EXES: readonly string[] = KNOWN_APP_NAMES.map((n) => `${n.toLowerCase()}.exe`)
+/** The app's own names as a launch query: docket and tempcode. */
+const TEMPCODE_NAMES: readonly string[] = KNOWN_APP_NAMES.map((n) => n.toLowerCase())
 
 /** Windows' password and consent prompts, as the service names their apps. */
 export const WINDOWS_PROMPT_EXES: readonly string[] = ['consent.exe', 'credentialuibroker.exe', 'logonui.exe']
@@ -57,7 +60,7 @@ const mirrors = (id: string): boolean => MIRROR_EXES.includes(id) || MIRROR_BUND
 export const REFUSED_LAUNCH_BUNDLES: readonly string[] = [TEMPCODE_BUNDLE_ID, ...REFUSED_ACT_BUNDLES]
 
 /** The same on a Windows host, by exe (§29.2). */
-export const REFUSED_LAUNCH_EXES: readonly string[] = [TEMPCODE_WINDOWS_EXE, ...WINDOWS_PROMPT_EXES]
+export const REFUSED_LAUNCH_EXES: readonly string[] = [...TEMPCODE_WINDOWS_EXES, ...WINDOWS_PROMPT_EXES]
 
 /**
  * What a thread may not launch in the Windows VM besides (docs/agents/work-outbox.md "The Windows VM"): every
@@ -240,7 +243,7 @@ export class TargetResolver {
 /** Why a call may not touch this app, or null. Reads are refused only for TempCode itself. */
 export function refusedTarget(app: { pid: number; bundleId: string | null; name?: string }, use: 'read' | 'act', ownPid = process.pid, work = false): string | null {
   const id = app.bundleId?.toLowerCase() ?? null
-  if (app.pid === ownPid || app.bundleId === TEMPCODE_BUNDLE_ID || id === TEMPCODE_WINDOWS_EXE) return hostErrorLine('refused_app', 'tempcode')
+  if (app.pid === ownPid || app.bundleId === TEMPCODE_BUNDLE_ID || (id && TEMPCODE_WINDOWS_EXES.includes(id))) return hostErrorLine('refused_app', 'tempcode')
   if (work && ((id && mirrors(id)) || MIRROR_WORDS.test(app.name ?? ''))) return hostErrorLine('refused_app', 'mirror')
   if (use === 'act' && id && (WINDOWS_PROMPT_EXES.includes(id) || REFUSED_ACT_BUNDLES.some((b) => b.toLowerCase() === id))) return hostErrorLine('refused_app', promptsOf(id))
   return null
@@ -280,9 +283,9 @@ export function refusedLaunch(query: string, vm = false, work = false): string |
   if (work && (mirrors(lower(query).trim()) || mirrors(exe) || MIRROR_NAMES.includes(lower(query).trim()))) return hostErrorLine('refused_app', 'mirror')
   if (vm && (VM_REFUSED_LAUNCH_EXES.includes(exe) || VM_REFUSED_LAUNCH_EXES.includes(base) || VM_REFUSED_LAUNCH_NAMES.includes(lower(query).trim()))) return hostErrorLine('refused_app', 'console')
   if (vm && (NOT_A_BARE_NAME.test(query) || !VM_LAUNCH_APPS.includes(lower(query)))) return hostErrorLine('refused_app', 'vm-apps')
-  if (exe !== lower(query) && (exe === TEMPCODE_WINDOWS_EXE || WINDOWS_PROMPT_EXES.includes(exe))) return refusedLaunch(exe)
+  if (exe !== lower(query) && (TEMPCODE_WINDOWS_EXES.includes(exe) || WINDOWS_PROMPT_EXES.includes(exe))) return refusedLaunch(exe)
   const q = lower(query)
-  if (q === TEMPCODE_BUNDLE_ID || q === 'tempcode' || q === TEMPCODE_WINDOWS_EXE) return hostErrorLine('refused_app', 'tempcode')
+  if (q === TEMPCODE_BUNDLE_ID || TEMPCODE_NAMES.includes(q) || TEMPCODE_WINDOWS_EXES.includes(q)) return hostErrorLine('refused_app', 'tempcode')
   if (WINDOWS_PROMPT_EXES.includes(q) || REFUSED_ACT_BUNDLES.some((b) => lower(b) === q)) return hostErrorLine('refused_app', promptsOf(q))
   return null
 }
