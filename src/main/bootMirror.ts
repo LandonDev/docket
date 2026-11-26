@@ -1,3 +1,4 @@
+import { closeSync, existsSync, openSync, readSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import type { LaunchMirrorSnapshot, MirrorEnvironment } from '@shared/launchMirror'
 import { parseWorkSettings, WORK_SETTING_KEY } from '@shared/work/scope'
@@ -17,6 +18,10 @@ export interface BootRead {
 }
 
 export function readBootMirror(dbPath: string, open: (path: string) => DatabaseSync = openReadOnly): BootRead {
+  // A read-only connection to a WAL file whose -wal or -shm is gone makes them, and they stay if the boot stops
+  // before the server's writer opens: the window waits for the server's own read instead. Never opened immutable,
+  // which could skip frames a crash left in the WAL.
+  if (walSidecarsMissing(dbPath)) return { snapshot: null, workOn: false }
   let db: DatabaseSync | null = null
   try {
     db = open(dbPath)
@@ -74,5 +79,22 @@ export function forgetUnsavedHosts(mirror: { forgetExcept(keep: Iterable<string>
   } catch (err) {
     console.error('[launch-mirror] could not forget the hosts no longer saved; the boot goes on:', err)
     return false
+  }
+}
+
+/** The file is in WAL mode (its header's read and write versions are 2) and its -wal or -shm is not there. */
+export function walSidecarsMissing(dbPath: string): boolean {
+  let fd: number | null = null
+  try {
+    fd = openSync(dbPath, 'r')
+    const header = Buffer.alloc(20)
+    if (readSync(fd, header, 0, 20, 0) < 20) return false
+    const wal = header[18] === 2 && header[19] === 2
+    return wal && (!existsSync(`${dbPath}-wal`) || !existsSync(`${dbPath}-shm`))
+  } catch {
+    // no file: the read-only open fails on its own and makes nothing
+    return false
+  } finally {
+    if (fd !== null) closeSync(fd)
   }
 }

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -8,14 +8,20 @@ import { openDb, Store } from './server/db'
 import { LaunchMirror } from './server/launchMirror'
 
 let dir: string
+/** The writer left open by `seeded`: its -wal and -shm are there, as after an app that quit without a clean close. */
+let writer: ReturnType<typeof openDb> | null = null
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'tc-boot-mirror-'))
 })
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => {
+  writer?.close()
+  writer = null
+  rmSync(dir, { recursive: true, force: true })
+})
 
 const summary = (id: string, updatedAt: number) => ({ id, archived: false, updatedAt, title: id })
 
-async function seeded(o: { workOn?: boolean } = {}): Promise<string> {
+async function seeded(o: { workOn?: boolean; close?: boolean } = {}): Promise<string> {
   const path = join(dir, 'docket.db')
   const db = openDb(path)
   const store = new Store(db)
@@ -23,7 +29,8 @@ async function seeded(o: { workOn?: boolean } = {}): Promise<string> {
   await mirror.write({ environmentId: 'local', full: true, upserts: [summary('a', 1), summary('b', 2)], removed: [], workspaces: [], projects: [], cursor: { seq: 7, generation: 'g1' } })
   await mirror.write({ environmentId: 'env_gone', full: true, upserts: [summary('c', 3)], removed: [], workspaces: [], projects: [], cursor: null })
   if (o.workOn) store.setSetting('work', JSON.stringify({ enabled: true }))
-  db.close()
+  if (o.close) db.close()
+  else writer = db
   return path
 }
 
@@ -58,8 +65,7 @@ describe('the boot read of the launch mirror', () => {
 
   it('a database with no mirror tables yet answers no snapshot, and the window waits for the server', () => {
     const path = join(dir, 'docket.db')
-    const db = openDb(path)
-    db.close()
+    writer = openDb(path)
     expect(readBootMirror(path).snapshot).toBeNull()
   })
 
@@ -73,6 +79,16 @@ describe('the boot read of the launch mirror', () => {
     expect(forgetUnsavedHosts({ forgetExcept: (keep) => void kept.push([...keep]) }, () => ['local', 'env_box'])).toBe(true)
     expect(kept).toEqual([['local', 'env_box']])
     errors.mockRestore()
+  })
+
+  it('a WAL file closed cleanly, its -wal and -shm gone, is not opened: no snapshot, and no new file beside it', async () => {
+    const path = await seeded({ close: true })
+    const before = readdirSync(dir).sort()
+    expect(before.filter((name) => name.startsWith('docket.db'))).toEqual(['docket.db'])
+    let opened = 0
+    expect(readBootMirror(path, (p) => (opened++, new DatabaseSync(p, { readOnly: true })))).toEqual({ snapshot: null, workOn: false })
+    expect(opened).toBe(0)
+    expect(readdirSync(dir).sort()).toEqual(before)
   })
 })
 
