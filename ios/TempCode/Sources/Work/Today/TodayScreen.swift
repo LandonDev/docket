@@ -25,6 +25,7 @@ struct TodayScreen: View {
         WorkPlaceScreen(
             place: .today,
             ids: ids,
+            tops: Self.tops(page),
             loading: page == nil,
             empty: Self.empty(page),
             refresh: { await store.refresh() },
@@ -96,23 +97,23 @@ struct TodayScreen: View {
         case .lifeos(let down):
             Section {
                 // Only silence may answer another try: a sign-out, a refusal or Work off needs him elsewhere.
-                TodayLine(words: Self.downWords(down, host: store.lifeHost.isEmpty ? (down == .locked ? lockedName : nil) : hostName(store.lifeHost)), late: Self.silent(down), retry: Self.silent(down) ? { await store.retry(.lifeos(what: "")) } : nil)
+                TodayLine(words: down.words(host: store.lifeHost.isEmpty ? (down == .locked ? lockedName : nil) : hostName(store.lifeHost)), late: down.isSilence, retry: down.isSilence ? { await store.retry(.lifeos(what: "")) } : nil)
             }
         case .connecting:
             Section {
-                TodayLine(words: Self.connectingWords(hostName(store.lifeHost)), waits: true)
+                TodayLine(words: LifeosWords.connecting(host: hostName(store.lifeHost)), waits: true)
             }
         case .lost(let failure) where failure.waits:
             // A job's session on another host waits on that host's LifeOS: the wait, the computer named, what it left out.
             Section {
-                TodayLine(words: Self.connectingWords(hostName(failure.environmentId)), note: failure.said, waits: true)
+                TodayLine(words: LifeosWords.connecting(host: hostName(failure.environmentId)), note: failure.said, waits: true)
             }
         case .lost(let failure):
             // The state first, its computer named, then what it left out; Retry only where the session was silent.
             Section {
                 if let down = failure.down {
-                    TodayLine(words: Self.downWords(down, host: hostName(failure.environmentId)), note: failure.said, late: Self.silent(down),
-                              retry: Self.silent(down) ? failure.retry.map { retry in { await store.retry(retry) } } : nil)
+                    TodayLine(words: down.words(host: hostName(failure.environmentId)), note: failure.said, late: down.isSilence,
+                              retry: down.isSilence ? failure.retry.map { retry in { await store.retry(retry) } } : nil)
                 } else {
                     TodayLine(words: failure.said ?? failure.error, late: true, retry: failure.retry.map { retry in { await store.retry(retry) } })
                 }
@@ -443,6 +444,12 @@ struct TodayScreen: View {
         model.registry.client(environmentId)?.environment.name ?? "A computer"
     }
 
+    /// The rows and fold lines the page draws, each with its id: the only places its top comes back to.
+    static func tops(_ page: TodayModel.Page?) -> [String] {
+        guard case .day(_, _, let keys)? = page else { return [] }
+        return keys
+    }
+
     /// Every stop on the page in order, the sections' own lines between them, so the list is never "empty".
     static func ids(_ page: TodayModel.Page?) -> [String] {
         guard case .day(let blocks, let offline, let keys)? = page else { return [] }
@@ -467,35 +474,6 @@ struct TodayScreen: View {
         }
     }
 
-    /// A down session in the desktop's words (`lifeosDownWords`), its computer named.
-    /// With no computer known, the desktop's host-less forms.
-    static func downWords(_ down: TodayDown, host: String?) -> String {
-        guard let host else {
-            return switch down {
-            case .signedOut: "Not signed in to LifeOS"
-            case .unreachable, .unanswered: "LifeOS did not answer"
-            case .refused: "LifeOS refused the sign-in"
-            case .pairing: "The LifeOS sign-in waits for your approval"
-            case .off: "Work is off"
-            case .withheld: "This iPhone’s key can’t read LifeOS"
-            case .locked: "Your Mac is locked"
-            }
-        }
-        return switch down {
-        case .signedOut: "Not signed in to LifeOS on \(host)"
-        case .unreachable: "LifeOS did not answer \(host)"
-        case .unanswered: "\(host) did not answer"
-        case .refused: "LifeOS refused \(host)’s sign-in"
-        case .pairing: "The LifeOS sign-in on \(host) waits for your approval"
-        case .off: "Work is off on \(host)"
-        case .withheld: "This iPhone’s key can’t read LifeOS through \(host)"
-        case .locked: "\(host) is locked"
-        }
-    }
-
-    /// Silence, LifeOS's or the host's: the one state another try can mend.
-    static func silent(_ down: TodayDown) -> Bool { down == .unreachable || down == .unanswered }
-
     /// A host's failed read in one true line (the desktop's `hostFailureWords`): "did not answer" only for a wait
     /// that ran out; else Work's own words for the error, and where it has none, that the host could not read this.
     static func hostFailureWords(_ error: String, name: String) -> String {
@@ -503,9 +481,6 @@ struct TodayScreen: View {
         let words = WorkErrorWords.say(error, host: name)
         return words.isEmpty ? "\(name) could not read this" : words
     }
-
-    /// A session on its way, its computer named: no press goes with it.
-    static func connectingWords(_ host: String) -> String { "LifeOS is still connecting on \(host)" }
 
     static func glyph(_ press: TodayPress) -> String {
         switch press {
@@ -587,34 +562,50 @@ struct TodayRowView: View {
         .accessibilityIdentifier("today-row")
     }
 
-    /// At accessibility sizes the words wrap and the time goes under them, so two meetings stay told apart by name
-    /// and place; the time keeps its own line rather than squeezing the title to a few letters.
+    /// The time beside the words while they fit on one line. A title or a fault's reason that would be cut wraps
+    /// instead, and the time goes under the words rather than squeezing them: "ends in 3…" never loses its unit. At
+    /// accessibility sizes that is always the shape, so two meetings stay told apart by name and place.
     private var content: some View {
-        let large = typeSize.isAccessibilitySize
-        return HStack(alignment: large ? .firstTextBaseline : .center, spacing: Layout.rowGap) {
-            lead
-                .frame(width: Layout.glyphWidth + Layout.markWidth)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.title)
-                    .textStep(.title, tint: row.past ? Color(.secondaryLabel) : nil)
-                    .lineLimit(large ? 3 : 1)
-                if let detail = row.detail {
-                    Text(detail)
-                        .textStep(.meta, tint: row.detailLate ? Tint.destructiveText : nil)
-                        // A fault's reason (a held send that needs him) wraps whole at accessibility sizes, as Today's own
-                        // failure line does: its last words are often what to do (council 14, Sol 6).
-                        .lineLimit(large ? (row.detailLate ? nil : 3) : 1)
+        Group {
+            if typeSize.isAccessibilitySize {
+                shape(stacked: true)
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    shape(stacked: false)
+                    shape(stacked: true)
                 }
-                if large { times(alignment: .leading) }
-            }
-            if !large {
-                Spacer(minLength: Layout.rowGap)
-                times(alignment: .trailing)
             }
         }
         .padding(.vertical, Layout.rowVertical)
         .frame(minHeight: Layout.rowHeight + 8)
         .contentShape(Rectangle())
+    }
+
+    private func shape(stacked: Bool) -> some View {
+        let large = typeSize.isAccessibilitySize
+        return HStack(alignment: stacked ? .firstTextBaseline : .center, spacing: Layout.rowGap) {
+            lead
+                .frame(width: Layout.glyphWidth + Layout.markWidth)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.title)
+                    .textStep(.title, tint: row.past ? Color(.secondaryLabel) : nil)
+                    .lineLimit(stacked ? 3 : 1)
+                if let detail = row.detail {
+                    Text(detail)
+                        .textStep(.meta, tint: row.detailLate ? Tint.destructiveText : nil)
+                        // A fault's reason (a held send that needs him) wraps whole, as Today's own failure line does:
+                        // its last words are often what to do (council 14, Sol 6). Any other line keeps one line.
+                        .lineLimit(row.detailLate ? (stacked ? nil : 1) : (large ? 3 : 1))
+                        // Only a title or a fault's reason moves the time: a plain line too long is cut, as before.
+                        .frame(minWidth: 0, idealWidth: row.detailLate ? nil : 0, alignment: .leading)
+                }
+                if stacked { times(alignment: .leading) }
+            }
+            if !stacked {
+                Spacer(minLength: Layout.rowGap)
+                times(alignment: .trailing)
+            }
+        }
     }
 
     /// The trailing fact and its live line: late in the warning ink, the live line in the label's ink.

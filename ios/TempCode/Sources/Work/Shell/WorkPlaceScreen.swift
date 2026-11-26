@@ -17,6 +17,9 @@ struct WorkPlaceScreen<Rows: View>: View {
     /// The rows' ids in the list's order: the top row is kept by these, and a pick is one of them. Each
     /// row carries its id as its identity (`ForEach` over the same ids) so the list can scroll to it.
     let ids: [String]
+    /// The ids the list draws as rows, where `ids` holds more (Today's sections, which make the list never empty): the
+    /// only ones its top row comes back to. Nil: `ids`.
+    var tops: [String]?
     /// Nothing has arrived yet.
     var loading = false
     var empty: PlaceEmpty
@@ -61,7 +64,7 @@ struct WorkPlaceScreen<Rows: View>: View {
         }
         .navigationTitle(place.title)
         .shellTitleDisplay()
-        .placeTop(route, ids: ids)
+        .placeTop(route, ids: tops ?? ids)
         .placePick(route, ids: ids, pick: pick)
         .listOnScreen("place.\(place.rawValue)")
         // The proof's ready file once the list has its first answer (TestHooks; nothing in a Release build).
@@ -201,7 +204,8 @@ private struct PlaceTop: ViewModifier {
     private func restore(_ proxy: ScrollViewProxy) {
         guard !restored, !ids.isEmpty else { return }
         restored = true
-        var target = navigator.tops[route].flatMap { ids.contains($0) ? $0 : nil }
+        // Only a row the list draws (`PlaceTopRules`): a scroll to any other id ends the app in UIKit.
+        var target = PlaceTopRules.target(kept: navigator.tops[route], rows: ids)
         #if DEBUG
         if let index = TestHooks.placeTop, ids.indices.contains(index), TestHooks.once("place-top") {
             target = ids[index]
