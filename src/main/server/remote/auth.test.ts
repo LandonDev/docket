@@ -12,6 +12,7 @@ import {
   SESSION_RENEW_AFTER_MS,
   SESSION_TTL_MS,
   TICKET_TTL_MS,
+  LIVE_TICKETS_PER_KEY,
   normalizePairingCode,
   readCookie
 } from './auth'
@@ -230,6 +231,28 @@ describe('tickets', () => {
     auth.revokeKey(principal.keyId)
     expect(auth.consumeTicket(third)).toBeNull()
   }, 20_000)
+})
+
+describe('live tickets', () => {
+  it('a key holds LIVE_TICKETS_PER_KEY at once: the next is refused in plain words, an expired or spent one frees its place, another key is not held', async () => {
+    const mk = async (name: string) => (await auth.verifyToken((await auth.createKey({ name, audience: 'client', caps: ['operate'], createdBy: 'local' })).token))!
+    const a = await mk('a')
+    const b = await mk('b')
+    const held = Array.from({ length: LIVE_TICKETS_PER_KEY }, () => auth.mintTicket(a).ticket)
+    await expectStatus(() => auth.mintTicket(a), 429, 'too many tickets for this key at once')
+    // The socket path (window) and the proved path share the bound.
+    await expectStatus(() => auth.mintTicket(a, undefined, true), 429)
+    await expectStatus(() => auth.mintTicket(a, 'env_pc'), 429)
+    expect(auth.mintTicket(b).ticket).toBeTruthy()
+    // One spent: one place.
+    expect(auth.consumeTicket(held[0]!)?.keyId).toBe(a.keyId)
+    expect(auth.mintTicket(a).ticket).toBeTruthy()
+    await expectStatus(() => auth.mintTicket(a), 429)
+    // All expired: every place, with no sweep run.
+    clock += TICKET_TTL_MS
+    for (let i = 0; i < LIVE_TICKETS_PER_KEY; i++) auth.mintTicket(a)
+    await expectStatus(() => auth.mintTicket(a), 429)
+  })
 })
 
 describe('stream tickets', () => {

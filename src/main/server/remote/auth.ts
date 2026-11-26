@@ -49,6 +49,10 @@ export class RemoteAuthError extends Error {
 export const KEY_PREFIX = 'tc_'
 export const COOKIE_NAME = 'tc_session'
 export const TICKET_TTL_MS = 30_000
+/** Live (unspent, unexpired) upgrade tickets one key may hold, and the map in all: every way a ticket is minted
+ *  (`/api/ticket`, `remote.ticket`, `devices.ticket`) is held to them when it mints. A window mints one a dial. */
+export const LIVE_TICKETS_PER_KEY = 32
+export const LIVE_TICKETS = 4_096
 export const PAIRING_TTL_MS = 10 * 60_000
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60_000
 /** A session older than this since its last touch gets its 30 days again. */
@@ -703,6 +707,15 @@ export class RemoteAuth {
 
   /** A 30-second single-use ticket for one WebSocket upgrade; only tickets ever ride in a URL. */
   mintTicket(principal: Principal & { kind: 'remote' }, provedEnv?: string, window = false): { ticket: string; expiresIn: number } {
+    // The expired go first, so a ticket that lapsed frees its place at once, not at the next sweep.
+    const now = this.now()
+    let mine = 0
+    for (const [digest, held] of this.tickets) {
+      if (held.expiresAt <= now) this.tickets.delete(digest)
+      else if (held.keyId === principal.keyId) mine++
+    }
+    if (mine >= LIVE_TICKETS_PER_KEY) throw new RemoteAuthError(429, 'too many tickets for this key at once: each opens one socket and lasts 30 seconds')
+    if (this.tickets.size >= LIVE_TICKETS) throw new RemoteAuthError(429, 'too many tickets at once: each opens one socket and lasts 30 seconds')
     const ticket = randomBytes(32).toString('base64url')
     this.tickets.set(sha256(ticket), { keyId: principal.keyId, expiresAt: this.now() + TICKET_TTL_MS, ...(provedEnv ? { provedEnv } : {}), ...(window ? { window: true as const } : {}) })
     return { ticket, expiresIn: TICKET_TTL_MS / 1000 }
