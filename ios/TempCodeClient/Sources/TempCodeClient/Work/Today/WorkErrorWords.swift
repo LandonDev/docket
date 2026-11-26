@@ -46,14 +46,22 @@ public enum WorkErrorWords {
         return (try! NSRegularExpression(pattern: pattern, options: blind ? [.caseInsensitive] : []), say)
     }
 
-    /// A wire method, a path, a host's id, an errno, a schema's JSON, a stack: a line never written for him.
-    nonisolated(unsafe) private static let raw = try! NSRegularExpression(pattern: #"\b[Ww]ork\.[a-z][A-Za-z.]*|\b(session|workspace|remote|defaults)\.[a-z][A-Za-z]+\b|(^|[\s'"(])/[\w.@-]+/[\w.@/ -]+|[A-Za-z]:\\[\w\\. -]+|\benv_[\w-]{6,}|\bE[A-Z]{3,}\b(?=[:,]| )|^\s*[\[{]|\n\s+at \S+ \(|^forbidden:"#)
+    /// A wire method, a path, a host's id, an errno, a schema's JSON, a stack, a setting's name in capitals: a line never
+    /// written for him.
+    nonisolated(unsafe) private static let raw = try! NSRegularExpression(pattern: #"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[Ww]ork\.[a-z][A-Za-z.]*|\b(session|workspace|remote|defaults)\.[a-z][A-Za-z]+\b|(^|[\s'"(])/[\w.@-]+/[\w.@/ -]+|[A-Za-z]:\\[\w\\. -]+|\benv_[\w-]{6,}|\bE[A-Z]{3,}\b(?=[:,]| )|^\s*[\[{]|\n\s+at \S+ \(|^forbidden:"#)
 
     /// The desktop's `refusalWords`: "refused:" off, the first letter capital.
     static func refusal(_ error: String) -> String {
         var words = error.trimmingCharacters(in: .whitespacesAndNewlines)
         if let range = words.range(of: #"^refused:\s*"#, options: [.regularExpression, .caseInsensitive]) { words.removeSubrange(range) }
         return words.prefix(1).uppercased() + words.dropFirst()
+    }
+
+    /// A read that failed, in one line a screen can show: Work's words for it, else that `host` could not read it.
+    /// Never the host's raw text.
+    public static func readFailure(_ error: String, host: String) -> String {
+        let words = say(error, host: host)
+        return words.isEmpty ? "\(host.prefix(1).uppercased() + host.dropFirst()) could not read this." : words
     }
 
     /// The error in Work's words, `host` the computer asked ("the box", "Mac"); "" where it has none.

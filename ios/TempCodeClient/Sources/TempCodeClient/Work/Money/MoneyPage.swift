@@ -160,6 +160,18 @@ public enum MoneyPage {
         public var empty: Bool
     }
 
+    /// What the page is, the span's state first: its bones while the first read or a newly picked span is out; the
+    /// failure where that read failed (never "No Money Yet", which is said only of a span that was read); the empty
+    /// state for a job with no money; else the list, whose span section says its own read.
+    public enum PageState: Equatable, Sendable { case bones, failed, empty, list }
+
+    public static func pageState(_ shown: Shown?, spanRead: Bool, failed: Bool) -> PageState {
+        guard let shown else { return failed ? .failed : .bones }
+        guard shown.empty, shown.problems.isEmpty else { return .list }
+        if spanRead { return .empty }
+        return failed ? .failed : .bones
+    }
+
     public static func shown(_ read: MoneyReadPhone) -> Shown {
         Shown(
             waiting: read.toConfirm.sorted { $0.at < $1.at },

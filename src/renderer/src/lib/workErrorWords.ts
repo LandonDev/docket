@@ -103,8 +103,8 @@ const RULES: Rule[] = [
   [/its bytes go to no caller/i, () => "Open this file from its library in Files. The copy is made on the computer that runs the Windows VM."],
 ];
 
-/** What marks a line as never written for him: a wire method (capitalized when it starts the line), a path, a host's id, an errno, a schema's JSON, a stack. */
-const RAW = /\b[Ww]ork\.[a-z][A-Za-z.]*|\b(session|workspace|remote|defaults)\.[a-z][A-Za-z]+\b|(^|[\s'"(])\/[\w.@-]+\/[\w.@/ -]+|[A-Za-z]:\\[\w\\. -]+|\benv_[\w-]{6,}|\bE[A-Z]{3,}\b(?=[:,]| )|^\s*[[{]|\n\s+at \S+ \(|^forbidden:/;
+/** What marks a line as never written for him: a wire method (capitalized when it starts the line), a path, a host's id, an errno, a schema's JSON, a stack, a setting's name in capitals (`TEMP_CODE_FAIL_ANSWERS`). */
+const RAW = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[Ww]ork\.[a-z][A-Za-z.]*|\b(session|workspace|remote|defaults)\.[a-z][A-Za-z]+\b|(^|[\s'"(])\/[\w.@-]+\/[\w.@/ -]+|[A-Za-z]:\\[\w\\. -]+|\benv_[\w-]{6,}|\bE[A-Z]{3,}\b(?=[:,]| )|^\s*[[{]|\n\s+at \S+ \(|^forbidden:/;
 
 export function workErrorWords(error: unknown, context: ErrorContext = {}): string {
   const words = refusalWords(error);

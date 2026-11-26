@@ -71,6 +71,7 @@ describe("an error as Work says it to him", () => {
     expect(says("work.guests.forItem: socket hung")).toBe("");
     expect(says("work.set: write failed")).toBe("");
     expect(says("could not write /srv/agents/temp-code-data/work/x.tmp")).toBe("");
+    expect(says("internal: failed by the answer seam (TEMP_CODE_FAIL_ANSWERS)")).toBe("");
     expect(workErrorWords(undefined)).toBe("");
   });
 

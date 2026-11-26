@@ -116,7 +116,7 @@ struct HouseRulesScreen: View {
             error = nil
             voice = try? await client.work.workspaceSettings(workspaceId).voice
         } catch {
-            if page == nil { self.error = ActionError.wrap(error).message }
+            if page == nil { self.error = WorkErrorWords.readFailure(ActionError.wrap(error).message, host: client.environment.name) }
         }
     }
 
@@ -180,8 +180,11 @@ private struct ProposalRow: View {
                         .imageScale(.small)
                 }
                 .textStep(.meta)
+                // The words keep their size; the hit area reaches 44 pt, as a row's text action does.
+                .rowActionHit()
             }
             .buttonStyle(.pressable)
+            .accessibilityValue(open ? "Open" : "Closed")
             if open {
                 ForEach(proposal.edits, id: \.draftId) { edit in
                     VStack(alignment: .leading, spacing: 2) {

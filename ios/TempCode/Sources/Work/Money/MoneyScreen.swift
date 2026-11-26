@@ -58,22 +58,22 @@ struct MoneyScreen: View {
     }
 
     @ViewBuilder private var content: some View {
-        if let read {
-            let shown = MoneyPage.shown(read)
-            if shown.empty, shown.problems.isEmpty {
-                ContentUnavailableView("No Money Yet", systemImage: "dollarsign.circle", description: Text("A receipt you scan for \(workspace.name) waits here."))
-            } else {
-                list(read, shown)
-            }
-        } else if let failure {
+        let shown = read.map(MoneyPage.shown)
+        // The span's state first: a picked span that failed says so, never "No Money Yet" from the span before it.
+        switch MoneyPage.pageState(shown, spanRead: readSpan == span, failed: failure != nil) {
+        case .list:
+            if let read, let shown { list(read, shown) }
+        case .empty:
+            ContentUnavailableView("No Money Yet", systemImage: "dollarsign.circle", description: Text("A receipt you scan for \(workspace.name) waits here."))
+        case .failed:
             ContentUnavailableView {
                 Label("Can’t Read Money", systemImage: "dollarsign.circle")
             } description: {
-                Text(failure)
+                Text(failure ?? "")
             } actions: {
                 Button("Try Again") { Task { await load() } }
             }
-        } else {
+        case .bones:
             List { MoneyBones() }
                 .listStyle(.plain)
         }
@@ -224,8 +224,8 @@ struct MoneyScreen: View {
             failure = nil
         } catch {
             guard asked == span else { return }
-            // What showed stays; the line says the read failed.
-            failure = ActionError.wrap(error).message
+            // What showed stays; the line says the read failed, in Work's words, never the host's raw text.
+            failure = WorkErrorWords.readFailure(ActionError.wrap(error).message, host: client.environment.name)
         }
     }
 

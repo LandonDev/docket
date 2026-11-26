@@ -101,4 +101,18 @@ import TempCodeContract
         #expect(MoneyPage.heard(try decode(#"{"ok":true,"ref":null,"row":4,"suggested":true}"#)) == .suggested)
         #expect(MoneyPage.heard(try decode(#"{"changed":true}"#)) == .changed)
     }
+
+    /// The span's state comes first: a failed switch to Year over a month that was empty says the failure, never "No
+    /// Money Yet", which is said only of a span that was read.
+    @Test func aFailedSpanIsNeverNoMoneyYet() {
+        let empty = MoneyPage.Shown(waiting: [], owedToHim: [], heOwes: [], recent: [], more: 0, problems: [], empty: true)
+        let some = MoneyPage.Shown(waiting: [], owedToHim: [], heOwes: [], recent: [], more: 0, problems: [], empty: false)
+        #expect(MoneyPage.pageState(empty, spanRead: false, failed: true) == .failed)
+        #expect(MoneyPage.pageState(empty, spanRead: false, failed: false) == .bones)
+        #expect(MoneyPage.pageState(empty, spanRead: true, failed: false) == .empty)
+        // A list draws its own span's failure line in its section.
+        #expect(MoneyPage.pageState(some, spanRead: false, failed: true) == .list)
+        #expect(MoneyPage.pageState(nil, spanRead: false, failed: true) == .failed)
+        #expect(MoneyPage.pageState(nil, spanRead: false, failed: false) == .bones)
+    }
 }

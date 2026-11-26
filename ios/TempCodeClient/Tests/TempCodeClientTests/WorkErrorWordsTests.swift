@@ -19,4 +19,13 @@ struct WorkErrorWordsTests {
         #expect(WorkErrorWords.say("The ledger is open elsewhere", host: "Mac") == "The ledger is open elsewhere")
         #expect(WorkErrorWords.say("   ") == "")
     }
+
+    /// A read's failure line on a screen: Work's words, else that the host could not read it; a setting's name in
+    /// capitals marks the host's raw text, as the desktop's RAW does.
+    @Test func `a failed read is never the host's raw text`() {
+        #expect(WorkErrorWords.say("internal: failed by the answer seam (TEMP_CODE_FAIL_ANSWERS)", host: "Mac") == "")
+        #expect(WorkErrorWords.readFailure("internal: failed by the answer seam (TEMP_CODE_FAIL_ANSWERS)", host: "the box") == "The box could not read this.")
+        #expect(WorkErrorWords.readFailure("Not connected", host: "Box") == "Box is not connected. Try again once it is back.")
+        #expect(WorkErrorWords.readFailure("The ledger is open elsewhere", host: "Mac") == "The ledger is open elsewhere")
+    }
 }
