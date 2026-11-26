@@ -3,7 +3,7 @@ import type { ContextChip } from "@shared/work";
 import type { MailChatFound } from "@shared/contract-work-mail";
 import { TruncateTip } from "../../../components/tip";
 import { registry } from "../../../lib/connection";
-import { useHostHeld } from "../../../lib/connection/degraded";
+import { useEnvironmentDegraded } from "../../../lib/connection/degraded";
 import { chipPort } from "../../../lib/contextChips";
 import { newSession, type Session } from "../../../lib/session";
 import { sessionStore } from "../../../lib/tcserver/store";
@@ -109,8 +109,8 @@ export function onClaude(draft: Session): Session {
 
 /**
  * The few things a fresh chat offers to ask, quiet rows over the composer: a press sends that text. They show only
- * on a draft with nothing typed, and go once he types or the thread exists, or while the host's link is held: the
- * composer's line says why, and a press would send past its block.
+ * on a draft with nothing typed, and go once he types or the thread exists, or while the composer is blocked on the
+ * host's link: its line says why, and a press would send past its block.
  */
 function Starters({ sessionId, environmentId, rows }: { sessionId: string; environmentId: string; rows: string[] }) {
   const actions = useSessionActions();
@@ -126,7 +126,8 @@ function Starters({ sessionId, environmentId, rows }: { sessionId: string; envir
     dock.addEventListener("input", read);
     return () => dock.removeEventListener("input", read);
   }, []);
-  const held = !!useHostHeld(environmentId);
+  // The composer's own block (`useEnvironmentBlock`): the starters go exactly while it holds.
+  const held = !!useEnvironmentDegraded(environmentId);
   if (!draft || typed || held) return <div ref={root} hidden />;
   const send = (text: string): void => void actions.onSubmit(sessionId, chipPort.get()?.send(sessionId, true, text) || text, []);
   return (

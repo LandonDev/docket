@@ -40,7 +40,7 @@ vi.mock("../../../surfaces/threads/ThreadView", () => ({
 }));
 vi.mock("../../../surfaces/SessionPane", () => ({ LoadLine: () => null }));
 const linkHeld = vi.hoisted(() => ({ words: null as string | null }));
-vi.mock("../../../lib/connection/degraded", async (original) => ({ ...(await original<object>()), useHostHeld: () => linkHeld.words }));
+vi.mock("../../../lib/connection/degraded", async (original) => ({ ...(await original<object>()), useEnvironmentDegraded: () => (linkHeld.words ? { kind: "offline", status: { transport: "offline", lastError: null } } : null) }));
 
 const { MailClientProvider, MailKitProvider } = await import("work-kit/mail");
 const { corpusThreads, createFixtureMailClient } = await import("work-kit/mail/fixtures");

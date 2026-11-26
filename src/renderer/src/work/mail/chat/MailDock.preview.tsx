@@ -6,6 +6,7 @@ import { ConvexProvider } from "convex/react";
 import { MailClientProvider, MailKitProvider, type MailClient, type ThreadSummary } from "work-kit/mail";
 import { corpusThreads, createFixtureMailClient } from "work-kit/mail/fixtures";
 import { registry } from "../../../lib/connection";
+import { IDLE_STATUS, type EnvironmentStatus } from "../../../lib/connection/types";
 import { newSession, type Block } from "../../../lib/session";
 import { sessionStore } from "../../../lib/tcserver/store";
 import type { SessionMeta } from "../../../lib/tcserver/types";
@@ -31,6 +32,10 @@ const actions = new Proxy({}, { get: () => () => undefined }) as SessionActions;
 
 // No host here: the dock finds no chat from before, and a draft is made in the window.
 (registry as unknown as { linkOf: (env: string) => unknown }).linkOf = (env: string) => ({ environmentId: env, connected: true, request: async () => ({ sessionIds: [] }), onPush: () => () => undefined });
+// Its link is open, as the window it stands for has: an unknown host reads offline, which blocks the composer and its starters.
+const OPEN: EnvironmentStatus = { ...IDLE_STATUS, transport: "open" };
+const statusOf = registry.statusOf.bind(registry);
+(registry as unknown as { statusOf: (env: string) => EnvironmentStatus }).statusOf = (env: string) => (env === "local" ? OPEN : statusOf(env));
 let n = 0;
 workDockPort.set({ draft: (_ws, id) => ({ ...newSession("local", "claude", "/w", undefined, undefined, { projectId: null, workspaceId: ID }), id: id ?? `draft-${++n}` }), openFile: () => undefined, openDiff: () => undefined });
 

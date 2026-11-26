@@ -572,7 +572,7 @@ press. The host side (`src/main/server/work/mail/chat/`):
   work/mail/chat/MailDock.tsx), also when his defaults land after the dock
   opened (the dock keeps the rule over every re-seed, `keepDraftRule`;
   layout.test.ts), and the create names Claude as a pick. A fresh draft's starters (MailDock.tsx
-  `Starters`) are not drawn while the host's link is held (`useHostHeld`): the composer's line says why,
+  `Starters`) are not drawn while the composer is blocked on the host's link (`useEnvironmentDegraded`): its line says why,
   and a starter would send past its block. chat.test.ts lists every LifeOS and Work
   tool as allowed or refused and fails on a tool that is neither.
 - **The preamble part** follows the mail lines, in a mail chat alone: he
