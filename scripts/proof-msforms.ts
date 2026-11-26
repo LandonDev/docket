@@ -18,6 +18,7 @@
  * since changed stops there, says what it saw, and can be run again once the carrier is fixed.
  *
  *   /work {method, params, thread?}     a wire call: his own (owner), or a thread's (`thread`: a model caller)
+ *   /tool {name, args}                 an msform_* tool as the proof's Work thread calls it
  *   /svc {method, params}              the box browser's service on a carrier session (state.get, action.batch, …)
  *   /threadOpen {url}                  a thread's box_browser_open of an address (a non-carrier session)
  *   /shot {window, file}               a picture of a carrier window, saved to `file`
@@ -121,6 +122,15 @@ const routes: Record<string, (body: Record<string, unknown>) => Promise<unknown>
       log(`${new Date().toISOString()} work ${String(b.method)} ${Date.now() - t0} ms`)
     }
   },
+  /** one msform_* tool as the proof's Work thread calls it (a model caller of the rig's job) */
+  tool: async (b) => {
+    const t0 = Date.now()
+    try {
+      return await rig.tool(String(b.name), b.args ?? {})
+    } finally {
+      log(`${new Date().toISOString()} tool ${String(b.name)} ${Date.now() - t0} ms`)
+    }
+  },
   svc: async (b) => host.service.request(String(b.method) as never, { ...(b.params as object), session: looks } as never, { timeoutMs: 120_000 } as never),
   threadOpen: async (b) => host.sessions.run({ threadId: 't-proof-thread', permission: () => 'auto', approve: async () => true }, 'computer_apps', { launch: 'Chromium', open: [String(b.url)] }),
   shot: async (b) => {
@@ -163,17 +173,17 @@ const routes: Record<string, (body: Record<string, unknown>) => Promise<unknown>
   },
   carrier: async (b) => {
     // One carrier operation on a form the proof made, his own grant: what a stage needs to see a step's real failure.
-    const { msCarrier } = await import('../src/main/server/work/msforms/carrier/types')
+    const { msCarrier, readPayload } = await import('../src/main/server/work/msforms/carrier/types')
     const { authFor } = await import('../src/main/server/work/msforms/forms')
     const row = new MsformsStore(db).get(WORKSPACE, String(b.formId))
     if (!row) throw new Error('no such form row')
     const c = msCarrier()!
     try {
-      if (b.op === 'read') return await c.read(authFor(work.ctx, row, 'count', 'owner', { formId: row.formId }), row.formId)
+      if (b.op === 'read') return await c.read(authFor(work.ctx, row, 'read', 'owner', readPayload(row.formId)), row.formId)
       if (b.op === 'sync') {
         // the page as it stands into the row, as any fresh read of the carrier's would (forms.ts storeRead)
         const { storeRead } = await import('../src/main/server/work/msforms/forms')
-        const read = await c.read(authFor(work.ctx, row, 'count', 'owner', { formId: row.formId }), row.formId)
+        const read = await c.read(authFor(work.ctx, row, 'read', 'owner', readPayload(row.formId)), row.formId)
         const after = storeRead(work.ctx, row, read, { by: 'page' })
         return { rev: after.rev, title: after.title, questions: after.questions, settings: after.settings }
       }

@@ -39,7 +39,7 @@ import { REVIEW_CAPS, REVIEW_RELAY, ReviewRequestSchemas, type ReviewPush } from
 import { CLASHES_CAPS, CLASHES_RELAY, ClashesRequestSchemas, type ClashesPush } from './contract-work-clashes'
 import { TEMPLATES_CAPS, TEMPLATES_RELAY, TemplatesRequestSchemas, type TemplatesPush } from './contract-work-templates'
 import { DIGEST_CAPS, DIGEST_RELAY, DigestRequestSchemas, type DigestPush } from './contract-work-digest'
-import { MSFORMS_CAPS, MSFORMS_RELAY, MsformsRequestSchemas, type MsformsMakingPush, type MsformsPush } from './contract-work-msforms'
+import { MSFORMS_CAPS, MSFORMS_RELAY, MsformsRequestSchemas, type MsformsApplyingPush, type MsformsMakingPush, type MsformsPush } from './contract-work-msforms'
 
 /**
  * Work over the wire (docs/agents/work.md): the core's own methods, then
@@ -197,6 +197,7 @@ export type WorkPush =
   | DigestPush
   | MsformsPush
   | MsformsMakingPush
+  | MsformsApplyingPush
 
 export const WORK_CAPS = {
   ...WORK_CORE_CAPS,

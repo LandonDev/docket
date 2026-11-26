@@ -43,7 +43,7 @@ export class FakeForms implements FormsComputer {
   strayId: string | null = null
   /** the make's new page reports no opener (a browser that does not say one) */
   noOpener = false
-  private ui = new Map<string, { panel: boolean; dialog: boolean; adding: boolean; editing: Editing | null; titleEdit: boolean }>()
+  private ui = new Map<string, { panel: boolean; dialog: boolean; adding: boolean; editing: Editing | null; titleEdit: boolean; header?: boolean; scrolled?: boolean; low?: boolean }>()
   private hits = new Map<number, Hit>()
   private render = 0
   private nextWindow = 1
@@ -66,6 +66,14 @@ export class FakeForms implements FormsComputer {
   private activeOption: number | null = null
   /** as Forms does (P5): "Add new question" pressed while a question is open inserts above it and leaves it open */
   insertsBetween = false
+  /**
+   * As Forms does (live, 2026-11-25): the form's header stays in edit after Tab leaves its title, and while it is open a
+   * form with questions draws no "Add new question", only "Insert new question" at its top. A click on Settings or a
+   * question closes it.
+   */
+  headerStaysOpen = false
+  /** As Forms does on a long form (live, 2026-11-25): the type picker opens below the window, and a press there misses until a scroll */
+  pickerBelowFold = false
   /** forms deleted in Forms: their builder draws Forms' "This form doesn't exist" page (P5) */
   gone = new Set<string>()
   /** the browser stops once a step of this name was taken (the box browser's memory cap, P5): every call after it fails */
@@ -201,7 +209,8 @@ export class FakeForms implements FormsComputer {
       if (question.type === 'choice') for (const o of question.options ?? []) el(2, `${question.multiple ? 'checkbox' : 'radio'} ${q(o)} unchecked`)
     })
     if (ui.editing && ui.editing.at === f.questions.length) this.drawEdit(el, f, ui, f.questions.length)
-    el(1, `button "Add new question"${ui.adding ? ' expanded' : ''}`, { what: 'Add new question', run: () => void (ui.adding = true) })
+    if (ui.header && f.questions.length) el(1, 'button "Insert new question"', { what: 'Insert new question', run: () => {} })
+    else el(1, `button "Add new question"${ui.adding ? ' expanded' : ''}`, { what: 'Add new question', run: () => void (ui.adding = true) })
     if (ui.adding)
       for (const [type, word] of Object.entries(TYPE_WORD))
         el(2, `button ${q(word)}`, {
@@ -269,11 +278,18 @@ export class FakeForms implements FormsComputer {
     const clean: MsQuestion = { ...e.draft }
     if (!clean.multiple) delete clean.multiple
     if (!clean.long) delete clean.long
-    if (e.at >= f.questions.length) f.questions.push(clean)
+    if (e.at >= f.questions.length) {
+      f.questions.push(clean)
+      for (const u of this.ui.values()) if (u === ui) ((u.low = true), (u.scrolled = false))
+    }
     else f.questions[e.at] = clean
   }
 
-  async act(window: string, _screen: Screen, steps: readonly ComputerAction[]): Promise<{ ok: boolean; words?: string }> {
+  /** the screens an act used up: the wire refuses to act on one again (wire.ts `checked`) */
+  private used = new WeakSet<Screen>()
+  async act(window: string, screen: Screen, steps: readonly ComputerAction[]): Promise<{ ok: boolean; words?: string }> {
+    if (this.used.has(screen)) throw new Error('acted twice on one read')
+    this.used.add(screen)
     const page = this.pages.get(window)
     for (const s of steps) {
       const index = (s as { element?: number }).element
@@ -281,10 +297,14 @@ export class FakeForms implements FormsComputer {
       const action = (s as { action: string }).action
       if (!hit) return { ok: false, words: 'stale_element' }
       if (action === 'left_click') {
+        // the picker at the window's foot once a question was added: covered, unless the form was wheeled up before Add
+        if (this.pickerBelowFold && Object.values(TYPE_WORD).includes(hit.what) && this.ui.get(window)?.low && !this.ui.get(window)?.scrolled) return { ok: false, words: 'something else covers it' }
         this.log.push(`click ${hit.what}`)
         // A click elsewhere commits the question in edit, as Forms does.
         const opens = this.insertsBetween && hit.what === 'Add new question' && !!this.ui.get(window)?.editing
         if (page?.kind === 'builder' && !opens && !/question title|option|Required|Multiple|Long|Add option|Delete|Move/.test(hit.what)) this.commit(this.forms.get(page.formId)!, this.ui.get(window)!)
+        // the header closes on a click anywhere but its own fields
+        if (page?.kind === 'builder' && !/title field|description|Form title|top bar title/.test(hit.what)) this.ui.get(window)!.header = false
         hit.run()
         if (this.diesAfter === hit.what) this.dead = true
       } else if (action === 'type') {
@@ -294,7 +314,14 @@ export class FakeForms implements FormsComputer {
       } else if (action === 'key') {
         const key = (s as { text: string }).text
         this.log.push(`key ${key} in ${hit.what}`)
-        if (key === 'Tab' && hit.what === 'title field' && page?.kind === 'builder') this.ui.get(window)!.titleEdit = false
+        if (key === 'Tab' && hit.what === 'title field' && page?.kind === 'builder') {
+          this.ui.get(window)!.titleEdit = false
+          if (this.headerStaysOpen) this.ui.get(window)!.header = true
+        }
+      } else if (action === 'scroll') {
+        this.log.push(`scroll ${hit.what}`)
+        // the form scrolls in a box of its own: a wheel up on a question at rest moves "Add new question" out of the window
+        if (page?.kind === 'builder' && /^question \d+$/.test(hit.what) && (s as { scroll_direction?: string }).scroll_direction === 'up') this.ui.get(window)!.scrolled = true
 
       }
     }

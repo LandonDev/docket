@@ -22,6 +22,7 @@ import { msforms } from '../../src/main/server/work/msforms/index'
 import { outbox } from '../../src/main/server/work/outbox/index'
 import { wireMsCarrier } from '../../src/main/server/work/msforms/carrier/wire'
 import { WORK_MODULES } from '../../src/main/server/work/modules'
+import { setVmState } from '../../src/main/server/work/office/vm/office'
 
 export const LIVE_DATA = '/srv/agents/temp-code-data'
 const LIVE_DB = `${LIVE_DATA}/temp-code.db`
@@ -60,6 +61,9 @@ export function removeCopy(dir: string): void {
   if (/^\/tmp\/tc-msforms-proof-[A-Za-z0-9]+$/.test(dir) && existsSync(dir)) rmSync(dir, { recursive: true, force: true })
 }
 
+/** The proof's one Work thread, of the rig's job: the msform_* tools' caller. */
+export const PROOF_THREAD = 'tproof-thread'
+
 export interface Rig {
   dir: string
   host: NonNullable<ReturnType<typeof wireBoxBrowser>>
@@ -70,6 +74,8 @@ export interface Rig {
   pushes: unknown[]
   /** a wire call: his own, or a thread's (a model caller) */
   call(method: string, params: unknown, thread?: string): Promise<unknown>
+  /** one msform_* tool as the proof's Work thread (`PROOF_THREAD`) calls it */
+  tool(name: string, args: unknown): Promise<{ text: string; isError?: boolean }>
   /** a carrier-marked session of the rig's own, for looks the proof takes at pages */
   looks: string
   /** the box service on the `looks` session */
@@ -107,8 +113,11 @@ export async function bootRig(dir: string, o: { host?: string; workspaceId?: str
   const store = new Store(db)
   const registry = {
     // No thread has a carrier session's id: as on the host, the registry knows none of them (run.ts would otherwise
-    // take the carrier for a Work thread and refuse it Forms, as it refuses a thread).
-    get: (_id: string) => null as unknown as SessionMeta,
+    // take the carrier for a Work thread and refuse it Forms, as it refuses a thread). The proof's own Work thread,
+    // `PROOF_THREAD`, is the one session it knows: a thread of the rig's job, for the msform_* tools.
+    get: (id: string) => (id === PROOF_THREAD ? ({ id, provider: 'claude', workspaceId, scope: 'work' } as SessionMeta) : (null as unknown as SessionMeta)),
+    listWorkspaces: () => store.listWorkspaces(),
+    getProject: () => null,
     requestApproval: async () => false,
     awayFor: () => false,
     rootSessionOf: (id: string) => id,
@@ -132,6 +141,10 @@ export async function bootRig(dir: string, o: { host?: string; workspaceId?: str
     if (JSON.stringify(p).includes('making')) log(`push ${JSON.stringify(p).slice(0, 300)}`)
   })
   wireMsCarrier(db, HOST)
+  // The thread reaches the VM's libraries as on the host, where the keeper holds a state even while the VM sleeps: a
+  // stand-in state, asleep, and the job's VM switch on. Nothing here asks the VM anything; the carrier uses SharePoint.
+  setVmState(() => ({ state: 'hibernated', cannot: null }))
+  work.ctx.settings.set(workspaceId, { windowsVm: true })
   const request = (method: string, params: unknown): ClientRequest => ClientRequestSchema.parse({ id: 'proof', method, params } as ClientRequest)
   const call = async (method: string, params: unknown, thread?: string): Promise<unknown> => {
     const out = thread ? await msforms.handle!(request(method, params), work.ctx, { kind: 'model', caps: [], sessionId: thread }) : await work.handle(request(method, params), LOCAL_PRINCIPAL)
@@ -149,6 +162,10 @@ export async function bootRig(dir: string, o: { host?: string; workspaceId?: str
     logs,
     pushes,
     call,
+    async tool(name, args) {
+      const r = (await work.tools.call({ id: PROOF_THREAD, scope: 'work' } as never, name, args, new AbortController().signal)) as { content: { text?: string }[]; isError?: boolean }
+      return { text: r.content.map((c) => c.text ?? '').join(''), isError: r.isError }
+    },
     looks,
     svc: (method, params) => host.service.request(method as never, { ...params, session: looks } as never, { timeoutMs: 120_000 } as never) as never,
     async stop() {

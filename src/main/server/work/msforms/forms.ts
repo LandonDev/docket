@@ -1,10 +1,10 @@
 import { randomBytes } from 'node:crypto'
-import type { FormListRow, MsFormHistoryRow, MsFormMake, MsFormPublish, MsFormView, MsMakeStage, MsSuggestion } from '@shared/contract-work-msforms'
+import type { FormListRow, MsFormHistoryRow, MsFormMake, MsFormPublish, MsApplyStage, MsFormView, MsMakeStage, MsSuggestion } from '@shared/contract-work-msforms'
 import type { HeldItem } from '@shared/work/acts'
 import type { Principal } from '@shared/work/ids'
 import { applyChange, changeWords, diffQuestions, isOther, questionWords, respondOf, settingsWords, type MsAnyQuestion, type MsChange, type MsFormCheck, type MsFormSettings } from '@shared/work/msforms'
 import type { Caller, WorkCtx } from '../modules'
-import { authorize, CarrierGone, CarrierRefused, digestOf, CarrierStop, makePayload, msCarrier, NO_CARRIER, type CarrierBy, type CarrierOp, type FormRead, type MsCarrier } from './carrier/types'
+import { authorize, CarrierGone, CarrierRefused, CarrierTakesAnswers, digestOf, CarrierStop, makePayload, msCarrier, NO_CARRIER, type CarrierBy, type CarrierOp, type FormRead, type MsCarrier } from './carrier/types'
 import { folderOf, folderPageOf, libraryAt } from './place'
 import { formReach, formsReached, jobOf, librariesFor, MsformsError, type Reached } from './reach'
 import { MsformsStore, type MsFormRow } from './store'
@@ -298,6 +298,8 @@ export function suggestionOf(change: MsChange, list: readonly MsAnyQuestion[], b
 /**
  * Runs changes through the carrier's `write`, then stores the page as read.
  * A stop says what was done; the row keeps the page as the stop read it.
+ * Each window showing the form hears where the write stands (`work.msforms.applying`), and null once it ended.
+ * An agent's write that found the form taking answers (`CarrierTakesAnswers`) comes back as it is, for the caller to hold.
  */
 export async function writeChanges(ctx: MsCtx, row: MsFormRow, changes: readonly MsChange[], grant: CarrierBy, madeBy: Principal): Promise<MsFormRow> {
   if (!changes.length) return row
@@ -305,14 +307,18 @@ export async function writeChanges(ctx: MsCtx, row: MsFormRow, changes: readonly
   // The list as it will stand, so a change that names no question is refused before the page is touched.
   changes.reduce<MsAnyQuestion[]>((list, c) => applyChange(list, c), [...row.questions])
   const carrier = carrierOrRefuse()
+  const applying = (stage: MsApplyStage | null): void => ctx.push({ push: 'work.msforms.applying', workspaceId: row.workspaceId, formId: row.formId, stage })
   try {
-    const { read } = await carrier.write(authFor(ctx, row, 'write', grant, { changes, before: row.questions }), row.formId, changes, row.questions)
+    const { read } = await carrier.write(authFor(ctx, row, 'write', grant, { changes, before: row.questions }), row.formId, changes, row.questions, applying)
     return storeRead(ctx, row, read, { by: madeBy, bump: true })
   } catch (err) {
+    if (err instanceof CarrierTakesAnswers) throw err
     goneOrThrow(ctx, row, err)
-    if (err instanceof CarrierStop) throw Object.assign(new MsformsError(err.message), { row: stopped(ctx, row, err, madeBy) })
+    if (err instanceof CarrierStop) throw Object.assign(new MsformsError(err.message), { row: stopped(ctx, row, err, madeBy), done: err.done })
     if (err instanceof CarrierRefused) throw new MsformsError(err.message)
     throw err
+  } finally {
+    applying(null)
   }
 }
 
@@ -329,8 +335,9 @@ export async function review(ctx: MsCtx, at: Reached, accept: readonly string[],
     await writeChanges(ctx, { ...row, suggestions: left }, chosen.map((s) => s.change), 'owner', 'owner')
     return announce(ctx, store.update(row.workspaceId, row.formId, { suggestions: left }))
   } catch (err) {
-    const kept = (err as { row?: MsFormRow }).row
-    if (kept) announce(ctx, store.update(row.workspaceId, row.formId, { suggestions: left }))
+    const { row: kept, done } = err as { row?: MsFormRow; done?: number | null }
+    // the changes a stop did not reach keep waiting, for his next Accept; those it made are done
+    if (kept) announce(ctx, store.update(row.workspaceId, row.formId, { suggestions: [...left, ...chosen.slice(done ?? chosen.length)] }))
     throw err
   }
 }

@@ -4,7 +4,7 @@ import { builderOf, diffQuestions, formIdOf, isFormsUrl, isOther, MSFORM_NEW_SET
 import { ACCEPT_RESPONSES, countOf, formOf, formTitleButton, linkOf, questionInEdit, questionsOf, savingOf, settingsOf, SETTINGS_CLOSE, titleOf } from './read'
 import { click, first, isOn, one, Page, tab, typeInto, type FormsComputer } from './steps'
 import { RESPONSES_VIEW_MS } from './pull'
-import { CarrierBusy, CarrierRefused, CarrierSignIn, CarrierStop, checkAuth, makePayload, pullPayload, readPayload, settingsPayload, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './types'
+import { CarrierBusy, CarrierRefused, CarrierSignIn, CarrierStop, CarrierTakesAnswers, checkAuth, makePayload, pullPayload, readPayload, settingsPayload, type ApplyStage, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './types'
 
 /**
  * The carrier's operations on the box browser (docs/agents/work-msforms.md
@@ -48,6 +48,10 @@ export interface OpsDeps {
   patience?: { mount?: number; made?: number }
 }
 
+/** The last question at rest on the page: what the form's box is wheeled on. */
+const lastAtRest = (x: Screen) => [...x.elements.values()].filter((e) => BUTTON.includes(e.role) && /^\d+\.\s*Question title\b/.test(e.name ?? '')).at(-1)
+const wheelUp = (e: { index: number }): ComputerAction => ({ action: 'scroll', element: e.index, scroll_direction: 'up', scroll_amount: 10 }) as ComputerAction
+
 const short = (title: string): string => (title.length > 60 ? `${title.slice(0, 59)}…` : title)
 
 /** A question's title as Forms reads back its at-rest name, for the check after an add. */
@@ -79,8 +83,24 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     return deps.exclusive(() => fn(authorized(auth, op, formId, payload)))
   }
 
-  /** Opens the form's builder in a window of its own, read once its title shows. */
+  /**
+   * Opens the form's builder in a window of its own, read once its title shows. The builder kept from an earlier
+   * operation on the form is loaded again in place and driven instead: Forms does not tell an open builder what changed
+   * elsewhere (live, 2026-11-25: a kept page still read Accept responses off after he turned it on in another window),
+   * so a kept page is never read as it stood. The reload keeps its tab and its process; the open's cost is the load alone.
+   */
   const openBuilder = async (formId: string, op: CarrierOp, suffix = ''): Promise<Page> => {
+    const kept = suffix || !computer.reload ? null : await computer.kept?.(formId)
+    if (kept) {
+      const page = new Page(computer, kept, op, formId)
+      // every read still checks the page's form id (steps.ts); a kept page that fails it, or will not load, is closed
+      const fresh = await computer
+        .reload!(kept)
+        .then(() => page.until((s) => titleOf(s) !== '', mount))
+        .catch(() => null)
+      if (fresh?.got) return page
+      await computer.close(kept).catch(() => {})
+    }
     const window = await computer.open(`${builderOf(formId)}${suffix}`)
     // Every read of the page checks its live form id against `formId` (steps.ts `Page.read`): a page with none is refused too.
     const page = new Page(computer, window, op, formId)
@@ -89,17 +109,23 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     return page
   }
 
-  const closing = async <T>(page: Page | null, fn: () => Promise<T>): Promise<T> => {
+  /** Runs `fn` on the page, then closes it once Forms has saved; `keep` keeps a builder that ended well for the next operation on the form. */
+  const closing = async <T>(page: Page | null, fn: () => Promise<T>, keep = false): Promise<T> => {
+    let kept = false
     try {
       const out = await fn()
       // A change Forms is still saving is lost when its window closes (P1: a made form's title came back "Untitled form").
       if (page) {
         const { got } = await page.until((s) => !savingOf(s), mount)
         if (!got) page.stop('Forms did not finish saving the last change')
+        if (keep && page.formId && computer.keep) {
+          computer.keep(page.window, page.formId)
+          kept = true
+        }
       }
       return out
     } finally {
-      if (page) await computer.close(page.window).catch(() => {})
+      if (page && !kept) await computer.close(page.window).catch(() => {})
     }
   }
 
@@ -114,6 +140,27 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     const { screen, got } = await page.until((x) => one(x, TOGGLE, ACCEPT_RESPONSES), mount)
     if (!got) page.stop('the Settings panel did not open')
     return screen
+  }
+
+  /**
+   * Opens Settings and closes it again: the click commits a question in edit and leaves the page at rest, with
+   * "Add new question" at its foot (live, 2026-11-25: leaving by the form's title left its header in edit, which hides
+   * that button). The panel's settings are kept on the page, so a read back after it needs no Settings again.
+   */
+  const rest = async (page: Page): Promise<MsFormSettings> => {
+    const panel = await openSettings(page)
+    // a toggle the panel does not show is read as on: an unread Accept responses never passes for off
+    page.settings = settingsOf(panel, { ...(page.settings ?? MSFORM_NEW_SETTINGS), accepting: true })
+    // the form's box wheeled up in the same batch, for the next add (`addQuestion`): one settling for both
+    let wheeled = false
+    await page.act((x) => {
+      const close = one(x, BUTTON, SETTINGS_CLOSE)
+      const last = lastAtRest(x)
+      wheeled = !!(close && last)
+      return close ? [click(close), ...(last ? [wheelUp(last)] : [])] : null
+    }, 'closing Settings')
+    page.wheeled = wheeled
+    return page.settings
   }
 
   /** Sets one toggle in the open panel to `want`, read back. */
@@ -232,6 +279,18 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
 
   /** Adds one question at the end and checks it shows. */
   const addQuestion = async (page: Page, q: MsQuestion, before: number): Promise<void> => {
+    // The form scrolls in a box of its own that runs past the window's foot. Once a question was added, "Add new
+    // question" sits just inside that foot, so a press does not bring it to the middle, and its picker of types opens
+    // below the window, where every press on a type misses (live, 2026-11-25). The box is first wheeled up on the last
+    // question at rest: "Add new question" leaves the window, and its press brings it to the middle with room below.
+    // Leaving the last add through Settings wheels it already (`rest`).
+    if (!page.wheeled && lastAtRest(page.last ?? (await page.read())) && !one(page.last!, BUTTON, TYPE_BUTTON[q.type])) {
+      await page.act((x) => {
+        const last = lastAtRest(x)
+        return last ? [wheelUp(last)] : []
+      }, 'bringing "Add new question" into view')
+    }
+    page.wheeled = false
     const s = page.last!
     const add = one(s, BUTTON, /^(Add new question|Quick start with)$/i)
     const kind = one(s, BUTTON, TYPE_BUTTON[q.type])
@@ -248,19 +307,9 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
     }, `the ${q.type} question type`)
     await fill(page, q)
     // Leaving the question commits it (Forms saves on leaving it); then it must show at rest, last, by its title. It is
-    // left by the form's own title: "Add new question" pressed while a question is open inserts one above it and leaves
-    // it open (P5). The title field that opens is left by Tab, unchanged.
-    await page.act((x) => {
-      const b = formTitleButton(x)
-      return b ? [click(b)] : null
-    }, 'leaving the question')
-    const { got: titleField } = await page.until((x) => one(x, ['text area', 'input'], /^Form title$/), mount)
-    if (titleField) {
-      await page.act((x) => {
-        const f = one(x, ['text area', 'input'], /^Form title$/)
-        return f ? [tab(f)] : []
-      }, 'leaving the form title')
-    }
+    // left through Settings (`rest`): "Add new question" pressed while a question is open inserts one above it (P5), and
+    // leaving by the form's title leaves its header in edit, which hides "Add new question" for the next add.
+    await rest(page)
     const { got } = await page.until((x) => {
       const list = questionsOf(x)
       return list.length > before && sameTitle(list[list.length - 1]?.title ?? '', q.title)
@@ -343,12 +392,15 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
   const changeWordsDone = (c: MsChange, list: readonly MsAnyQuestion[]): string =>
     c.op === 'add' ? `added "${short(c.question.title)}"` : c.op === 'remove' ? `removed "${short(list[c.at]?.title ?? '')}"` : c.op === 'move' ? `moved "${short(list[c.at]?.title ?? '')}"` : `changed "${short(list[c.at]?.title ?? '')}"`
 
-  /** The form as a final read sees it: the Settings panel opened first (a click there commits a question in edit), then one read of both. */
-  const finalRead = async (page: Page, formId: string, settings = true): Promise<FormRead> => {
-    if (!settings) return formOf(await page.read(), { formId })
-    const panel = await openSettings(page)
-    // A toggle the panel does not show is read as on: an unread Accept responses never passes for off.
-    return formOf(panel, { formId, was: { ...MSFORM_NEW_SETTINGS, accepting: true } })
+  /**
+   * The form as a final read sees it. Settings this visit already read, with nothing in edit since, are not opened
+   * again; otherwise the panel is opened and closed first (`rest`: a click there commits a question in edit). The page
+   * is left at rest either way, for the next operation on it.
+   */
+  const finalRead = async (page: Page, formId: string): Promise<FormRead> => {
+    const now = page.last ?? (await page.read())
+    const settings = page.settings && !questionInEdit(now) ? page.settings : await rest(page)
+    return formOf(page.last ?? (await page.read()), { formId, was: settings })
   }
 
   return {
@@ -356,7 +408,15 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
       // a read grant of its own: it presses only Settings open and closed, and changes nothing
       return checked(auth, 'read', formId, readPayload(formId), async () => {
         const page = await openBuilder(formId, 'read')
-        return closing(page, () => finalRead(page, formId))
+        return closing(page, () => finalRead(page, formId), true)
+      })
+    },
+
+    async warm(auth, formId) {
+      // a read grant: the builder opened (or the one kept), its title read, nothing pressed, and kept for the next press
+      return checked(auth, 'read', formId, readPayload(formId), async () => {
+        const page = await openBuilder(formId, 'read')
+        await closing(page, async () => undefined, true)
       })
     },
 
@@ -472,30 +532,31 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
               return { read: formOf(screen, { formId: formId!, was: panel }) }
             }
             return { read: await finalRead(page, formId!) }
-          })
+          }, true)
         } catch (err) {
           throw keptStop(page, formId, err)
         }
       })
     },
 
-    async write(auth, formId, changes, before) {
+    async write(auth, formId, changes, before, stage?: (s: ApplyStage) => void) {
       return checked(auth, 'write', formId, { changes, before }, async () => {
-        const page = await openBuilder(formId, 'write')
+        stage?.({ stage: 'opening' })
+        // how many changes were made, said on any stop: his Accept keeps the rest waiting (forms.ts `review`)
+        let did = 0
+        const page = await openBuilder(formId, 'write').catch((err) => Promise.reject(err instanceof CarrierStop ? Object.assign(err, { done: 0 }) : err))
         return closing(page, async () => {
-          // An agent writes only a form that takes no answers, read so inside this very run.
+          // An agent writes only a form that takes no answers, read so inside this very run: Accept responses by the
+          // panel's own name ("Options for responses Accept responses", P1), and one the panel does not show reads as on.
           if (auth.by === 'pillar') {
-            const panel = await openSettings(page)
-            const accept = one(panel, ['checkbox', 'switch'], /^Accept responses$/i)
-            if (!accept || isOn(accept)) page.stop('the form takes answers now (or its Settings did not say), so no change was made; it waits for the owner')
-            await page.act((x) => {
-              const close = one(x, BUTTON, /^(Close|Close settings)$/i)
-              return close ? [click(close)] : []
-            }, 'closing Settings')
-          }
+            stage?.({ stage: 'checking' })
+            const settings = await rest(page)
+            if (settings.accepting) throw new CarrierTakesAnswers('The form takes answers now, so no change was made; it waits for the owner.', formOf(page.last!, { formId, was: settings }))
+          } else page.settings = null
           noDrift(page, before, 'no change')
           let list = [...before]
           for (let i = 0; i < changes.length; i++) {
+            stage?.({ stage: 'changing', at: i + 1, of: changes.length })
             try {
               list = await changeOne(page, changes[i], list)
             } catch (err) {
@@ -504,9 +565,11 @@ export function opsCarrier(deps: OpsDeps): MsCarrier {
               throw new CarrierStop(`${did.length ? `Did ${i} of ${changes.length} changes (${did.join('; ')}); the next` : 'The first change'}, ${changeWordsDone(changes[i], list)}, did not take: ${(err as Error).message.replace(/\.$/, '')}. The form holds what was done.`, read)
             }
             page.done.push(changeWordsDone(changes[i], list))
+            did = i + 1
           }
+          stage?.({ stage: 'reading' })
           return { read: await finalRead(page, formId) }
-        })
+        }, true).catch((err) => Promise.reject(err instanceof CarrierStop && err.done === null ? Object.assign(err, { done: did }) : err))
       })
     },
 

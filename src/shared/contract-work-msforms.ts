@@ -194,6 +194,9 @@ export type MsformsPush = { push: 'work.msforms'; workspaceId: string; formId: s
 export const MS_MAKE_STAGES = ['opening', 'making', 'setting', 'naming', 'asking'] as const
 export type MsMakeStage = (typeof MS_MAKE_STAGES)[number]
 export type MsformsMakingPush = { push: 'work.msforms.making'; workspaceId: string; op: string; stage: MsMakeStage }
+/** Where a write of changes stands in Forms, for every window showing the form: the page, Accept responses read (an agent's write), change `at` of `of`, the read back; null once it ended. */
+export type MsApplyStage = { stage: 'opening' } | { stage: 'checking' } | { stage: 'changing'; at: number; of: number } | { stage: 'reading' }
+export type MsformsApplyingPush = { push: 'work.msforms.applying'; workspaceId: string; formId: string; stage: MsApplyStage | null }
 
 /** The owner's methods: a thread's own call is refused, it goes through the tools where the hold applies. */
 export const MSFORMS_OWNER_ONLY: ReadonlySet<string> = new Set([

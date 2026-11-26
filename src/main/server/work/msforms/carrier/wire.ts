@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { screenOfObservation, type Screen } from '@shared/computer/outward'
 import type { ComputerAction } from '@shared/computer/protocol'
 import type { MsFormFolder, MsFormWorkbook } from '@shared/contract-work-msforms'
-import { workbookNameOf } from '@shared/work/msforms'
+import { formIdOf, workbookNameOf } from '@shared/work/msforms'
 import { ADDRESS_NAME, BOX_BROWSER_APP } from '../../browser/box/service'
 import { BOX_OWNER_DRIVES, carrierComputer, type CarrierComputer } from '../../browser/box'
 import { librariesHere, vmLibrariesHere } from '../../files/places/libraries'
@@ -43,7 +43,13 @@ export function withAddress(screen: Screen, url: string): Screen {
   return { ...screen, elements }
 }
 
-export function formsComputerOn(c: CarrierComputer): FormsComputer {
+/** The kept builders an operation may take and add to (`exclusiveOn`): by the form, the page's own target. */
+export interface KeptPages {
+  kept(formId: string): Promise<string | null>
+  keep(ref: string, formId: string): void
+}
+
+export function formsComputerOn(c: CarrierComputer, keeping?: KeptPages): FormsComputer {
   /** A ref's page as Chromium lists it now, by its target: its window number and its whole address. */
   const pageOf = async (ref: string): Promise<{ window: number; url: string }> => {
     const target = ref.startsWith('t:') ? ref.slice(2) : null
@@ -109,8 +115,10 @@ export function formsComputerOn(c: CarrierComputer): FormsComputer {
       const window = `#${last.window}`
       const o = steps.length === 1 ? await c.run('computer_act', { app: APP, window, screenshot: false, ...steps[0] }) : await c.run('computer_batch', { app: APP, window, screenshot: false, actions: steps })
       if (o.isError && (o.body ?? '').includes(BOX_OWNER_DRIVES)) throw new CarrierBusy(BOX_OWNER_DRIVES)
-      // the page's own words stay out of what a stop says (review 21)
-      return o.isError ? { ok: false } : { ok: true }
+      // the page's own words stay out of what a stop says (review 21). A step the service says failed was not taken,
+      // whatever the call answered (live, 2026-11-25: "something else covers [174]" came back as no error).
+      const failed = (o.steps ?? []).some((line) => / · failed\b/.test(String(line)))
+      return o.isError || failed ? { ok: false } : { ok: true }
     },
     async windows() {
       return (await c.pages()).map((p) => ({ id: refOf(p.target), url: p.url, ...(p.opener ? { opener: refOf(p.opener) } : {}) }))
@@ -121,6 +129,15 @@ export function formsComputerOn(c: CarrierComputer): FormsComputer {
       if (n !== null) await c.close(n)
     },
     wait: (ms) => new Promise((r) => setTimeout(r, ms)),
+    ...(keeping ? { kept: keeping.kept, keep: keeping.keep } : {}),
+    ...(c.reload
+      ? {
+          reload: async (ref: string) => {
+            checked.delete(ref)
+            await c.reload!(await numberOf(ref))
+          }
+        }
+      : {}),
     fetch: async (ref, url, o) => c.fetch(await numberOf(ref), url, o),
     clearData: (origins: readonly string[]) => c.clear(origins)
   } as FormsComputer
@@ -128,16 +145,73 @@ export function formsComputerOn(c: CarrierComputer): FormsComputer {
 
 let queue: Promise<unknown> = Promise.resolve()
 
-/** Runs one operation after the one before it, on a fresh carrier session ended after it. */
-export function exclusiveOn(make: () => CarrierComputer | null) {
+/** How long a form's builder stays open after the last operation on it, and how many stay open at once. */
+export const KEEP_MS = 3 * 60_000
+export const KEEP_MAX = 2
+
+/**
+ * Runs one operation after the one before it, each on the carrier's own session ended after it, unless the operation
+ * kept a form's builder (ops.ts `closing`): then the session waits, parked, with that page and no other, for the next
+ * operation, which drives the page instead of loading the form again. At most `keepMax` pages wait, the oldest closed
+ * first; the session ends after `keepMs` with no operation, and at once when he takes the browser (`park`), when the
+ * next operation finds its lease lost (`resume`), or when its pages cannot be listed.
+ */
+export function exclusiveOn(make: () => CarrierComputer | null, o: { keepMs?: number; keepMax?: number } = {}) {
+  const keepMs = o.keepMs ?? KEEP_MS
+  const keepMax = o.keepMax ?? KEEP_MAX
+  let parked: { c: CarrierComputer; pages: Map<string, string>; timer: ReturnType<typeof setTimeout> } | null = null
+  const drop = (c: CarrierComputer): void => {
+    if (parked?.c !== c) return
+    clearTimeout(parked.timer)
+    parked = null
+    void c.end().catch(() => {})
+  }
   return <T>(fn: (computer: FormsComputer) => Promise<T>): Promise<T> => {
     const run = queue.then(async () => {
-      const c = make()
+      let c: CarrierComputer | null = null
+      // form id → the kept page's target
+      let pages = new Map<string, string>()
+      if (parked) {
+        const was = parked
+        parked = null
+        clearTimeout(was.timer)
+        if (was.c.resume?.()) ({ c, pages } = was)
+        else await was.c.end().catch(() => {})
+      }
+      c ??= make()
       if (!c) throw new CarrierBusy('The box browser is not running on this computer.')
+      const own = c
+      const keeping = new Map<string, string>()
+      const kept: KeptPages = {
+        async kept(formId) {
+          const target = pages.get(formId)
+          pages.delete(formId)
+          if (!target) return null
+          const page = (await own.pages()).find((p) => p.target === target)
+          return page && formIdOf(page.url) === formId ? `t:${target}` : null
+        },
+        keep: (ref, formId) => void (ref.startsWith('t:') && keeping.set(formId, ref.slice(2)))
+      }
       try {
-        return await fn(formsComputerOn(c))
+        return await fn(formsComputerOn(own, kept))
       } finally {
-        await c.end().catch(() => {})
+        // the pages kept before and not taken, then this operation's, newest last: the oldest go past `keepMax`
+        const next = new Map([...pages, ...keeping])
+        while (next.size > keepMax) next.delete(next.keys().next().value!)
+        let parks = next.size > 0 && !!own.park
+        if (parks) {
+          try {
+            const targets = new Set(next.values())
+            for (const p of await own.pages()) if (!targets.has(p.target)) await own.close(p.window)
+          } catch {
+            parks = false
+          }
+        }
+        if (parks) {
+          own.park!(() => drop(own))
+          parked = { c: own, pages: next, timer: setTimeout(() => drop(own), keepMs) }
+          parked.timer.unref?.()
+        } else await own.end().catch(() => {})
       }
     })
     queue = run.catch(() => {})
@@ -203,6 +277,9 @@ export function wireMsCarrier(db: DatabaseSync, host: string): void {
     read: (w) => timed('read', () => current!.read(w)),
     act: (w, s, steps) => timed(`act ${steps.map((x) => x.action).join('+')}`, () => current!.act(w, s, steps)),
     windows: () => current!.windows(),
+    kept: (formId: string) => current!.kept?.(formId) ?? Promise.resolve(null),
+    keep: (w: string, formId: string) => current!.keep?.(w, formId),
+    reload: (w: string) => timed('reload', () => (current!.reload ? current!.reload(w) : Promise.reject(new Error('no reload')))),
     close: (w) => timed('close', () => current!.close(w)),
     wait: (ms) => current!.wait(ms),
     fetch: (w, u, o) => current!.fetch(w, u, o),

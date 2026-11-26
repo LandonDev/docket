@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ComputerToolOutcome } from '../../../computer/result'
-import { BOX_OWNER_DRIVES, boxBrowserTools, carrierComputer, setBoxBrowser, setCarrierServiceForTest, startBoxBrowser, type BoxBrowserHost } from './index'
+import { BOX_OWNER_DRIVES, boxBrowserTools, carrierComputer, PARK_WATCH_MS, setBoxBrowser, setCarrierServiceForTest, startBoxBrowser, type BoxBrowserHost } from './index'
 import { FORMS_OPEN, isCarrierSession } from './service'
 
 /** The msforms carrier's hands (`carrierComputer`): a marked session of its own, run through the box's computer sessions with no card. */
@@ -131,3 +131,33 @@ describe('box_browser_open of a Forms address', () => {
   })
 })
 
+
+describe("a carrier session parked between two operations (2026-11-25)", () => {
+  it('gives back the hold while parked, ends its lease within seconds of his taking the browser, and resumes only with the lease', async () => {
+    vi.useFakeTimers()
+    fakeHost()
+    setCarrierServiceForTest({ carrierPages: vi.fn(async () => []), carrierClear: vi.fn(async () => 'closed') } as never)
+    const db = new DatabaseSync(':memory:')
+    db.exec('CREATE TABLE work_browser_drive (pane TEXT PRIMARY KEY, driver TEXT, needs TEXT, since INTEGER)')
+    const stop = startBoxBrowser({ db, held: { onDecided: () => () => {} }, log: () => {} } as never)
+    try {
+      const c = carrierComputer()!
+      const lost = vi.fn()
+      c.park!(lost)
+      expect(c.resume!()).toBe(true)
+      c.park!(lost)
+      db.prepare("INSERT INTO work_browser_drive VALUES ('p', 'owner', NULL, 1)").run()
+      await vi.advanceTimersByTimeAsync(PARK_WATCH_MS)
+      expect(lost).toHaveBeenCalledTimes(1)
+      db.prepare('DELETE FROM work_browser_drive').run()
+      // handed back since: the lease stays lost, so no operation drives this session again
+      expect(c.resume!()).toBe(false)
+      await expect(c.pages()).rejects.toThrow(BOX_OWNER_DRIVES)
+      await expect(c.reload!(1)).rejects.toThrow(BOX_OWNER_DRIVES)
+      await c.end()
+    } finally {
+      stop()
+      vi.useRealTimers()
+    }
+  })
+})

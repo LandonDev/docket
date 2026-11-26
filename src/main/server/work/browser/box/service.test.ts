@@ -321,6 +321,11 @@ d('the box computer service speaks the wire', () => {
         const r = await ok('action.batch', { session: carrier, app, epoch, tiers: ['process'], actions: [{ action: 'left_click', element: q }, { action: 'type', text: 'Which night?' }], wait: quiet })
         expect(r.steps.map((s) => s.status)).toEqual(['ok', 'ok'])
         expect(r.observation!.text).toContain(`[${q}] input "Question title" = "Which night?"`)
+        // its own page loads again at its own address (a kept builder, msforms carrier/wire.ts); no other session's reload reaches it
+        await expect(svc.carrierReload(read.window.id, 's1')).rejects.toThrow('no such window')
+        await svc.carrierReload(read.window.id, carrier)
+        const again = await ok('state.get', { session: carrier, app, wait: quiet })
+        expect(again.text).not.toContain('"Which night?"')
         // the carrier takes no picture of what it drives, asked or not (review 21), and follows no redirect (review 24)
         expect((await no('capture.screenshot', { session: carrier, app, window: { id: read.window.id } })).data?.kind).toBe('capture_failed')
         expect((await ok('state.get', { session: carrier, app, screenshot: 'always' })).shot).toBeUndefined()

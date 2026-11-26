@@ -596,6 +596,18 @@ export class BoxComputerService {
   }
 
   /**
+   * A carrier session's own page loaded again at its own address (msforms carrier/wire.ts: a form's builder kept
+   * between operations shows the form as it was then, so it is loaded again before it is driven). Only a page that
+   * session owns; the answer comes once the new document is committed.
+   */
+  async carrierReload(window: number, session: string): Promise<void> {
+    const page = (await this.pages()).find((p) => p.window === window && CARRIER_TARGETS.get(p.targetId) === session)
+    if (!page) throw new Error('no such window in the box browser')
+    const { cdp, sid } = await this.on(page)
+    await cdp.send('Page.navigate', { url: page.url }, sid)
+  }
+
+  /**
    * A request from inside one page, as the signed-in page itself would make it: only to the page's own origin and never
    * to a Forms host (the carrier reads SharePoint from the folder's site page). The body comes back as bytes or JSON.
    */

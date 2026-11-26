@@ -393,9 +393,22 @@ export interface CarrierComputer {
   /** each page with Chromium's target id and, for a popup, the target that opened it */
   pages(): Promise<{ window: number; url: string; target: string; opener?: string }[]>
   close(window: number): Promise<void>
+  /** Its own page loaded again at its address (`carrierReload`): a kept builder shows the form as it is now. */
+  reload?(window: number): Promise<void>
   fetch(window: number, url: string, o?: { bytes?: boolean; method?: 'GET' | 'POST'; headers?: Record<string, string> }): Promise<{ status: number; json?: unknown; bytes?: Uint8Array }>
   clear(origins: readonly string[]): Promise<void>
+  /**
+   * Between two operations, the session kept with a page of its own (msforms carrier/wire.ts): the browser's hold
+   * (`useBoxBrowser`) is given back, and `lost` runs within seconds once he takes the browser, which loses the lease
+   * for good as a read would.
+   */
+  park?(lost: () => void): void
+  /** The hold taken again for the next operation; false when the lease is lost, he drives now, or the browser's service started again. */
+  resume?(): boolean
 }
+
+/** How often a parked carrier session looks whether he took the browser. */
+export const PARK_WATCH_MS = 5_000
 
 /**
  * A session marked as the carrier's (`carrierSession`), on this host's box browser; null where there is none. Made
@@ -405,7 +418,13 @@ export function carrierComputer(): CarrierComputer | null {
   const h = host
   if (!h) return null
   const session = carrierSession()
-  const release = useBoxBrowser()
+  let release: (() => void) | null = useBoxBrowser()
+  const service = liveService
+  let watching: ReturnType<typeof setInterval> | null = null
+  const unwatch = (): void => {
+    if (watching) clearInterval(watching)
+    watching = null
+  }
   /**
    * One admission lease for the carrier's whole operation (review 24): taken with the session, and lost for good the
    * first time a read finds him driving the browser. A read after that (a page read, an act, the page list, an in-page
@@ -433,6 +452,11 @@ export function carrierComputer(): CarrierComputer | null {
       return liveService ? liveService.carrierPages(session) : []
     },
     close: async (window) => void (await liveService?.carrierClose(window)),
+    reload: async (window) => {
+      if (!admitted()) throw new Error(BOX_OWNER_DRIVES)
+      if (!liveService) throw new Error('the box browser is not running')
+      await liveService.carrierReload(window, session)
+    },
     fetch: async (window, url, o) => {
       if (!admitted()) throw new Error(BOX_OWNER_DRIVES)
       if (!liveService) throw new Error('the box browser is not running')
@@ -440,12 +464,31 @@ export function carrierComputer(): CarrierComputer | null {
     },
     // the named origins are not cleared (service.ts `carrierClear`): its own pages are closed instead
     clear: async () => cleanUp(),
+    park: (lost) => {
+      release?.()
+      release = null
+      unwatch()
+      watching = setInterval(() => {
+        if (admitted()) return
+        unwatch()
+        lost()
+      }, PARK_WATCH_MS)
+      watching.unref?.()
+    },
+    resume: () => {
+      unwatch()
+      if (host !== h || liveService !== service || !admitted()) return false
+      release ??= useBoxBrowser()
+      return true
+    },
     end: async () => {
       // every exit path ends here: whatever pages the operation left open, and their popups, close
+      unwatch()
       await cleanUp()
       await h.sessions.end([session])
       endCarrierSession(session)
-      release()
+      release?.()
+      release = null
     }
   }
 }

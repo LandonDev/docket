@@ -1,6 +1,6 @@
 import type { TeamsLibrary } from '@shared/contract-work-office'
 import { applyChange, MSFORM_NEW_SETTINGS, type MsAnyQuestion, type MsChange, type MsFormSettings } from '@shared/work/msforms'
-import { CarrierStop, checkAuth, makePayload, pullPayload, readPayload, settingsPayload, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './carrier/types'
+import { CarrierStop, CarrierTakesAnswers, checkAuth, makePayload, pullPayload, readPayload, settingsPayload, type ApplyStage, type CarrierAuth, type CarrierOp, type FormRead, type MakeAsk, type MsCarrier, type PullAsk } from './carrier/types'
 
 /**
  * A carrier for tests (no browser): forms kept in memory as Forms would keep
@@ -85,21 +85,35 @@ export class FakeCarrier implements MsCarrier {
     this.calls.push({ op: 'read', formId, by: auth.by })
     return this.readOf(this.form(formId))
   }
-  async write(auth: CarrierAuth, formId: string, changes: readonly MsChange[], before: readonly MsAnyQuestion[]) {
+  async write(auth: CarrierAuth, formId: string, changes: readonly MsChange[], before: readonly MsAnyQuestion[], stage?: (s: ApplyStage) => void) {
     this.check(auth, 'write', formId, { changes, before })
     this.calls.push({ op: 'write', formId, by: auth.by })
     const f = this.form(formId)
+    stage?.({ stage: 'opening' })
+    // an agent's write reads Settings first, as the real one does, and stops before any change on a form taking answers
+    if (auth.by === 'pillar') {
+      stage?.({ stage: 'checking' })
+      if (f.settings.accepting) throw new CarrierTakesAnswers('The form takes answers now, so no change was made; it waits for the owner.', this.readOf(f))
+    }
     let done = 0
     for (const c of changes) {
       if (this.stopAt.write && done === 1) {
         const words = this.stopAt.write
         delete this.stopAt.write
-        throw new CarrierStop(words, this.readOf(f))
+        throw Object.assign(new CarrierStop(words, this.readOf(f)), { done })
       }
+      stage?.({ stage: 'changing', at: done + 1, of: changes.length })
       f.questions = applyChange(f.questions, c)
       done++
     }
+    stage?.({ stage: 'reading' })
     return { read: this.readOf(f) }
+  }
+  /** the forms a warm kept open, in order */
+  readonly warmed: string[] = []
+  async warm(auth: CarrierAuth, formId: string) {
+    this.check(auth, 'read', formId, readPayload(formId))
+    this.warmed.push(formId)
   }
   async settings(auth: CarrierAuth, formId: string, patch: Partial<MsFormSettings>) {
     this.check(auth, 'settings', formId, patch)

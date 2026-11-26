@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CarrierComputer } from '../../browser/box'
 import { formIdOf } from '@shared/work/msforms'
 import { addressOf } from './read'
-import { formsComputerOn } from './wire'
+import { exclusiveOn, formsComputerOn } from './wire'
 
 /**
  * The carrier's page-open on the box browser as the deployed host met it: a browser already running with other
@@ -128,6 +128,15 @@ describe("the carrier's steps on the page its open made (review 16)", () => {
     expect(calls.filter((x) => x.tool === 'computer_act')).toHaveLength(1)
   })
 
+  it('takes a step the service says failed as not taken, though the call answered no error (live, 2026-11-25)', async () => {
+    const now: Page[] = [{ window: 2, url: URL_, target: 'T-made' }]
+    const { c } = driven(() => now)
+    const run = c.run
+    c.run = async (tool, args) => (tool === 'computer_act' ? ({ isError: false, body: '', steps: ['left_click [12] · failed: something else covers [12] at its centre; read the window again'], shots: [] } as never) : run(tool, args))
+    const forms = formsComputerOn(c)
+    expect((await forms.act('t:T-made', await forms.read('t:T-made'), press(12))).ok).toBe(false)
+  })
+
   it('says which page opened each window', async () => {
     const { c } = driven(() => [{ window: 1, url: URL_, target: 'T-folder' }, { window: 2, url: 'https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?id=x', target: 'T-pop', opener: 'T-folder' }])
     expect(await formsComputerOn(c).windows()).toEqual([
@@ -150,5 +159,95 @@ describe("the carrier's read of a page's address", () => {
     const screen = await formsComputerOn(c).read('t:T-form')
     expect(addressOf(screen)).toBe(full)
     expect(formIdOf(addressOf(screen)!)).toBe(id)
+  })
+})
+
+describe("a form's builder kept between operations (2026-11-25)", () => {
+  const FORM = 'Ob0wQVN8nEGx5YdY1tY_IWOPFlgEi5FBgwZfJjGGCBhUQVZaU0lORE0kJUAjdD1nLu'
+  const OTHER = 'Ob0wQVN8nEGx5YdY1tY_IWOPFlgEi5FBgwZfJjGGCBhUQVZaU0lORE0kJUAjdD1nLv'
+  const builder = (id: string) => `https://forms.cloud.microsoft/Pages/DesignPageV2.aspx?subpage=design&id=${id}`
+  /** A carrier session with pages of its own, that says what was closed, parked, resumed and ended. */
+  function session(name: string, pages: Page[], o: { resumes?: boolean } = {}) {
+    const log: string[] = []
+    let lost: (() => void) | null = null
+    const c: CarrierComputer = {
+      ...computer({ before: pages, launch: () => {}, after: () => pages }),
+      session: name,
+      pages: async () => pages,
+      close: async (w) => {
+        log.push(`close ${w}`)
+        pages.splice(pages.findIndex((p) => p.window === w), 1)
+      },
+      end: async () => void log.push('end'),
+      park: (l) => {
+        lost = l
+        log.push('park')
+      },
+      resume: () => (log.push('resume'), o.resumes ?? true)
+    }
+    return { c, log, lose: () => lost?.() }
+  }
+
+  it('parks the session with the kept builder alone, and the next operation drives that page', async () => {
+    const pages: Page[] = [{ window: 1, url: builder(FORM), target: 'tb' }, { window: 2, url: 'https://purdue0.sharepoint.com/x', target: 'ts' }]
+    const a = session('a', pages)
+    const made: string[] = []
+    const run = exclusiveOn(() => (made.push('a'), a.c), { keepMs: 60_000 })
+    await run(async (fc) => fc.keep!('t:tb', FORM))
+    expect(a.log).toEqual(['close 2', 'park'])
+    const ref = await run(async (fc) => {
+      const got = await fc.kept!(FORM)
+      // taken once: an operation that does not keep it again lets it close
+      expect(await fc.kept!(FORM)).toBeNull()
+      return got
+    })
+    expect(ref).toBe('t:tb')
+    expect(made).toEqual(['a'])
+    expect(a.log.slice(2)).toEqual(['resume', 'end'])
+  })
+
+  it('keeps at most two builders, the oldest closed first, and ends the session after its idle time', async () => {
+    const pages: Page[] = [{ window: 1, url: builder(FORM), target: 't1' }]
+    const a = session('a', pages)
+    const run = exclusiveOn(() => a.c, { keepMs: 20, keepMax: 1 })
+    await run(async (fc) => fc.keep!('t:t1', FORM))
+    await run(async (fc) => {
+      pages.push({ window: 2, url: builder(OTHER), target: 't2' })
+      fc.keep!('t:t2', OTHER)
+    })
+    expect(a.log).toEqual(['park', 'resume', 'close 1', 'park'])
+    await new Promise((r) => setTimeout(r, 60))
+    expect(a.log.at(-1)).toBe('end')
+  })
+
+  it('ends a parked session at once when he takes the browser, and the next operation starts on a fresh one', async () => {
+    const a = session('a', [{ window: 1, url: builder(FORM), target: 'tb' }])
+    const b = session('b', [])
+    const sessions = [a.c, b.c]
+    const run = exclusiveOn(() => sessions.shift() ?? null, { keepMs: 60_000 })
+    await run(async (fc) => fc.keep!('t:tb', FORM))
+    a.lose()
+    expect(a.log).toEqual(['park', 'end'])
+    expect(await run(async (fc) => fc.kept!(FORM))).toBeNull()
+    expect(b.log).toEqual(['end'])
+  })
+
+  it('never drives a kept page whose lease was lost: resume refuses, the session ends, the next operation opens afresh', async () => {
+    const a = session('a', [{ window: 1, url: builder(FORM), target: 'tb' }], { resumes: false })
+    const b = session('b', [])
+    const sessions = [a.c, b.c]
+    const run = exclusiveOn(() => sessions.shift() ?? null, { keepMs: 60_000 })
+    await run(async (fc) => fc.keep!('t:tb', FORM))
+    expect(await run(async (fc) => fc.kept!(FORM))).toBeNull()
+    expect(a.log).toEqual(['park', 'resume', 'end'])
+  })
+
+  it('takes no kept page that shows another form now', async () => {
+    const pages: Page[] = [{ window: 1, url: builder(FORM), target: 'tb' }]
+    const a = session('a', pages)
+    const run = exclusiveOn(() => a.c, { keepMs: 60_000 })
+    await run(async (fc) => fc.keep!('t:tb', FORM))
+    pages[0] = { ...pages[0]!, url: builder(OTHER) }
+    expect(await run(async (fc) => fc.kept!(FORM))).toBeNull()
   })
 })

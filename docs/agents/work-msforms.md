@@ -49,8 +49,22 @@ refused a step on a Forms page and a `computer_apps` open of one (computer-use.m
 Forms: the `msform_*` tools are the only way, and branching, file upload, Ranking, Likert, themes and quizzes are his
 to do in the page.
 
-- **Operations, not steps** (ops.ts): `make`, `read`, `write`, `settings`, `collect`, `audience`, `close`, `count`,
-  `pull`, each a fixed program run one at a time (wire.ts's queue) on a fresh carrier session ended after it.
+- **Operations, not steps** (ops.ts): `make`, `read`, `warm`, `write`, `settings`, `collect`, `audience`, `close`,
+  `count`, `pull`, each a fixed program run one at a time (wire.ts's queue) on a carrier session ended after it, unless
+  it kept the form's builder (below).
+- **A kept builder** (wire.ts `exclusiveOn`, 2026-11-25): a `make`, `read`, `warm`, `write` or `settings` that ended
+  well keeps its form's builder open, and the session waits parked with that page alone for the next operation on the
+  form. At most two (`KEEP_MAX`), the oldest closed first; the session ends after three idle minutes (`KEEP_MS`). While
+  parked it gives back the browser's hold (`park`, box/index.ts), so the idle and memory stops count it as idle, and it
+  ends within five seconds of his taking the browser (`PARK_WATCH_MS`), which loses its lease as a read would; the
+  next operation takes it only through `resume`, which refuses a lost lease, his driving now, or a browser service
+  started again. A kept page is never driven as it stood: Forms tells an open builder nothing of a change made
+  elsewhere (live: a kept page still read Accept responses off after he turned it on in another window), so the
+  operation first loads it again at its own address (`carrierReload` in service.ts, a page that session owns) and
+  drives it only once its title shows; one that will not load is closed and the form opened afresh. A held change
+  `warm`s its form's builder under a read grant, so his Accept finds it open. With the reload, a kept page saves about
+  the cost of an open (well under a second); what it mostly keeps is the browser and its sign-in warm while a thread
+  works on the form.
 - **Its pages are its own** (review 2; service.ts `CARRIER_TARGETS`): a carrier session's page is made blank and
   reserved before it loads anything, and every page opened from one (a popup, by Chromium's `openerId`, at any depth:
   `inheritCarrierTargets` on each page list) is that session's too, so Excel for the web's workbook tab and the
@@ -91,6 +105,8 @@ to do in the page.
   (Send, Copy link, Shorten URL, the collaborate and duplicate links, Move to a group, Delete all responses, a summary
   link, Quick import, template cards, the creates other than Forms survey, Print, Delete); toggles that turn answers on
   or widen who can answer only where that is the act; keys Tab and Shift-Tab alone.
+- **A step the service says failed was not taken** (wire.ts `act`), whatever the call answered: a press the page's
+  hit test refused ("something else covers …") came back as no error and went unseen (live, 2026-11-25).
 - **The trial's rules** (steps.ts): windows by id; a fresh read before each step, an index never reused across reads;
   Tab to commit, never Escape or Return; Required set on every new question; at most one retry after a fresh read.
 - **The page it drives is the page its open made** (review 16):
@@ -155,7 +171,12 @@ Work; the form stays in Forms as it is.
 - An agent's change to a collecting form always waits for his Accept (`work.msforms.review`, approve under
   `mustBePerson`: never a thread, another host or an MCP key); on a draft the mode decides, and Agent writes
   runs only after a fresh read shows Accept responses off. Waiting changes are said in words on the bar's stepper.
-  The mode is read at each change, so his switch counts from the thread's next one. Agent writes holds a change, and
+  The mode is read at each change, so his switch counts from the thread's next one. Agent writes is one visit: the
+  write's first step opens Settings and reads Accept responses by the panel's own name ("Options for responses Accept
+  responses"; one not shown reads as on), and a form taking answers stops there before any change
+  (`CarrierTakesAnswers`), which the tool holds with its reason. (Before 2026-11-25 a separate read passed the form
+  and the write's own check, looking for "Accept responses" alone, refused it: the change was dropped with an error
+  and nothing waited.) Agent writes holds a change, and
   says why on the stepper and to the thread (`WRITES_HELD`, msforms/tools.ts), where the `office.edit` rule for a file
   others can open applies: a form that takes answers, or is collecting; and a Purdue form for a thread a routine
   started (`answersWithheld`'s line). A form his Team can see but that takes no answers is his own draft here.
@@ -163,6 +184,41 @@ Work; the form stays in Forms as it is.
   `notGrantable` refuses a grant on any act whose words hold a form's link (`hasFormLink`, work-outbox.md).
 - SharePoint's Forms survey and Create new form, Excel's New Form and Send Form, and Forms' Open results in Excel are
   outward on their pages (`PAGE_OUTWARD`, work-outbox.md), so a generic agent step there is held.
+
+## Applying changes
+
+His Accept (`work.msforms.review`) runs every chosen change in one visit of `write`, in order; Accept all is one visit
+too. Each window showing the form hears where it stands (`work.msforms.applying`: `opening`, `checking` for an agent's
+write, `changing` n of m, `reading`, then null), and the form's tab says it on the line above the page, in the making
+line's shape, where the waiting change's words give way to it (`applyStageWords`, MsFormCanvas.tsx; docs/DESIGN.md
+"Microsoft form"). A stop part way keeps the changes it did not reach waiting
+(`CarrierStop.done`), so his next Accept takes up where it stopped.
+
+How an add is driven on the real page (live, 2026-11-25), each a cause of a failure seen:
+- A new question is left through Settings, opened and closed (ops.ts `rest`): that commits it and leaves "Add new
+  question" at the form's foot. Leaving by the form's title, as before, left its header in edit, which hides "Add new
+  question", so the second add of a visit stopped.
+- The form scrolls in a box of its own that runs past the window's foot. Once a question was added, "Add new
+  question" sits just inside that foot, a press does not bring it to the middle, and its picker of types opens below
+  the window, under a strip, where every press on a type misses. Before an add the box is wheeled up on the last
+  question at rest (in the same batch as Settings' Close after an add), so the press on "Add new question" brings it
+  to the middle with room below.
+- The read back after a write whose Settings were read in that visit, with nothing in edit since, does not open
+  Settings again (`finalRead`).
+
+Timed on a dummy from a copy of the box browser's profile (`scripts/proof-msforms.ts`, `TC_CARRIER_DEBUG=1`), a warm
+browser:
+
+| | before | after |
+|---|---|---|
+| his Accept of one change | 13.2 s (3-question form) | 11.3 s (27 questions; 9.9 s with the kept page not loaded again, which was unsafe) |
+| his Accept all of three | stopped at the second add (three single Accepts, about 40 s) | 26.3 s, one visit |
+| a thread's change under Agent writes, Accept responses off | refused, change dropped | written, 12.3 to 12.9 s |
+| the same with Accept responses on | held, 3.8 s (after a read visit) | held, 4.6 s |
+
+What a change still costs is the pages' own settling: every press waits about 0.8 to 1 s for the page to go quiet
+(`COMPUTER_WAIT.action`, the computer tools' wait every thread shares), and an add is six presses (wheel, Add new
+question, its type, the title with Tab, Settings, Close).
 
 ## Reading answers
 

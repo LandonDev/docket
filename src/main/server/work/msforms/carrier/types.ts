@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { MsMakeStage } from '@shared/contract-work-msforms'
+import type { MsApplyStage, MsMakeStage } from '@shared/contract-work-msforms'
 import type { MsAnyQuestion, MsChange, MsFormSettings, MsQuestion } from '@shared/work/msforms'
 
 /**
@@ -118,6 +118,8 @@ export interface FormRead {
 
 /** An operation that stopped part way: what it had done, in a sentence, and the page as it stood. */
 export class CarrierStop extends Error {
+  /** how many of a write's changes were made before it stopped; null where the operation is no write */
+  done: number | null = null
   constructor(
     message: string,
     readonly read: FormRead | null,
@@ -126,6 +128,15 @@ export class CarrierStop extends Error {
     super(message)
   }
 }
+
+/**
+ * An agent's write stopped before its first change because the form's Settings, read in that same run, show it taking
+ * answers: the change waits for the owner (`WRITES_HELD`), and `read` holds the settings as read.
+ */
+export class CarrierTakesAnswers extends CarrierStop {}
+
+/** Where a write stands (contract-work-msforms.ts `MsApplyStage`): what his window's state line says while it runs. */
+export type ApplyStage = MsApplyStage
 
 /**
  * Forms said the form no longer exists ("This form doesn't exist"): it was deleted in Forms. Only this page is gone;
@@ -187,7 +198,10 @@ export interface PullAsk {
 export interface MsCarrier {
   make(auth: CarrierAuth, ask: MakeAsk): Promise<{ read: FormRead }>
   read(auth: CarrierAuth, formId: string): Promise<FormRead>
-  write(auth: CarrierAuth, formId: string, changes: readonly MsChange[], before: readonly MsAnyQuestion[]): Promise<{ read: FormRead }>
+  /** `stage` hears where the write stands, for his window's state line (`work.msforms.applying`) */
+  write(auth: CarrierAuth, formId: string, changes: readonly MsChange[], before: readonly MsAnyQuestion[], stage?: (s: ApplyStage) => void): Promise<{ read: FormRead }>
+  /** Opens the form's builder and keeps it for the next operation on it, under a read grant: nothing is pressed. */
+  warm(auth: CarrierAuth, formId: string): Promise<void>
   settings(auth: CarrierAuth, formId: string, patch: Partial<MsFormSettings>): Promise<{ read: FormRead }>
   collect(auth: CarrierAuth, formId: string, settings: MsFormSettings): Promise<{ read: FormRead; link: string }>
   audience(auth: CarrierAuth, formId: string, settings: MsFormSettings): Promise<{ read: FormRead }>

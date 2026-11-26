@@ -1,7 +1,7 @@
 import type { Screen, ScreenElement } from '@shared/computer/outward'
 import type { ComputerAction } from '@shared/computer/protocol'
 import { guardSteps } from './guard'
-import { formIdOf } from '@shared/work/msforms'
+import { formIdOf, type MsFormSettings } from '@shared/work/msforms'
 import { addressOf, goneOf, signInOf } from './read'
 import { CarrierGone, CarrierSignIn, CarrierStop, type CarrierOp, type FormRead } from './types'
 
@@ -32,6 +32,15 @@ export interface FormsComputer {
   close(window: string): Promise<void>
   /** waits; a test's computer answers at once */
   wait(ms: number): Promise<void>
+  /**
+   * The form's builder kept open from an earlier operation, taken for this one (wire.ts `exclusiveOn`): null when none
+   * is kept, or it no longer shows that form. A computer that keeps nothing has neither this nor `keep`.
+   */
+  kept?(formId: string): Promise<string | null>
+  /** Keeps this builder open past the operation, for the next one on the form, instead of closing it. */
+  keep?(window: string, formId: string): void
+  /** Loads the page again at its own address: a kept builder is driven only after this. */
+  reload?(window: string): Promise<void>
   /**
    * A request from inside the page of `window`, as the signed-in page itself
    * would make it (SharePoint REST from the folder's site page). `bytes`
@@ -67,6 +76,10 @@ export class Page {
   private screen: Screen | null = null
   /** what the operation has done, for the sentence a stop says */
   readonly done: string[] = []
+  /** the settings as the panel last showed them in this visit: a read back after it needs no Settings again */
+  settings: MsFormSettings | null = null
+  /** the form's box was wheeled up since the last add: "Add new question" is out of the window, for its press to centre it */
+  wheeled = false
 
   constructor(
     readonly computer: FormsComputer,
@@ -93,7 +106,7 @@ export class Page {
   }
 
   /** Reads until `found` answers, a few times over about `ms`; the last read either way. */
-  async until<T>(found: (s: Screen) => T | null | undefined | false, ms = 15_000, every = 1_000): Promise<{ screen: Screen; got: T | null }> {
+  async until<T>(found: (s: Screen) => T | null | undefined | false, ms = 15_000, every = 500): Promise<{ screen: Screen; got: T | null }> {
     let screen = await this.read()
     for (let waited = 0; ; waited += every) {
       const got = found(screen)

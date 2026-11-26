@@ -160,11 +160,13 @@ describe('making and changing', () => {
     expect(after.suggestions.map((s) => s.words)).toEqual(['Add a Date "When?", required'])
   })
 
-  it('a draft under Agent writes: written at once, once a fresh read shows it takes no answers', async () => {
+  it('a draft under Agent writes: written at once, in one visit whose own Settings read shows it takes no answers', async () => {
     const view = await aForm({ mode: 'writes' })
     const r = await tool('msform_edit', { form: view.formId, changes: [{ op: 'remove', question: 2 }] })
     expect(r.text).toContain('Written in Forms')
     expect(carrier.calls.filter((c) => c.op === 'write').map((c) => c.by)).toEqual(['pillar'])
+    // no read of its own before the write (live, 2026-11-25: two visits, and the second refused what the first passed)
+    expect(carrier.calls.filter((c) => c.op === 'read')).toEqual([])
     // The same draft taking answers (changed in the page): the change waits.
     carrier.forms.get(view.formId)!.settings.accepting = true
     const r2 = await tool('msform_edit', { form: view.formId, changes: [{ op: 'remove', question: 1 }] })
@@ -173,6 +175,26 @@ describe('making and changing', () => {
     expect(r2.text).toContain('The form takes answers')
     const after = await call<MsFormView>('work.msforms.get', { workspaceId: 'w1', formId: view.formId })
     expect(after.suggestions.at(-1)?.held).toContain('Turn off Accept responses')
+    // the write's own Settings read is kept: his canvas knows the form takes answers, and nothing reads it "stopped"
+    expect(after.settings.accepting).toBe(true)
+    expect(after.suggestions.at(-1)?.words).toBe('Remove "Which night?"')
+  })
+
+  it("a change that waits opens the form's builder for his Accept, under a read grant", async () => {
+    const view = await aForm()
+    await tool('msform_edit', { form: view.formId, changes: [{ op: 'remove', question: 2 }] })
+    expect(carrier.warmed).toEqual([view.formId])
+  })
+
+  it('his Accept says where it stands to every window showing the form, and nothing once it ended', async () => {
+    const view = await aForm()
+    await tool('msform_edit', { form: view.formId, changes: [{ op: 'remove', question: 2 }, { op: 'remove', question: 1 }] })
+    const waiting = await call<MsFormView>('work.msforms.get', { workspaceId: 'w1', formId: view.formId })
+    const stages: unknown[] = []
+    const off = work.pushes.onPush((p) => void (p.push === 'work.msforms.applying' && stages.push(p.stage)))
+    await call('work.msforms.review', { workspaceId: 'w1', formId: view.formId, accept: waiting.suggestions.map((x) => x.id), reject: [] })
+    off()
+    expect(stages).toEqual([{ stage: 'opening' }, { stage: 'changing', at: 1, of: 2 }, { stage: 'changing', at: 2, of: 2 }, { stage: 'reading' }, null])
   })
 
   it('his switch to Agent writes counts from the next change of a live thread', async () => {
@@ -218,6 +240,16 @@ describe('making and changing', () => {
     expect(carrier.forms.get(open.formId)!.settings.accepting).toBe(false)
     expect((await tool('msform_close', { form: open.formId, open: true })).text).toContain('it reopens when he presses')
     expect(carrier.forms.get(open.formId)!.settings.accepting).toBe(false)
+  })
+
+  it('his Accept all that stops part way keeps the changes it did not reach waiting (live, 2026-11-25)', async () => {
+    const view = await aForm()
+    await tool('msform_edit', { form: view.formId, changes: [{ op: 'add', question: { title: 'Email', type: 'text', required: false } }, { op: 'add', question: { title: 'Phone', type: 'text', required: false } }] })
+    const waiting = await call<MsFormView>('work.msforms.get', { workspaceId: 'w1', formId: view.formId })
+    carrier.stopAt.write = 'Did 1 of 2 changes (added "Email"); the next did not take.'
+    await call('work.msforms.review', { workspaceId: 'w1', formId: view.formId, accept: waiting.suggestions.map((x) => x.id), reject: [] }).catch(() => undefined)
+    const after = await call<MsFormView>('work.msforms.get', { workspaceId: 'w1', formId: view.formId })
+    expect(after.suggestions.map((x) => x.words)).toEqual([waiting.suggestions[1]!.words])
   })
 
   it('a carrier stop is said in the answer with what was done', async () => {

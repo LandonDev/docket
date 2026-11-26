@@ -6,7 +6,7 @@ import { isOther, MSFORM_NEW_SETTINGS, questionWords, settingsWords, widens, typ
 import type { Caller, ToolCtx, WorkTool } from '../modules'
 import { heldReceipt } from '../outbox/words'
 import { responsesOf } from './answers/read'
-import { CarrierRefused, CarrierStop, readPayload } from './carrier/types'
+import { CarrierRefused, CarrierStop, CarrierTakesAnswers, msCarrier, readPayload } from './carrier/types'
 import { shortens } from './carrier/ops'
 import { announce, authFor, carrierOrRefuse, formWords, holdPublish, setOpen, storeRead, suggestionOf, writeChanges } from './forms'
 import { folderOf, libraryAt } from './place'
@@ -89,34 +89,38 @@ export const WRITES_HELD = {
 
 /**
  * An agent's changes. Under "Agent writes" (the mode read at each change, so his switch counts from the next one) a
- * change to his own draft that takes no answers, by a fresh read, is written now. A form others can answer is held
- * as an `office.edit` is for a file others can open (work-outbox.md), and so is a Purdue form for a thread a routine
- * started (`answersWithheld`'s line): those wait for his Accept and say why.
+ * change to his own draft is written now, in one visit whose first step reads Settings: a form that takes answers by
+ * that read stops before any change (`CarrierTakesAnswers`) and is held as an `office.edit` is for a file others can
+ * open (work-outbox.md), and so is a Purdue form for a thread a routine started (`answersWithheld`'s line): those wait
+ * for his Accept and say why. A change that waits opens the form's builder in the box browser for his Accept (`warm`).
  */
 async function agentChanges(ctx: ToolCtx, at: Reached, changes: MsChange[], reason?: string): Promise<{ wrote: boolean; row: MsFormRow; held?: string }> {
   const { row } = at
   const by = agentPrincipal(ctx.host, ctx.sessionId)
   const store = new MsformsStore(ctx.db)
   let held: string | undefined
+  let now = row
   if (row.mode === 'writes') {
     if (row.state !== 'draft') held = WRITES_HELD.collecting
     else if (answersWithheld(ctx, callerOf(ctx), row.sector)) held = WRITES_HELD.unattended
     else {
-      const carrier = carrierOrRefuse()
-      // A Settings read: Accept responses as the panel shows it, and missing reads as on.
-      const fresh = await carrier.read(authFor(ctx, row, 'read', 'pillar', readPayload(row.formId)), row.formId)
-      if (!fresh.settings.accepting) {
+      try {
         const next = await writeChanges(ctx, row, changes, 'pillar', by)
         announce(ctx, next)
         return { wrote: true, row: next }
+      } catch (err) {
+        if (!(err instanceof CarrierTakesAnswers)) throw err
+        // the settings as that read saw them: his canvas says the form takes answers
+        if (err.read) now = storeRead(ctx, row, err.read, { by: 'page' })
+        held = WRITES_HELD.answers
       }
-      storeRead(ctx, row, fresh, { by: 'page' })
-      held = WRITES_HELD.answers
     }
   }
-  const waiting = [...row.suggestions, ...changes.map((c) => ({ ...suggestionOf(c, row.questions, by, reason), ...(held ? { held } : {}) }))]
-  const next = store.update(row.workspaceId, row.formId, { suggestions: waiting })
+  const waiting = [...now.suggestions, ...changes.map((c) => ({ ...suggestionOf(c, now.questions, by, reason), ...(held ? { held } : {}) }))]
+  const next = store.update(now.workspaceId, now.formId, { suggestions: waiting })
   announce(ctx, next)
+  // his Accept finds the builder open: a read grant, nothing pressed, kept a few minutes (carrier/wire.ts)
+  void msCarrier()?.warm(authFor(ctx, next, 'read', 'pillar', readPayload(next.formId)), next.formId).catch(() => {})
   return { wrote: false, row: next, ...(held ? { held } : {}) }
 }
 

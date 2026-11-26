@@ -7,7 +7,7 @@ import { guardStep } from './guard'
 import { opsCarrier } from './ops'
 import { countOf, formOf, linkOf, settingsOf } from './read'
 import { Page } from './steps'
-import { authorize, CarrierGone, CarrierRefused, CarrierStop, makePayload, pullPayload, readPayload, settingsPayload, type CarrierOp, type FormRead } from './types'
+import { authorize, CarrierGone, CarrierRefused, CarrierStop, CarrierTakesAnswers, makePayload, pullPayload, readPayload, settingsPayload, type CarrierOp, type FormRead } from './types'
 
 /**
  * The carrier on a fake Forms page in the trial's names: what a read says,
@@ -474,3 +474,110 @@ const click = (s: ReturnType<typeof screen>, index: number): ComputerAction => {
   void s
   return { action: 'left_click', element: index } as ComputerAction
 }
+
+describe('Agent writes and his Accept, live on 2026-11-25', () => {
+  const ID = 'FakeFormId00000000000001'
+
+  it("an agent's write on a draft whose Settings show Accept responses off is written: the toggle is found by its real name", async () => {
+    const { page, carrier, auth } = rig()
+    page.add(form())
+    const before = structuredClone(page.forms.get(ID)!.questions)
+    const changes = [{ op: 'add' as const, question: { title: 'Phone', type: 'text' as const, required: false } }]
+    const { read } = await carrier.write(auth('write', { changes, before }, { by: 'pillar' }), ID, changes, before)
+    expect(read.questions.map((q) => q.title)).toEqual(['Name', 'Phone'])
+    expect(read.settings.accepting).toBe(false)
+  })
+
+  it("an agent's write on a form taking answers stops as CarrierTakesAnswers, before any change, with the settings read", async () => {
+    const { page, carrier, auth } = rig()
+    page.add(form({ settings: { ...settings, accepting: true } }))
+    const before = structuredClone(page.forms.get(ID)!.questions)
+    const changes = [{ op: 'remove' as const, at: 0 }]
+    const err = await carrier.write(auth('write', { changes, before }, { by: 'pillar' }), ID, changes, before).catch((e) => e)
+    expect(err).toBeInstanceOf(CarrierTakesAnswers)
+    expect(err.read?.settings.accepting).toBe(true)
+    expect(page.forms.get(ID)!.questions).toHaveLength(1)
+  })
+
+  it('Accept all of three adds runs in one visit, where the header stays open after a title and the type picker opens below the window', async () => {
+    const { page, carrier, auth } = rig()
+    page.headerStaysOpen = true
+    page.pickerBelowFold = true
+    page.add(form())
+    const before = structuredClone(page.forms.get(ID)!.questions)
+    const changes = ['One', 'Two', 'Three'].map((title) => ({ op: 'add' as const, question: { title, type: 'text' as const, required: false } }))
+    const stages: string[] = []
+    const { read } = await carrier.write(auth('write', { changes, before }), ID, changes, before, (s) => stages.push(s.stage === 'changing' ? `changing ${s.at}/${s.of}` : s.stage))
+    expect(read.questions.map((q) => q.title)).toEqual(['Name', 'One', 'Two', 'Three'])
+    expect(page.log.filter((l) => l.startsWith('open '))).toHaveLength(1)
+    expect(stages).toEqual(['opening', 'changing 1/3', 'changing 2/3', 'changing 3/3', 'reading'])
+  })
+
+  it('a write of adds alone reads Settings once, as the last add is left, and does not open them again for the read back', async () => {
+    const { page, carrier, auth } = rig()
+    page.add(form())
+    const before = structuredClone(page.forms.get(ID)!.questions)
+    const changes = [{ op: 'add' as const, question: { title: 'Phone', type: 'text' as const, required: false } }]
+    const { read } = await carrier.write(auth('write', { changes, before }), ID, changes, before)
+    // the add is left through Settings (read there, then closed): no Settings again for the read back, and the page at rest
+    const panel = page.log.filter((l) => /Settings$|Close settings$/.test(l))
+    expect(panel).toEqual(['click Settings', 'click Close settings'])
+    expect(read.settings).toEqual(settings)
+  })
+
+  it("keeps the form's builder for the next operation on it, and drives the kept page without opening another", async () => {
+    const { page, carrier, auth } = rig()
+    const kept = new Map<string, string>()
+    Object.assign(page, {
+      kept: async (formId: string) => {
+        const w = kept.get(formId) ?? null
+        kept.delete(formId)
+        return w
+      },
+      keep: (window: string, formId: string) => void kept.set(formId, window),
+      reload: async (window: string) => void page.log.push(`reload ${window}`)
+    })
+    page.add(form())
+    await carrier.warm(auth('read', readPayload(ID), { by: 'pillar' }), ID)
+    expect(kept.get(ID)).toBeDefined()
+    const before = structuredClone(page.forms.get(ID)!.questions)
+    const changes = [{ op: 'add' as const, question: { title: 'Phone', type: 'text' as const, required: false } }]
+    await carrier.write(auth('write', { changes, before }), ID, changes, before)
+    expect(page.log.filter((l) => l.startsWith('open '))).toHaveLength(1)
+    expect(page.log.some((l) => l.startsWith('close '))).toBe(false)
+    expect(kept.get(ID)).toBeDefined()
+  })
+
+  it('never drives a kept builder as it stood: it is loaded again first, and one that will not load is closed for a fresh open (live, 2026-11-25)', async () => {
+    const { page, carrier, auth } = rig()
+    let w: string | null = null
+    const reloads: string[] = []
+    let fails = false
+    Object.assign(page, {
+      kept: async () => {
+        const x = w
+        w = null
+        return x
+      },
+      keep: (window: string) => void (w = window),
+      reload: async (window: string) => {
+        if (fails) throw new Error('gone')
+        reloads.push(window)
+      }
+    })
+    page.add(form())
+    await carrier.warm(auth('read', readPayload(ID), { by: 'pillar' }), ID)
+    // he turns Accept responses on in another window: the agent's write reads it on the page loaded again, and stops
+    page.forms.get(ID)!.settings.accepting = true
+    const before = structuredClone(page.forms.get(ID)!.questions)
+    const changes = [{ op: 'add' as const, question: { title: 'Phone', type: 'text' as const, required: false } }]
+    await expect(carrier.write(auth('write', { changes, before }, { by: 'pillar' }), ID, changes, before)).rejects.toBeInstanceOf(CarrierTakesAnswers)
+    expect(reloads).toHaveLength(1)
+    // a kept page that will not load again is closed, and the operation opens its own
+    page.forms.get(ID)!.settings.accepting = false
+    await carrier.warm(auth('read', readPayload(ID), { by: 'pillar' }), ID)
+    fails = true
+    await carrier.write(auth('write', { changes, before }, { by: 'pillar' }), ID, changes, before)
+    expect(page.log.filter((l) => l.startsWith('open '))).toHaveLength(3)
+  })
+})
