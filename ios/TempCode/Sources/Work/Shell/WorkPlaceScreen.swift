@@ -243,6 +243,8 @@ struct FailedRead: View {
     var identifier = "place-failed"
     /// The house row's insets; nil keeps the list's own, as under a routine's disclosure, where its runs sit.
     var insets: EdgeInsets? = Layout.rowInsets
+    /// The words' ink: nil for the meta step's own, the destructive ink where a place says its fault in red.
+    var tint: Color?
     @State private var reading = false
 
     var body: some View {
@@ -251,7 +253,7 @@ struct FailedRead: View {
             : AnyLayout(HStackLayout(alignment: .center, spacing: Layout.rowGap))
         layout {
             Text(words)
-                .textStep(.meta)
+                .textStep(.meta, tint: tint)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let retry {

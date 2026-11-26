@@ -84,15 +84,9 @@ private struct ClashPage: View {
     @ViewBuilder private var content: some View {
         if let clash {
             List {
-                // A refresh that failed over a clash on screen: what shows is the last read, said once, with Retry.
+                // A refresh that failed over a clash on screen: what shows is the last read, said once, with Try Again.
                 if readError != nil {
-                    Section {
-                        HStack(spacing: Layout.rowGap) {
-                            Text("This clash did not refresh").textStep(.meta, tint: Tint.destructiveText)
-                            Spacer(minLength: Layout.rowGap)
-                            PillButton("Try Again") { Task { await load() } }
-                        }
-                    }
+                    Section { FailedRead(words: "This clash did not refresh", retry: { await load() }, identifier: "clash-failed", tint: Tint.destructiveText) }
                 }
                 side(clash.a, clash: clash)
                 side(clash.b, clash: clash)

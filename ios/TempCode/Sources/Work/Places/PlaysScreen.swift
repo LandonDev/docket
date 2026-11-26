@@ -39,13 +39,8 @@ struct PlaysScreen: View {
                 } else {
                     List {
                         if let refreshError {
-                            Section {
-                                HStack(spacing: Layout.rowGap) {
-                                    Text(refreshError).textStep(.meta, tint: Tint.destructiveText)
-                                    Spacer(minLength: Layout.rowGap)
-                                    PillButton("Try Again") { Task { await load() } }
-                                }
-                            }
+                            // The failed-read row of every Work place, over what the last read showed.
+                            Section { FailedRead(words: refreshError, retry: { await load() }, tint: Tint.destructiveText) }
                         }
                         ForEach(shown, id: \.id) { play in
                             if PlayRun.runsHere(play), work.may(.playStart) {

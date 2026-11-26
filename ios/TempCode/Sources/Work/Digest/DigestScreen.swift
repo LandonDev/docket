@@ -153,7 +153,8 @@ private struct DigestRow: View {
     }
 
     // The dot and the time sit on the title's first line, as the Inbox's two-line rows do: the row aligns on
-    // the first baseline, and the dot is centred on one line of the title step (`FirstLineMark`).
+    // the first baseline, and the dot is centred on one line of the title step (`FirstLineMark`). The time stands
+    // beside the title alone, so the detail under it runs the row's whole width.
     private var content: some View {
         HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
             FirstLineMark {
@@ -167,18 +168,20 @@ private struct DigestRow: View {
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
-                // The list is the record, and for a row with no screen to open the only place its words show: never cut.
-                Text(row.title)
-                    .textStep(.title)
+                HStack(alignment: .firstTextBaseline) {
+                    // The list is the record, and for a row with no screen to open the only place its words show: never cut.
+                    Text(row.title)
+                        .textStep(.title)
+                    Spacer(minLength: 8)
+                    // The stamp step in `label`, as the Outbox's stamps: tertiary measured 1.7:1 on white.
+                    Text(DigestModel.when(row, now: now, day: day))
+                        .textStep(.stamp, tint: Color(.label))
+                }
                 if let detail = row.detail, !detail.isEmpty {
                     Text(detail)
                         .textStep(.meta)
                 }
             }
-            Spacer(minLength: 8)
-            // The stamp step in `label`, as the Outbox's stamps: tertiary measured 1.7:1 on white.
-            Text(DigestModel.when(row, now: now, day: day))
-                .textStep(.stamp, tint: Color(.label))
         }
         .padding(.vertical, Layout.rowVertical)
         .frame(minHeight: Layout.rowHeight + 8)

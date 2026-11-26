@@ -24,7 +24,7 @@ private struct WorkHostPicker: View {
     }
 }
 
-/// New Work workspace, from the "Work" header's +: a name and the LifeOS
+/// New Job (a Work workspace), from the "Jobs" band's +: a name and the LifeOS
 /// sector it serves (one Work workspace per sector per host). The host makes
 /// its folder; the workspace opens when it lands.
 struct NewWorkWorkspaceSheet: View {
@@ -59,7 +59,7 @@ struct NewWorkWorkspaceSheet: View {
                     if let error { Text(error).foregroundStyle(Tint.destructiveText) }
                 }
             }
-            .navigationTitle("New Workspace")
+            .navigationTitle("New Job")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

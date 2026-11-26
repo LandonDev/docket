@@ -232,7 +232,8 @@ struct ChatRowView: View {
 
     private var stamp: some View {
         Text(TimeFormat.stamp(Int(row.lastAt)))
-            .textStep(.stamp, weight: row.unread ? .semibold : .regular, tint: row.unread ? Color.accentColor : nil)
+            // A read row's time in the secondary label's ink: the stamp step's own tertiary measured 1.7:1 on white.
+            .textStep(.stamp, weight: row.unread ? .semibold : .regular, tint: row.unread ? Color.accentColor : Color(.secondaryLabel))
             .lineLimit(1)
     }
 

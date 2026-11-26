@@ -46,13 +46,8 @@ struct RoutinesScreen: View {
                 } else {
                     List {
                         if let refreshError {
-                            Section {
-                                HStack(spacing: Layout.rowGap) {
-                                    Text(refreshError).textStep(.meta, tint: Tint.destructiveText)
-                                    Spacer(minLength: Layout.rowGap)
-                                    PillButton("Try Again") { Task { await load() } }
-                                }
-                            }
+                            // The failed-read row of every Work place, over what the last read showed.
+                            Section { FailedRead(words: refreshError, retry: { await load() }, tint: Tint.destructiveText) }
                         }
                         let both = RoutineBands.headed(bands)
                         band("Routines", bands.routines, headed: both)
@@ -223,7 +218,7 @@ private struct RoutineRowView: View {
             if running {
                 ProgressView().controlSize(.small).accessibilityLabel("Running")
             } else {
-                Text(RoutineBands.stamp(row)).textStep(.stamp).foregroundStyle(.secondary).monospacedDigit()
+                Text(RoutineBands.stamp(row)).textStep(.stamp, tint: Color(.secondaryLabel)).monospacedDigit()
             }
         }
         .opacity(row.ended ? 0.5 : 1)
@@ -254,7 +249,7 @@ private struct RunRowView: View {
                 .textStep(.meta, tint: state == .failed ? Tint.destructiveText : nil)
                 .lineLimit(2)
             Spacer(minLength: 8)
-            Text(RoutineRuns.when(run)).textStep(.stamp).foregroundStyle(.secondary).monospacedDigit()
+            Text(RoutineRuns.when(run)).textStep(.stamp, tint: Color(.secondaryLabel)).monospacedDigit()
         }
         .frame(minHeight: Layout.rowHeight)
         .contentShape(Rectangle())

@@ -40,6 +40,8 @@ struct TodayScreen: View {
                         ForEach(offline, id: \.self) { host in
                             TodayLine(words: "\(hostName(host)) is offline.")
                         }
+                    } header: {
+                        PageLineGap()
                     }
                 }
             }
@@ -113,6 +115,8 @@ struct TodayScreen: View {
             // A job's session on another host waits on that host's LifeOS: the wait, the computer named, what it left out.
             Section {
                 TodayLine(words: LifeosWords.connecting(host: hostName(failure.environmentId)), note: failure.said, waits: true)
+            } header: {
+                PageLineGap()
             }
         case .lost(let failure):
             // The state first, its computer named, then what it left out; Retry only where the session was silent.
@@ -123,12 +127,16 @@ struct TodayScreen: View {
                 } else {
                     TodayLine(words: failure.said ?? failure.error, late: true, retry: failure.retry.map { retry in { await store.retry(retry) } })
                 }
+            } header: {
+                PageLineGap()
             }
         case .refused(let hosts):
             Section {
                 ForEach(hosts, id: \.self) { host in
                     TodayLine(words: WorkHost.refusedLine(hostName(host)), late: true)
                 }
+            } header: {
+                PageLineGap()
             }
         }
     }
@@ -766,7 +774,8 @@ struct TodayBones: View {
     }
 }
 
-/// A gap over a line that stands for whole sections (LifeOS down or connecting; the desktop's `mt-6`): set off from
+/// A gap over a line that stands for whole sections (LifeOS down or connecting, a job's session lost on another
+/// computer, a refused key, the computers offline at the foot; the desktop's `mt-6`): set off from
 /// the rows above it, never read as one more of them. With the list's header floor at zero (TodayScreen) the gap
 /// (a row's own vertical padding again) and the row's padding land near the desktop's 24 pt, not 56.
 private struct PageLineGap: View {

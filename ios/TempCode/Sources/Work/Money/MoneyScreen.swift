@@ -380,14 +380,10 @@ private struct MoneyLine: View {
     var tint: Color?
     var retry: (() async -> Void)?
 
+    // The failed-read row of every Work place: the words wrap whole, Try Again beside them (under them at
+    // accessibility sizes) with a spinner while it reads.
     var body: some View {
-        HStack(spacing: Layout.rowGap) {
-            Text(words).textStep(.meta, tint: tint)
-            Spacer(minLength: 0)
-            if let retry { PillButton("Try Again") { Task { await retry() } } }
-        }
-        .padding(.vertical, Layout.rowVertical)
-        .listRowInsets(Layout.rowInsets)
+        FailedRead(words: words, retry: retry, identifier: "money-line", tint: tint)
     }
 }
 

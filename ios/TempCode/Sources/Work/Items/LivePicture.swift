@@ -102,7 +102,7 @@ struct LivePicture: View {
         VStack(alignment: .leading, spacing: 8) {
             picture
             if let line = video.flatMap({ LiveWords.line($0.phase, place: place) }) {
-                QuietNote(text: line.text, action: line.retry ? (title: "Retry", run: { restart() }) : nil)
+                QuietNote(text: line.text, action: line.retry ? (title: "Try Again", run: { restart() }) : nil)
             }
         }
         .onAppear {

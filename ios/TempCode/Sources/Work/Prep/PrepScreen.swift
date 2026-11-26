@@ -101,15 +101,10 @@ private struct PrepPageView: View {
         }
     }
 
-    /// A fault in one muted line; `retry`: what it says is the read's, and Retry (44 pt) reads the page again.
+    /// A fault in one line, the failed-read row of every Work place; `retry`: what it says is the read's, and Try
+    /// Again reads the page again.
     private func stateLine(_ words: String, retry: Bool) -> some View {
-        HStack(spacing: Layout.rowGap) {
-            Text(words).textStep(.meta, tint: Tint.destructiveText)
-            Spacer(minLength: Layout.rowGap)
-            if retry {
-                PillButton("Try Again") { Task { await read() } }
-            }
-        }
+        FailedRead(words: words, retry: retry ? { await read() } : nil, identifier: "prep-state", tint: Tint.destructiveText)
     }
 
     /// The brief: what matters, what was agreed, the files it names; its bones while its thread writes.

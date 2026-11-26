@@ -33,7 +33,7 @@ struct WorkListView: View {
                 SectionHeader("Jobs") {
                     // Each entry only where some host's key may do it (KeyMay): never a press the host refuses.
                     if clients.contains(where: { $0.work.isOn && $0.work.may(.workspaceCreate) }) {
-                        Button("New Work Workspace", systemImage: "plus") { addingWork = true }
+                        Button("New Job", systemImage: "plus") { addingWork = true }
                             .labelStyle(.iconOnly)
                             .font(TextStep.meta.font.weight(.semibold))
                             // An explicit ink, as the band's title: the hierarchical secondary nests a step dimmer

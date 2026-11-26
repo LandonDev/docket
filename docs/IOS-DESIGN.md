@@ -2515,7 +2515,7 @@ milestone 46 built, where it lives now:
   glyph in the 28 pt mark slot, "Outbox", and the waiting count as a plain
   stamp (`WorkPlaceRow`). Held is not Needs you: the count is never amber
   and no Outbox surface takes the warning wash or an orange dot. The Work
-  workspaces sit under a "Jobs" section header (its New Work Workspace + in
+  workspaces sit under a "Jobs" section header (its New Job + in
   the secondary label's own ink, never the hierarchical one a header dims),
   each led by its **sector's dot** (8 pt, growing with the text to 14 pt at
   accessibility sizes) in the mark slot, never a tile; **Work Chats** and the Digest
@@ -2603,7 +2603,7 @@ milestone 46 built, where it lives now:
   its place, its time; never the payload; `OutboxKeeping`). On a cold
   launch the list paints them, one band per place, and the count counts
   them, until that host answers on this link. A kept row opens a read view
-  (its words and a spinner, or the read's error with Retry) and has no
+  (its words and a spinner, or the read's error with Try Again) and has no
   swipe, menu or tick; the detail's bar waits for the item read fresh on
   this link (`work.outbox.get`).
 - **Inks.** The Outbox's bands, held detail and stamps draw meta and stamps in
@@ -2740,7 +2740,7 @@ milestone 46 built, where it lives now:
   "Since the digest", "Today, 8:00 AM", "Yesterday", then dates. A row is the
   job's sector dot in the mark column (a muted ring for a row about no one
   job), the title, the detail in meta under it (both whole, never cut: the list is the record), the time as a stamp; the dot
-  and the time sit on the title's first line, as the Inbox's rows do ("by
+  and the time sit on the title's first line, the line under it at the row's full width, as the Inbox's rows do ("by
   2:00 PM" for a row whose clock was ahead when it was told and its words do
   not already say, a day that is not today named; else when it was told, its
   day named only when it is not the day of the row's heading). The dot is the only colour; no counts,
@@ -2791,7 +2791,7 @@ milestone 46 built, where it lives now:
   its five seconds with the grant riding it, and the grant is made only when
   they end, just before the send, so Undo takes back both. Only a key with
   admin sees the menu; Settings → Work lists the grant with Remove.
-- **New Work workspace**: the "Work" header's + opens a form sheet (Name,
+- **New Job** (a Work workspace): the "Jobs" band's + opens a form sheet titled "New Job" (Name,
   Sector with its dot, Host when several have Work); the workspace opens
   when it lands. **New Chat**: Work Chats' compose button opens a
   sheet with the first message and Start; the thread opens.
@@ -2915,7 +2915,7 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   sits in its middle, and a tap starts it. Nothing says "live" and nothing
   counts frames. A stream that ends leaves its last frame; where there is
   no picture to show, one muted line under it says why in the desktop's
-  words ("Shown on <machine> only", "The preview stopped" with Retry, the
+  words ("Shown on <machine> only", "The preview stopped" with Try Again, the
   Screen Recording line), and "Another page is on screen" when the box's
   display shows another page (`busy`). A tap opens it full screen on the same
   stream: black, Done (glass) at the top corner, the picture at its aspect,
@@ -3241,10 +3241,11 @@ own row says one row down (`TodayModel.workListLine`), and where the tab opens a
   passed over takes the day back only once the host read in its place is down (`LifeReach.PassedOver`, the desktop's
   `tried`). The LifeOS sections give way to one line, set off from the rows above by a gap near the desktop's 24 pt (the list's
   header floor at zero, a gap of a row's vertical padding), when no
-  host can read LifeOS ("Not signed in to LifeOS on Box"; Retry only where LifeOS was silent), or
+  host can read LifeOS ("Not signed in to LifeOS on Box"; Try Again only where LifeOS was silent), or
   when the host it reads through says LifeOS is connecting ("LifeOS is still connecting on Box", a spinner, no
-  press); a host that did not answer is a line with Retry (`PillButton`, 44 pt) in the section it feeds; the hosts
-  that are offline, a Work host not yet linked this launch among them, are named once at the foot. All clear:
+  press); a host that did not answer is a line with Try Again (`PillButton`, 44 pt) in the section it feeds; the hosts
+  that are offline, a Work host not yet linked this launch among them, are named once at the foot. Each such line (a job's
+  session lost on another computer, a refused key, the offline foot) is set off by the same gap as the LifeOS line. All clear:
   "All Clear" over "Nothing needs you today." or what tomorrow starts with.
 - **Large text.** At accessibility sizes a row's title and line wrap to three lines and its time goes under them;
   VoiceOver hears "late" and "over", which the ink alone tells the eye. At any size a title or a fault's reason that
@@ -3280,7 +3281,7 @@ Teams) as LifeOS holds it, the desktop's Messages view on the phone (docs/agents
   check runs (`PressGates`), then the undo capsule waits five seconds ("Sending to Dana Lee", Undo) in which the
   host hears nothing; going to the background or losing the link puts the words back and says why. Then one
   `work.messages.send` with a fresh attempt key, written to `PressLedger` first. LifeOS's own row then shows
-  under his words: "Sending" with Undo inside LifeOS's undo time, "Not sent." with its reason and Retry (the
+  under his words: "Sending" with Undo inside LifeOS's undo time, "Not sent." with its reason and Try Again (the
   owner's check again). A refusal puts his words back before what he typed since. A lost answer reads
   "Checking…" and is read back by the key on the next link (`work.messages.attempt`, which sends nothing): sent,
   never got (the words come back to send again by his press), refused, or "May have gone", whose words wait aside
@@ -3324,8 +3325,8 @@ no event.
 
 - **The head**: the event's title, and one line under it ("Today, 2:00 to 2:45 PM, RecWell 204, leave 1:30 PM";
   a place that is only a link is left out; the leave time only while it is ahead). A failed part, or a refresh
-  that failed, is one line with Retry (`PillButton`); a Prepare, Follow Up or filing that failed keeps its reason
-  in that line, with no Retry that would only read the page.
+  that failed, is one line with Try Again (`PillButton`); a Prepare, Follow Up or filing that failed keeps its reason
+  in that line, with no Try Again that would only read the page.
 - **The verb** in the bar is the one where the meeting stands (`PrepRules.verb`, the desktop's `headVerb`):
   Prepare, Preparing (a spinner, which opens the thread), Add Notes, Follow Up, Following Up, or none. More holds
   Open Thread, Prepare Again and Add Notes.
@@ -3336,7 +3337,7 @@ no event.
   app goes to the background). Another window's newer words are never written over unseen: his stay, a line says
   so, and Keep Mine saves them.
 - **To Do**: suggested tasks start unticked. Tick All, and "Add 3 Tasks" while any is ticked, sit at the section's
-  foot. A task LifeOS did not take keeps why on its own row; Retry files those again.
+  foot. A task LifeOS did not take keeps why on its own row; Try Again files those again.
 
 ### A clash
 
@@ -3351,7 +3352,7 @@ the open Duo. It opens from Today's Resolve and from a clash's tell or notice.
   pair it was pressed for even once the host's push has reloaded the page without it, and reads the clash again.
 - **States.** A first read that failed is "Can’t Read This Clash" with Try Again, never "No Longer a Clash", which
   is said only for a read that worked (the bar says "Clash"). A refresh that failed over a clash on screen is one
-  red line at the top with Retry.
+  red line at the top with Try Again.
 - **Decline and Propose New Time** open a short form: what it does and who hears, a note, and for a proposal two
   date pickers filled with the first time the drive allows. Send goes to other people, so it is his press alone:
   the owner's check, then one `work.clashes.answer` through the press record, at once as the desktop sends. A
@@ -3394,7 +3395,7 @@ desktop's weekly review on the phone (docs/agents/work-review.md "The phone"). O
   newest, then the weeks the hosts kept, then Previous Week and Next Week. The title stays Review.
 - **The head** is one muted line of when it was made ("Made Friday at 4:00 PM"), a host that is off ("The Mac is
   off. …"), a list read in part, then the red lines (a host that did not answer, a source that feeds more than one
-  section), the first with Retry, as the desktop's head.
+  section), the first with Try Again, as the desktop's head.
 - **Hours**: one row a job, every job listed (the empty one is the news), its sector dot in the mark slot, the
   name, the total trailing ("about 11 h", "6 hr 30 min"; else "Nothing seen" muted; under the name at accessibility
   sizes), then under it the facts ("6 hr 30 min on the calendar, about 4 hr 30 min at the desk"; a row with one
@@ -3436,7 +3437,7 @@ from that row, Today's Owed rows and a waiting receipt's tell (Work/Money/MoneyS
 - **States**: the span's state comes first (`MoneyPage.pageState`). A fault of the books is one red line at the top
   in the desktop's words; a job that never had money is one empty state, said only of a span that was read ("Can’t
   Read Money" for a first read, or a newly picked span, that failed); a read that failed keeps what showed with
-  Retry (`PillButton`). A host's error is said in Work's words (`WorkErrorWords.readFailure`), never its raw text. A receipt's picture that does not come drops its slot; the fields stand alone.
+  Try Again (`PillButton`). A host's error is said in Work's words (`WorkErrorWords.readFailure`), never its raw text. A receipt's picture that does not come drops its slot; the fields stand alone.
 
 ### A job's small places
 
