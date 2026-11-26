@@ -390,12 +390,39 @@ export function RequestCard({
           }
         />
       );
-    return frame === "card" ? <Skeleton data-outbox-request-bones className="h-28 w-full rounded-xl" /> : <DetailBones />;
+    return frame === "card" ? <CardBones /> : <DetailBones />;
   }
   // Put away without his press, or by his Not now: one muted line, in the card's place and in the Outbox alike.
   if (request.state === "declined") return <RequestLine lead="Not now" detail={request.head} />;
   if (request.state === "void") return <RequestLine lead="No longer open" detail={request.why ? workErrorWords(request.why) || request.why : request.head} />;
   return <RequestBody key={`${request.environmentId}:${request.id}`} request={request} frame={frame} host={host} onOpenSession={onOpenSession} commands={commands} />;
+}
+
+/** The card while its request is read: the card's own frame, its head, the ask, two rows and the presses' place, so nothing moves when it lands. */
+function CardBones() {
+  return (
+    <div role="status" aria-label="Loading the request" aria-busy data-outbox-request-bones className={cn("w-full border border-border bg-card", QUESTION_SHAPE)}>
+      <div className="flex h-5 items-center gap-2">
+        <Outbox aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <Skeleton className="h-3.5 w-48 max-w-full" />
+      </div>
+      <div className="mt-1 flex h-5 items-center ps-[22px]">
+        <Skeleton className="h-3 w-64 max-w-full" />
+      </div>
+      <div className="mt-3 flex flex-col divide-y divide-border">
+        {[56, 44].map((width) => (
+          <span key={width} className="flex h-9 items-center gap-2 ps-0.5">
+            <Skeleton className="size-3.5 shrink-0 rounded-sm" />
+            <Skeleton className="h-3" style={{ width: `${width}%` }} />
+          </span>
+        ))}
+      </div>
+      <div className="mt-3 flex justify-end gap-2">
+        <Skeleton className="h-7 w-16 rounded-md" />
+        <Skeleton className="h-7 w-20 rounded-md" />
+      </div>
+    </div>
+  );
 }
 
 function DetailBones() {

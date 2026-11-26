@@ -19,8 +19,8 @@ import { resetOutboxStore, wantOutboxItem } from "./store";
  * Sent with the mail whose press completed a run and the grant it earned at
  * its foot (`offer`), the same mail with none (`plain`), Waiting with an
  * agent's changes to shared files held for his press (`edits`), and Sent with
- * mail LifeOS has not yet said went (`queued`: queued twelve minutes on, sent,
- * back in drafts). Also: `empty` (nothing waits), `failed` (the day with the send that failed picked: Not sent
+ * mail LifeOS has not yet said went (`queued`: queued twelve minutes on, no
+ * longer in LifeOS, sent, back in drafts). Also: `empty` (nothing waits), `failed` (the day with the send that failed picked: Not sent
  * leads, its reason once in the detail), `day` (a day of held work in Waiting's order: Not sent, Starts soon, each
  * thread's group with the roster's fold, Scheduled; the reply to Dana picked, with its sentence and notes),
  * `ticked` (the roster's Select 6: the summary list), `results` (its Send 6, one row refused), `changed` (Show
@@ -143,8 +143,8 @@ const EDITS = [
   ),
 ];
 
-/** What LifeOS said of each sent mail, for `queued`: the newest still queued twelve minutes on, one sent, one taken back. */
-const SAID: Partial<OutboxItem>[] = [{ lifeos: "queued", decidedAt: Date.now() - 12 * 60_000 }, {}, { lifeos: "confirmed" }, { lifeos: "drafts" }];
+/** What LifeOS said of each sent mail, for `queued`: the newest still queued twelve minutes on, one no longer in LifeOS, one sent, one taken back. */
+const SAID: Partial<OutboxItem>[] = [{ lifeos: "queued", decidedAt: Date.now() - 12 * 60_000 }, { lifeos: "gone" }, { lifeos: "confirmed" }, { lifeos: "drafts" }];
 const sentList = (): OutboxItem[] => (state === "queued" ? SENT.map((item, i) => ({ ...item, ...SAID[i] })) : SENT);
 
 const OFFER: GrantOffer = { id: "go_1", workspaceId: "ws", kind: "mail.send", label: "Mail to dana.lee@purdue.edu from landon@purdue.edu", routineId: null, from: SENT[0]!.ref, count: 5, createdAt: at(20, 9, 41) };

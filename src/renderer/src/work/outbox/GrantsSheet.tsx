@@ -68,7 +68,8 @@ export function GrantsSheet({
                         <span className="flex min-w-0 flex-1 flex-col">
                           {/* The grant's name is what it lets go unasked: read whole, never cut. */}
                           <span className="break-words text-[13px] leading-5">{grant.label}</span>
-                          <span className="truncate text-xs leading-4 text-muted-foreground">{grantLine(grant.kind, grant.createdAt)}</span>
+                          {/* The record wraps, never cut: a narrow sheet reads its whole line. */}
+                          <span className="break-words text-xs leading-4 text-muted-foreground">{grantLine(grant.kind, grant.createdAt)}</span>
                         </span>
                         {may(grant.environmentId, "work.outbox.ungrant") ? (
                           <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" disabled={busy !== null} onClick={() => void remove(grant)}>

@@ -15,6 +15,7 @@ const day = vi.hoisted(() => ({
   alone: false,
   // The calendars LifeOS syncs.
   sources: [] as { kind: string; channel?: string; account?: string; label?: string }[],
+  sourcesLoading: false,
 }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
@@ -27,7 +28,7 @@ vi.mock("../shell/lifeos", async (original) => ({
       if (day.event === "failed") return { status: "failed", error: "Server error" };
       return { status: "ready", value: day.event === "ready" ? { _id: "ev1", title: "Kickoff call", sector: "unify", startsAt: Date.UTC(2026, 10, 21, 20), allDay: false } : null };
     }
-    if (name === "sources:list") return { status: "ready", value: day.sources };
+    if (name === "sources:list") return day.sourcesLoading ? { status: "loading" } : { status: "ready", value: day.sources };
     if (name !== "events:range") return { status: "ready", value: null };
     if (day.loading) return { status: "loading" };
     if (day.alone) return { status: "ready", value: [{ _id: "ev1", title: "Kickoff call", sector: "unify", startsAt: Date.UTC(2026, 10, 21, 20), allDay: false }] };
@@ -83,6 +84,36 @@ describe("a held reply on a shared calendar", () => {
     const row = [...document.querySelectorAll("dt")].find((dt) => dt.textContent === "Calendar")!;
     expect(row.nextElementSibling!.textContent).toBe("Esports Staff");
     expect(document.body.textContent).not.toContain("c_9f2k1");
+  });
+
+  it("holds the Calendar row with a bone while the calendars are read, never the account's address in the name's place", () => {
+    day.event = "ready";
+    day.sourcesLoading = true;
+    const item = { kind: "calendar.op", payload: { id: "op4", kind: "accept", eventId: "ev1", account: "landon@purdue.edu", calendarId: "c_9f2k1@group.calendar.google.com" }, sector: "purdue" } as never;
+    try {
+      const { rerender } = render(<View item={item} env="box" />);
+      const value = () => [...document.querySelectorAll("dt")].find((dt) => dt.textContent === "Calendar")!.nextElementSibling!;
+      expect(value().querySelector("[data-slot=skeleton]")).not.toBeNull();
+      expect(document.body.textContent).not.toContain("landon@purdue.edu");
+      day.sourcesLoading = false;
+      day.sources = [{ kind: "gcal", channel: "c_9f2k1@group.calendar.google.com", account: "landon@purdue.edu", label: "Esports Staff" }];
+      rerender(<View item={item} env="box" />);
+      expect(value().textContent).toBe("Esports Staff");
+    } finally {
+      day.sourcesLoading = false;
+    }
+  });
+
+  it("names a calendar that is the account itself at once, with no bone", () => {
+    day.event = "ready";
+    day.sourcesLoading = true;
+    try {
+      render(<View item={{ kind: "calendar.op", payload: { id: "op5", kind: "accept", eventId: "ev1", account: "landon@purdue.edu" }, sector: "purdue" } as never} env="box" />);
+      const value = [...document.querySelectorAll("dt")].find((dt) => dt.textContent === "Calendar")!.nextElementSibling!;
+      expect(value.textContent).toBe("landon@purdue.edu");
+    } finally {
+      day.sourcesLoading = false;
+    }
   });
 });
 

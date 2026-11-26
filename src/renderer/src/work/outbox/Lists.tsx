@@ -12,6 +12,7 @@ import { heldWhen } from "./when";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { cn } from "../../lib/cn";
 import { clockTime } from "../../lib/duration";
+import { lifeosWords } from "./model";
 import { KindGlyph, rowWords } from "./parts";
 import type { HostItem } from "./store";
 import { doneLine, decidedAt, FOLD_AT, FOLD_SHOWS, itemKey, rowSide, tickable, type Section } from "./waiting";
@@ -71,12 +72,14 @@ function Row({
         onClick={onPick}
         className={cn("h-8 flex-nowrap gap-2 rounded-md py-0 pe-2 ps-7 text-left text-[13px] leading-5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5")}
       >
-        <span className={cn("min-w-0 shrink truncate", snippet && "max-w-[45%]")}>{act}</span>
-        {about ? (
-          <span className={cn("min-w-0 flex-1 truncate text-muted-foreground", snippet ? "shrink" : "shrink-[100] @max-[40rem]/outbox:hidden")}>{about}</span>
-        ) : null}
+        {/* The act and what it is about share one line that wraps into a hidden second: what it is about stands at 64px or
+            more, else drops there whole, never a stub ("a…"). */}
+        <span className="flex h-5 min-w-0 flex-1 flex-wrap gap-x-2 overflow-hidden">
+          <span className={cn("min-w-0 max-w-full truncate", snippet && "max-w-[45%]")}>{act}</span>
+          {about ? <span className={cn("min-w-16 flex-1 basis-16 truncate text-muted-foreground", !snippet && "@max-[40rem]/outbox:hidden")}>{about}</span> : null}
+        </span>
         {/* Its own column at the row's end whether or not what it is about shows; on a very narrow row it gives way first, so the act is read. */}
-        <span className={cn("ms-auto shrink-0 text-xs tabular-nums @max-[15rem]/row:hidden", snippet && "@max-[30rem]/row:hidden", strong ? "text-foreground" : "text-muted-foreground")}>{side}</span>
+        <span className={cn("ms-auto shrink-0 text-xs tabular-nums @max-[15rem]/row:hidden", strong ? "text-foreground" : "text-muted-foreground")}>{side}</span>
       </ItemButton>
       {/* The glyph column: the kind's glyph, which gives way to the tick on hover, and to every tick while any row is ticked. */}
       <span className="pointer-events-none absolute start-2 top-2 grid size-4 place-items-center">{lead}</span>
@@ -171,7 +174,8 @@ export function WaitingList({
           <section key={section.key} aria-label={label} data-outbox-section={section.kind} className={GROUP}>
             {section.kind === "thread" ? (
               <Heading>
-                <SectorDot sector={section.sector} className="size-4 shrink-0" />
+                {/* 4px to the title, which so stands on its rows' words at 28px. */}
+                <SectorDot sector={section.sector} className="-me-1 size-4 shrink-0" />
                 <span className="min-w-0 shrink truncate font-medium">{section.title}</span>
                 {section.job ? <span className="min-w-0 flex-1 shrink-[1000] truncate text-muted-foreground">{section.job}</span> : <span className="flex-1" />}
                 {tickables.length > 1 ? (
@@ -316,7 +320,8 @@ export function DoneList({ days, current, stop, now, onPick }: { days: { label: 
 /** One Done row, memoised as a waiting row is. */
 const DoneRow = memo(function DoneRow({ item, stop, current, now, onPick }: { item: HostItem; stop: boolean; current: boolean; now: number; onPick: (item: HostItem) => void }) {
   const { act, about, outcome } = doneLine(item, rowWords(item), now);
-  const queued = item.state === "sent" && item.lifeos === "queued";
+  // What LifeOS holds or put back wears its state's mark (queued, or stopped for drafts and gone), as its outcome says.
+  const lifeos = lifeosWords(item, now);
   return (
     <Row
       rowKey={itemKey(item)}
@@ -326,7 +331,7 @@ const DoneRow = memo(function DoneRow({ item, stop, current, now, onPick }: { it
       about={about}
       side={outcome ?? clockTime(decidedAt(item))}
       onPick={() => onPick(item)}
-      lead={queued ? <StatusMark state="queued" word={false} /> : <KindGlyph kind={item.kind} />}
+      lead={lifeos ? <StatusMark state={lifeos.state} word={false} /> : <KindGlyph kind={item.kind} />}
     />
   );
 });

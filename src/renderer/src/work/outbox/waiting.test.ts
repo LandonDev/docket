@@ -147,7 +147,10 @@ describe("Done", () => {
     expect(doneLine(item({ state: "sent" }), words, NOW)).toEqual({ act: "Sent to Dana Lee", about: "Re: budget" });
     expect(doneLine(item({ state: "discarded" }), words, NOW)).toEqual({ act: "Send to Dana Lee", about: "Re: budget", outcome: "Discarded" });
     expect(doneLine(item({ state: "stale" }), words, NOW)).toEqual({ act: "Send to Dana Lee", about: "Re: budget", outcome: "Out of date" });
-    expect(doneLine(item({ state: "sent", lifeos: "queued", decidedAt: NOW - 12 * 60_000 }), words, NOW).about).toBe("Queued in LifeOS for 12m");
+    // What LifeOS holds or put back is the outcome, in the trailing slot, never the cut "about": a mail back in drafts never reads as sent.
+    expect(doneLine(item({ state: "sent", lifeos: "queued", decidedAt: NOW - 12 * 60_000 }), words, NOW)).toEqual({ act: "Send to Dana Lee", about: "Re: budget", outcome: "Queued in LifeOS for 12m" });
+    expect(doneLine(item({ state: "sent", lifeos: "drafts" }), words, NOW)).toEqual({ act: "Send to Dana Lee", about: "Re: budget", outcome: "Back in drafts in LifeOS" });
+    expect(doneLine(item({ state: "sent", lifeos: "gone" }), words, NOW)).toEqual({ act: "Send to Dana Lee", about: "Re: budget", outcome: "No longer in LifeOS" });
   });
 });
 

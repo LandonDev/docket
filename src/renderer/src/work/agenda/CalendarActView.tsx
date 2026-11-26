@@ -65,6 +65,9 @@ function Body({ op, event, session, sector, read = "none", onRetry, retrying = f
   const live = useHostLive(session.environmentId);
   const waits = !down && !session.client && live.waits;
   const reads = (read !== "none" && missing.length > 0) || from !== null;
+  // A calendar named by its id is named by the list of synced calendars: while that list is read, its row is a bone,
+  // never the account's address that a moment later turns into the calendar's name.
+  const naming = synced.status === "loading" && !down && !waits && !!op.calendarId && op.calendarId !== op.account;
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-5">
       <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
@@ -81,7 +84,13 @@ function Body({ op, event, session, sector, read = "none", onRetry, retrying = f
         {fields.map((field) => (
           <div key={field.label} className="contents">
             <dt className="truncate text-muted-foreground">{field.label}</dt>
-            <dd className="min-w-0 break-words text-foreground">{field.people ? <People people={field.people} /> : field.value}</dd>
+            {naming && field.label === "Calendar" ? (
+              <dd data-field-bones="" className="flex h-5 items-center">
+                <Skeleton className="h-3 w-36" />
+              </dd>
+            ) : (
+              <dd className="min-w-0 break-words text-foreground">{field.people ? <People people={field.people} /> : field.value}</dd>
+            )}
           </div>
         ))}
       </dl>

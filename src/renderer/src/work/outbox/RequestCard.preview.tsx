@@ -11,11 +11,11 @@ import { RequestCard } from "./RequestCard";
  * A thread's request card over one fixed host, for `bun run ui:preview
  * src/renderer/src/work/outbox/RequestCard.preview.tsx#RequestPreview --props '{"state":"waiting"}'`:
  * `waiting` (three roster mails, one rewritten since the thread asked), `mixed` (two sends and a discard: Approve 3),
- * `done` (answered: one queued in LifeOS, one not sent, one left out), `page` (the Outbox's detail frame). Rendered by
- * nothing in the app.
+ * `done` (answered: one queued in LifeOS, one not sent, one left out), `page` (the Outbox's detail frame), `loading`
+ * (the card while its request is read). Rendered by nothing in the app.
  */
 
-type State = "waiting" | "mixed" | "done" | "page";
+type State = "waiting" | "mixed" | "done" | "page" | "loading";
 let state: State = "waiting";
 const NOW = Date.now();
 const WS = { id: "ws1", name: "Purdue Esports", path: "/w", kind: "work", sector: "purdue", createdAt: 1 };
@@ -89,6 +89,8 @@ const link = {
   onClose: () => () => {},
   onPush: () => () => {},
   request<T>(method: string): Promise<T> {
+    // The request's read is out for as long as the page is looked at.
+    if (state === "loading" && method === "work.outbox.request.get") return new Promise<T>(() => {});
     try {
       return Promise.resolve(answers(method) as T);
     } catch (err) {

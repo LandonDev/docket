@@ -427,6 +427,29 @@ describe("the Outbox", () => {
     expect(screen.getByRole("tab", { name: "Waiting" }).getAttribute("aria-selected")).toBe("true");
   });
 
+  it("brings the row of an item asked for into the list's view, at its nearest edge, with no motion", async () => {
+    await loadOutbox();
+    const seen: { row: string | null; how: unknown }[] = [];
+    const had = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
+    Element.prototype.scrollIntoView = function (this: Element, how?: unknown) {
+      seen.push({ row: this.getAttribute("data-outbox-row"), how });
+    };
+    try {
+      wantOutboxItem("box:lifeos:o3");
+      render(<OutboxView besideRail onClose={() => undefined} />);
+      await waitFor(() => expect(seen.map((s) => s.row)).toContain("box:lifeos:o3"), { timeout: 5000 });
+      expect(seen.find((s) => s.row === "box:lifeos:o3")!.how).toEqual({ block: "nearest" });
+      // Once: his own pick after it does not scroll the list under him.
+      const before = seen.length;
+      fireEvent.click(screen.getAllByText("Send to Dana Lee")[0]!);
+      await act(async () => void (await loadOutbox()));
+      expect(seen.slice(before).filter((s) => s.row === "box:lifeos:o3")).toEqual([]);
+    } finally {
+      if (had) Object.defineProperty(Element.prototype, "scrollIntoView", had);
+      else delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
   it("an item asked for that is gone leaves the page as it opens, and is forgotten when the page closes", async () => {
     wantOutboxItem("box:lifeos:nothing");
     const view = render(<OutboxView besideRail onClose={() => undefined} />);
@@ -711,7 +734,13 @@ describe("the Outbox", () => {
     const row = screen.getAllByText("Send to Dana Lee").find((el) => el.closest("li"))!.closest("li")!;
     const button = row.querySelector("button")!;
     expect(button.className).toContain("h-8");
-    expect([...button.children].map((c) => c.textContent)).toEqual(["Send to Dana Lee", "Budget", expect.stringMatching(/\d:\d\d [AP]M|\w{3} \d/)]);
+    // The act and what it is about share one line that wraps into a hidden second; the trailing word stands apart.
+    const [words, side] = [...button.children];
+    expect([...words!.children].map((c) => c.textContent)).toEqual(["Send to Dana Lee", "Budget"]);
+    expect(words!.className).toContain("flex-wrap");
+    expect(words!.className).toContain("overflow-hidden");
+    expect(words!.lastElementChild!.className).toContain("min-w-16");
+    expect(side!.textContent).toMatch(/\d:\d\d [AP]M|\w{3} \d/);
   });
 
   it("when the item he reads is decided elsewhere, the detail empties rather than slide the next one under Send", async () => {
@@ -1492,13 +1521,15 @@ describe("council round 2: the detail and the list", () => {
     expect(within(detail).getByRole("button", { name: "Edit" }).getAttribute("data-variant")).toBe("secondary");
   });
 
-  it("rows that share an act keep what tells them apart before the time", async () => {
+  it("rows that share an act keep what tells them apart, and their time", async () => {
     const echo = (id: string, post: string) => ({ ...addonCall, ref: { at: "host" as const, id }, workspaceId: "ws1", summary: `Echo with League: ${post}` });
     world.items.set("box", [echo("e1", "Roster post 11"), echo("e2", "Roster post 12")]);
     world.items.set("mac", []);
     await open().catch(() => undefined);
     const row = await waitFor(() => screen.getByText("Roster post 11").closest("button")!, { timeout: 5000 });
     expect(screen.getByText("Roster post 11").className).not.toContain("@max-[40rem]/outbox:hidden");
-    expect(row.lastElementChild!.className).toContain("@max-[30rem]/row:hidden");
+    // The time keeps its column at every width but a very narrow row's.
+    expect(row.lastElementChild!.className).not.toContain("@max-[30rem]/row:hidden");
+    expect(row.lastElementChild!.className).toContain("@max-[15rem]/row:hidden");
   });
 });

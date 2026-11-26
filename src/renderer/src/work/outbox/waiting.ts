@@ -221,15 +221,16 @@ export function whoWords(item: Pick<Item, "decidedBy" | "via">, o: { grantLabel?
 }
 
 /**
- * A Done row's act, its line and its outcome: what went says so in the past (or that LifeOS still holds it); what he
- * put away keeps its own words and says how in the row's trailing slot ("Discarded", "Out of date"), which holds at
- * every width while what it is about gives way first.
+ * A Done row's act, its line and its outcome: what went says so in the past; what did not go keeps its own words and
+ * says why in the row's trailing slot ("Discarded", "Out of date", and what LifeOS did with a mail: "Queued in LifeOS
+ * for 12m", "Back in drafts in LifeOS", "No longer in LifeOS"), which holds at every width while what it is about gives
+ * way first, so a mail put back never reads as sent.
  */
 export function doneLine(item: Item, words: { act: string; about: string | null }, now = Date.now()): { act: string; about: string | null; outcome?: string } {
   if (item.state === "discarded") return { act: words.act, about: words.about, outcome: "Discarded" };
   if (item.state === "stale") return { act: words.act, about: words.about, outcome: "Out of date" };
-  const queued = lifeosLine(item, now);
-  if (queued) return { act: words.act, about: queued };
+  const lifeos = lifeosLine(item, now);
+  if (lifeos) return { act: words.act, about: words.about, outcome: lifeos };
   return { act: pastAct(words.act, item.verb, item.kind), about: words.about };
 }
 

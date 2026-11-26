@@ -123,7 +123,7 @@ export function SummaryList({
                 </Button>
               </div>
               {opened ? (
-                <div data-summary-open className="border-t border-border pt-2 pb-4 ps-12 @max-[28rem]/summary:ps-6">
+                <div data-summary-open className="pt-1 pb-4 ps-12 @max-[28rem]/summary:ps-6">
                   <ItemInPlace item={row.item} host={host?.(row.item)} />
                 </div>
               ) : null}

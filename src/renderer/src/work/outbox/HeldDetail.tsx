@@ -25,6 +25,7 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { Facts } from "../../surfaces/settings/hosts/Facts";
 import { ActView } from "../acts/ActView";
 import { kindHeading } from "../acts/kindRows";
+import { UnderItsAct } from "../acts/underItsAct";
 import { Chat } from "../icons";
 import { ownZone, scheduleLine } from "work-kit/mail/lib/zones";
 import { itemFailWords, pressFailWords } from "./failWords";
@@ -367,10 +368,14 @@ export function ItemNotes({ item, host, refused, unread, unreadError, onRetry, s
       <div key="changed">
         <Note glyph={<Pencil className="size-3.5" />}>
           {changedWords(item.changed)}
+          {/* A link in the note's words, after a space: wrapped, it starts on their edge, not a button's padding in. */}
           {first !== undefined && onShowChanges ? (
-            <Button variant="ghost" size="xs" className="-my-0.5 ms-1 align-baseline" aria-expanded={showChanges} onClick={() => onShowChanges(!showChanges)}>
-              {showChanges ? "Hide changes" : "Show changes"}
-            </Button>
+            <>
+              {" "}
+              <Button variant="link" size="xs" className="h-auto px-0 align-baseline text-[13px]" aria-expanded={showChanges} onClick={() => onShowChanges(!showChanges)}>
+                {showChanges ? "Hide changes" : "Show changes"}
+              </Button>
+            </>
           ) : null}
         </Note>
       </div>,
@@ -442,7 +447,10 @@ export function ItemInPlace({ item: listed, host }: { item: HostItem; host?: str
       <Effect item={item} compact />
       <ItemNotes item={item} host={host} />
       <div className="mt-3">
-        <ActView item={item} env={item.environmentId} />
+        {/* Its row above already says the act in the host's words, the chat or channel of a post included. */}
+        <UnderItsAct.Provider value>
+          <ActView item={item} env={item.environmentId} />
+        </UnderItsAct.Provider>
       </div>
     </div>
   );

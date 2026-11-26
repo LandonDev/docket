@@ -181,6 +181,8 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
   }, [selected, first]);
   // An item a notice asked for (the digest's press): picked once a list holds it, in the tab that holds it.
   const wanted = useWantedOutboxItem();
+  /** That item's key until its row is brought into view. */
+  const revealing = useRef<string | null>(null);
   useEffect(() => {
     if (!wanted) return;
     // A request is picked at once: its card reads it from its host. An item by its host's number ("Held as item 12") is
@@ -193,6 +195,7 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     // Not held yet is not "gone": the lists the page opens with may be from before the item was made.
     if (!held) return;
     touched.current = true;
+    revealing.current = key;
     setTab(held);
     setSelected(key);
     setOpened(true);
@@ -204,6 +207,16 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     // eslint-disable-next-line react-hooks/exhaustive-deps -- picked once, when the item first shows
   }, [wanted, outbox, requests]);
   useEffect(() => () => wantOutboxItem(null), []);
+  // The row of an item picked from elsewhere (a toast, Today, a transcript's held row) is brought into the list's view
+  // once it renders, past a fold or below the pane's edge: no motion, the nearest edge.
+  useEffect(() => {
+    const key = revealing.current;
+    if (key === null || key !== selected) return;
+    const row = list.current?.querySelector<HTMLElement>(`[${ROW_ATTR}="${CSS.escape(key)}"]`);
+    if (!row) return;
+    revealing.current = null;
+    row.scrollIntoView?.({ block: "nearest" });
+  });
 
   // Ticks hold only items still waiting that a tick may take.
   const tickedItems = outbox.waiting.filter((item) => ticked.has(itemKey(item)) && tickable(item));

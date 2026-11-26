@@ -69,7 +69,8 @@ describe("the held reply's view", () => {
   it("stands on the payload's own words while LifeOS has not answered", () => {
     lifeos.answer = false;
     render(<View env="box" item={item({ chatId: "c_dana", source: "slack", chat: "Dana Lee", text: "Yes" })} />);
-    expect(place()).toBe("Slack, Dana Lee");
+    // The title says "Reply in Slack to Dana Lee": with no workspace known yet the line has nothing to add.
+    expect(document.querySelector("[data-place]")).toBeNull();
     // A line of bones holds the quote's place, so the words do not move when it comes.
     expect(document.querySelector("[data-answers]")!.getAttribute("data-answers")).toBe("loading");
   });

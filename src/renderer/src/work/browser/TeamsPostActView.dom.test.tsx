@@ -3,6 +3,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ACT_VIEWS } from "../acts/registry";
+import { UnderItsAct } from "../acts/underItsAct";
 import { View } from "./TeamsPostActView";
 
 afterEach(cleanup);
@@ -22,6 +23,16 @@ describe("the Teams post's view", () => {
     expect(container.textContent!.split("Esports staff").length - 1).toBe(1);
     expect(container.querySelector('[data-slot="act-payload"]')).toBeTruthy();
     expect(container.querySelector("dl")).toBeNull();
+  });
+
+  it("under a row that already says its act (the summary list opened in place) leaves the chat to the row", () => {
+    const { container } = render(
+      <UnderItsAct.Provider value>
+        <View item={{ kind: "teams.post", payload: { chat: "Esports staff, General", text: "Bus at 7" } } as never} env="mac" />
+      </UnderItsAct.Provider>,
+    );
+    expect(container.querySelector("[data-place]")).toBeNull();
+    expect(container.textContent).not.toContain("Esports staff");
   });
 
   it("quotes words with nothing to see by their escapes, never a blank post", () => {

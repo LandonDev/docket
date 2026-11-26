@@ -1070,17 +1070,24 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     rows shows four and "N more". An out-of-date item stays in its group.
   - **A row** is one 32px line (`Lists.tsx`): the kind's glyph (the red
     mark for a failed send, the working dot while sending), the act, what
-    it is about muted (it gives way first, and hides under 640px), and one
-    trailing word (`rowSide`): the event's start in the foreground (Starts
-    soon), when it goes (Scheduled), "Out of date", "Sending", "Changed"
-    (the thread rewrote it), else when it was held. Never amber.
+    it is about muted (it gives way first: at 64px or more, else dropped
+    whole into the line's hidden second line, never a stub; hidden under
+    640px), and one trailing word (`rowSide`): the event's start in the
+    foreground (Starts soon), when it goes (Scheduled), "Out of date",
+    "Sending", "Changed" (the thread rewrote it), else when it was held.
+    Never amber. Rows of one act keep their time beside what tells them
+    apart. A thread group's title stands on its rows' words (the dot 4px
+    before it). An item opened from elsewhere (a toast, Today, a
+    transcript's held row) is picked and its row brought into the list's
+    view, at the nearest edge, with no motion.
   - **The detail** (`HeldDetail.tsx`, also Today's sheet): the facts line
     (the job's dot and name, "from <thread>" or "from the routine <name>"
     as a link that opens it, when it was held), the act as the title, the
     host's `effect` sentence at 14px, then the notes that apply, one line
     each with a 14px glyph (`ItemNotes`): "Not sent. <why>" (the red mark,
     a refused press the same way), "Out of date. <why>", "The thread
-    rewrote this at 9:20 AM." with Show changes (`changed.first` from
+    rewrote this at 9:20 AM." with Show changes, a link in the note's
+    words that starts on their edge when it wraps (`changed.first` from
     `get`; the fields that moved and the body's words out and in,
     `changesOf`, drawn in the thing's own slot in place of its view, never a
     second copy: the fields in the view's order, each address muted after its
@@ -1122,7 +1129,7 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     add-on's call that names its people counts as a mail there, and one that
     names no one says its tool and add-on, "Echo with League, 3 times"), a row
     per item with its tick, glyph, act, about and a chevron that opens it in
-    place (sentence, notes and the thing, no border). A computer act, an
+    place (sentence, notes and the thing, no border and no rule over it). A computer act, an
     act read from a live screen and a LifeOS reply that quotes its mail
     (read whole) say "Open to send" and stay out of Send N. The bar is
     Clear, Discard N (the same popover) and Send N joined to Send later
@@ -1135,12 +1142,16 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     stand at the revision their result showed (`Batch.revs`), with it; one
     whose words moved since, or that may have gone, opens in its own detail
     ("Open in the Outbox"), never a retry on the old result. M5's
-    request card draws the same `SummaryList`.
+    request card draws the same `SummaryList`; while its request is read it
+    is the card's own frame with the head, the ask, two rows and the
+    presses' place in bones, so nothing moves when it lands.
   - **Done** (`DoneList`, `DoneDetail.tsx`): what went, what he discarded
     and what went out of date that he put away (`list({show: 'done'})`), by
-    day, newest first; a row's trailing slot says "Discarded" or "Out of
-    date" (at every width), its line "Queued in LifeOS for 12m" while LifeOS
-    holds it. The head says who decided (`whoWords`): "by
+    day, newest first; a row's trailing slot says "Discarded", "Out of
+    date", or what LifeOS did with a mail: "Queued in LifeOS for 12m",
+    "Back in drafts in LifeOS", "No longer in LifeOS" (each at every width,
+    the queued or stopped mark in the glyph's place), so a mail put back
+    never reads as sent. The head says who decided (`whoWords`): "by
     you", "from another device", "by the grant …", "from your approval in
     <thread>" (`via` `request:<id>`), "scheduled by you". A discard shows his
     words ("Discarded. You told the thread: "…""). The Result's way back,
@@ -1160,7 +1171,7 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     over the list with Retry; "No longer waiting" when another press
     decided the picked item; under 640px of page the list and the detail
     take turns, the detail's top row going back. Grants is a sheet, as
-    before. A failure inside an answer is worded by `failWords.ts`.
+    before; a grant's name and its "Made …" line wrap whole, never cut. A failure inside an answer is worded by `failWords.ts`.
 - **Results** (`ResultsSection.tsx`) is a right-panel section of a Work
   root thread (`results` in lib/rightPanel.ts, the outbox glyph), listed
   only while it has a row: "Can undo" and "Can't undo", each row with its
@@ -1310,10 +1321,13 @@ JSON. A payload a view cannot read takes the generic view, so nothing that
 goes is hidden. The shared parts are in acts/ActParts.tsx and acts/ChangeView.tsx.
 
 - `teams.post` (browser/TeamsPostActView.tsx): the post under a 12px line
-  that names its chat, his name over its words.
-- `chat.reply` (messages/ChatReplyAct.tsx): the same shape; the place line
-  is the service and the conversation, and the message it answers is quoted
-  over his name.
+  that names its chat, his name over its words; opened in place under a row
+  that already names the chat (the summary list, `UnderItsAct` in
+  acts/underItsAct.ts), the post alone.
+- `chat.reply` (messages/ChatReplyAct.tsx): the same shape; a place line
+  (the service, the account or workspace, the conversation) only where it
+  adds the account or workspace the title ("Reply in Slack to Dana Lee")
+  lacks, and the message it answers quoted over his name.
 - `office.edit`, `google.edit` (office/EditActView.tsx,
   google/EditActView.tsx): the app and account, then one block per change,
   parted by hairlines: where, the words taken out muted and struck, the words

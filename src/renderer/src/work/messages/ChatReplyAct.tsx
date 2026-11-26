@@ -157,11 +157,13 @@ export function ReplyBody({
   // words still say "You".
   const named = chat?.kind === "direct" && answered !== null && typeof answered === "object" && answered.who === (reply.to ?? reply.chat);
   // Where it lands, as a place is named across Work, the service first: "Slack, Starboard Games, #design-review". Whom a
-  // thread's reply answers is the quote's writer.
-  const place = `${chat ? chatFact(chat) : SOURCE_NAME[reply.source]}, ${reply.chat}`;
+  // thread's reply answers is the quote's writer. The title already says the service and the chat ("Reply in Teams to
+  // Sam Ortiz"): the line is drawn only where it adds the account or workspace.
+  const fact = chat ? chatFact(chat) : SOURCE_NAME[reply.source];
+  const place = fact === SOURCE_NAME[reply.source] ? null : `${fact}, ${reply.chat}`;
   return (
     <div data-slot="act-payload" className="flex min-w-0 flex-col gap-3">
-      <PlaceLine>{place}</PlaceLine>
+      {place ? <PlaceLine>{place}</PlaceLine> : null}
       {/* The quote's slot holds its place through every state. */}
       <PostedAs
         above={
