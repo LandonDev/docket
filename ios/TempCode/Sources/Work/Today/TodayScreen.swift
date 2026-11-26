@@ -768,11 +768,11 @@ struct TodayBones: View {
 
 /// A gap over a line that stands for whole sections (LifeOS down or connecting; the desktop's `mt-6`): set off from
 /// the rows above it, never read as one more of them. With the list's header floor at zero (TodayScreen) the gap
-/// and the row's own padding land near the desktop's 24 pt, not 56.
+/// (a row's own vertical padding again) and the row's padding land near the desktop's 24 pt, not 56.
 private struct PageLineGap: View {
     var body: some View {
         Color.clear
-            .frame(height: 8)
+            .frame(height: Layout.rowVertical)
             .listRowInsets(EdgeInsets())
             .accessibilityHidden(true)
     }

@@ -3240,7 +3240,7 @@ own row says one row down (`TodayModel.workListLine`), and where the tab opens a
   desktop passes a down reader over (`LifeReach.reach`'s `down`), and keeps that host while it can read: the one
   passed over takes the day back only once the host read in its place is down (`LifeReach.PassedOver`, the desktop's
   `tried`). The LifeOS sections give way to one line, set off from the rows above by a gap near the desktop's 24 pt (the list's
-  header floor at zero, an 8 pt gap), when no
+  header floor at zero, a gap of a row's vertical padding), when no
   host can read LifeOS ("Not signed in to LifeOS on Box"; Retry only where LifeOS was silent), or
   when the host it reads through says LifeOS is connecting ("LifeOS is still connecting on Box", a spinner, no
   press); a host that did not answer is a line with Retry (`PillButton`, 44 pt) in the section it feeds; the hosts
