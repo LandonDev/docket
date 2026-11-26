@@ -269,7 +269,8 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
       setKind(null);
       return;
     }
-    if (e.key === "Tab") e.preventDefault();
+    // Tab goes on to the scope, the field's one other control, where there is one; Shift+Tab and Tab with none stay in the field.
+    if (e.key === "Tab" && (e.shiftKey || jobs.length < 2)) e.preventDefault();
   };
 
   return (

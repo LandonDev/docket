@@ -526,13 +526,15 @@ describe("Work search", () => {
     expect(opened.hits).toEqual([]);
   });
 
-  it("⌘↩ starts a thread about the highlighted thing, and Tab stays in the field", async () => {
+  it("⌘↩ starts a thread about the highlighted thing; Tab goes on to the scope, Shift+Tab stays in the field (council R3-A6)", async () => {
     await mount();
     await type("budget");
     const chip = { kind: "mail" as const, label: "Budget m1", ref: { at: "lifeos" as const, table: "mailThreads" as const, id: "m1" } };
     await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail", { chip })])]));
-    const tab = fireEvent.keyDown(field(), { key: "Tab" });
-    expect(tab).toBe(false);
+    // With jobs to choose from, Tab is the browser's own: the scope button is the field's next stop.
+    expect(fireEvent.keyDown(field(), { key: "Tab" })).toBe(true);
+    expect(document.querySelector("[data-work-search-scope]")).not.toBeNull();
+    expect(fireEvent.keyDown(field(), { key: "Tab", shiftKey: true })).toBe(false);
     await press("Enter", { metaKey: true });
     expect(opened.threads).toEqual(["m1"]);
     expect(opened.hits).toEqual([]);
