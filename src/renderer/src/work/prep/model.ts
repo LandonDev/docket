@@ -227,14 +227,12 @@ export const NOTES_FILE_ACCEPT = "audio/*,video/*,.vtt,.srt,.txt,.docx";
 export const uploadPercent = (progress: { sent: number; total: number } | null): number | null => (!progress || progress.total <= 0 ? null : Math.min(100, Math.round((progress.sent / progress.total) * 100)));
 
 /**
- * What a filing LifeOS did not take says in the state line: a short word that always fits, and for one task its
- * name, which gives way when the window is narrow. Why is said on each task's own row under To do (`failedWhy`),
- * where it wraps and is never cut, so several failures each keep their own cause.
+ * What a filing LifeOS did not take says in the state line: a short word that always fits, never the task's name,
+ * since its row under To do holds the title with why under it (`failedWhy`), where it wraps and is never cut, so
+ * several failures each keep their own cause and nothing is said twice.
  */
-export function failedWords(failed: readonly { id: string; error: string }[], tasks: readonly Pick<PrepSuggestion, "id" | "title">[]): { word: string; detail?: string } {
-  if (failed.length !== 1) return { word: `${failed.length} tasks were not added` };
-  const title = tasks.find((t) => t.id === failed[0]!.id)?.title;
-  return { word: "A task was not added", ...(title ? { detail: `“${title}”` } : {}) };
+export function failedWords(failed: readonly { id: string; error: string }[]): { word: string } {
+  return { word: failed.length === 1 ? "A task was not added" : `${failed.length} tasks were not added` };
 }
 
 /** Why a task's filing failed, for its own row; undefined for a task no filing failed on. */

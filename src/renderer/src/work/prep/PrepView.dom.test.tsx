@@ -932,9 +932,9 @@ describe("after the meeting", () => {
     await mount();
     fireEvent.click(section("To do").getByRole("button", { name: "Tick all" }));
     await act(async () => fireEvent.click(section("To do").getByRole("button", { name: "Add 2 tasks" })));
-    // a short word that always fits and the task's name in the line; why is on the task's own row, where it wraps
+    // a short word that always fits, never the task's name: the row under To do holds the title and why, where it wraps
     expect(screen.getByRole("status").textContent).toContain("A task was not added");
-    expect(screen.getByRole("status").textContent).toContain("“Send Maya the seat list”");
+    expect(screen.getByRole("status").textContent).not.toContain("Send Maya the seat list");
     expect(screen.getByRole("status").textContent).not.toContain("LifeOS did not answer");
     expect(section("To do").getAllByRole("listitem")[0]!.textContent).toContain("LifeOS did not answer");
     expect(section("To do").getAllByRole("listitem")[1]!.textContent).not.toContain("LifeOS did not answer");
@@ -1119,13 +1119,13 @@ describe("after the meeting", () => {
     host.fails = "Work is off on this host";
     await act(async () => fireEvent.click(dialog.getByRole("button", { name: "Cancel" })));
     await act(async () => {});
-    // still here, with why, and nothing typed lost
+    // still here, with why (the meeting's computer named), and nothing typed lost
     dialog = within(screen.getByRole("dialog", { name: "Notes" }));
-    expect(dialog.getByText("Work is off on this host")).toBeTruthy();
+    expect(dialog.getByText("Work is off on the box. Turn it on in Settings, Work.")).toBeTruthy();
     expect((dialog.getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Half a thought");
     // Escape leaves at once; the save it sends is refused too, so the dialog comes back on his words
     await act(async () => fireEvent.keyDown(screen.getByRole("dialog", { name: "Notes" }), { key: "Escape" }));
-    await vi.waitFor(() => expect(within(screen.getByRole("dialog", { name: "Notes" })).getByText(/The notes were not kept: Work is off on this host/)).toBeTruthy());
+    await vi.waitFor(() => expect(within(screen.getByRole("dialog", { name: "Notes" })).getByText(/The notes were not kept: Work is off on the box/)).toBeTruthy());
     expect((within(screen.getByRole("dialog", { name: "Notes" })).getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Half a thought");
     // once the host answers, Cancel keeps them and the dialog goes
     host.fails = null;
@@ -1337,6 +1337,24 @@ describe("a recording or a transcript as the notes", () => {
     host.page = facts({ rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: 1, meetingItemId: "it1" } }, notesFile: { kind: "meeting", itemId: "it1", title: "Staff sync.m4a", error: "The transcriber is not installed on box." } });
     await mount();
     expect(rowsOf("Notes")).toEqual(["Staff sync.m4aThe transcriber is not installed on box."]);
+  });
+
+  it("words the host's missing-transcriber sentence once, the computer named, with Open Settings where this window may set it up", async () => {
+    const sentence = "ffmpeg, sherpa-onnx and parakeet-tdt-v2 are not installed on this host; run scripts/work-tools/install.ts.";
+    const notesFile = { kind: "meeting" as const, itemId: "it1", title: "Staff sync.m4a", error: sentence };
+    host.page = facts({ rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: 1, meetingItemId: "it1" } }, notesFile });
+    await mount();
+    expect(rowsOf("Notes")).toEqual(["Staff sync.m4aThe transcriber is not set up on the box."]);
+    cleanup();
+    // The body draws the press it is handed under that row, and only for a reason that has one.
+    const setUp = vi.fn();
+    const page = host.page as PrepPage;
+    const { unmount } = render(<PrepPageBody page={page} faces={new Map()} now={NOW} host="the box" onSetUp={setUp} onRetry={() => {}} onAddPeople={() => {}} />);
+    fireEvent.click(section("Notes").getByRole("button", { name: "Open Settings" }));
+    expect(setUp).toHaveBeenCalledOnce();
+    unmount();
+    render(<PrepPageBody page={page} faces={new Map()} now={NOW} host="the box" onRetry={() => {}} onAddPeople={() => {}} />);
+    expect(section("Notes").queryByRole("button", { name: "Open Settings" })).toBeNull();
   });
 
   it("reads the page again when the meetings pillar says its recording was read or could not be, and for no other meeting", async () => {

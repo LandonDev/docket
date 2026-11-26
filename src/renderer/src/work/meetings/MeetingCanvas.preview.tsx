@@ -21,7 +21,7 @@ import { stretchOf } from "./model";
 import type { Player } from "./player";
 import { SAMPLE_NOTES, SAMPLE_SEGMENTS, sampleMeeting } from "./sample";
 
-export type PreviewMoment = "read" | "notes" | "stretch" | "tasks" | "tasks-down" | "tasks-connecting" | "busy" | "empty" | "long" | "error";
+export type PreviewMoment = "read" | "notes" | "stretch" | "tasks" | "tasks-down" | "tasks-connecting" | "busy" | "empty" | "long" | "error" | "unset";
 
 // The kind's chunk is lazy: landed before the first render, so a static page draws it.
 void CANVAS.meeting.chunk.load();
@@ -66,6 +66,9 @@ function meetingFor(moment: PreviewMoment): Meeting | null {
       return sampleMeeting({ status: "transcribing", segments: SAMPLE_SEGMENTS.slice(0, 4), progress: { phase: "words", done: T(14, 0), total: T(42, 10) } });
     case "error":
       return sampleMeeting({ status: "failed", segments: [], error: "It stopped at 9 of 42 minutes when the computer restarted. The recording is fine." });
+    case "unset":
+      // The host's own sentence (pipeline.ts `missingSentence`), worded on screen as one fact.
+      return sampleMeeting({ status: "failed", segments: [], error: "ffmpeg, sherpa-onnx and parakeet-tdt-v2 are not installed on this host; run scripts/work-tools/install.ts." });
     case "long":
       return summit();
     default:

@@ -12,6 +12,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { Textarea } from "../../components/ui/textarea";
 import { modOrCtrl } from "../../lib/keys";
 import { workErrorWords } from "../../lib/workErrorWords";
+import { hostInLine, useTranscriberSetUp } from "../meetings/setUp";
 import { useSessionMetaValue } from "../../lib/tcserver/store";
 import { choose, workViewNow } from "../../lib/workSwitch";
 import { Face } from "../mail/face";
@@ -228,10 +229,17 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
     kept.current = text;
     dropNotes(workspaceId, eventId);
   };
+  // Its reasons name the meeting's computer ("the box"), as the page's do.
+  const host = hostInLine(env);
+  const named = host ? { host } : {};
+  // The host's own refusal behind the line: a recording it cannot transcribe offers the way to set that up.
+  const [cause, setCause] = useState<unknown>(null);
+  const setUp = useTranscriberSetUp(env, error ? cause : null);
   const failed = (err: unknown) => {
-    const why = workErrorWords(err) || "The host did not answer";
+    const why = workErrorWords(err, named) || "The host did not answer";
     setPending(null);
     setUpload(null);
+    setCause(err);
     setError(why);
     return why;
   };
@@ -269,7 +277,7 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
     void (typed.trim().length > PREP_NOTES_MAX ? Promise.reject(new Error(TOO_LONG)) : keepPrepNotes(env, workspaceId, eventId, typed, { base: kept.current })).then(
       () => dropNotes(workspaceId, eventId),
       (err: unknown) => {
-        holdNotes(workspaceId, eventId, typed, err instanceof Error && err.message === TOO_LONG ? TOO_LONG : err instanceof NotesChanged ? err.message : `The notes were not kept: ${workErrorWords(err) || "the host did not answer"}`);
+        holdNotes(workspaceId, eventId, typed, err instanceof Error && err.message === TOO_LONG ? TOO_LONG : err instanceof NotesChanged ? err.message : `The notes were not kept: ${workErrorWords(err, named) || "the host did not answer"}`);
         reopenNotes.current?.(workspaceId, eventId);
       },
     );
@@ -298,6 +306,7 @@ export function NotesDialog({ env, page, onClose }: { env: string; page: PrepPag
         pending={pending}
         upload={upload}
         error={error}
+        {...(setUp ? { onSetUp: setUp } : {})}
         onCancel={saveThenClose}
         onClose={onClose}
         // His notes document or a recording the page holds are notes too: Follow up needs no typed words beside them.
@@ -335,6 +344,7 @@ export function NotesForm({
   onFollowUp,
   onFile,
   onDocument,
+  onSetUp,
   files = false,
 }: {
   text: string;
@@ -352,6 +362,8 @@ export function NotesForm({
   onDocument: (done: () => void) => void;
   /** the page already holds a file of the notes, so Follow up needs no words in the field */
   files?: boolean;
+  /** Open Settings under the error line, for a recording its computer cannot transcribe, where this window may set it up */
+  onSetUp?: () => void;
 }) {
   const close = useModalClose();
   const input = useRef<HTMLInputElement>(null);
@@ -425,6 +437,13 @@ export function NotesForm({
           />
         </div>
         <ErrorLine error={error} />
+        {error && onSetUp ? (
+          <div>
+            <Button type="button" variant="ghost" size="xs" className="-ms-2 -mt-1" onClick={onSetUp}>
+              Open Settings
+            </Button>
+          </div>
+        ) : null}
       </ModalBody>
       {/* The footer's own shape, with its Cancel a verb of this dialog's: it keeps his words before it closes, and spins while it does. */}
       <DialogFooter confirmLabel="Follow up" pending={pending === "follow" && !upload} busy={busy} disabled={empty}>

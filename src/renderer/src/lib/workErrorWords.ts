@@ -36,6 +36,12 @@ function importRefusal(c: { host: string; Host: string }, cause: string): string
   return `${c.Host} could not read this workbook. It may be damaged: open it in Excel and save it again.`;
 }
 
+/** The host's sentence for a recording it cannot transcribe: the meeting tools are not installed (pipeline.ts `missingSentence`). */
+const TRANSCRIBER_MISSING = /not installed on this host; run scripts\/work-tools\/install\b|\b(sherpa-onnx|parakeet[\w.-]*|pyannote[\w.-]*|wespeaker[\w.-]*|silero[\w.-]*)\b[^.]*\bnot installed\b/i;
+
+/** Whether a host's error is the transcriber not set up there, so the line can offer the way to set it up (`TranscriberSetUp`). */
+export const transcriberMissing = (error: unknown): boolean => TRANSCRIBER_MISSING.test(refusalWords(error));
+
 const RULES: Rule[] = [
   // The fence and the capability door (remote/fence.ts, shared/capabilities.ts).
   [/^forbidden: \S+ is outside app-managed roots/i, (c) => `${c.Host} does not let this window reach that file where it lies. Open it from Files on the computer that holds it.`],
@@ -88,6 +94,9 @@ const RULES: Rule[] = [
   // (signed out, a sign-in waiting, LifeOS not answering), so it reads as that: the cause and its fix are on Connections.
   [/lifeos is not signed in|lifeos is signed out/i, (c) => `Not signed in to LifeOS on ${c.host}. Sign in under Settings, Connections.`],
   [/lifeos did not start|lifeos is not connected/i, (c) => `${c.Host} cannot use LifeOS now. See why under Settings, Connections.`],
+  // The meetings transcriber's own tools missing (main/server/work/meetings/pipeline.ts `missingSentence`): one fact, the
+  // computer named, never the programs or the script that installs them. Before the drawing tools' rule, which names ffmpeg too.
+  [TRANSCRIBER_MISSING, (c) => `The transcriber is not set up on ${c.host}.`],
   // A tool a host draws or reads files with, named by its program: what he can do, never the program's name.
   [/\b(libreoffice|soffice|python-pptx|ffmpeg|ffprobe|pymupdf\w*)\b[^.]*\bnot installed\b/i, (c) => `${c.named ? `${c.Host} is missing the tools that draw and read this file.` : "The computer that draws this file is missing the tools for it."} Install them under Settings, Connections, Conversion tools.`],
   [/^no such guest link\b/i, (c) => `This link is not on ${c.host}. Look for it on the computer that made it.`],

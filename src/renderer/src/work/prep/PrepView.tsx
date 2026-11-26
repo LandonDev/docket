@@ -3,7 +3,8 @@ import type { PrepDraft, PrepFileRef, PrepLine, PrepPage, PrepPerson, PrepSugges
 import type { ContextChip } from "@shared/work";
 import { formatDue } from "work-kit/views/lib/format";
 import { useHostLinkDown } from "../shell/hostLinkDown";
-import { ArrowLeft, MoreHorizontal, X } from "../../chrome/icons";
+import { BackTitle } from "../shell/BackTitle";
+import { MoreHorizontal, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
@@ -12,6 +13,8 @@ import { ROW_PRESS } from "../../components/ui/press";
 import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
+import { moveBetweenRows } from "../rowKeys";
+import { hostInLine, useTranscriberSetUp } from "../meetings/setUp";
 import { defineChunk } from "../../lib/lazyChunk";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { useSessionMetaValue } from "../../lib/tcserver/store";
@@ -145,20 +148,7 @@ function useOfferSettled(workspaceId: string): boolean {
 export function Title(props: WorkViewProps) {
   const eventId = useEventId(props.workspace.id);
   const { page } = usePrepHeld(props.workspace.id, eventId);
-  return <BackTitle name={page?.event.title} onBack={() => openWorkView({ workspaceId: props.workspace.id, view: "agenda" })} />;
-}
-
-/** The way back, the shape every Work screen has (docs/DESIGN.md "Project screens"): a 24px arrow, where it goes, then where he is, muted. */
-export function BackTitle({ name, onBack }: { name: string | undefined; onBack: () => void }) {
-  return (
-    <span className="flex min-w-0 items-center gap-1 font-medium text-foreground">
-      <Button type="button" variant="ghost" size="icon-xs" aria-label="Back to Agenda" className="-ms-1.5 shrink-0 text-muted-foreground" onClick={onBack}>
-        <ArrowLeft />
-      </Button>
-      <span className="shrink-0">Agenda</span>
-      {name ? <span className="min-w-0 truncate font-normal text-muted-foreground">{name}</span> : null}
-    </span>
-  );
+  return <BackTitle back="Agenda" name={page?.event.title} onBack={() => openWorkView({ workspaceId: props.workspace.id, view: "agenda" })} />;
 }
 
 export function Head(props: WorkViewProps) {
@@ -382,6 +372,8 @@ export function View(props: WorkViewProps) {
   }, [eventId, workspaceId]);
   // His Retry on a page that did not load: the line stays, Retry spinning in place, until the read answers.
   const [pressed, setPressed] = useState(false);
+  // A recording this computer cannot transcribe: the way to set it up, where this window may.
+  const setUp = useTranscriberSetUp(props.env, page?.notesFile?.error);
   // A session that cannot read is the frame's to say (its sign-in or its line), never a second banner here.
   if (!props.lifeos.client) return sessionWaits(props.lifeos) ? <PrepSkeleton /> : null;
   if (!eventId) return <EmptyState title="No meeting is open" action={{ label: "Back to Agenda", onClick: () => openWorkView({ workspaceId, view: "agenda" }) }} />;
@@ -423,6 +415,8 @@ export function View(props: WorkViewProps) {
         verb={verb}
         briefWorking={briefWorking}
         offer={!offered}
+        host={hostInLine(props.env)}
+        {...(setUp ? { onSetUp: setUp } : {})}
         onRetry={retry}
         onAddPeople={() => openDialog("people", eventId)}
         onDecide={(ids, decision) => decidePrepTasks(props.env, workspaceId, eventId, ids, decision)}
@@ -477,16 +471,8 @@ export function PrepSkeleton() {
   );
 }
 
-/** Up and down between the page's rows. */
-function moveBetweenRows(e: KeyboardEvent<HTMLElement>): void {
-  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-  const row = (e.target as HTMLElement).closest<HTMLElement>("[data-page-row]");
-  if (!row) return;
-  const all = [...e.currentTarget.querySelectorAll<HTMLElement>("[data-page-row]")];
-  const next = all[all.indexOf(row) + (e.key === "ArrowDown" ? 1 : -1)];
-  e.preventDefault();
-  next?.focus();
-}
+/** Up and down between the page's rows (`moveBetweenRows`, every Work list's). */
+const rowKeys = (e: KeyboardEvent<HTMLElement>): void => void moveBetweenRows(e, "[data-page-row]");
 
 export interface PrepBodyProps {
   page: PrepPage;
@@ -507,6 +493,10 @@ export interface PrepBodyProps {
   onOpenDraft?: (draft: PrepDraft) => void;
   /** opens the file that holds the notes: beside its thread once one reads it, else (a document) beside a new one */
   onOpenNotesFile?: () => void;
+  /** the page's computer as a line names it ("the box"), for its reasons in his words */
+  host?: string | undefined;
+  /** Open Settings under a recording that computer cannot transcribe, where this window may set it up (`useTranscriberSetUp`) */
+  onSetUp?: () => void;
   /** Turn on, under his first brief: settles once the host has taken it */
   onAhead?: () => void | Promise<void>;
   onDismissOffer?: () => void;
@@ -518,7 +508,7 @@ export interface PrepBodyProps {
 }
 
 /** The page over a `PrepPage`, holding no query: the preview and the tests draw it as the app does. */
-export function PrepPageBody({ page, faces, now = Date.now(), verb = null, briefWorking, offer = false, hostHeld = false, onRetry, onAddPeople, onDecide, onOpenDraft, onOpenNotesFile, onAhead, onDismissOffer, refreshError = null, failedAtFirst, tickedAtFirst }: PrepBodyProps) {
+export function PrepPageBody({ page, faces, now = Date.now(), verb = null, briefWorking, offer = false, hostHeld = false, onRetry, onAddPeople, onDecide, onOpenDraft, onOpenNotesFile, host, onSetUp, onAhead, onDismissOffer, refreshError = null, failedAtFirst, tickedAtFirst }: PrepBodyProps) {
   const { event, workspaceId, doc } = page;
   const go = (view: string, target: Record<string, unknown>) => openWorkView({ workspaceId, view, ...target });
   const openLine = (line: PrepLine) => (line.ref ? () => openRef(workspaceId, line.ref!) : undefined);
@@ -569,13 +559,13 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, brief
     <>
       {stillFailed.length ? (
         // Retry is the one way to try again: the tasks it names cannot be ticked below, so no second button says the same.
-        hostHeld ? null : <ViewStateLine {...failedWords(stillFailed, after?.tasks ?? [])} onRetry={() => decide(stillFailed.map((f) => f.id), "accept")} />
+        hostHeld ? null : <ViewStateLine {...failedWords(stillFailed)} onRetry={() => decide(stillFailed.map((f) => f.id), "accept")} />
       ) : refreshError ? (
         <ViewStateLine word="This page did not refresh" detail={refreshError} onRetry={retryRead} />
       ) : problem ? (
         hostHeld ? null : <ViewStateLine word={problem} onRetry={retryRead} />
       ) : null}
-      <div ref={body} onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] ps-7 pe-6 py-6">
+      <div ref={body} onKeyDown={rowKeys} className="mx-auto w-full max-w-[720px] ps-7 pe-6 py-6">
         <header className="flex flex-col gap-0.5">
           <h1 className="text-base leading-6 font-semibold tracking-[-0.01em] text-pretty wrap-anywhere text-foreground select-text">{event.title || "Untitled meeting"}</h1>
           <p className="text-xs text-muted-foreground select-text">{whenLine(event, now)}</p>
@@ -587,7 +577,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, brief
           // The follow-up thread is reading his notes: its outcome will lead the page from here.
           <TextBones label="The outcome is being written" />
         ) : null}
-        {doc.notes ? <Notes key={notesLines(page)} text={doc.notes.text} lines={notesLines(page)} file={page.notesFile} onOpenFile={onOpenNotesFile} /> : null}
+        {doc.notes ? <Notes key={notesLines(page)} text={doc.notes.text} lines={notesLines(page)} file={page.notesFile} host={host} onOpenFile={onOpenNotesFile} onSetUp={onSetUp} /> : null}
         {after ? (
           <>
             <Section label="Decided" show={after.decisions.length > 0}>
@@ -824,7 +814,7 @@ const CLAMP = { 2: "line-clamp-2", 6: "line-clamp-6" } as const;
  * (six while they lead the page, two once the outcome stands over what they say), then Show all, offered only when
  * the words run past that at the width they are drawn at.
  */
-function Notes({ text, lines, file, onOpenFile }: { text: string; lines: 2 | 6; file: PrepPage["notesFile"]; onOpenFile: (() => void) | undefined }) {
+function Notes({ text, lines, file, host, onOpenFile, onSetUp }: { text: string; lines: 2 | 6; file: PrepPage["notesFile"]; host?: string | undefined; onOpenFile: (() => void) | undefined; onSetUp?: (() => void) | undefined }) {
   const [all, setAll] = useState(false);
   const [long, setLong] = useState(false);
   const words = useRef<HTMLParagraphElement>(null);
@@ -845,9 +835,15 @@ function Notes({ text, lines, file, onOpenFile }: { text: string; lines: 2 | 6; 
       <h2 className="mb-1 text-xs font-medium text-muted-foreground">Notes</h2>
       {file ? (
         <div role="list">
-          {/* Why a recording could not be read is not cut short: the meetings pillar passes a converter's own sentence through. */}
-          <LineRow text={file.title} line={file.error} wrap={!!file.error} onOpen={onOpenFile} />
+          {/* Why a recording could not be read, in his words and never cut short; a host's line never written for him
+              (a program's name, a script) is worded once (`workErrorWords`), else stands as the host said it. */}
+          <LineRow text={file.title} line={file.error ? workErrorWords(file.error, host ? { host } : {}) || "It could not be read." : undefined} wrap={!!file.error} onOpen={onOpenFile} />
         </div>
+      ) : null}
+      {file?.error && onSetUp ? (
+        <Button variant="ghost" size="xs" className="-ms-2 mt-1" onClick={onSetUp}>
+          Open Settings
+        </Button>
       ) : null}
       {text ? (
         // The 1px edge a pressable line has, so his words start where the summary above and the rows below do.

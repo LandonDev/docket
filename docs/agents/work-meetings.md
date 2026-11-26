@@ -91,7 +91,14 @@ ffconcat list or a playlist is refused before anything is read.
 job that `JobRunner.serveForwarded` sent here (`isForwarded`), so a Mac
 without the tools can never send audio to the box through the tunnel. A
 host without the tools says so: `… is not installed on this host; run
-scripts/work-tools/install.ts.`
+scripts/work-tools/install.ts.` That sentence is for logs and threads; on
+screen it is worded once by `workErrorWords` (`transcriberMissing`) as "The
+transcriber is not set up on the box." (the computer named), in the three
+places it shows: a meeting's notes row, the Notes dialog and the meeting
+canvas's Could not transcribe. Each offers Open Settings (Settings →
+Connections, where that computer's tools are listed) only where this window
+manages that computer (`useTranscriberSetUp`, work/meetings/setUp.ts); the
+canvas puts it before Retry.
 
 ### The tools
 

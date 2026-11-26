@@ -286,13 +286,12 @@ describe("the outcome's words", () => {
     expect(notesLines({ doc: { ...emptyPrepDoc(), notes: { text: "n", at: 1 }, after } })).toBe(2);
   });
 
-  it("says a failed filing in a short word that always fits, names the one task, and leaves why to each task's own row", () => {
-    const tasks = [{ id: "s1", title: "Book the van" }, { id: "s2", title: "Order jerseys" }];
+  it("says a failed filing in a short word that always fits, never the task's name, and leaves the title and why to each task's own row", () => {
     const why = "LifeOS did not answer";
-    expect(failedWords([{ id: "s2", error: why }], tasks)).toEqual({ word: "A task was not added", detail: "“Order jerseys”" });
-    expect(failedWords([{ id: "gone", error: why }], tasks)).toEqual({ word: "A task was not added" });
+    // The row under To do holds the title with its cause: the line does not say it again.
+    expect(failedWords([{ id: "s2", error: why }])).toEqual({ word: "A task was not added" });
     const two = [{ id: "s1", error: why }, { id: "s2", error: "That title is too long" }];
-    expect(failedWords(two, tasks)).toEqual({ word: "2 tasks were not added" });
+    expect(failedWords(two)).toEqual({ word: "2 tasks were not added" });
     // each row keeps its own cause
     expect(failedWhy(two, "s1")).toBe(why);
     expect(failedWhy(two, "s2")).toBe("That title is too long");

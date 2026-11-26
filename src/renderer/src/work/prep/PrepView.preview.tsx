@@ -1,3 +1,4 @@
+import { BackTitle } from "../shell/BackTitle";
 import type { ReactNode } from "react";
 import { emptyPrepDoc, type PrepPage } from "@shared/contract-work-prep";
 import { Calendar } from "../icons";
@@ -6,7 +7,7 @@ import { X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import type { DirectoryPerson } from "../people/model";
 import { NotesForm, PeopleForm } from "./PrepDialogs";
-import { BackTitle, PageVerbs, PrepPageBody, PrepSkeleton } from "./PrepView";
+import { PageVerbs, PrepPageBody, PrepSkeleton } from "./PrepView";
 
 /**
  * A meeting's page over fixed data, for `bun run ui:preview
@@ -128,7 +129,8 @@ const FILED: PrepPage = {
 const RECORDED: PrepPage = { ...FACTS, rev: 3, state: "after", followSessionId: "t-follow", doc: { ...emptyPrepDoc(), notes: { text: "", at: LATER - 300_000, meetingItemId: "it1" } }, notesFile: { kind: "meeting", itemId: "it1", title: "Staff sync 2026-11-23.m4a" } };
 
 /** The same recording once this host could not read it: the row says why, and the header asks for notes again at once, though its thread is still saying so. */
-const UNREAD: PrepPage = { ...RECORDED, notesFile: { ...RECORDED.notesFile!, error: "The transcriber is not installed on this host." } };
+// The host's own sentence (pipeline.ts `missingSentence`): the page words it once, the computer named.
+const UNREAD: PrepPage = { ...RECORDED, notesFile: { ...RECORDED.notesFile!, error: "ffmpeg, sherpa-onnx and parakeet-tdt-v2 are not installed on this host; run scripts/work-tools/install.ts." } };
 
 const none = () => {};
 const verbs = { thread: false, brief: null, notes: false, rest: 0, ahead: null, onBrief: none, onFollowUp: none, onOpenThread: none, onNotes: none, onAddPeople: none, onThread: none, onDismissRest: none, onAhead: none } as const;
@@ -138,7 +140,7 @@ function Frame({ title, head, children }: { title: string | undefined; head?: Re
     <div className="flex w-[864px] max-w-full flex-col bg-background">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
         <Calendar className="size-3.5 text-muted-foreground" />
-        <BackTitle name={title} onBack={none} />
+        <BackTitle back="Agenda" name={title} onBack={none} />
         <span className="flex-1" />
         {head}
       </div>
@@ -204,7 +206,8 @@ function DialogPreview({ state }: { state: string }) {
         setText={none}
         pending={upload ? "follow" : null}
         upload={upload}
-        error={state === "notes-failed" ? "The transcriber is not installed on this host." : null}
+        error={state === "notes-failed" ? "The transcriber is not set up on the box." : null}
+        {...(state === "notes-failed" ? { onSetUp: none } : {})}
         onCancel={none}
         onClose={none}
         onFollowUp={none}
@@ -239,6 +242,8 @@ export function PrepPreview({ state = "facts" }: { state?: string }) {
         now={now}
         verb={verb}
         offer={state === "briefed"}
+        host="the box"
+        {...(state === "recording-failed" ? { onSetUp: none } : {})}
         onRetry={none}
         onAddPeople={none}
         {...(state === "failed" ? { failedAtFirst: [{ id: "s3", error: "LifeOS did not answer" }] } : {})}

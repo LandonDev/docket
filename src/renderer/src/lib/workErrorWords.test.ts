@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { workErrorWords } from "./workErrorWords";
+import { transcriberMissing, workErrorWords } from "./workErrorWords";
 
 const box = { host: "the box" };
 const says = (raw: string, context = box) => workErrorWords(new Error(raw), context);
@@ -100,4 +100,17 @@ describe("an error as Work says it to him", () => {
     ["pymupdf4llm is not installed on tempcode-box", "The box is missing the tools that draw and read this file. Install them under Settings, Connections, Conversion tools."],
   ];
   it.each(CONVERTER)("says the converter's %s", (raw, words) => expect(says(raw)).toBe(words));
+
+  it("says the meetings transcriber's missing tools as one fact, the computer named, never the programs or the script", () => {
+    const all = "ffmpeg, sherpa-onnx and parakeet-tdt-v2 are not installed on this host; run scripts/work-tools/install.ts.";
+    expect(workErrorWords(new Error(all), { host: "the box" })).toBe("The transcriber is not set up on the box.");
+    // One tool alone, ffmpeg's among them, is the same fact: the drawing tools' line is for files, not recordings.
+    expect(workErrorWords(new Error("ffmpeg is not installed on this host; run scripts/work-tools/install.ts."), { host: "this Mac" })).toBe("The transcriber is not set up on this Mac.");
+    expect(workErrorWords(new Error("silero-vad is not installed on this host"))).toBe("The transcriber is not set up on that computer.");
+    expect(transcriberMissing(new Error(all))).toBe(true);
+    expect(transcriberMissing("parakeet-tdt-v2 is not installed on this host; run scripts/work-tools/install.ts.")).toBe(true);
+    // A file's drawing tools keep their own line, and Open Settings is the transcriber's alone.
+    expect(transcriberMissing(new Error("libreoffice is not installed here"))).toBe(false);
+    expect(transcriberMissing(null)).toBe(false);
+  });
 });

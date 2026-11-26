@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { hostInLine, useTranscriberSetUp } from "./setUp";
 import type { Meeting } from "@shared/contract-work-meetings";
 import type { CanvasSource } from "@shared/work";
 import { ChevronLeft, ChevronRight, Copy, Search, X } from "../../chrome/icons";
@@ -238,6 +239,8 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   const retry = useCallback(() => loadMeeting(env, item.id), [env, item.id]);
   const { toggle } = player;
   const hostLive = useHostLive(env);
+  // A recording this computer cannot transcribe: Open Settings beside Retry, where this window may set it up.
+  const setUp = useTranscriberSetUp(env, meeting?.status === "failed" ? meeting.error : null);
   const proposed = useFeeds(shell, env, meeting, task, onStep, error && !meeting ? { error, retry } : null, player.error ? { error: player.error, retry: toggle } : null, !!hostLive.down || hostLive.waits);
   const current = proposed.some((a) => a.id === task) ? task : (proposed[0]?.id ?? null);
   const selected = useStretch(turnsBox, shell, meeting, source);
@@ -306,7 +309,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
       {/* Focusable from code alone (no Tab stop of its own): where Find gives the focus back when the bar holds no Find. */}
       <div ref={scroller} data-meeting-pane={item.id} tabIndex={-1} className="focus-ring min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         {meeting.status === "failed" ? (
-          <Failed meeting={meeting} onRetry={() => startMeeting(env, item.id).then(() => undefined, (err: unknown) => sayError(err, "Couldn't start it again"))} />
+          <Failed meeting={meeting} host={hostInLine(env)} {...(setUp ? { onSetUp: setUp } : {})} onRetry={() => startMeeting(env, item.id).then(() => undefined, (err: unknown) => sayError(err, "Couldn't start it again"))} />
         ) : tab === "notes" ? (
           <NotesDoc meeting={meeting} currentTask={current} onPlay={play} onTask={setTask} />
         ) : (

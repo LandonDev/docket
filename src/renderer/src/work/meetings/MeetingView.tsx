@@ -385,28 +385,39 @@ export function NothingYet({ uploading, onChoose }: { uploading: boolean; onChoo
   );
 }
 
-/** Could not transcribe: the reason in his words, and Retry. The player above it still plays. */
-export function Failed({ meeting, onRetry, title }: { meeting: Pick<Meeting, "from" | "error">; onRetry(): Promise<void>; title?: string }) {
+/**
+ * Could not transcribe: the reason in his words (the computer named, `host`), and Retry; with the transcriber not set
+ * up there, Open Settings beside it where this window may set it up (`onSetUp`). The player above it still plays.
+ */
+export function Failed({ meeting, onRetry, title, host, onSetUp }: { meeting: Pick<Meeting, "from" | "error">; onRetry(): Promise<void>; title?: string; host?: string | undefined; onSetUp?: () => void }) {
   const [trying, setTrying] = useState(false);
+  const why = workErrorWords(meeting.error, host ? { host } : {});
   return (
     <div className="mx-auto max-w-[704px] p-4">
       <Alert variant="error" data-meeting-failed>
         <AlertTitle>{title ?? (meeting.from === "transcript" ? "Could not read the transcript" : "Could not transcribe")}</AlertTitle>
         <AlertDescription>
           {/* The host's reason in his words (`workErrorWords`); a line never written for him leaves the title alone. */}
-          {workErrorWords(meeting.error) ? <p>{workErrorWords(meeting.error)}</p> : null}
-          <Button
-            variant="secondary"
-            size="xs"
-            className="mt-2"
-            disabled={trying}
-            onClick={() => {
-              setTrying(true);
-              void onRetry().finally(() => setTrying(false));
-            }}
-          >
-            <BusyLabel busy={trying} label="Retry" />
-          </Button>
+          {why ? <p>{why}</p> : null}
+          {/* What sets it up first, where there is a press for it; Retry once it is. */}
+          <span className="mt-2 flex gap-2">
+            {onSetUp ? (
+              <Button variant="secondary" size="xs" onClick={onSetUp}>
+                Open Settings
+              </Button>
+            ) : null}
+            <Button
+              variant="secondary"
+              size="xs"
+              disabled={trying}
+              onClick={() => {
+                setTrying(true);
+                void onRetry().finally(() => setTrying(false));
+              }}
+            >
+              <BusyLabel busy={trying} label="Retry" />
+            </Button>
+          </span>
         </AlertDescription>
       </Alert>
     </div>
