@@ -24,7 +24,7 @@ import { isProdData } from './server/processGuard'
 import { startServer, type RunningServer } from './server'
 import { listEnvironments } from './server/remote/environments'
 import type { LaunchMirrorSnapshot, MirrorWrite } from '@shared/launchMirror'
-import { readBootMirror, type BootRead } from './bootMirror'
+import { forgetUnsavedHosts, readBootMirror, type BootRead } from './bootMirror'
 import { bootDesktop, deferred } from './desktopBoot'
 import { preconnectAccount } from './server/preconnect'
 import { spawnExecBrokerChild } from './execBrokerSpawn'
@@ -268,6 +268,7 @@ void bootDesktop<RunningServer>({
       workAfter
     })
   },
+  serverFailed: onServerFailed,
   serverUp: onServerUp
 }).catch((err: unknown) => console.error('[boot] the boot failed:', err))
 
@@ -370,8 +371,8 @@ function registerWindowHandlers(): void {
   registerAliaxHandlers(aliaxPagesReady.promise)
   registerPty()
   registerWindows({
-    dropSnapshot: (slot) => void serverUp.promise.then((s) => s.store.dropWorkspaceSnapshot(slot)),
-    onMounted: () => void serverUp.promise.then((s) => s.codeWindowMounted())
+    dropSnapshot: (slot) => void serverUp.promise.then((s) => s.store.dropWorkspaceSnapshot(slot)).catch(() => undefined),
+    onMounted: () => void serverUp.promise.then((s) => s.codeWindowMounted()).catch(() => undefined)
   })
   if (!headless) registerPresent()
   registerDialogs()
@@ -425,6 +426,8 @@ function registerWindowHandlers(): void {
   // The user's editor (editorLaunch.ts): only where a window can be, so a
   // headless box answers null and the renderer hides the item.
   const editorLauncher = headless ? null : serverUp.promise.then((s) => new EditorLauncher(defaultEditorLaunchDeps(s.store)))
+  // a server that did not start answers each editor call with its error (onServerFailed)
+  editorLauncher?.catch(() => undefined)
   ipcMain.handle('editor-config', async () => (await editorLauncher)?.config() ?? null)
   ipcMain.handle('editor-set', async (_e, choice: unknown) => {
     const launcher = await editorLauncher
@@ -459,13 +462,27 @@ function serverMirror(running: RunningServer): LaunchMirrorSnapshot {
 /** The accounts pages' hooks are in: their handlers' waiting calls run. */
 const aliaxPagesReady = deferred<void>()
 
+/**
+ * The server did not start (an unreadable database, a port that cannot bind). Every call waiting for it hears the
+ * error, and the process ends: before the window came first a failed start left a process with no window, so
+ * now it says why and quits with a non-zero code rather than leave a splash that never fills.
+ */
+function onServerFailed(err: unknown): void {
+  serverUp.reject(err)
+  aliaxPagesReady.reject(err)
+  bootMark('server-failed')
+  console.error('[boot] the server did not start; quitting:', err)
+  app.exit(1)
+}
+
 /** Everything that needs the running server; the windows are already up. */
 function onServerUp(running: RunningServer): void {
   bootMark('server-returned')
   server = running
   serverUp.resolve(running)
   // The boot's read answered without forgetting the hosts no longer saved: the server's mirror forgets them now.
-  if (bootRead.snapshot) running.launchMirror.forgetExcept(['local', ...listEnvironments(running.store).map((row) => row.id)])
+  // Best effort: a failed delete must not skip the accounts pages, appshots or the rest below.
+  if (bootRead.snapshot) forgetUnsavedHosts(running.launchMirror, () => ['local', ...listEnvironments(running.store).map((row) => row.id)])
   if (!headless) {
     // Master's release.json again when a window comes forward after fifteen idle minutes (deployDrift.ts).
     app.on('browser-window-focus', () => running.masterRelease.focus())

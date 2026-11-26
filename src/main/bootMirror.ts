@@ -64,3 +64,15 @@ function settingsOf(db: DatabaseSync): EnvironmentsStore {
     }
   }
 }
+
+/** The server's mirror forgets the hosts no longer saved, once it is up (index.ts): best effort, so a failed delete
+ *  never stops the rest of the boot. False when it failed. */
+export function forgetUnsavedHosts(mirror: { forgetExcept(keep: Iterable<string>): void }, keep: () => string[]): boolean {
+  try {
+    mirror.forgetExcept(keep())
+    return true
+  } catch (err) {
+    console.error('[launch-mirror] could not forget the hosts no longer saved; the boot goes on:', err)
+    return false
+  }
+}

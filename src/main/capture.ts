@@ -235,6 +235,8 @@ export function registerCapture(ready: Promise<CaptureDeps>): void {
     d.work.onChange(sync)
     sync()
   })
+  // a server that did not start answers each call with its error
+  up.catch(() => undefined)
 
   ipcMain.handle('capture:key:get', async () => {
     await up

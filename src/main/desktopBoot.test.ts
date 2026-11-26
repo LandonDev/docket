@@ -29,6 +29,7 @@ function harness(o: { headless?: boolean; guard?: boolean } = {}) {
       windowAtServerStart = windowUp
       return server.promise.then((s) => (steps.push('server-start ended'), s))
     },
+    serverFailed: (err) => void steps.push(`server failed: ${(err as Error).message}`),
     serverUp: (s) => void steps.push(`server up ${s}`)
   }
   return { steps, server, firstUp, boot, windowUp: () => windowAtServerStart }
@@ -76,4 +77,24 @@ describe('the desktop boot order', () => {
     h.server.resolve('S')
     await done
   })
+
+  it('a server that does not start settles what waits for it and ends the boot, never reaching serverUp', async () => {
+    const h = harness()
+    const done = bootDesktop(h.boot)
+    await flush()
+    h.server.reject(new Error('database disk image is malformed'))
+    await expect(done).rejects.toThrow('database disk image is malformed')
+    expect(h.steps.slice(-2)).toEqual(['server-start', 'server failed: database disk image is malformed'])
+    expect(h.steps.some((s) => s.startsWith('server up'))).toBe(false)
+  })
 })
+
+describe('the deferred the handlers wait on', () => {
+  it('a rejection reaches every waiter and none is left unhandled', async () => {
+    const d = deferred<number>()
+    const waiters = [d.promise.then(() => 'ok'), d.promise.then(() => 'ok')]
+    d.reject(new Error('no server'))
+    for (const w of waiters) await expect(w).rejects.toThrow('no server')
+  })
+})
+

@@ -23,6 +23,8 @@ export interface DesktopBoot<S> {
   /** The saved windows; resolves once the first is up (painted, or gone). */
   openWindows(): Promise<void>
   startServer(windowUp: Promise<void>): Promise<S>
+  /** The server could not start: settle what waits for it, say why, and end as a boot with no server did. */
+  serverFailed(err: unknown): void
   /** Everything that needs the running server. */
   serverUp(server: S): void | Promise<void>
 }
@@ -39,14 +41,26 @@ export async function bootDesktop<S>(boot: DesktopBoot<S>): Promise<S | null> {
     boot.readMirror()
     windowUp = boot.openWindows()
   }
-  const server = await boot.startServer(windowUp)
+  let server: S
+  try {
+    server = await boot.startServer(windowUp)
+  } catch (err) {
+    boot.serverFailed(err)
+    throw err
+  }
   await boot.serverUp(server)
   return server
 }
 
-/** A promise and its resolver: the server for the handlers that wait for it. */
-export function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+/** A promise and its settlers: the server for the handlers that wait for it. A rejection no one waits on is
+ *  not an unhandled one: every waiter still hears it. */
+export function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (err: unknown) => void } {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((r) => (resolve = r))
-  return { promise, resolve }
+  let reject!: (err: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  promise.catch(() => undefined)
+  return { promise, resolve, reject }
 }

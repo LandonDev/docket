@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { readBootMirror } from './bootMirror'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { forgetUnsavedHosts, readBootMirror } from './bootMirror'
 import { openDb, Store } from './server/db'
 import { LaunchMirror } from './server/launchMirror'
 
@@ -62,4 +62,17 @@ describe('the boot read of the launch mirror', () => {
     db.close()
     expect(readBootMirror(path).snapshot).toBeNull()
   })
+
+  it('forgetting the hosts no longer saved is best effort: a failed delete returns false and throws nothing', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let asked = 0
+    const failing = { forgetExcept: () => { asked++; throw new Error('database is locked') } }
+    expect(forgetUnsavedHosts(failing, () => ['local'])).toBe(false)
+    expect(asked).toBe(1)
+    const kept: string[][] = []
+    expect(forgetUnsavedHosts({ forgetExcept: (keep) => void kept.push([...keep]) }, () => ['local', 'env_box'])).toBe(true)
+    expect(kept).toEqual([['local', 'env_box']])
+    errors.mockRestore()
+  })
 })
+
