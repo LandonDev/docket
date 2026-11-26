@@ -67,7 +67,7 @@ struct HostStatusRow: View {
             EmptyView()
         } else if status.transport == .unauthorized {
             PillButton(HostFix.pairAgain.title, action: pairAgain)
-        } else {
+        } else if ConnectionFact.offersRetry(status) {
             PillButton("Retry") { Task { await client.retry() } }
         }
     }

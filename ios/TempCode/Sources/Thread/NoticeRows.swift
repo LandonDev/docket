@@ -100,7 +100,10 @@ struct ReviewCard: View {
                 }
             }
             if held {
-                if let block, !block.isTransient {
+                if let block, block.isKeyLimit {
+                    // The key may not merge: the composer says who can, once; Merge anyway's place stays empty, as on the desktop.
+                    EmptyView()
+                } else if let block, !block.isTransient {
                     Text(block.text(now: Date().timeIntervalSince1970 * 1000))
                         .transcriptType(TranscriptType.line)
                         .foregroundStyle(.secondary)
@@ -172,35 +175,58 @@ struct ReviewFindingRow: View {
     @State private var open = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var scale
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var hasScenario: Bool { !finding.failure_scenario.isEmpty }
+
+    @ViewBuilder private var location: some View {
+        Text(ReviewText.location(finding))
+            .transcriptType(TranscriptType.rowCode)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Surface.fill, in: RoundedRectangle.inlineCorner)
+        if finding.verdict == .plausible {
+            Text("plausible")
+                .transcriptType(TranscriptType.detail)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var summary: some View {
+        Text(finding.summary)
+            .transcriptType(TranscriptType.prose)
+            .foregroundStyle(strong ? .primary : .secondary)
+    }
+
+    @ViewBuilder private var chevron: some View {
+        if hasScenario {
+            Image(systemName: "chevron.right")
+                .transcriptFont(TranscriptType.detail, weight: .semibold)
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(open ? 90 : 0))
+        }
+    }
 
     var body: some View {
         Button {
             withAnimation(reduceMotion ? Motion.crossFade : (open ? Motion.collapse : Motion.expand)) { open.toggle() }
         } label: {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(ReviewText.location(finding))
-                        .transcriptType(TranscriptType.rowCode)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Surface.fill, in: RoundedRectangle.inlineCorner)
-                    if finding.verdict == .plausible {
-                        Text("plausible")
-                            .transcriptType(TranscriptType.detail)
-                            .foregroundStyle(.tertiary)
+                if ReviewText.findingLayout(accessibilityText: typeSize.isAccessibilitySize) == .stacked {
+                    // The file and line, then the summary under it at full width.
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        location
+                        Spacer(minLength: 0)
+                        chevron
                     }
-                    Text(finding.summary)
-                        .transcriptType(TranscriptType.prose)
-                        .foregroundStyle(strong ? .primary : .secondary)
-                    Spacer(minLength: 0)
-                    if hasScenario {
-                        Image(systemName: "chevron.right")
-                            .transcriptFont(TranscriptType.detail, weight: .semibold)
-                            .foregroundStyle(.tertiary)
-                            .rotationEffect(.degrees(open ? 90 : 0))
+                    summary
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        location
+                        summary
+                        Spacer(minLength: 0)
+                        chevron
                     }
                 }
                 if open {

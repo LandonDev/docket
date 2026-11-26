@@ -154,7 +154,8 @@ connection dot, the deploy drift mark; a tap opens its menu. A row whose
 every host is down sits at 50 % opacity. An unauthorized or offline host,
 or one reconnecting for longer than the 1.5 s hold (`HomeSections.troubled`,
 the status line's and the desktop's `DEGRADED_GRACE_MS`), shows one status
-row at the top of Home with the action (Retry, Sign In Again), never a
+row at the top of Home with the action (Retry, but none while the link is
+already connecting, `ConnectionFact.offersRetry`; Sign In Again), never a
 blank screen; under the host's name its words leave the name out, the
 desktop's `linkFact` ("Reconnecting…", "Offline", "No longer accepts this
 key"; `ConnectionFact`), never the socket's raw error
@@ -1594,9 +1595,12 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
 - **Review**: the merge review's outcome: lead and detail, held in
   destructive, merged in success, the rest secondary; blocking findings as
   rows (file:line in mono, the claim, tap expands the failure scenario on
-  the row spring); minor findings folded; the reviewer thread one chip away;
-  Merge anyway behind a confirm sheet for an approve key, the reason in its
-  place for a lesser one.
+  the row spring; at the accessibility text sizes the file:line and the
+  fold's chevron sit above the claim, which takes the full width,
+  `ReviewText.findingLayout`); minor findings folded; the reviewer thread one
+  chip away; Merge anyway behind a confirm sheet for an approve key; for a
+  key that may not merge its place stays empty (the composer says who can,
+  once), and another block says its reason there.
 - **Gate**: the run's outcome; failed in destructive with its last lines
   folded in mono; passed as a quiet line with a green check.
 - **Batch, account-gone, other host rows**: one quiet line each, the host's
@@ -2080,8 +2084,9 @@ package's `Rendering/Batch.swift` (`MasterBoard`, `BatchSteps`, `RulesEdit`,
   queued child, Pause and Stop on a working one, Resume on a paused or
   stopped one. A far child has no menu here: its host acts on it.
 - **The foot** is the list's last section, "When the threads are done"
-  with Edit: the master's summary, the rules as one sentence ("Branches land
-  as they finish, then Gate and Smoke test. Then you are notified."), what
+  with Edit: one line for the rules, the master's own when it has one, else
+  the rules as one sentence ("Branches land as they finish, then Gate and
+  Smoke test. Then you are notified."), never both (`MasterBoard.footLine`), what
   blocks the end in red, then the steps in the master's order, each a row
   with its mark (check, spinner, red dot, dashed ring), name, a shell step's
   command in mono, its time. The console opens under the running step, or a

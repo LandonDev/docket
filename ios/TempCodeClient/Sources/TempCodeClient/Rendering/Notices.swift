@@ -78,6 +78,12 @@ public enum GateText {
 // MARK: - The review row's words (ReviewCard.tsx leadOf/detailOf)
 
 public enum ReviewText {
+    /// Where a finding's file and line sit: beside its summary, or above it at the accessibility text sizes, where
+    /// beside it would leave the summary two words a line. The fold's chevron goes with the location.
+    public enum FindingLayout: Sendable, Equatable { case inline, stacked }
+
+    public static func findingLayout(accessibilityText: Bool) -> FindingLayout { accessibilityText ? .stacked : .inline }
+
     /// `label` is the model's display name (the app passes ModelName.short(review.model)).
     public static func lead(_ review: ReviewNotice, label: String) -> String {
         switch review.outcome {

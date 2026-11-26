@@ -67,6 +67,12 @@ public enum ConnectionSentence {
 /// desktop's `linkFact` (src/renderer/src/lib/connection/degraded.ts), "Reconnecting…", "Offline", "No longer
 /// accepts this key". `ConnectionSentence` stays the one sentence where nothing else names it.
 public enum ConnectionFact {
+    /// Home's host card offers Retry only where a retry can start something: never while the link is already
+    /// connecting (the desktop's connection line draws none then), nor for a refused key (that card offers Sign In Again).
+    public static func offersRetry(_ status: EnvironmentStatus) -> Bool {
+        status.transport != .connecting && status.transport != .unauthorized
+    }
+
     public static func text(for status: EnvironmentStatus) -> String {
         switch status.transport {
         case .open: "Connected"

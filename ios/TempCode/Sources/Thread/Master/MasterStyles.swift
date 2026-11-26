@@ -81,7 +81,8 @@ struct ModelMark: View {
     var hostName: String?
 
     var body: some View {
-        let rest = [reasoning.isEmpty ? nil : reasoning, context1m ? "1M" : nil].compactMap { $0 }.joined(separator: " ")
+        // The effort in the composer's word ("Low"), never the wire's ("low").
+        let rest = [reasoning.isEmpty ? nil : Reasoning(rawValue: reasoning).title, context1m ? "1M" : nil].compactMap { $0 }.joined(separator: " ")
         HStack(spacing: 4) {
             if let hostName {
                 MetaGlyph("desktopcomputer", label: "Host")

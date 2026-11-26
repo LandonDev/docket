@@ -21,20 +21,11 @@ struct BatchFoot: View {
 
     var body: some View {
         let console = BatchSteps.consoleStep(steps, folded: folded)
-        let summary = state.rules.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let blocked = MasterBoard.blockedLine(state, titleOf: titleOf, hostName: hostName)
         Group {
-            if !summary.isEmpty {
-                Text(summary)
-                    .font(.footnote)
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Layout.textEdge)
-                    .padding(.vertical, 8)
-                    .footRow(inset: Layout.textEdge)
-            }
             VStack(alignment: .leading, spacing: 4) {
-                Text(MasterBoard.rulesSentence(state.rules))
+                // The master's own line, else the rules in a sentence: one line, never both.
+                Text(MasterBoard.footLine(state.rules))
                     .textStep(.meta)
                 if let blocked {
                     Text(blocked)

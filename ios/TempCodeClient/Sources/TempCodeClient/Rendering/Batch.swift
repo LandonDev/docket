@@ -441,6 +441,13 @@ public enum MasterBoard {
         "\(landed) of \(landed + pending) landed"
     }
 
+    /// The foot's one line for the rules: the master's own line when it has one ("Land as they finish, gate
+    /// once, release, then the smoke test"), else the rules in a sentence. Never both: they say one thing.
+    public static func footLine(_ rules: BatchRules) -> String {
+        let summary = rules.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return summary.isEmpty ? rulesSentence(rules) : summary
+    }
+
     /// The rules as one plain sentence from the master's step list.
     public static func rulesSentence(_ rules: BatchRules) -> String {
         let steps = rules.steps
