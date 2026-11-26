@@ -305,15 +305,15 @@ const idOfPerson = (p: DirectoryPerson): string => p._id;
 /** One person's row, drawn again only when what it shows changed: the minute's tick hands it the same stamp words. */
 const PersonRow = memo(function PersonRow({ workspaceId, person: p, picture, stamp, place }: { workspaceId: string; person: DirectoryPerson; picture: string | undefined; stamp: string | null; place: RowPlace }) {
   // A name or address the row cuts is said whole on its hover and focus, only while one is cut (Today's rule).
-  const words = useTruncated(`${p.name}\n${p.emails[0] ?? ""}`);
+  const { ref: cutRef, cut } = useTruncated(`${p.name}\n${p.emails[0] ?? ""}`);
   return (
     <div role="listitem" {...place}>
-      <Tooltip disabled={!words.cut}>
+      <Tooltip disabled={!cut}>
         <TooltipTrigger
           render={
             <ItemButton data-person-row={p._id} size="xs" onClick={() => setPlace(workspaceId, { person: p._id })} className={cn("-mx-2 h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap gap-2 rounded-md text-[13px]", ROW_PRESS)}>
               <Face name={p.name} picture={picture} size="row" />
-              <span ref={words.ref} className="flex min-w-0 flex-1 items-baseline gap-1">
+              <span ref={cutRef} className="flex min-w-0 flex-1 items-baseline gap-1">
                 <span className="shrink-0 truncate text-foreground">{p.name}</span>
                 {p.emails[0] ? <span className="min-w-0 truncate text-xs text-muted-foreground">{p.emails[0]}</span> : null}
               </span>

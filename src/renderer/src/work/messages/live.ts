@@ -47,10 +47,11 @@ function useQuery<T>(session: LifeosSession, name: string, args: Record<string, 
  * fail. A failure on an open link is said as before.
  */
 function useKeptWhileDown<T>(env: string, key: string, query: LifeosQuery<T>): LifeosQuery<T> {
-  const kept = useRef<{ key: string; value: T } | null>(null);
-  if (query.status === "ready") kept.current = { key, value: query.value };
+  const [kept, setKept] = useState<{ key: string; value: T } | null>(null);
+  const ready = query.status === "ready" ? query.value : undefined;
+  if (query.status === "ready" && (kept?.key !== key || kept.value !== ready)) setKept({ key, value: query.value });
   const linkDown = !!useHostLinkDown(env);
-  if (query.status === "failed" && linkDown && kept.current?.key === key) return { status: "ready", value: kept.current.value };
+  if (query.status === "failed" && linkDown && kept?.key === key) return { status: "ready", value: kept.value };
   return query;
 }
 
@@ -77,12 +78,13 @@ function usePaged<T>(session: LifeosSession, env: string, name: string, args: Re
     return { rows: ready.page, done: ready.isDone, more };
   }, [ready, reset, step]);
   if (value) held.current = { reset, value };
-  const kept = held.current?.reset === reset ? held.current.value : null;
   const linkDown = !!useHostLinkDown(env);
   if (!args) return { status: "loading" };
-  if (query.status === "failed") return linkDown && kept ? { status: "ready", value: kept } : query;
+  // A failure on an open link is said; under a down link the rows last read stay.
+  if (query.status === "failed" && !linkDown) return query;
   if (value) return { status: "ready", value };
-  return kept ? { status: "ready", value: kept } : { status: "loading" };
+  const kept = held.current?.reset === reset ? held.current.value : null;
+  return kept ? { status: "ready", value: kept } : query.status === "failed" ? query : { status: "loading" };
 }
 
 

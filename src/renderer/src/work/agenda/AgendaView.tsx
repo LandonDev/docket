@@ -364,12 +364,12 @@ export const EventRow = memo(function EventRow({
   const met = knownAttendees((event as AgendaEvent & { attendees?: { address: string }[] }).attendees, people);
   const verb = done ? "Follow up" : "Prepare";
   // A title or place the column cuts is said whole on the row's hover and focus, only while one is cut (Today's rule).
-  const words = useTruncated(`${event.title}\n${event.location ?? ""}`);
+  const { ref: cutRef, cut } = useTruncated(`${event.title}\n${event.location ?? ""}`);
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<div role="listitem" {...place} className={cn("group/row grid min-h-9 grid-cols-[88px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
         {/* The row's one press, under what it shows: keyboard focus rings the whole row, and ↑ ↓ move between these. */}
-        <Tooltip disabled={!words.cut}>
+        <Tooltip disabled={!cut}>
           <TooltipTrigger render={<ItemButton data-row-open aria-label={`${verb} ${event.title}`} onClick={() => onPrepare(event)} className={ROW_OPEN} />} />
           <TooltipContent side="top" align="start">
             {event.title}
@@ -382,7 +382,7 @@ export const EventRow = memo(function EventRow({
           {leave !== undefined && !past ? <span className="font-medium whitespace-nowrap text-foreground">Leave {clockTime(leave)}</span> : null}
         </span>
         {/* What the row shows takes no pointer, so a press on it is the row's; its buttons (a clash line, a name) take their own. */}
-        <span ref={words.ref} className={cn("flex min-w-0 flex-col [&_button]:pointer-events-auto", ROW_SHOWS)}>
+        <span ref={cutRef} className={cn("flex min-w-0 flex-col [&_button]:pointer-events-auto", ROW_SHOWS)}>
           {/* The title runs the row's width at rest: no room is kept for a verb that shows only on hover. */}
           <span data-event-title className={cn("truncate text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
           {event.location ? <span className="truncate text-xs text-muted-foreground">{event.location}</span> : null}
