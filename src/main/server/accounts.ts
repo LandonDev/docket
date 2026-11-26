@@ -266,6 +266,9 @@ export class AccountsService {
   private poll: NodeJS.Timeout | null = null
   private reset: NodeJS.Timeout | null = null
   private chain: Promise<unknown> = Promise.resolve()
+  /** Each build's place in start order, and the newest that landed: an older picture never replaces a newer one. */
+  private buildSeq = 0
+  private landedSeq = 0
   /** One failover in flight per thread: a limit that fires twice on one turn asks once. */
   private failovers = new Map<string, Promise<Switched | null>>()
   /** Accounts a 401 took out of routing, with when: provider → name → marked at. */
@@ -670,6 +673,18 @@ export class AccountsService {
     return this.rebuild(false)
   }
 
+  /** Route a profile just added or removed (a sync push, a given computer) now: the profiles read from the vault,
+   *  each kept profile with the usage it had, and no usage ask, so the push is answered without waiting on a poll or
+   *  a forced refresh in flight. An ordinary rebuild follows at once (`nudge`) and reads the usage, the new
+   *  profile's included; a build that started before lands after this one only to be dropped. */
+  async routeNow(): Promise<void> {
+    if (this.debounce) clearTimeout(this.debounce)
+    this.debounce = null
+    const seq = ++this.buildSeq
+    this.land(seq, await this.build(false, undefined, true))
+    this.nudge()
+  }
+
   /** The user's Refresh: force a poll (forwarded to the owner when standby). */
   async refresh(provider: AccountProvider): Promise<AccountsSnapshot> {
     await this.rebuild(true, provider)
@@ -680,30 +695,41 @@ export class AccountsService {
 
   /** Rebuilds run one at a time; a forced one only forces its provider. */
   private rebuild(force: boolean, only?: AccountProvider): Promise<void> {
-    const run = this.chain.then(() => this.build(force, only)).then((snap) => {
-      this.snap = snap
-      this.built = true
-      this.armReset()
-      // Every routed answer nudges a rebuild; only a changed picture is news.
-      const digest = snapshotDigest(snap)
-      if (digest !== this.digest) {
-        this.digest = digest
-        for (const l of this.listeners) l(snap)
-      }
-      const pickable = this.pickableDigest(snap)
-      if (pickable !== this.pickable) {
-        // Which accounts moved, so the registry re-picks only their threads
-        // (a window reset at the clock hour once re-picked every thread).
-        const changed = pickableChange(this.pickable, pickable)
-        this.pickable = pickable
-        for (const l of this.pickableListeners) l(snap, changed)
-      }
+    const run = this.chain.then(() => {
+      const seq = ++this.buildSeq
+      return this.build(force, only).then((snap) => this.land(seq, snap))
     })
     this.chain = run.catch(() => {})
     return run
   }
 
-  private async build(force: boolean, only?: AccountProvider): Promise<AccountsSnapshot> {
+  private land(seq: number, snap: AccountsSnapshot): void {
+    if (seq < this.landedSeq) {
+      // Read before a newer build landed (a profile added while this one waited on usage): the newer stands.
+      this.nudge()
+      return
+    }
+    this.landedSeq = seq
+    this.snap = snap
+    this.built = true
+    this.armReset()
+    // Every routed answer nudges a rebuild; only a changed picture is news.
+    const digest = snapshotDigest(snap)
+    if (digest !== this.digest) {
+      this.digest = digest
+      for (const l of this.listeners) l(snap)
+    }
+    const pickable = this.pickableDigest(snap)
+    if (pickable !== this.pickable) {
+      // Which accounts moved, so the registry re-picks only their threads
+      // (a window reset at the clock hour once re-picked every thread).
+      const changed = pickableChange(this.pickable, pickable)
+      this.pickable = pickable
+      for (const l of this.pickableListeners) l(snap, changed)
+    }
+  }
+
+  private async build(force: boolean, only?: AccountProvider, keptUsage = false): Promise<AccountsSnapshot> {
     const d = this.deps
     const owner = d.owner()
     const providers = {} as Record<AccountProvider, ProviderAccounts>
@@ -730,7 +756,13 @@ export class AccountsService {
       const profiles = view?.profiles ?? []
       let reports: UsageReport[] = []
       let note: string | undefined
-      if (profiles.length > 0) {
+      if (keptUsage) {
+        // The usage each profile had in the last picture; a new one has none until the next rebuild.
+        const kept = new Set(profiles.map((x) => x.name))
+        reports = (this.snap.providers[p]?.reports ?? []).filter((r) => kept.has(r.profileName))
+        const was = this.snap.providers[p]?.note
+        if (was?.startsWith('usage unavailable (')) note = was
+      } else if (profiles.length > 0) {
         try {
           reports = await d.usage(id, force && (!only || only === p))
         } catch (e) {

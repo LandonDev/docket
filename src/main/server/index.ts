@@ -908,7 +908,8 @@ export async function startServer(
     peers,
     nudge: () => accounts.nudge(),
     refreshNow: async () => {
-      await accounts.rebuildNow()
+      // Routed now from the vault, never behind a usage ask in flight; the gateway child's copy before the answer.
+      await accounts.routeNow()
       await runningGateway()?.flushAccountsChanged()
     },
     refreshUsage: (provider) => accounts.refresh(provider),
@@ -1848,7 +1849,8 @@ export async function startServer(
       return link?.connected ? (method, params) => link.request(method, params) : null
     },
     refreshNow: async () => {
-      await accounts.rebuildNow()
+      // Routed now from the vault, never behind a usage ask in flight; the gateway child's copy before the answer.
+      await accounts.routeNow()
       await runningGateway()?.flushAccountsChanged()
     },
     changed: () => accounts.nudge(),

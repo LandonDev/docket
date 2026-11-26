@@ -126,6 +126,45 @@ describe('AccountSync as a host', () => {
     }
   })
 
+  it('a sync that adds an account answers once the child has it, while an unrelated usage ask has not ended', async () => {
+    let endAsk: () => void = () => {}
+    const held = new Promise<[]>((resolve) => (endAsk = () => resolve([])))
+    let forced = 0
+    let asks = 0
+    const accounts = new AccountsService({ usage: async (_id, force) => (asks++, force ? (forced++, held) : []), live: async () => null, owner: () => null })
+    // As index.ts wires the push's refresh: the routing rebuild, then the gateway child's copy, which it reads from the vault.
+    const published: string[][] = []
+    const refreshNow = async (): Promise<void> => {
+      await accounts.routeNow()
+      published.push(vault.profiles('claude-code').map((p) => p.name))
+    }
+    const { sync } = host('env_pc', [], { refreshNow })
+    const expiresAt = Date.now() + 2 * HOUR
+    const names = (): string[] => accounts.snapshot().providers.claude.profiles.map((p) => p.name)
+    try {
+      expect(await sync.handlePush('env_mac', transfer('access', null, claudeBlob(expiresAt, null), { static: true }))).toMatchObject({ ok: true, saved: true })
+      // His Refresh (or a failover's proof) asks the provider and the answer is slow.
+      const refreshing = accounts.refresh('claude')
+      await vi.waitFor(() => expect(forced).toBe(1))
+      const asked = asks
+      const other = JSON.stringify({ keychain: JSON.stringify({ claudeAiOauth: { accessToken: 'T2', expiresAt } }), oauthAccount: { accountUuid: 'u2' } })
+      expect(await sync.handlePush('env_mac', transfer('access', null, other, { name: 'c@x', accountId: 'u2', email: 'c@x', static: true }))).toMatchObject({ ok: true, saved: true })
+      // Answered with the ask still open, and with no usage ask of its own: the child has the account and routing knows it.
+      expect(forced).toBe(1)
+      expect(asks).toBe(asked)
+      expect(published.at(-1)).toContain('c@x')
+      expect(names()).toEqual(expect.arrayContaining(['a@x', 'c@x']))
+      // The slow ask ends: its older picture never takes the new account away.
+      endAsk()
+      await refreshing
+      expect(names()).toEqual(expect.arrayContaining(['a@x', 'c@x']))
+    } finally {
+      endAsk()
+      accounts.stop()
+      sync.close()
+    }
+  }, 15_000)
+
   it('a handoff lands provisionally with the fingerprint of what it saved, becomes the live sign-in on the release; an access copy lands stripped', async () => {
     const activate = vi.fn(async () => {})
     const { sync, nudge } = host('env_box', [], { activate })
