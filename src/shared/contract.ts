@@ -1361,7 +1361,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
 export type RequestLane = 'ui'
 export type ClientRequest = z.infer<typeof ClientRequestSchema> & { lane?: RequestLane }
 
-/** The peer holding the one global copy, and whether it answers now. */
+/** The peer holding the shared copy, and whether it answers now. */
 export type SettingsHome = { name: string; online: boolean }
 
 /** What `review.get` answers: the override, global set, effective set, source and optional home. */

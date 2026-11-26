@@ -120,11 +120,8 @@ export async function savePlanSettings(
     scopes.set(key(environmentId, projectId), settings ? { settings, overridden: true } : { settings: inherited, overridden: false });
   } else {
     const home = scopes.get(globalKey)?.home;
-    scopes.set(globalKey, {
-      settings: settings ?? DEFAULT_PLAN_SETTINGS,
-      overridden: settings !== null,
-      ...(home ? { home } : {}),
-    });
+    const scope = settings ? { settings, overridden: true } : BUILT_IN_PLAN_SCOPE;
+    scopes.set(globalKey, home ? { ...scope, home } : scope);
     for (const [k, scope] of scopes) {
       if (k !== globalKey && k.startsWith(`${environmentId}|`) && !scope.overridden) {
         scopes.set(k, { settings: settings ?? DEFAULT_PLAN_SETTINGS, overridden: false });

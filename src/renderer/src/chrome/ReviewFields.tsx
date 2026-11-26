@@ -86,11 +86,7 @@ export function useReviewScope(environmentId: string, projectId: string | null) 
       .finally(() => {
         if (live) pending.current = false;
       });
-    withDeadline(read).catch((err) => {
-      if (!live) return;
-      pending.current = false;
-      setError(err instanceof Error ? err.message : String(err));
-    });
+    withDeadline(read).catch((err) => live && setError(err instanceof Error ? err.message : String(err)));
     return () => {
       live = false;
     };
