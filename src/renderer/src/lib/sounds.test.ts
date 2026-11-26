@@ -65,42 +65,64 @@ describe("sounds", () => {
     expect(loadSoundsEnabled()).toBe(true);
   });
 
-  it("persists an off switch", () => {
+  /** The engine is its own chunk: a cue plays once the import has answered. */
+  const engineAnswered = () => vi.dynamicImportSettled();
+
+  it("persists an off switch", async () => {
+    playCue("switch");
+    await engineAnswered();
     saveSoundsEnabled(false);
     expect(localStorage.getItem(KEY)).toBe("0");
     expect(loadSoundsEnabled()).toBe(false);
-    expect(setEnabled).toHaveBeenCalledWith(false);
+    await engineAnswered();
+    expect(setEnabled).toHaveBeenLastCalledWith(false);
     saveSoundsEnabled(true);
     expect(loadSoundsEnabled()).toBe(true);
+    await engineAnswered();
     expect(setEnabled).toHaveBeenLastCalledWith(true);
   });
 
-  it("plays the mapped cue when enabled", () => {
+  it("plays the mapped cue when enabled", async () => {
     playCue("turnFinished");
+    await engineAnswered();
     expect(setVolume).toHaveBeenCalledWith(SOUNDS_VOLUME);
     expect(play).toHaveBeenCalledWith("success");
     playCue("updateAvailable");
+    await engineAnswered();
     expect(play).toHaveBeenCalledWith("arrival");
     playCue("switch");
+    await engineAnswered();
     expect(play).toHaveBeenCalledWith("toggle");
     playCue("copy");
+    await engineAnswered();
     expect(play).toHaveBeenCalledWith("scan");
   });
 
-  it("is silent when muted", () => {
+  it("is silent when muted", async () => {
     saveSoundsEnabled(false);
     play.mockClear();
     playCue("turnFinished");
+    await engineAnswered();
     expect(play).not.toHaveBeenCalled();
   });
 
-  it("dings once per update version", () => {
+  it("is silent when he mutes while a cue's engine is still loading", async () => {
+    playCue("turnFinished");
+    saveSoundsEnabled(false);
+    await engineAnswered();
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("dings once per update version", async () => {
     announceUpdateAvailable("0.2.0");
+    await engineAnswered();
     expect(play).toHaveBeenCalledTimes(1);
     expect(play).toHaveBeenCalledWith("arrival");
     announceUpdateAvailable("0.2.0");
+    await engineAnswered();
     expect(play).toHaveBeenCalledTimes(1);
     announceUpdateAvailable("0.2.1");
+    await engineAnswered();
     expect(play).toHaveBeenCalledTimes(2);
   });
 });

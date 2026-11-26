@@ -1,4 +1,10 @@
-import { play, setEnabled, setVolume, type SoundName } from "cuelume";
+import type { SoundName } from "cuelume";
+
+/* The sound engine rides its own chunk: no cue plays before the first paint.
+   Asked for at the first idle moment after launch, so a first cue finds it loaded. */
+type Engine = typeof import("cuelume");
+let engine: Promise<Engine> | undefined;
+const loadEngine = (): Promise<Engine> => (engine ??= import("cuelume"));
 
 const KEY = "docket.sounds";
 
@@ -38,27 +44,40 @@ export function saveSoundsEnabled(value: boolean) {
   } catch {
     // private mode / quota
   }
-  applySoundEngine();
+  // An engine not yet asked for reads the switch at its first cue.
+  void engine?.then(applySoundEngine);
   if (typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent<boolean>(SOUNDS_CHANGE_EVENT, { detail: value }),
   );
 }
 
-function applySoundEngine() {
-  setEnabled(loadSoundsEnabled());
-  setVolume(SOUNDS_VOLUME);
+function applySoundEngine(lib: Engine) {
+  lib.setEnabled(loadSoundsEnabled());
+  lib.setVolume(SOUNDS_VOLUME);
 }
 
-/** Apply the stored mute/volume before the first cue. */
+/** Load the engine once the launch is idle, with the stored mute and volume. */
 export function initSounds() {
-  applySoundEngine();
+  const warm = () => void loadEngine().then(applySoundEngine, () => {});
+  if (typeof requestIdleCallback === "function") requestIdleCallback(warm, { timeout: 5000 });
+  else setTimeout(warm, 2000);
 }
 
 export function playCue(cue: SoundCue) {
   if (!loadSoundsEnabled()) return;
-  applySoundEngine();
-  play(CUES[cue]);
+  void loadEngine().then(
+    (lib) => {
+      // Read again: he may have switched sounds off while the chunk loaded.
+      if (!loadSoundsEnabled()) return;
+      applySoundEngine(lib);
+      lib.play(CUES[cue]);
+    },
+    () => {
+      // A chunk that failed to load is asked for again at the next cue.
+      engine = undefined;
+    },
+  );
 }
 
 let announcedUpdate: string | undefined;
