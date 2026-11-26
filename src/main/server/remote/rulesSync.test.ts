@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, Store } from '../db'
 import { SessionRegistry } from '../sessions'
 import { PeerCatalogs } from '../peerCatalogs'
@@ -168,6 +168,22 @@ describe('one copy on the box', () => {
     w.box.setOrchestrationRules(null, theirs)
     await w.sync.syncWith(BOX)
     expect(w.mac.getOrchestrationRules(null)).toEqual(theirs)
+  })
+
+  it('starts four reads together and seeds each rule in order after they return', async () => {
+    const mine = withModel(DEFAULT_RULES, 'muse:muse-spark-1.3', { approved: false })
+    w.mac.setOrchestrationRules(null, mine)
+    w.mac.setOrchestrationRules(`w-${MAC}`, mine)
+    let release!: () => void
+    w.link.hold = { method: 'rules.get', wait: new Promise<void>((resolve) => { release = resolve }) }
+    const pulling = w.sync.syncWith(BOX)
+    await vi.waitFor(() => expect(w.link.calls).toContain('review.get'))
+    expect(w.link.calls).toEqual(['workspace.list', 'catalog.exchange', 'rules.get', 'defaults.get', 'plans.get', 'review.get'])
+    expect(w.box.getOrchestrationRules(null)).toBeNull()
+    release()
+    await pulling
+    expect(w.link.calls.slice(6)).toEqual(['rules.set', 'rules.get', 'defaults.get', 'rules.set'])
+    expect(JSON.parse(w.macStore.getSetting(`${SEEDED_KEY}${BOX}`)!)).toEqual(['plans.get', 'review.get', 'global', WS_LINK])
   })
 
   it('a rule for a model only the Mac runs is stored on the box and read back here', async () => {

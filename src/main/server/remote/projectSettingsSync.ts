@@ -1,7 +1,7 @@
 import type { ServerPush } from '@shared/contract'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import { headlessOf, ProjectSettingsBundleSchema, settingsHomeOf, type HostBuild, type ProjectSettingsBundle } from '@shared/projectLinks'
-import type { Peers } from './peers'
+import type { Peers, WorkspaceSnapshot } from './peers'
 
 /**
  * Project settings live on the box (docs/box.md "One project across hosts:
@@ -73,9 +73,9 @@ export type SettingsRoute =
   | { kind: 'home'; link: Link; localId: string; peerProjectId: string; peerWorkspaceId: string }
 
 export class ProjectSettingsSync {
-  private readonly timers = new Map<string, NodeJS.Timeout>()
+  private readonly timers = new Map<string, { timer: NodeJS.Timeout; workspaces?: WorkspaceSnapshot }>()
   private readonly running = new Map<string, Promise<void>>()
-  private readonly again = new Set<string>()
+  private readonly again = new Map<string, WorkspaceSnapshot | undefined>()
   private period: NodeJS.Timeout | null = null
   private closed = false
 
@@ -101,12 +101,12 @@ export class ProjectSettingsSync {
     this.closed = true
     if (this.period) clearInterval(this.period)
     this.period = null
-    for (const t of this.timers.values()) clearTimeout(t)
+    for (const { timer } of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
   }
 
-  linkUp(id: string): void {
-    this.schedule(id)
+  linkUp(id: string, workspaces?: WorkspaceSnapshot): void {
+    this.schedule(id, workspaces)
   }
 
   /** A peer's `projects` or `workspaces` push: remember its catalog and follow it. Never consumes the push. */
@@ -119,30 +119,32 @@ export class ProjectSettingsSync {
   }
 
   /** Debounced: a burst of pushes is one pull. */
-  schedule(id: string): void {
+  schedule(id: string, workspaces?: WorkspaceSnapshot): void {
     if (this.closed) return
-    const t = this.timers.get(id)
-    if (t) clearTimeout(t)
+    const scheduled = this.timers.get(id)
+    if (scheduled) clearTimeout(scheduled.timer)
+    workspaces ??= scheduled?.workspaces
     const timer = setTimeout(() => {
       this.timers.delete(id)
-      void this.syncWith(id)
+      void this.syncWith(id, workspaces)
     }, PROJECT_SETTINGS_DEBOUNCE_MS)
     timer.unref?.()
-    this.timers.set(id, timer)
+    this.timers.set(id, { timer, workspaces })
   }
 
   /** One pull from one peer; a call while one runs runs once more after it. */
-  syncWith(id: string): Promise<void> {
+  syncWith(id: string, workspaces?: WorkspaceSnapshot): Promise<void> {
     const live = this.running.get(id)
     if (live) {
-      this.again.add(id)
+      this.again.set(id, workspaces)
       return live
     }
     const run = (async () => {
       try {
         do {
           this.again.delete(id)
-          await this.pull(id)
+          await this.pull(id, workspaces)
+          workspaces = this.again.get(id)
         } while (this.again.has(id) && !this.closed)
       } catch (err) {
         this.log(`${this.deps.peers.get(id)?.env.name ?? id}: ${err instanceof Error ? err.message : String(err)}`)
@@ -154,7 +156,7 @@ export class ProjectSettingsSync {
     return run
   }
 
-  private async pull(id: string): Promise<void> {
+  private async pull(id: string, workspaces?: WorkspaceSnapshot): Promise<void> {
     const link = this.deps.peers.get(id)
     if (!link?.connected) return
     const theirs = await link.request<ProjectMeta[]>('project.list')
@@ -174,14 +176,14 @@ export class ProjectSettingsSync {
       if (local.settingsUpdatedAt != null && theirStamp <= local.settingsUpdatedAt) continue
       await this.apply(link, local.id, peer.id)
     }
-    await this.followNames(id, link)
+    await this.followNames(id, link, workspaces)
   }
 
   /** Each linked workspace whose home is this peer takes the home's name. */
-  private async followNames(id: string, link: Link): Promise<void> {
+  private async followNames(id: string, link: Link, workspaces?: WorkspaceSnapshot): Promise<void> {
     const linked = this.deps.registry.listWorkspaces().filter((w) => w.linkId)
     if (linked.length === 0) return
-    const theirs = await link.request<WorkspaceMeta[]>('workspace.list')
+    const theirs = await (workspaces?.() ?? link.request<WorkspaceMeta[]>('workspace.list'))
     this.rememberWorkspaces(id, theirs)
     const byLink = new Map(theirs.filter((w) => w.linkId).map((w) => [w.linkId!, w]))
     for (const local of linked) {

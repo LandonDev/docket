@@ -49,7 +49,7 @@ import type { MediaRange } from '@shared/contract-fsgit'
 import { MasterReleaseWatcher } from '../deployDrift'
 import { usageAnswers, usageSamples } from './usageSamples'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
-import { Peers } from './remote/peers'
+import { Peers, type WorkspaceSnapshot } from './remote/peers'
 import { Givers, claimsGiver, giverMoveBytes } from './devices/giver'
 import { signBytes } from '@shared/devices/keys'
 import { givenHostRefusal, relayedRefusal } from './devices/hostRules'
@@ -823,17 +823,17 @@ export async function startServer(
   const peers = new Peers(
     { store, environmentId },
     {
-      onOpen: (id) => {
+      onOpen: (id, workspaces) => {
         // A given computer's link to its box proves the device key in peer.register (macBridge's, with the proof) before
         // anything else asks, since the box refuses every other call until then; then it reads its mail (devices/given.ts).
         if (given?.isBox(id)) {
           void macBridge
             .linkUp(id)
             .then(() => given?.linkUp(id))
-            .finally(() => linkOpened(id, false))
+            .finally(() => linkOpened(id, false, workspaces))
           return
         }
-        linkOpened(id, true)
+        linkOpened(id, true, workspaces)
       },
       onClose: (id, code) => {
         peerBrowserEndpoints.disconnect('outbound', id)
@@ -875,17 +875,17 @@ export async function startServer(
     }
   )
   // Everything a link coming up starts; `bridge`: the Mac bridge's peer.register too (a given computer's box link sent it first).
-  function linkOpened(id: string, bridge: boolean): void {
+  function linkOpened(id: string, bridge: boolean, workspaces: WorkspaceSnapshot): void {
     if (bridge) void macBridge.linkUp(id)
     // The Mac claims the giver before its first sync after the upgrade, so its pushes are the giver's (devices/giver.ts).
     void claimGiverOn(id).finally(() => void accountSync.syncWith(id))
     void accountSync.pushHeadroom(id)
     void harnessSync.syncWith(id, 'link-up')
     void memorySync.syncWith(id, 'link-up')
-    projectLinker.linkUp(id)
-    projectSettings.linkUp(id)
-    rulesSync.linkUp(id)
-    storeSync.linkUp(id)
+    projectLinker.linkUp(id, workspaces)
+    projectSettings.linkUp(id, workspaces)
+    rulesSync.linkUp(id, workspaces)
+    storeSync.linkUp(id, workspaces)
     runSkillImport()
     void awaySync.linkUp(id)
     void sessionMover.settleWith(id)

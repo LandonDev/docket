@@ -4,7 +4,7 @@ import { AddonRowSchema, type AddonRow, type StoreHome } from '@shared/contract-
 import { SkillMetaSchema, SkillSchema, type SkillMeta } from '@shared/contract-skills'
 import type { AddonStore } from '../addonStore'
 import type { SkillStore } from '../skillStore'
-import type { Peers } from './peers'
+import type { Peers, WorkspaceSnapshot } from './peers'
 import type { Scope } from './rulesSync'
 
 /**
@@ -45,7 +45,7 @@ type Link = NonNullable<ReturnType<Peers['get']>>
 export interface StoreSyncDeps {
   environmentId: string
   /** RulesSync: the home, the shared scopes, and its pull (which records the peer's workspaces). */
-  home: { homeOf(): string; sharedScopes(peerId: string): Scope[]; syncWith(peerId: string): Promise<void> }
+  home: { homeOf(): string; sharedScopes(peerId: string): Scope[]; syncWith(peerId: string, workspaces?: WorkspaceSnapshot): Promise<void> }
   addons: AddonStore
   skills: SkillStore
   store: { getSetting(key: string): string | null; setSetting(key: string, value: string | null): void }
@@ -78,9 +78,9 @@ export const offlineRefusal = (host: string): string => `refused: add-ons and sk
 
 export class StoreSync {
   private readonly tables: [Table<AddonRow>, Table<SkillMeta>]
-  private readonly timers = new Map<string, NodeJS.Timeout>()
+  private readonly timers = new Map<string, { timer: NodeJS.Timeout; workspaces?: WorkspaceSnapshot }>()
   private readonly running = new Map<string, Promise<void>>()
-  private readonly again = new Set<string>()
+  private readonly again = new Map<string, WorkspaceSnapshot | undefined>()
   private period: NodeJS.Timeout | null = null
   private closed = false
   /** Forwards started: a follow whose read began before one never writes. */
@@ -167,12 +167,12 @@ export class StoreSync {
     this.closed = true
     if (this.period) clearInterval(this.period)
     this.period = null
-    for (const t of this.timers.values()) clearTimeout(t)
+    for (const { timer } of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
   }
 
-  linkUp(id: string): void {
-    this.schedule(id)
+  linkUp(id: string, workspaces?: WorkspaceSnapshot): void {
+    this.schedule(id, workspaces)
   }
 
   /** The home's `addons`, `skills` or `workspaces` push: follow it. Never consumes the push. */
@@ -181,29 +181,31 @@ export class StoreSync {
     return false
   }
 
-  schedule(id: string): void {
+  schedule(id: string, workspaces?: WorkspaceSnapshot): void {
     if (this.closed) return
-    const t = this.timers.get(id)
-    if (t) clearTimeout(t)
+    const scheduled = this.timers.get(id)
+    if (scheduled) clearTimeout(scheduled.timer)
+    workspaces ??= scheduled?.workspaces
     const timer = setTimeout(() => {
       this.timers.delete(id)
-      void this.syncWith(id)
+      void this.syncWith(id, workspaces)
     }, STORE_SYNC_DEBOUNCE_MS)
     timer.unref?.()
-    this.timers.set(id, timer)
+    this.timers.set(id, { timer, workspaces })
   }
 
-  syncWith(id: string): Promise<void> {
+  syncWith(id: string, workspaces?: WorkspaceSnapshot): Promise<void> {
     const live = this.running.get(id)
     if (live) {
-      this.again.add(id)
+      this.again.set(id, workspaces)
       return live
     }
     const run = (async () => {
       try {
         do {
           this.again.delete(id)
-          await this.pull(id)
+          await this.pull(id, workspaces)
+          workspaces = this.again.get(id)
         } while (this.again.has(id) && !this.closed)
       } catch (err) {
         this.log(`${this.deps.peers.get(id)?.env.name ?? id}: ${err instanceof Error ? err.message : String(err)}`)
@@ -215,9 +217,9 @@ export class StoreSync {
     return run
   }
 
-  private async pull(id: string): Promise<void> {
+  private async pull(id: string, workspaces?: WorkspaceSnapshot): Promise<void> {
     // RulesSync's pull records the peer's workspaces and platform: the home and the shared scopes follow from them.
-    await this.deps.home.syncWith(id)
+    await this.deps.home.syncWith(id, workspaces)
     const link = this.deps.peers.get(id)
     if (!link?.connected || this.deps.home.homeOf() !== id) return
     await this.follow(link, this.tables[0])

@@ -1,9 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, Store } from '../db'
 import { SessionRegistry } from '../sessions'
 import { AddonStore } from '../addonStore'
 import { SkillStore } from '../skillStore'
 import { storePushes, storeRpc, type StoreRequest } from '../storeRpc'
+import type { WorkspaceMeta } from '@shared/domain'
+import { ProjectLinker } from './projectLinks'
+import { ProjectSettingsSync } from './projectSettingsSync'
 import { RulesSync } from './rulesSync'
 import { StoreSync, offlineRefusal } from './storeSync'
 import { DEFAULT_RULES } from '@shared/rules'
@@ -64,6 +67,8 @@ let link: {
 async function boxServe(method: string, params: Record<string, any>): Promise<unknown> {
   const r = box.registry
   switch (method) {
+    case 'project.list':
+      return r.listProjects()
     case 'workspace.list':
       return r.listWorkspaces()
     case 'rules.get': {
@@ -122,6 +127,42 @@ const macSkill = async (files: SkillFile[], over: { workspaceId?: string | null 
 const sameRow = (a: AddonRow | null, b: AddonRow | null, macWs: string | null = null): void => expect(a).toEqual(b && { ...b, workspaceId: macWs })
 
 describe('one copy on the box, two hosts', () => {
+  it('uses one workspace list for the catalog, rules, project settings and stores at link-up', async () => {
+    const request = vi.spyOn(link, 'request')
+    const peers = { get: () => link, all: () => [link] }
+    const projectLinks = new ProjectLinker({
+      environmentId: MAC, platform: 'darwin', registry: mac.registry, peers,
+      ensureLinked: async () => { throw new Error('no project needs a copy') }, log: () => {}
+    })
+    const projectSettings = new ProjectSettingsSync({
+      environmentId: MAC, platform: 'darwin', registry: mac.registry, store: mac.store, peers: peers as never, log: () => {}
+    })
+
+    vi.useFakeTimers()
+    try {
+      let snapshot: Promise<WorkspaceMeta[]> | undefined
+      const workspaces = () => snapshot ??= link.request<WorkspaceMeta[]>('workspace.list')
+      projectLinks.linkUp(BOX, workspaces)
+      projectSettings.linkUp(BOX, workspaces)
+      mac.rules.linkUp(BOX, workspaces)
+      mac.sync.linkUp(BOX, workspaces)
+      const push = { push: 'workspaces', workspaces: box.registry.listWorkspaces() } as const
+      projectLinks.onPeerPush(BOX, push)
+      projectSettings.onPeerPush(BOX, push)
+      mac.rules.onPeerPush(BOX, push)
+      mac.sync.onPeerPush(BOX, push)
+      await vi.runAllTimersAsync()
+      expect(request.mock.calls.filter(([method]) => method === 'workspace.list')).toHaveLength(1)
+      expect(request.mock.calls.filter(([method]) => method === 'rules.get')).toHaveLength(2)
+      expect(request.mock.calls.some(([method]) => method === 'addons.list')).toBe(true)
+      expect(projectLinks.status(BOX)?.pairs.workspaces).toBe(1)
+    } finally {
+      projectLinks.close()
+      projectSettings.close()
+      vi.useRealTimers()
+    }
+  })
+
   it('the Mac\'s add-on and skill seed the box', async () => {
     // Written before the Mac ever met the box: its own.
     const a = await macSet(addon())

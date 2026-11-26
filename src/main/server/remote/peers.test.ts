@@ -2,7 +2,7 @@ import { createServer } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { ENVIRONMENTS_PREFIX } from './environments'
-import { PeerLink, Peers, connectedLine } from './peers'
+import { PeerLink, Peers, connectedLine, type PeerEvents } from './peers'
 
 /** A host: hello first, then every request echoed back as its result, plus whatever the test pushes. */
 async function fakeHost(environmentId: string, onRequest?: (method: string) => boolean | void) {
@@ -81,7 +81,7 @@ describe('PeerLink', () => {
     cleanup.push(async () => link.close())
     await link.connect()
     expect(link.connected).toBe(true)
-    expect(events.onOpen).toHaveBeenCalledWith('env_a')
+    expect(events.onOpen).toHaveBeenCalledWith('env_a', expect.any(Function))
     expect(hostA.tickets).toEqual(['t-1'])
     expect(await link.request('accounts.pull', { from: 'env_me' })).toEqual({ method: 'accounts.pull', params: { from: 'env_me' } })
     await expect(link.request('fail')).rejects.toThrow('nope')
@@ -161,6 +161,36 @@ describe('PeerLink', () => {
       'ticket start', 'ticket start', 'carrier restored', 'ticket start', 'ticket end', 'hello', 'registered'
     ])
     expect(methods).toEqual(['peer.register', 'work.outbox.send', 'peer.register'])
+  })
+
+  it('shares one workspace list per hello and refreshes it after a catalog push', async () => {
+    const methods: string[] = []
+    const host = await fakeHost('env_a', (method) => { methods.push(method) })
+    cleanup.push(host.close)
+    const env = { id: 'env_a', name: 'A', routes: [{ url: `ws://127.0.0.1:${host.port}/ws`, kind: 'loopback' as const }], addedAt: 1, caps: ['admin' as const], keyName: 'k' }
+    const store = storeWith({ [`${ENVIRONMENTS_PREFIX}env_a`]: JSON.stringify({ ...env, key: 'tc_x.secret' }) })
+    const onOpen = vi.fn<NonNullable<PeerEvents['onOpen']>>()
+    const onPush = vi.fn()
+    const link = new PeerLink(env, { store, environmentId: 'env_me', fetch: ticketFetch as unknown as typeof fetch }, { onOpen, onPush })
+    cleanup.push(async () => link.close())
+    await link.connect()
+    const workspaces = onOpen.mock.calls[0]![1]
+    await Promise.all([workspaces(), workspaces(), workspaces()])
+    await workspaces()
+    expect(methods).toEqual(['workspace.list'])
+
+    host.push({ push: 'workspaces', workspaces: [] })
+    await vi.waitFor(() => expect(onPush).toHaveBeenCalledOnce())
+    await Promise.all([workspaces(), workspaces()])
+    expect(methods).toEqual(['workspace.list', 'workspace.list'])
+
+    host.dropAll()
+    await vi.waitFor(() => expect(link.connected).toBe(false))
+    link.retry()
+    await vi.waitFor(() => expect(onOpen).toHaveBeenCalledTimes(2))
+    await expect(workspaces()).rejects.toThrow('closed the socket')
+    await onOpen.mock.calls[1]![1]()
+    expect(methods).toEqual(['workspace.list', 'workspace.list', 'workspace.list'])
   })
 
   it('names the negotiated extensions on its connect line', async () => {

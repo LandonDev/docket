@@ -1,3 +1,4 @@
+import type { WorkspaceSnapshot } from './peers'
 import type { ServerPush } from '@shared/contract'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { EnsureLinkedResult } from '@shared/wireSchemas'
@@ -138,7 +139,7 @@ function stampsOf<T extends Row>(
 export class ProjectLinker {
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private readonly running = new Map<string, Promise<void>>()
-  private readonly again = new Set<string>()
+  private readonly again = new Map<string, WorkspaceSnapshot | undefined>()
   private readonly statuses = new Map<string, ProjectLinkStatus>()
   private period: NodeJS.Timeout | null = null
   private offCatalog: (() => void) | null = null
@@ -162,8 +163,11 @@ export class ProjectLinker {
     this.period.unref?.()
   }
 
-  linkUp(id: string): void {
-    this.soon(id)
+  linkUp(id: string, workspaces?: WorkspaceSnapshot): void {
+    const timer = this.timers.get(id)
+    if (timer) clearTimeout(timer)
+    this.timers.delete(id)
+    this.soon(id, workspaces)
   }
 
   /** A push on a link this host holds: the peer's catalog changed. Never consumes the push. */
@@ -176,27 +180,28 @@ export class ProjectLinker {
   }
 
   /** Run for `id` once the burst is over; asks meanwhile ride the one waiting. */
-  soon(id: string): void {
+  soon(id: string, workspaces?: WorkspaceSnapshot): void {
     if (this.closed || this.timers.has(id)) return
     const timer = setTimeout(() => {
       this.timers.delete(id)
-      void this.run(id)
+      void this.run(id, workspaces)
     }, LINK_DEBOUNCE_MS)
     timer.unref?.()
     this.timers.set(id, timer)
   }
 
   /** One run against `id` now; a run asked while one is going follows it once. */
-  run(id: string): Promise<void> {
+  run(id: string, workspaces?: WorkspaceSnapshot): Promise<void> {
     if (this.closed) return Promise.resolve()
     const going = this.running.get(id)
     if (going) {
-      this.again.add(id)
+      this.again.set(id, workspaces)
       return going
     }
-    const run = this.link(id).finally(() => {
+    const run = this.link(id, workspaces).finally(() => {
       this.running.delete(id)
-      if (this.again.delete(id)) void this.run(id)
+      const next = this.again.get(id)
+      if (this.again.delete(id)) void this.run(id, next)
     })
     this.running.set(id, run)
     return run
@@ -210,11 +215,11 @@ export class ProjectLinker {
     return Object.fromEntries(this.statuses)
   }
 
-  private async link(id: string): Promise<void> {
+  private async link(id: string, workspaces?: WorkspaceSnapshot): Promise<void> {
     const link = this.deps.peers.get(id)
     if (!link?.connected) return
     try {
-      const [peerWs, peerPr] = await Promise.all([link.request<WorkspaceMeta[]>('workspace.list'), link.request<ProjectMeta[]>('project.list')])
+      const [peerWs, peerPr] = await Promise.all([workspaces?.() ?? link.request<WorkspaceMeta[]>('workspace.list'), link.request<ProjectMeta[]>('project.list')])
       // A Work workspace is never linked (shared/projectLinks.ts): a link one carries from before is cleared here first.
       const unlinked = this.deps.registry.unlinkWorkWorkspaces?.() ?? 0
       if (unlinked) this.log(`${id}: cleared the link of ${unlinked} Work workspace${unlinked === 1 ? '' : 's'}`)

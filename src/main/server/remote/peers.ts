@@ -5,6 +5,7 @@ import type { PeerState } from '@shared/accounts'
 import { opensPeerLink } from '@shared/capabilities'
 import type { ServerFrame, ServerPush } from '@shared/contract'
 import type { SavedEnvironment } from '@shared/contract-remote'
+import type { WorkspaceMeta } from '@shared/domain'
 import type { BuildFacts } from '@shared/deployDrift'
 import { HostError, environmentKey, listEnvironments, mintTicket, rememberPlatform, type HostContext } from './environments'
 
@@ -18,8 +19,10 @@ import { HostError, environmentKey, listEnvironments, mintTicket, rememberPlatfo
  * comes back by id; a push from the host (an `account` rotation) goes to
  * `onPush`. The hello frame is checked against the saved environment id.
  */
+export type WorkspaceSnapshot = () => Promise<WorkspaceMeta[]>
+
 export interface PeerEvents {
-  onOpen?: (id: string) => void
+  onOpen?: (id: string, workspaces: WorkspaceSnapshot) => void
   /** `code` is the socket's close code (FAREWELL_CLOSE tells a given computer it was removed). */
   onClose?: (id: string, code: number) => void
   onPush?: (id: string, push: ServerPush) => void
@@ -56,6 +59,7 @@ export class PeerLink {
   private ws: WebSocket | null = null
   private readonly pending = new Map<string, Pending>()
   private seq = 0
+  private workspaceRevision = 0
   private timer: NodeJS.Timeout | null = null
   private closed = false
   private recovering = false
@@ -107,7 +111,7 @@ export class PeerLink {
         this.lastError = null
         this.route = { url: route.url, kind: route.kind }
         this.log(connectedLine(this.env.name, route.kind, extensions))
-        this.events.onOpen?.(this.env.id)
+        this.events.onOpen?.(this.env.id, this.workspaceSnapshot())
         return
       } catch (err) {
         this.lastError = err instanceof Error ? err.message : String(err)
@@ -162,7 +166,10 @@ export class PeerLink {
             resolve(ws.extensions)
             return
           }
-          if (settled && this.ws === ws) this.events.onPush?.(this.env.id, frame)
+          if (settled && this.ws === ws) {
+            if (frame.push === 'workspaces') this.workspaceRevision++
+            this.events.onPush?.(this.env.id, frame)
+          }
           return
         }
         const p = this.pending.get(frame.id)
@@ -202,6 +209,24 @@ export class PeerLink {
         }
       })
     })
+  }
+
+  /** One lazy workspace read for the jobs from this hello, invalidated by a catalog push. */
+  private workspaceSnapshot(): WorkspaceSnapshot {
+    const ws = this.ws
+    let revision = -1
+    let snapshot: Promise<WorkspaceMeta[]>
+    const read = (): Promise<WorkspaceMeta[]> => {
+      if (!ws || this.ws !== ws) return Promise.reject(new Error(`${this.env.name} closed the socket`))
+      if (revision !== this.workspaceRevision) {
+        const requested = revision = this.workspaceRevision
+        snapshot = this.request<WorkspaceMeta[]>('workspace.list').then((rows) =>
+          this.ws === ws && requested === this.workspaceRevision ? rows : read()
+        )
+      }
+      return snapshot
+    }
+    return read
   }
 
   private failPending(err: Error): void {

@@ -6,7 +6,7 @@ import { PlanSettingsSchema, type PlanSettings } from '@shared/plans'
 import { headlessOf, settingsHomeOf, type HostBuild } from '@shared/projectLinks'
 import { ReviewSettingsSchema, type ReviewSettings } from '@shared/review'
 import { OrchestrationRulesSchema, type OrchestrationRules } from '@shared/rules'
-import type { Peers } from './peers'
+import type { Peers, WorkspaceSnapshot } from './peers'
 
 /**
  * Rules, thread defaults, global Plans and global Reviews live on the box
@@ -39,6 +39,7 @@ import type { Peers } from './peers'
 
 export const RULES_SYNC_PERIOD_MS = 5 * 60_000
 export const RULES_SYNC_DEBOUNCE_MS = 500
+const RULE_READ_WINDOW = 4
 export const PEER_KEY = 'rules-sync:peer:'
 export const SEEDED_KEY = 'rules-sync:seeded:'
 
@@ -98,9 +99,10 @@ export interface Scope {
 
 export class RulesSync {
   private readonly kinds: Kind[]
-  private readonly timers = new Map<string, NodeJS.Timeout>()
+  private readonly timers = new Map<string, { timer: NodeJS.Timeout; workspaces?: WorkspaceSnapshot }>()
   private readonly running = new Map<string, Promise<void>>()
-  private readonly again = new Set<string>()
+  private readonly again = new Map<string, WorkspaceSnapshot | undefined>()
+  private readonly linkUpRuns = new WeakMap<WorkspaceSnapshot, Promise<void>>()
   private period: NodeJS.Timeout | null = null
   private closed = false
   /** A pull started before a write to its scope never replaces that write. */
@@ -169,12 +171,12 @@ export class RulesSync {
     this.closed = true
     if (this.period) clearInterval(this.period)
     this.period = null
-    for (const t of this.timers.values()) clearTimeout(t)
+    for (const { timer } of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
   }
 
-  linkUp(id: string): void {
-    this.schedule(id)
+  linkUp(id: string, workspaces?: WorkspaceSnapshot): void {
+    this.schedule(id, workspaces)
   }
 
   /** The peer's `workspaces` push: follow it. Never consumes the push. */
@@ -188,29 +190,39 @@ export class RulesSync {
     for (const link of this.deps.peers.all()) this.schedule(link.id)
   }
 
-  schedule(id: string): void {
+  schedule(id: string, workspaces?: WorkspaceSnapshot): void {
     if (this.closed) return
-    const t = this.timers.get(id)
-    if (t) clearTimeout(t)
+    const scheduled = this.timers.get(id)
+    if (scheduled) clearTimeout(scheduled.timer)
+    workspaces ??= scheduled?.workspaces
     const timer = setTimeout(() => {
       this.timers.delete(id)
-      void this.syncWith(id)
+      void this.syncWith(id, workspaces)
     }, RULES_SYNC_DEBOUNCE_MS)
     timer.unref?.()
-    this.timers.set(id, timer)
+    this.timers.set(id, { timer, workspaces })
   }
 
-  syncWith(id: string): Promise<void> {
+  syncWith(id: string, workspaces?: WorkspaceSnapshot): Promise<void> {
+    const opened = workspaces && this.linkUpRuns.get(workspaces)
+    if (opened) return opened
+    const run = this.run(id, workspaces)
+    if (workspaces) this.linkUpRuns.set(workspaces, run)
+    return run
+  }
+
+  private run(id: string, workspaces?: WorkspaceSnapshot): Promise<void> {
     const live = this.running.get(id)
     if (live) {
-      this.again.add(id)
+      this.again.set(id, workspaces)
       return live
     }
     const run = (async () => {
       try {
         do {
           this.again.delete(id)
-          await this.pull(id)
+          await this.pull(id, workspaces)
+          workspaces = this.again.get(id)
         } while (this.again.has(id) && !this.closed)
       } catch (err) {
         this.log(`${this.deps.peers.get(id)?.env.name ?? id}: ${err instanceof Error ? err.message : String(err)}`)
@@ -222,36 +234,45 @@ export class RulesSync {
     return run
   }
 
-  private async pull(id: string): Promise<void> {
+  private async pull(id: string, workspaces?: WorkspaceSnapshot): Promise<void> {
     const link = this.deps.peers.get(id)
     if (!link?.connected) return
-    this.remember(link, await link.request<WorkspaceMeta[]>('workspace.list'))
+    this.remember(link, await (workspaces?.() ?? link.request<WorkspaceMeta[]>('workspace.list')))
     await this.exchangeCatalogs(link)
     if (this.homeOf() !== id) return
-    const seededScopes = new Set(this.seeded(id))
-    for (const scope of this.sharedScopes(id)) {
-      const seeded = seededScopes.has(scope.key)
-      let completed = true
-      for (const kind of this.kinds) {
-        if (kind.feature) {
-          if (scope.local === null && this.supports(link, kind)) await this.syncGlobal(link, kind, scope)
-        } else if (seeded) {
-          await this.follow(link, kind, scope)
-        } else if (!(await this.seed(link, kind, scope))) {
-          completed = false
-        }
-      }
-      if (!seeded && completed) this.markSeeded(link, scope.key)
-    }
-  }
 
-  private async syncGlobal(link: Link, kind: Kind, scope: Scope): Promise<void> {
-    const key = kind.get
-    try {
-      if (this.seeded(link.id).includes(key)) await this.follow(link, kind, scope)
-      else if (await this.seed(link, kind, scope)) this.markSeeded(link, key)
-    } catch (err) {
-      if (!this.markUnsupported(link, kind, err)) throw err
+    const seededScopes = new Set(this.seeded(id))
+    const jobs = this.sharedScopes(id).flatMap((scope) => {
+      const kinds = this.kinds.filter((kind) => !kind.feature || (scope.local === null && this.supports(link, kind)))
+      return kinds.map((kind, i) => ({ kind, scope, last: i === kinds.length - 1 }))
+    })
+    const incomplete = new Set<string>()
+    for (let i = 0; i < jobs.length; i += RULE_READ_WINDOW) {
+      const batch = jobs.slice(i, i + RULE_READ_WINDOW)
+      const reads = await Promise.allSettled(batch.map(({ kind, scope }) => this.readSetting(link, kind, scope)))
+      // Reads overlap, but each apply, seed and marker keeps its place in the pull.
+      for (const [j, { kind, scope, last }] of batch.entries()) {
+        const seeded = kind.feature ? this.seeded(id).includes(kind.get) : seededScopes.has(scope.key)
+        try {
+          const read = reads[j]!
+          if (read.status === 'rejected') throw read.reason
+          const { before, answer } = read.value
+          if (this.writes.get(this.writeKey(kind, scope)) !== before) {
+            if (!kind.feature) incomplete.add(scope.key)
+          } else {
+            const theirs = kind.parse(kind.stored(answer))
+            if (seeded || theirs !== null) this.apply(link, kind, scope, theirs)
+            else {
+              const mine = kind.read(scope.local)
+              if (mine !== null) await link.request(kind.set, { ...this.params(kind, scope), [kind.field]: mine })
+            }
+            if (kind.feature && !seeded) this.markSeeded(link, kind.get)
+          }
+        } catch (err) {
+          if (!this.markUnsupported(link, kind, err)) throw err
+        }
+        if (last && !seededScopes.has(scope.key) && !incomplete.has(scope.key)) this.markSeeded(link, scope.key)
+      }
     }
   }
 
@@ -263,28 +284,17 @@ export class RulesSync {
     return `${kind.get}:${scope.local ?? ''}`
   }
 
-  /** A scope's first sync: the box's set wins. An empty box takes this host's set once. */
-  private async seed(link: Link, kind: Kind, scope: Scope): Promise<boolean> {
-    const key = this.writeKey(kind, scope)
-    const before = this.writes.get(key)
-    const res = await link.request<Record<string, unknown>>(kind.get, this.params(kind, scope))
-    if (this.writes.get(key) !== before) return false
-    const theirs = kind.parse(kind.stored(res))
-    if (theirs !== null) this.apply(link, kind, scope, theirs)
-    else {
-      const mine = kind.read(scope.local)
-      if (mine !== null) await link.request(kind.set, { ...this.params(kind, scope), [kind.field]: mine })
-    }
-    return true
+  private async readSetting(link: Link, kind: Kind, scope: Scope): Promise<{ before: number | undefined; answer: Record<string, unknown> }> {
+    const before = this.writes.get(this.writeKey(kind, scope))
+    const answer = await link.request<Record<string, unknown>>(kind.get, this.params(kind, scope))
+    return { before, answer }
   }
 
   /** A pull that read before a forward never replaces its answer. */
   private async follow(link: Link, kind: Kind, scope: Scope): Promise<void> {
-    const key = this.writeKey(kind, scope)
-    const before = this.writes.get(key)
-    const res = await link.request<Record<string, unknown>>(kind.get, this.params(kind, scope))
-    if (this.writes.get(key) !== before) return
-    this.apply(link, kind, scope, kind.parse(kind.stored(res)))
+    const { before, answer } = await this.readSetting(link, kind, scope)
+    if (this.writes.get(this.writeKey(kind, scope)) !== before) return
+    this.apply(link, kind, scope, kind.parse(kind.stored(answer)))
   }
 
   private apply(link: Link, kind: Kind, scope: Scope, theirs: unknown): void {

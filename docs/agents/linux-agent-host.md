@@ -242,6 +242,10 @@
   backoff follows if the link stays down. Each dial gets a fresh ticket
   and checks the host's hello. Registration goes out before background
   sync starts. A cut rejects pending calls, including held sends.
+- Link-up shares one `workspace.list` read between project linking,
+  project settings, rules and store sync. A workspace change invalidates
+  the snapshot, and a new socket starts with a fresh one. Rules sync reads
+  four settings at once and applies and seeds them in order.
 - Dev servers on the box reach the Mac's browser over the Mac's peer link.
   A dev server a thread opens is a `port` row on the ledger (pid, the call
   that opened it, and `what`, the listening process in plain words from
