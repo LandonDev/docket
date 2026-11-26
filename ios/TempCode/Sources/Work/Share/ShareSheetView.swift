@@ -19,7 +19,7 @@ struct ShareSheetView: View {
                 if model.picks.isEmpty {
                     ContentUnavailableView("Nothing to Save", systemImage: "doc", description: Text(model.unreadWords ?? ""))
                 } else if model.ordered.isEmpty {
-                    ContentUnavailableView("No Work Workspace", systemImage: "folder", description: Text("Turn Work on in Docket and make a workspace."))
+                    ContentUnavailableView("No Jobs", systemImage: "folder", description: Text("Turn Work on in Docket and add a job."))
                 } else {
                     form
                 }

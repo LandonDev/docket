@@ -3802,8 +3802,8 @@ any app into a Work workspace's own folder.
   in Try Again's place.
 - **Nothing read**: the system's unavailable view, "Nothing to Save" with
   what could not be read, and Done alone.
-- **No Work workspace**: the system's unavailable view, "No Work Workspace"
-  and "Turn Work on in TempCode and make a workspace.", with Cancel alone.
+- **No job**: the system's unavailable view, "No Jobs" and "Turn Work on in
+  Docket and add a job.", with Cancel alone.
 - It raises no notification, badge or sound.
 
 ## Visual system
