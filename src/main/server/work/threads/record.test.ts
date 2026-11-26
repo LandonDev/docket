@@ -365,6 +365,25 @@ describe('the keeper', () => {
     expect(links.mock.calls.length).toBe(4)
   })
 
+  it('a read out when the thread\'s links changed is never kept: the next ask reads again, and the older answer does not refill the cache', async () => {
+    const lands: ((rows: (typeof link)[]) => void)[] = []
+    const links = vi.fn(() => new Promise<(typeof link)[]>((resolve) => lands.push(resolve)))
+    const { records } = keeper({ links, task: async () => ({ title: 'Borrow two switches', status: 'todo' }) })
+    const old = records.record('root')
+    await vi.waitFor(() => expect(links).toHaveBeenCalledTimes(1))
+    // This host linked a record for the thread while that read was out.
+    records.worksChanged('child')
+    const fresh = records.record('root')
+    await vi.waitFor(() => expect(links).toHaveBeenCalledTimes(2))
+    lands[1]!([{ ...link, title: 'after' }])
+    expect((await fresh).works).toHaveLength(1)
+    // The older read lands last: it answers its own asker, and the cache keeps the newer read.
+    lands[0]!([])
+    expect((await old).works).toEqual([])
+    expect((await records.record('root')).works).toHaveLength(1)
+    expect(links).toHaveBeenCalledTimes(2)
+  })
+
   it('never waits on LifeOS past its bound: the answer says so with the local facts, and the late read is kept for the retry', async () => {
     vi.useFakeTimers()
     try {

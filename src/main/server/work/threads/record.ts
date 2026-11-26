@@ -377,7 +377,10 @@ export class ThreadRecords {
 
   /** This host linked the thread to a LifeOS record, or completed one for it: its LifeOS half is read again. */
   worksChanged(sessionId: string): void {
-    this.works.delete(this.sources.rootOf(sessionId))
+    const root = this.sources.rootOf(sessionId)
+    this.works.delete(root)
+    // A read already out began before the change: the next ask starts its own, and that one's answer is not kept.
+    this.reading.delete(root)
   }
 
   /** Everything read again at the next ask: Work came on or went off. */
@@ -386,6 +389,7 @@ export class ThreadRecords {
     this.asking = null
     this.results.clear()
     this.works.clear()
+    this.reading.clear()
   }
 
   private now(): number {
@@ -402,6 +406,8 @@ export class ThreadRecords {
       const first = links.filter((l) => l.entity.table === 'tasks').slice(0, TASKS_READ)
       await Promise.all(first.map(async (l) => void tasks.set(l.entity.id, await this.sources.task(l.entity.id))))
       const works = { at: this.now(), links, tasks }
+      // Forgotten while it was out (worksChanged, reset): its answer goes to those who asked it, never into the cache.
+      if (this.reading.get(rootId) !== read) return works
       this.works.delete(rootId)
       this.works.set(rootId, works)
       for (const oldest of this.works.keys()) {
