@@ -48,8 +48,8 @@ async function useControl(context: Context, screen: Surface, control: Control): 
       await page.click(item)
     }
     await page.until('the file in its folder', 12_000, async () =>
-      await rowAt(page, NAME) && await page.eval(`!!document.querySelector('[data-files-bar] [aria-current="page"]') &&
-        document.querySelector('[data-files-bar] [aria-current="page"]').textContent.trim() === ${JSON.stringify(context.workspace.name)}`))
+      await rowAt(page, NAME) && await page.eval(`!!document.querySelector('[data-files-bar] [aria-current]') &&
+        document.querySelector('[data-files-bar] [aria-current]').textContent.trim() === ${JSON.stringify(context.workspace.name)}`))
     return 'showed the folder'
   }
 

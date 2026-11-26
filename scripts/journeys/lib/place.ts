@@ -37,19 +37,19 @@ export async function showPlace(context: Context): Promise<void> {
 export async function goPlace(context: Context): Promise<void> {
   const { page } = context.pair
   if (context.shape === 'A' || context.shape === 'K' || context.shape === 'U') {
-    const shownNow = `document.querySelector('[data-files-bar] [aria-current="page"]')?.textContent.trim() === ${JSON.stringify(context.workspace.name)}`
+    const shownNow = `document.querySelector('[data-files-bar] [aria-current]')?.textContent.trim() === ${JSON.stringify(context.workspace.name)}`
     // A press that the view undid (it showed Home again) is pressed again, twice at most, and said on the log.
     for (let tries = 0; ; tries++) {
       await page.clickOn('[data-files-sidebar] button', context.workspace.name)
       if (await page.until(context.workspace.name + ' folder shown', 8_000, () => page.eval(shownNow)).then(() => true, () => false) || tries === 2) return
-      console.warn(`goPlace: the press on ${context.workspace.name} in the sidebar left ${await page.eval(`document.querySelector('[data-files-bar] [aria-current="page"]')?.textContent.trim() ?? 'no folder'`)} shown; pressed again`)
+      console.warn(`goPlace: the press on ${context.workspace.name} in the sidebar left ${await page.eval(`document.querySelector('[data-files-bar] [aria-current]')?.textContent.trim() ?? 'no folder'`)} shown; pressed again`)
     }
   }
   await page.clickOn('[data-files-sidebar] button', context.shape === 'B1' ? 'Journey Teams L1' : 'Journey Teams L2')
   await openRow(page, 'General')
   await openRow(page, context.workspace.name)
   await page.until(context.workspace.name + ' folder to open', 15_000, () =>
-    page.eval(`document.querySelector('[data-files-bar] [aria-current="page"]')?.textContent.trim() === ${JSON.stringify(context.workspace.name)}`))
+    page.eval(`document.querySelector('[data-files-bar] [aria-current]')?.textContent.trim() === ${JSON.stringify(context.workspace.name)}`))
 }
 
 export async function selectFolderTab(context: Context): Promise<void> {

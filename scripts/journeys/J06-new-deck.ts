@@ -36,7 +36,7 @@ export default journey({
       const { page } = context.pair
       await page.until('the destination folder’s listing', 15_000, () => page.eval(`(() => {
         const folder = document.querySelector('[data-files-page]');
-        return folder?.querySelector('[aria-current="page"]')?.textContent.trim() === ${JSON.stringify(context.workspace.name)} &&
+        return folder?.querySelector('[aria-current]')?.textContent.trim() === ${JSON.stringify(context.workspace.name)} &&
           !folder.querySelector('[aria-busy="true"]');
       })()`))
       if (!await page.centre('[data-files-new]')) throw new Error('The library folder offers no New control')

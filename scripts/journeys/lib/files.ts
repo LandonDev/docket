@@ -79,7 +79,7 @@ export function rowAt(page: Window, name: string): Promise<{ x: number; y: numbe
 export const openedAs = (name: string): string => `(() => {
   const name = ${JSON.stringify(shown(name))};
   return [...document.querySelectorAll('[data-files-tab][data-tab-kind="file"]')].some((t) => t.textContent.includes(name))
-    || document.querySelector('[data-files-bar] [aria-current="page"]')?.textContent.trim() === name;
+    || document.querySelector('[data-files-bar] [aria-current]')?.textContent.trim() === name;
 })()`
 
 /**
