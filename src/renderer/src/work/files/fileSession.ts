@@ -27,10 +27,10 @@ function readGone(err: unknown): boolean {
   return textOf(err) === "That file or folder is not there any more.";
 }
 /**
- * A text up to this many characters is journaled on each edit. A longer one (a big log or CSV), whose copy and send to
- * the store would lag each key, is journaled at once, then at most every `JOURNAL_MS` while he types, its last edit kept.
+ * The journal's pace, for a text of any size (perf M11): each write copies the whole text and sends it to main, so an
+ * edit is journaled at once after a quiet spell, then at most every `JOURNAL_MS` while he types, its last edit kept;
+ * a save or a close writes the owed edit first. The journal is never a save: the line reads the host's write alone.
  */
-export const JOURNAL_EACH_EDIT_CHARS = 100_000;
 export const JOURNAL_MS = 250;
 
 /** The editor's text, unread: its length is known without copying it. */
@@ -329,7 +329,7 @@ export class FileSession {
     this.pending += 1;
     this.edits += 1;
     this.editedAt = this.now();
-    this.journalSoon(text.length);
+    this.journalSoon();
     if (this.conflicted) return this.line();
     this.line();
     this.host.clearTimeout ? this.host.clearTimeout(this.timer) : clearTimeout(this.timer as ReturnType<typeof setTimeout>);
@@ -337,18 +337,22 @@ export class FileSession {
     this.timer = this.host.setTimeout ? this.host.setTimeout(later, SAVE_AFTER_MS) : setTimeout(later, SAVE_AFTER_MS);
   }
 
-  /** The newest text journaled now; a long one only where it is the first edit in a while, else once `JOURNAL_MS` is up. */
-  private journalSoon(length: number): void {
+  /**
+   * The newest text journaled now where it is the first edit in a while, else once `JOURNAL_MS` is up: a write the
+   * span owed starts the next span, so a steady stream of keys writes once each `JOURNAL_MS`, never twice in one.
+   */
+  private journalSoon(): void {
     if (!this.host.drafts) return;
-    if (length <= JOURNAL_EACH_EDIT_CHARS) {
-      this.journalOwed = false;
-      return this.journal();
-    }
     if (this.journalTimer !== null) return void (this.journalOwed = true);
     this.journal();
+    this.journalSpan();
+  }
+  private journalSpan(): void {
     const due = (): void => {
       this.journalTimer = null;
+      if (!this.journalOwed) return;
       this.journalDue();
+      this.journalSpan();
     };
     this.journalTimer = this.host.setTimeout ? this.host.setTimeout(due, JOURNAL_MS) : setTimeout(due, JOURNAL_MS);
   }

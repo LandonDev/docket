@@ -93,7 +93,7 @@ vi.mock("./FileTextEditor", () => ({
 }));
 
 const { FileTabView } = await import("./FileTabView");
-const { SAVE_AFTER_MS } = await import("./fileSession");
+const { JOURNAL_MS, SAVE_AFTER_MS } = await import("./fileSession");
 const { flushItem } = await import("../canvas/flush");
 const { dropKeptSessions } = await import("./FileKind");
 const { tellOrigin } = await import("./saveAsPort");
@@ -300,6 +300,8 @@ describe("words the host has not taken, when the editor goes", () => {
       disk.down = true;
       fireEvent.change(field, { target: { value: "first line\none\n" } });
       fireEvent.change(field, { target: { value: "first line\none\ntwo\n" } });
+      // The journal's span ends: the last key is written (a kill inside the span keeps the key before it).
+      await new Promise((r) => setTimeout(r, JOURNAL_MS + 20));
       await first.settled();
       // Killed: no close, no send, and the app starts again on the same folder.
       shown.unmount();

@@ -2509,9 +2509,10 @@ over a file that changed there.
   `drafts:list` answered) that main takes only from the app's own windows (`isAppWindow`, src/main/windows.ts), never
   a guest page or a webview; no wire method reads it, so no thread, remote key or other host can, and it never sits
   in a folder OneDrive or Teams syncs. A browser (`/ui`) has no store (`drafts: undefined`, lib/nativeWeb.ts).
-  `FileSession` (work/files/fileSession.ts) puts the newest text on each edit (a text over 100,000 characters at once,
-  then at most every 250 ms while he types, its last edit kept, `JOURNAL_EACH_EDIT_CHARS`: the editor hands each edit
-  over unread, `TextReader`, so a key never copies a big log or CSV whole), moves it to the new base when a save
+  `FileSession` (work/files/fileSession.ts) puts the newest text as he types, for a text of any size: at once after a
+  quiet spell, then at most once every 250 ms (`JOURNAL_MS`), its last edit kept and written before a save or a close
+  (the editor hands each edit over unread, `TextReader`, so a key never copies the text whole; a kill inside a span
+  keeps the key before it), moves it to the new base when a save
   is answered with text still waiting, and drops it once the host has it, on Reload and on Keep Both. A draft a live
   window is editing is claimed by it and offered nowhere; main lets it go when its editor goes unsent (`release`), or
   the window reloads, crashes or closes; a fresh start claims nothing. On the next open the file is read, then its

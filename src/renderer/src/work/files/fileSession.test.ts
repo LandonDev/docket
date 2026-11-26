@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { FileSaved } from "@shared/contract-work-files";
 import type { SavedLine } from "../canvas/kind";
 import { DraftStore } from "../../../../main/drafts";
-import { FileSession, JOURNAL_EACH_EDIT_CHARS, JOURNAL_MS, SAVE_AFTER_MS, type DraftsPort, type FileSessionHost } from "./fileSession";
+import { FileSession, JOURNAL_MS, SAVE_AFTER_MS, type DraftsPort, type FileSessionHost } from "./fileSession";
 import { decodeText, encodeText, offlineNamed, savedWords, triedAsText, whenWords } from "./fileText";
 
 /** The file kind's session (fileSession.ts) against a stand-in host that keeps one file, and the words of the save line. */
@@ -568,6 +568,8 @@ describe("drafts survive a crash, a close and a link drop", () => {
     await h.fire();
     h.setDown(true);
     h.session.edit("one\ntwo\n");
+    // Inside the journal's span of the first edit: written at its end.
+    h.tick(JOURNAL_MS);
     await d.store.settled();
     expect((await d.kept()).map((x) => [x.base, x.body.text])).toEqual([["v2", "one\ntwo\n"]]);
   });
@@ -698,23 +700,43 @@ describe("a key copies nothing", () => {
     expect(h.file.text).toBe("first\nabc");
   });
 
-  it("a short text is journaled at each edit; a long one at once, then at most every 250 ms, its last edit kept", async () => {
+  it("a text of any size is journaled at once, then at most every 250 ms, its last edit kept", async () => {
     const d = draftsAt();
     const h = standIn("first\n", { drafts: d.port });
     await h.session.load();
     h.setDown(true);
+    const long = (n: number) => reader(`${"x".repeat(100_000)}${n}`);
     const short = reader("first\nshort\n");
-    h.session.edit(short);
-    expect(short.reads).toBe(1);
-    const long = (n: number) => reader(`${"x".repeat(JOURNAL_EACH_EDIT_CHARS)}${n}`);
-    const keys = [long(1), long(2), long(3)];
+    const keys = [short, long(1), long(2), long(3)];
     for (const k of keys) h.session.edit(k);
-    expect(keys.map((k) => k.reads)).toEqual([1, 0, 0]);
+    expect(keys.map((k) => k.reads)).toEqual([1, 0, 0, 0]);
     await d.store.settled();
-    expect((await d.kept()).map((x) => x.body.text.slice(-1))).toEqual(["1"]);
+    expect((await d.kept()).map((x) => x.body.text)).toEqual(["first\nshort\n"]);
     h.tick(JOURNAL_MS);
-    expect(keys.map((k) => k.reads)).toEqual([1, 0, 1]);
+    expect(keys.map((k) => k.reads)).toEqual([1, 0, 0, 1]);
     await d.store.settled();
     expect((await d.kept()).map((x) => x.body.text.slice(-1))).toEqual(["3"]);
+  });
+
+  it("typing in a 90,000-character file sends main at most one copy each 250 ms, and the last edit before a close (perf M11)", async () => {
+    const sent: number[] = [];
+    const port: DraftsPort = { put: (d) => void sent.push(d.body.kind === "text" ? d.body.text.length : 0), drop: () => {}, release: () => {}, list: async () => [] };
+    const big = "y".repeat(90_000);
+    const h = standIn(big, { drafts: port });
+    await h.session.load();
+    h.setDown(true);
+    // A second of typing at 20 keys a second: before, 20 whole copies (1.8 MB); now the first and one each 250 ms.
+    for (let i = 1; i <= 20; i++) {
+      h.session.edit(reader(`${big}${"k".repeat(i)}`));
+      if (i % 5 === 0) h.tick(JOURNAL_MS);
+    }
+    expect(sent.length).toBe(1 + 1000 / JOURNAL_MS);
+    expect(sent.reduce((a, b) => a + b, 0)).toBeLessThan(5 * 90_021);
+    // Two keys more, then the tab closes: the last edit is journaled before it goes.
+    h.session.edit(reader(`${big}${"k".repeat(21)}`));
+    h.session.edit(reader(`${big}${"k".repeat(22)}`));
+    h.session.dispose();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sent.at(-1)).toBe(90_022);
   });
 });
