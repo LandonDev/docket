@@ -212,7 +212,15 @@ private struct PlaceTop: ViewModifier {
             navigator.tops[route] = ids[index]
         }
         #endif
-        guard let target else { return }
+        guard let target else {
+            // No row to come back to: the top edge, large title out. Rows that arrive while the push is still
+            // moving (a host that answers at once) leave the list scrolled just past the title, with no title shown.
+            Task { @MainActor in
+                await Task.yield()
+                position.scrollTo(edge: .top)
+            }
+            return
+        }
         Task { @MainActor in
             await Task.yield()
             PerfCounters.bump(.offsetWrites) // the list check counts the app's own scrolls under a moving finger
