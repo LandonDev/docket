@@ -171,7 +171,7 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
           ) : loading && !doc ? (
             <Skeleton className="rounded-sm" style={now_} />
           ) : state.ended ? (
-            <Ended size={now_} words="End of show" />
+            <Ended size={now_} words="End of show" label="End of show, a press closes it" onPress={() => dispatch({ t: "next" })} />
           ) : slide ? (
             <button type="button" data-show-now aria-label={`Current slide ${slide.number}${slide.title ? `, ${slide.title}` : ""}`} onClick={() => dispatch({ t: "next" })} className="block w-fit rounded-sm text-start">
               <SlidePicture
@@ -206,9 +206,9 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
             {loading && !doc ? (
               <Skeleton className="aspect-video rounded-sm" style={{ width: nextWidth }} />
             ) : next.kind === "close" ? (
-              <Ended size={{ width: nextWidth, height: Math.round(nextWidth / aspect) }} words="A press closes the show" quiet />
+              <Ended size={{ width: nextWidth, height: Math.round(nextWidth / aspect) }} words="A press closes the show" label="Next: close the show" onPress={() => dispatch({ t: "next" })} quiet />
             ) : next.kind === "end" ? (
-              <Ended size={{ width: nextWidth, height: Math.round(nextWidth / aspect) }} words="End of show" />
+              <Ended size={{ width: nextWidth, height: Math.round(nextWidth / aspect) }} words="End of show" label="Next: end of show" onPress={() => dispatch({ t: "next" })} />
             ) : nextSlide ? (
               <button type="button" data-show-next aria-label={next.kind === "build" ? `Next: build ${next.step} of ${next.of}` : `Next slide ${nextSlide.number}${nextSlide.title ? `, ${nextSlide.title}` : ""}`} onClick={() => dispatch({ t: "next" })} className="block w-fit rounded-sm text-start">
                 <SlidePicture doc={coming?.doc ?? doc} page={coming?.page ?? nextSlide.page} waiting={coming?.waiting} width={nextWidth} ratio={ratio} title={nextSlide.title} className={PICTURE} />
@@ -228,7 +228,13 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
                 <Plus />
               </Button>
             </div>
-            {slide && !state.ended && slide.notes.trim() ? (
+            {loading && !doc ? (
+              // Unknown is not empty: bones until the deck answers, "None" only for a slide with no notes.
+              <div data-show-notes-bones aria-hidden className="mt-2 flex flex-col gap-2">
+                <Skeleton className="h-3 w-[86%]" />
+                <Skeleton className="h-3 w-[64%]" />
+              </div>
+            ) : slide && !state.ended && slide.notes.trim() ? (
               <p data-show-notes tabIndex={0} className="focus-ring mt-2 min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain text-pretty whitespace-pre-wrap select-text" style={{ fontSize: size, lineHeight: `${line}px` }}>
                 {notesShown(slide.notes)}
               </p>
@@ -245,12 +251,15 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
   );
 }
 
-/** The end, in a slide's place: the matte with its words, or (once the show has ended) a quiet box saying what a press does. */
-function Ended({ size, words, quiet = false }: { size: { width: number; height: number }; words: string; quiet?: boolean }) {
+/**
+ * The end, in a slide's place: the matte with its words, or (once the show has ended) a quiet box saying what a press
+ * does. A press on it is the next press, as on either picture: the one that ends the show, then the one that closes it.
+ */
+function Ended({ size, words, label, onPress, quiet = false }: { size: { width: number; height: number }; words: string; label: string; onPress(): void; quiet?: boolean }) {
   return (
-    <div data-show-ended style={size} className={`grid place-items-center rounded-sm text-[13px] leading-5 text-muted-foreground ${quiet ? "bg-muted" : "bg-(--matte)"}`}>
+    <button type="button" data-show-ended aria-label={label} onClick={onPress} style={size} className={`grid place-items-center rounded-sm text-[13px] leading-5 text-muted-foreground ${quiet ? "bg-muted" : "bg-(--matte)"}`}>
       {words}
-    </div>
+    </button>
   );
 }
 
@@ -372,7 +381,7 @@ function Strip({ state, doc, ratio, dispatch, surface }: { state: ShowState; doc
             <span className={`min-w-4 shrink-0 pt-1 text-end text-xs leading-4 tabular-nums ${on ? "text-foreground" : "text-muted-foreground"}`}>{slide.number}</span>
             <span
               className={`block rounded-md p-[3px] transition-[background-color] duration-(--dur-hover) ease-(--ease-out) motion-reduce:transition-none ${
-                on ? "bg-muted" : "group-hover/th:bg-foreground/5 group-active/th:bg-foreground/12 group-active/th:transition-none"
+                on ? "bg-sidebar-group-selected" : "group-hover/th:bg-foreground/5 group-active/th:bg-foreground/12 group-active/th:transition-none"
               } ${slide.hidden ? "opacity-45" : ""}`}
             >
               <Thumb doc={doc} page={slide.page} width={STRIP_THUMB - 6} ratio={ratio} title="" />

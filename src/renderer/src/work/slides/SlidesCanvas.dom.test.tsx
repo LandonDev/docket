@@ -190,6 +190,9 @@ describe("the slides kind", () => {
     await found("[data-slides-stage]");
     expect(thumbs()).toHaveLength(12);
     expect(thumbs()[0].getAttribute("aria-current")).toBe("true");
+    // The current slide's frame is the selected fill on the strip's sidebar ground, which shows in light (dark: muted).
+    expect(thumbs()[0].querySelector(".p-\\[3px\\]")!.className).toContain("bg-sidebar-group-selected");
+    expect(thumbs()[1].querySelector(".p-\\[3px\\]")!.className).not.toContain("bg-sidebar-group-selected");
     await waitFor(() => expect(document.querySelector("[data-slides-stage]")?.textContent).toContain("Slide 1"));
     expect(screen.getByText("Open with the turnout.")).toBeTruthy();
     fireEvent.click(thumbs()[1]);

@@ -207,7 +207,7 @@ export const Strip = memo(function Strip({
                       : slide.tint === "del"
                         ? FRAME_TINT.del
                         : on || sortable.draggingId === slide.key
-                          ? "bg-muted"
+                          ? "bg-sidebar-group-selected"
                           : "group-hover/th:bg-foreground/5 group-active/th:bg-foreground/12 group-active/th:transition-none"
                   }`}
                 >

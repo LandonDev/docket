@@ -1425,7 +1425,9 @@ How it works:
 - **The strip** is 140px on `sidebar`: each slide a 96px picture in a 3px
   frame at 6px radius that carries the tint (`--add-bg` for a slide a
   change rewords, adds or lands; `--del-bg` for the place a slide leaves,
-  its picture at 45%), its number 12px tabular to its left, and a
+  its picture at 45%; the current slide's frame on `sidebar-group-selected`,
+  which shows in light where `muted` vanishes on `sidebar`, dark's value
+  being `muted`, as in the presenter's strip), its number 12px tabular to its left, and a
   section's name over the slide that starts it. A thumbnail paints only
   near the view and after the stage, and lets pdf.js free its page when it
   leaves. Under 400px of canvas the
@@ -1962,7 +1964,8 @@ Built by SLD1 of the editors plan (`.temp-code/plans/editors/slides.md`;
 the look and every key are docs/DESIGN.md "The show"). He presses Present on
 a deck and gives a talk from it: the slideshow full screen or in a window,
 a presenter's view with the notes, the next press and a timer, and every
-key a clicker sends.
+key a clicker sends. While the deck is read, the presenter's notes are two
+bones, never "None", which is said only of a slide with no notes.
 
 - **What is shown.** The file as it is, read with `work.slides.show`: its
   slides in its own order and the file's render. An agent's suggestion that
@@ -2084,7 +2087,9 @@ key a clicker sends.
   page's own full screen, asked for in the press that started the show.
   Leaving full screen ends the show. In a window is not offered there, and
   Presenter view is the presenter's view filling the page.
-- **A show ends** on Escape, End, a press past "End of show", either window
+- **A show ends** on Escape, End, a press past "End of show" (in the
+  presenter's view the end in Next's place, and the Now box once ended, are
+  presses: the one that ends the show, then the one that closes it), either window
   closed by hand, or a new show. Ending tells main at once and closes its
   windows; a new show asks for its windows only after the one before it has
   ended in main, and a second press while a show is starting is that same

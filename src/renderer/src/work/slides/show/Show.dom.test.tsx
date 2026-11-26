@@ -235,6 +235,7 @@ describe("the presenter's view", () => {
     const strip = within(root.querySelector<HTMLElement>("[data-show-strip]")!);
     expect(strip.getAllByRole("option")).toHaveLength(12);
     expect(strip.getByRole("option", { name: "Slide 3: Slide 3" }).getAttribute("aria-selected")).toBe("true");
+    expect(strip.getByRole("option", { name: "Slide 3: Slide 3" }).querySelector(".p-\\[3px\\]")!.className).toContain("bg-sidebar-group-selected");
     fireEvent.click(strip.getByRole("option", { name: "Slide 9: Slide 9" }));
     expect(root.querySelector("[data-show-place]")!.textContent).toBe("9/12");
     fireEvent.click(within(root).getByRole("button", { name: "Blank" }));
@@ -264,6 +265,16 @@ describe("the presenter's view", () => {
     mount({ ...startShowState(deck(2), "start"), at: 1, ended: true });
     expect(screen.getByText("A press closes the show")).toBeTruthy();
     expect(screen.getByText("None")).toBeTruthy();
+  });
+
+  it("the end in Next's place is a press too: on the last slide it ends the show, then it closes it", () => {
+    const { root } = mount({ ...startShowState(deck(2), "start"), at: 1 });
+    const end = within(root).getByRole("button", { name: "Next: end of show" });
+    expect(end.textContent).toBe("End of show");
+    fireEvent.click(end);
+    const close = within(root).getByRole("button", { name: "Next: close the show" });
+    expect(close.textContent).toBe("A press closes the show");
+    expect(within(root).getByRole("button", { name: "End of show, a press closes it" })).toBeTruthy();
   });
 
   it("the timer pauses and restarts, the target is picked from its menu, and the notes' size steps", () => {
@@ -307,7 +318,10 @@ describe("the presenter's view", () => {
 
   it("shows bones while the deck is read, and the line the slideshow's display left", () => {
     const { root } = mount(startShowState([], "start"), { doc: null, loading: true, notice: "The slideshow's display was disconnected" });
-    expect(root.querySelectorAll('[data-slot="skeleton"]').length).toBe(2);
+    expect(root.querySelectorAll('[data-slot="skeleton"]').length).toBe(4);
+    // The notes are unknown, not empty: two bones, never "None", until the deck answers.
+    expect(root.querySelectorAll('[data-show-notes-bones] [data-slot="skeleton"]').length).toBe(2);
+    expect(within(root).queryByText("None")).toBeNull();
     expect(within(root).getByRole("status").textContent).toBe("The slideshow's display was disconnected");
   });
 });
