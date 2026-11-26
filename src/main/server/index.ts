@@ -214,6 +214,7 @@ import {
   countWorkCall,
   withRequestNotes,
   reportRendererStall,
+  noteTicket,
   setBufferedBytes,
   setLaneStats,
   setRunningCount,
@@ -226,6 +227,7 @@ import {
   untrackRequest,
   yieldUntilIdle
 } from './stalls'
+import { socketTicket } from './remote/windowTicket'
 import { configureHostProfiler, profileHost } from './doctorProfile'
 import type { DoctorGetResult } from '@shared/contract'
 import { sweepFolds } from './folds'
@@ -2609,7 +2611,13 @@ export async function startServer(
       if (!remote?.port || remotePortWanted() !== remote.port) void restartRemote()
     },
     setup: setupPairings,
-    ticketFor: (id) => given?.windowTicket(id) ?? null
+    ticketFor: (id) => given?.windowTicket(id) ?? null,
+    // The socket this host already holds to that host, when it is up and its host mints tickets over it.
+    peerAsk: (id) => {
+      const link = peers.get(id)
+      return link?.connected && link.features?.includes('remote.ticket') ? (method, params, opts) => link.request(method, params, opts) : null
+    },
+    logTicket: noteTicket
   }
 
   // One loopback listener, two WebSocket servers: an upgrade routes by wire
@@ -3166,6 +3174,7 @@ export async function startServer(
         if (req.method === 'devices.post') return sendFrame({ id: req.id, ok: true, result: deviceMailbox.post(req.params.letter as unknown as Letter) })
         if (req.method === 'devices.list') return sendFrame({ id: req.id, ok: true, result: deviceMailbox.list() })
         if (req.method === 'devices.remove') return sendFrame({ id: req.id, ok: true, result: farewell.remove(req.params.envId) })
+        if (req.method === 'remote.ticket') return sendFrame({ id: req.id, ok: true, result: socketTicket(remoteAuth, principal) })
         if (req.method === 'devices.ticket') {
           const envId = deviceBindings.provedEnv(connection)
           if (!envId || principal.kind !== 'remote') throw new Error('forbidden: devices.ticket is a given computer\'s proved socket\'s')

@@ -38,7 +38,7 @@ export const CONTRACT_VERSION = 1
  *  (createSteps.ts). `defaults.list`: every
  *  scope's thread defaults in one ask. The `rulesSync.*` features let a follower
  *  move its global Plans or Reviews settings to the box. */
-export const HOST_FEATURES = ['create.steps', 'create.draft', 'defaults.list', 'rulesSync.plans', 'rulesSync.review'] as const
+export const HOST_FEATURES = ['create.steps', 'create.draft', 'defaults.list', 'rulesSync.plans', 'rulesSync.review', 'remote.ticket'] as const
 export type HostFeature = (typeof HOST_FEATURES)[number]
 
 /** Every contract method and the capability it needs. A new method without
@@ -552,6 +552,8 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'remote.environments.update': 'local',
   'remote.environments.remove': 'local',
   'remote.environments.ticket': 'local',
+  // A ticket for the caller's own key, what POST /api/ticket gives any client key.
+  'remote.ticket': 'read',
   'remote.environments.pair': 'local',
   // Work (contract-work.ts): the switch (read, and admin to set), the bridge's
   // two tool methods (local), and each pillar's own rows from its contract file.

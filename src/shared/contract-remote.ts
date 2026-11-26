@@ -252,6 +252,11 @@ export const EnvironmentRequestSchemas = [
       kind: RouteKindSchema.optional()
     })
   ),
-  /** → { ticket, expiresIn }: a 30 s single-use ticket for `url`, minted with the saved key. */
-  request('remote.environments.ticket', z.object({ id: z.string().min(1), url: z.string().min(1) }))
+  /** → { ticket, expiresIn }: a 30 s single-use ticket for `url`, minted with the saved key: over this host's own
+   *  peer socket to that host when it is up and offers `remote.ticket`, else `POST /api/ticket`. `waitedMs` is how
+   *  long the window waited for its link to this host first, for the `ticket` stall line alone. */
+  request('remote.environments.ticket', z.object({ id: z.string().min(1), url: z.string().min(1), waitedMs: z.number().int().nonnegative().max(600_000).optional() })),
+  /** → { ticket, expiresIn }: a 30 s single-use upgrade ticket for this socket's own key, as `POST /api/ticket` mints
+   *  one; never for a cookie session or a relayed lane. A host that has it says `remote.ticket` in its hello. */
+  request('remote.ticket', z.object({}).optional())
 ] as const

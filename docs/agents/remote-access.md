@@ -156,6 +156,30 @@
   video up to this host, which it does only when this host asked it over
   the peer link; [live-video.md](live-video.md)). Revoking a
   key closes its sockets, its sessions and its video streams at once.
+  A key may also mint its next ticket over its own socket, `remote.ticket`
+  (capability `read`, what `/api/ticket` gives it; refused to this
+  machine's sockets, a cookie session, a relayed lane, a bot key, a pending
+  key and a key in farewell: remote/windowTicket.ts `socketTicket`); a host
+  that has it names `remote.ticket` in its hello's features. `/api/ticket`
+  answers `Server-Timing: mint;dur=<ms>, loop;dur=<ms>` (its own time, its
+  loop's worst lag that second).
+- A window's ticket to a saved host (`remote.environments.ticket`, asked of
+  this machine's own server) goes first over the socket this host already
+  holds to that host (the peer link, same saved key), and `POST
+  /api/ticket` starts beside it when the peer has not answered in 500 ms or
+  failed; the first ticket back is used (windowTicket.ts `windowTicket`;
+  the route is checked against the saved row first, either way). A given
+  computer's window still asks its box over the proved socket
+  (`devices.ticket`). Each ask writes one stall line: `ticket env= via=
+  ms= wait= peer= https= connect= answer= box= boxloop= outcome=`: `wait`
+  is the window's wait for this machine's own link, `connect` DNS, TCP and
+  TLS (`reused` on a kept socket, from undici's diagnostics channels),
+  `answer` the request out to its headers in, `box`/`boxloop` from the
+  box's `Server-Timing`. Why: from his Mac 16 asks in a day passed 500 ms,
+  11 passed 1 s and two met the 4 s deadline, each a reconnect that
+  waited; one met a 2.6 s block of the box's loop (the box's stalls.log at
+  the same second), two fell in the Mac's dark wakes, and the rest were the
+  cold HTTPS setup through the tunnel on Wi-Fi.
 - `/ui` serves the BUILT renderer (out/renderer, so `electron-vite build`
   first in a dev tree) behind the cookie; the bundle detects a missing
   `window.api` and runs in web mode (src/renderer/src/lib/nativeWeb.ts: no

@@ -241,6 +241,22 @@ describe('bearer keys', () => {
       401
     )
   })
+  it('a key mints its next ticket over its own socket as /api/ticket would; a ticket answer says the box\'s time', async () => {
+    const { token } = await server.remoteAuth.createKey({ name: 'mac', audience: 'client', caps: ['operate'], createdBy: 'local' })
+    const minted = await call('POST', '/api/ticket', { headers: bearer(token) })
+    expect(minted.headers.get('server-timing')).toMatch(/^mint;dur=\d+, loop;dur=\d+$/)
+    const sock = await open(`${base.replace('http', 'ws')}/ws?ticket=${minted.body.ticket}`)
+    const hello = await firstFrame(sock)
+    expect(hello.features).toContain('remote.ticket')
+    const next = await sock.request('remote.ticket', {})
+    expect(next.ok).toBe(true)
+    // The socket's ticket is the key's own: the second socket says the same key and caps, and the ticket opens one socket only.
+    const second = await open(`${base.replace('http', 'ws')}/ws?ticket=${next.result.ticket}`)
+    expect(await firstFrame(second)).toMatchObject({ push: 'hello', caps: ['operate', 'read'], key: { name: 'mac' } })
+    expect(await upgradeStatus(`${base.replace('http', 'ws')}/ws?ticket=${next.result.ticket}`)).toBe(401)
+    sock.ws.close()
+    second.ws.close()
+  })
   it('ticket → upgrade → hello first, then the gate', async () => {
     const { token } = await server.remoteAuth.createKey({
       name: 'iphone',

@@ -3,6 +3,8 @@ import type { Duplex } from 'node:stream'
 import { hostLabel } from '../../hostLabel'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { remoteDeflateOptions } from '../wire'
+import { currentLag } from '../stalls'
+import { ticketServerTiming } from './windowTicket'
 import { ZodError } from 'zod'
 import { CONTRACT_VERSION, allows, type Principal } from '@shared/capabilities'
 import { NewClientSchema, NewPairingSchema, PairBodySchema } from '@shared/contract-remote'
@@ -312,10 +314,12 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
       return json(res, 200, { caps: out.session.caps, environmentId: options.environmentId })
     }
     if (path === '/api/ticket' && method === 'POST') {
+      const started = performance.now()
       refuseLimited(ctx)
       const verified = requireClient(await ctx.principal())
       if (verified.session) throw new HttpError(400, 'tickets are for bearer keys; the cookie upgrades /ws directly')
-      return json(res, 200, auth.mintTicket(verified.principal))
+      // The asker's `ticket` line splits the box's own time and its loop's worst lag from the tunnel's.
+      return json(res, 200, auth.mintTicket(verified.principal), { 'Server-Timing': ticketServerTiming(performance.now() - started, currentLag().maxMs) })
     }
     if (path === '/api/logout' && method === 'POST') {
       const verified = await ctx.principal()

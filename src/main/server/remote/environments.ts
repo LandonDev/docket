@@ -4,6 +4,7 @@ import type { RouteKind, SavedEnvironment, SavedRoute } from '@shared/contract-r
 import { CONTRACT_VERSION, type Capability } from '@shared/capabilities'
 import type { Store } from '../db'
 import { ENVIRONMENT_ID } from './environment'
+import { connectTime, readServerTiming, watchConnects, type HttpsTiming } from './windowTicket'
 
 /**
  * The hosts this desktop connects to (thread K1, the connection runtime).
@@ -337,18 +338,32 @@ export async function pairEnvironment(
   return addEnvironment(ctx, { url: parsed.origin, key: body.key, name: input.name, kind: input.kind })
 }
 
-/** `POST /api/ticket` on the route's origin with the saved key. */
-export async function mintTicket(ctx: HostContext, id: string, url: string): Promise<{ ticket: string; expiresIn: number }> {
-  const row = readRow(ctx.store, id)
+/** The saved row and route a ticket for `url` is asked for; the same refusals whichever way the ticket is minted. */
+export function ticketRoute(store: EnvironmentsStore, id: string, url: string): { row: Row; route: SavedRoute } {
+  const row = readRow(store, id)
   if (!row) throw new HostError('unknown-environment', id)
   const route = row.routes.find((r) => r.url === url)
   if (!route) throw new HostError('unknown-route', `${url} is not a route of ${id}`)
   if (!row.key) throw new HostError('unauthorized', `the key for ${row.name} cannot be read from the vault`)
+  return { row, route }
+}
+
+/** `POST /api/ticket` on the route's origin with the saved key; `timing` learns its legs (windowTicket.ts). */
+export async function mintTicket(ctx: HostContext, id: string, url: string, timing?: HttpsTiming): Promise<{ ticket: string; expiresIn: number }> {
+  const { row, route } = ticketRoute(ctx.store, id, url)
   const origin = originOf(route)
+  const asked = performance.now()
+  if (timing) watchConnects()
   const response = await hostFetch(ctx, `${origin}/api/ticket`, {
     method: 'POST',
     headers: { authorization: `Bearer ${row.key}`, accept: 'application/json' }
   })
+  if (timing) {
+    const connect = connectTime(new URL(origin).hostname, asked)
+    timing.connectMs = connect
+    timing.answerMs = performance.now() - asked - (connect === 'reused' ? 0 : connect)
+    Object.assign(timing, readServerTiming(response.headers.get('server-timing')))
+  }
   if (response.status === 401 || response.status === 403) {
     await response.body?.cancel()
     throw new HostError('unauthorized', `${origin} rejected the key for ${row.name}`)

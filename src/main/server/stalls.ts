@@ -16,6 +16,7 @@
  *     line says `place=<kind>` and, when it woke the VM, `wake=<ms>`
  *   - `work-calls`: once an hour, each `work.*` method's calls and how many
  *     passed SLOW_WORK_MS (`work.files.list:120/3`), so a slow tail has its share
+ *   - `ticket`: every window ticket to a saved host, by leg (remote/windowTicket.ts)
  *   - `[renderer] …`: a line the renderer sent through `stall.report`
  *
  * Every server line carries the requests in flight (method + age), the
@@ -320,6 +321,11 @@ export function workCallsLine(): string | null {
     .join(',')
   workCalls.clear()
   return `work-calls ${body}`
+}
+
+/** One window ticket's legs (remote/windowTicket.ts `ticketLine`), every ask, with the server's context. */
+export function noteTicket(line: string): void {
+  write(line)
 }
 
 /** A stall the renderer measured; its line already carries its own context. */

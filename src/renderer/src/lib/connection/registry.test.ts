@@ -100,7 +100,7 @@ describe("ConnectionRegistry", () => {
     h.registry.add(SAVED);
     await flush();
     expect(h.transports[0].requests.map((r) => [r.method, r.params])).toEqual([
-      ["remote.environments.ticket", { id: "env_box", url: "wss://box.example/ws" }],
+      ["remote.environments.ticket", { id: "env_box", url: "wss://box.example/ws", waitedMs: expect.any(Number) }],
     ]);
     h.transports[0].requests[0].resolve({ ticket: "tk_1", expiresIn: 30000 });
     await flush();

@@ -6,7 +6,8 @@ import type { Store } from '../db'
 import type { RemoteAuth } from './auth'
 import type { PushRegistry } from './push'
 import { STUCK_MINUTES_DEFAULT } from './notifier'
-import { addEnvironment, listEnvironments, mintTicket, pairEnvironment, removeEnvironment, updateEnvironment } from './environments'
+import { addEnvironment, listEnvironments, mintTicket, pairEnvironment, removeEnvironment, ticketRoute, updateEnvironment } from './environments'
+import { windowTicket } from './windowTicket'
 
 /** The remote listener's fixed loopback port behind the Cloudflare tunnel. */
 export const REMOTE_DEFAULT_PORT = 7677
@@ -80,6 +81,10 @@ export interface RemoteContext {
    * process's proved link, so the window's socket starts proved. Null for any other environment.
    */
   ticketFor?: (id: string) => Promise<{ ticket: string; expiresIn: number }> | null
+  /** The peer link's ask to saved host `id`, when it is up and its host offers `remote.ticket` (windowTicket.ts). */
+  peerAsk?: (id: string) => ((method: string, params: unknown, opts: { timeoutMs: number }) => Promise<unknown>) | null
+  /** Where each window ticket's `ticket` line goes (stalls.log). */
+  logTicket?: (line: string) => void
   /** Test seam for the calls to other hosts (hello, ticket). */
   fetch?: typeof fetch
 }
@@ -172,8 +177,19 @@ export async function handleRemote(req: ClientRequest, ctx: RemoteContext): Prom
       return result(removeEnvironment(ctx.store, req.params.id))
     case 'remote.environments.pair':
       return result(await pairEnvironment(hostContext(ctx), req.params))
-    case 'remote.environments.ticket':
-      return result(await (ctx.ticketFor?.(req.params.id) ?? mintTicket(hostContext(ctx), req.params.id, req.params.url)))
+    case 'remote.environments.ticket': {
+      const given = ctx.ticketFor?.(req.params.id)
+      if (given) return result(await given)
+      const { id, url, waitedMs } = req.params
+      ticketRoute(ctx.store, id, url)
+      return result(
+        await windowTicket(id, waitedMs, {
+          peer: () => ctx.peerAsk?.(id) ?? null,
+          https: (timing) => mintTicket(hostContext(ctx), id, url, timing),
+          log: ctx.logTicket ?? (() => {})
+        })
+      )
+    }
     default:
       return { handled: false }
   }

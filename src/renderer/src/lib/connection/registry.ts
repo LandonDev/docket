@@ -316,10 +316,13 @@ export class ConnectionRegistry {
     if (this.options.resolveUrl) return this.options.resolveUrl(environment, route);
     if (route.credential === "key") {
       if (!environment.credentialRef) throw new Error(`unauthorized: ${environment.name} has no saved key`);
+      const waitFrom = Date.now();
       const primary = await this.primaryOpen();
+      // The host logs the ask by leg (`ticket` in stalls.log); the wait for this machine's own link is the first.
       const minted = await primary.request<{ ticket: string }>("remote.environments.ticket", {
         id: environment.credentialRef,
         url: route.url,
+        waitedMs: Date.now() - waitFrom,
       });
       const url = new URL(route.url);
       url.searchParams.set("ticket", minted.ticket);

@@ -140,8 +140,8 @@ describe('METHOD_CAPABILITY', () => {
         'project.settings.set',
         'workspace.setPreamble',
         'linear.setToken',
-        // A phone's own push registration (remote.push.*) is the key's row: read.
-        ...methods.filter((m) => m.startsWith('remote.') && !m.startsWith('remote.environments.') && !m.startsWith('remote.push.')),
+        // A phone's own push registration (remote.push.*) is the key's row, and a ticket for its own key what /api/ticket gives it: read.
+        ...methods.filter((m) => m.startsWith('remote.') && !m.startsWith('remote.environments.') && !m.startsWith('remote.push.') && m !== 'remote.ticket'),
         // A credential moves between hosts only under an admin key (thread V).
         'accounts.pull',
         // A host's rate-limit picture crosses only between the hosts' main processes.

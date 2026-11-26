@@ -179,6 +179,13 @@ second or two. The host uses the name only once
 `work.guests.setOrigin {origin}` has checked that it answers as this very
 service.
 
+A window's ticket through the tunnel (docs/agents/remote-access.md): a
+saved host's window asks its own machine's server, which asks the box over
+its peer socket (`remote.ticket`) and `POST /api/ticket` beside it after
+500 ms. The box's answer to `/api/ticket` carries `Server-Timing: mint;dur=,
+loop;dur=`, and each ask leaves a `ticket` line in the asking machine's
+stalls.log, so a slow ticket says which leg it was.
+
 To add a production hostname:
 
 1. Add a hostname and its loopback origin to `scripts/box/ingress.yml`, before
