@@ -8,6 +8,7 @@ import { StatusMark } from "../../components/ui/status";
 import { Tip, TruncateTip, useTruncated } from "../../components/tip";
 import { FADE_IN } from "../../components/ui/reveal";
 import { cn } from "../../lib/cn";
+import { useDocumentVisible } from "../../hooks/paneVisibility";
 import { treeIds } from "../../lib/activity";
 import { drawable, useComputerSection } from "../../lib/computerSection";
 import { useComputerEntries, type ComputerEntry } from "../../lib/computerSessions";
@@ -276,8 +277,10 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
   // A waiting submit shows the page it kept, never the live window's placeholder, so the stream rests until it is decided;
   // once he takes over he drives the live window, so the body draws it (browser.html "You took over").
   const still = waiting && !(state?.driver === "owner" && entry) ? waiting : null;
+  // A hidden window watches nothing, as the Computers page: the stream closes, and opens again when the window is shown.
+  const seen = useDocumentVisible();
   // the view's p-3 is around the picture: 12px a side
-  const stream = useLiveStream(entry, !still, box, measure, { inset: VIEWPORT_INSETS });
+  const stream = useLiveStream(entry, !still && seen, box, measure, { inset: VIEWPORT_INSETS });
   // The bar's primary, after he takes over, waits on this view's first frame: say when one is on screen.
   const framed = !props.picture && !still && !!entry && stream.state.status === "live" && stream.state.drawn;
   const liveKey = `${env}\n${pane}`;

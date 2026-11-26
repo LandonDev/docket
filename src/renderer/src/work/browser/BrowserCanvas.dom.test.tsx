@@ -34,6 +34,8 @@ const host = vi.hoisted(() => ({
   /** the live view's stream, as the viewport would report it; null for the real one (jsdom draws no frame) */
   stream: null as null | { status: "starting" } | { status: "live"; app: string; window: null; width: number; height: number; drawn: boolean } | { status: "ended"; reason: "window-closed" },
   streamRetries: 0,
+  /** every gate the body handed the live stream, render by render */
+  runs: [] as boolean[],
   /** his way into the page while he drives it from here (a stand-in for the video's drive); null while he watches */
   drive: null as null | { send(): void; paste(): Promise<void> },
 }));
@@ -80,6 +82,7 @@ vi.mock("../../surfaces/threads/computer/Viewport", async (original) => {
   return {
     ...real,
     useLiveStream: (...args: Parameters<typeof real.useLiveStream>) => {
+      host.runs.push(args[1]);
       const stream = real.useLiveStream(...args);
       return host.stream ? { ...stream, state: host.stream, retry: () => void (host.streamRetries += 1), drive: host.drive as never } : stream;
     },
@@ -139,6 +142,7 @@ beforeEach(() => {
   host.live = LIVE_ENTRIES;
   host.stream = null;
   host.streamRetries = 0;
+  host.runs = [];
   host.drive = null;
 });
 afterEach(cleanup);
@@ -632,6 +636,48 @@ describe("the browser's body", () => {
     expect(document.querySelector('[data-face="live"]')).toBe(face);
     expect(face.querySelector("canvas")).toBe(canvas);
     expect(face.hasAttribute("data-driving")).toBe(false);
+  });
+
+  it("a hidden window closes the live stream, as the Computers page does, and showing it opens the stream again once", async () => {
+    host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];
+    host.stream = { status: "live", app: "Google Chrome", window: null, width: 16, height: 10, drawn: true };
+    render(<Body {...props()} />);
+    await screen.findByRole("button", { name: "Live view" });
+    expect(host.runs.at(-1)).toBe(true);
+    // Each change of the gate: a stream opened (true) or closed (false).
+    const changes = (): boolean[] => host.runs.filter((run, i) => i === 0 || run !== host.runs[i - 1]);
+    const visibility = async (hidden: boolean): Promise<void> => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+      await act(async () => void document.dispatchEvent(new Event("visibilitychange")));
+    };
+    try {
+      await visibility(true);
+      expect(host.runs.at(-1)).toBe(false);
+      expect(changes()).toEqual([true, false]);
+      await visibility(false);
+      expect(host.runs.at(-1)).toBe(true);
+      expect(changes()).toEqual([true, false, true]);
+    } finally {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    }
+  });
+
+  it("a held submit's still is drawn from the hold whether the window is shown or hidden; no stream runs for it", async () => {
+    host.items = [HELD];
+    host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];
+    render(<Body {...props()} />);
+    await waitFor(() => expect(screen.getByRole("img").getAttribute("src")).toBe("data:image/png;base64,AAAA"));
+    // from the still on: the gates the body hands the stream while the submit waits
+    host.runs = [];
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    try {
+      await act(async () => void document.dispatchEvent(new Event("visibilitychange")));
+      expect(screen.getByRole("img").getAttribute("src")).toBe("data:image/png;base64,AAAA");
+    } finally {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    }
+    expect(host.runs.length).toBeGreaterThan(0);
+    expect(host.runs.every((run) => run === false)).toBe(true);
   });
 
   it("with nothing held and no window to draw, says so in one line", async () => {
