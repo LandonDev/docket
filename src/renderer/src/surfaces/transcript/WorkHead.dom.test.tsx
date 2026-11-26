@@ -114,7 +114,7 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => {
   return { ...(await original<typeof import("../../lib/tcserver/workspaces")>()), useWorkspaces: () => ws };
 });
 
-import { useThreadRecord, waitingWords, WorkHead, WorkHeadView, WORKS_RETRY_MS } from "./WorkHead";
+import { HEAD_JOIN_MS, useThreadRecord, waitingWords, WorkHead, WorkHeadView, WORKS_RETRY_MS } from "./WorkHead";
 import { applyResult } from "../../work/outbox/results";
 import { sessionStore } from "../../lib/tcserver/store";
 import { TranscriptSessionContext } from "../transcriptSession";
@@ -421,11 +421,16 @@ describe("the record read", () => {
       world.record = empty({ works: [], worksDown: "LifeOS did not answer" });
       render(<Probe />);
       await settle();
+      await act(async () => void vi.advanceTimersByTime(HEAD_JOIN_MS));
+      await settle();
       const first = reads();
       for (const [i, wait] of WORKS_RETRY_MS.entries()) {
         await act(async () => void vi.advanceTimersByTime(wait - 1));
         expect(reads()).toBe(first + i);
         await act(async () => void vi.advanceTimersByTime(1));
+        await settle();
+        // The pulse moved: its ask joins any other change inside HEAD_JOIN_MS, then goes.
+        await act(async () => void vi.advanceTimersByTime(HEAD_JOIN_MS));
         await settle();
         expect(reads()).toBe(first + i + 1);
       }
@@ -445,6 +450,8 @@ describe("the record read", () => {
       await settle();
       world.record = empty({ works: [task] });
       await act(async () => void vi.advanceTimersByTime(WORKS_RETRY_MS[0]));
+      await settle();
+      await act(async () => void vi.advanceTimersByTime(HEAD_JOIN_MS));
       await settle();
       expect(probe()).toBe("t1:Borrow two switches from ITaP");
       const after = reads();
@@ -483,6 +490,34 @@ describe("the record read", () => {
     expect(reads()).toBe(before);
     act(() => applyResult("box", { id: "r1", rootId: "t1", sessionId: "t1" } as never));
     await waitFor(() => expect(reads()).toBe(before + 1));
+  });
+
+  it("four changes to a head inside 500 ms make one ask, fresh when LifeOS moved among them (perf M11)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      world.record = empty({ works: [task] });
+      live.setTask("task1", { task: { status: "waiting" } });
+      render(<Probe />);
+      await settle();
+      await act(async () => void vi.advanceTimersByTime(HEAD_JOIN_MS));
+      await settle();
+      const before = reads();
+      act(() => applyResult("box", { id: "j1", rootId: "t1", sessionId: "t1" } as never));
+      act(() => live.setTask("task1", { task: { status: "done" } }));
+      act(() => applyResult("box", { id: "j2", rootId: "t1", sessionId: "t1" } as never));
+      await act(async () => void vi.advanceTimersByTime(HEAD_JOIN_MS - 1));
+      act(() => applyResult("box", { id: "j3", rootId: "t1", sessionId: "t1" } as never));
+      expect(reads()).toBe(before);
+      await act(async () => void vi.advanceTimersByTime(1));
+      await settle();
+      expect(reads()).toBe(before + 1);
+      expect(world.calls.filter((c) => c.method === "work.threads.record").at(-1)!.params).toEqual({ sessionId: "t1", fresh: true });
+      await act(async () => void vi.advanceTimersByTime(10 * HEAD_JOIN_MS));
+      await settle();
+      expect(reads()).toBe(before + 1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("the live head turns a task late on the minute clock, with nothing else drawing it", async () => {

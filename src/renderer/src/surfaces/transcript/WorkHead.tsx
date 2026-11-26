@@ -59,6 +59,9 @@ export function WorkHead({ sessionId }: { sessionId: string }) {
 /** The record the head shows: when it was read, and whether a later refresh failed while it shows. */
 export type HeadRecord = { record: ThreadRecord; at: number; behind: boolean };
 
+/** The head's re-asks inside this span join to one, at its end (perf M11). */
+export const HEAD_JOIN_MS = 500;
+
 const keyOf = (item: Pick<HostItem, "ref">): string => `${item.ref.at}:${item.ref.id}`;
 
 /**
@@ -82,28 +85,52 @@ export function useThreadRecord(env: string | null | undefined, sessionId: strin
   const root = record?.sessionId ?? sessionId;
   const stamp = useSyncExternalStore(subscribeResults, () => (env ? resultsStamp(env, root) : ""), () => "");
   const tasks = useTaskPulse(env, record);
-  // The pulse the last ask of this thread was made at: an ask the pulse itself moved tells the host LifeOS changed.
-  const asked = useRef({ key: "", tasks: 0 });
+  // The asks of this thread (perf M11): the first at once, then every change inside HEAD_JOIN_MS joined to one ask at
+  // its end. `tasks` is the pulse the last change was heard at; an ask the pulse moved (any change it joins) tells the
+  // host LifeOS changed (`fresh`). Only the newest ask's answer lands.
+  const asked = useRef({ key: "", tasks: 0, fresh: false, seq: 0, timer: null as ReturnType<typeof setTimeout> | null });
   useEffect(() => {
     if (!env) return;
-    let live = true;
-    const fresh = asked.current.key === key && asked.current.tasks !== tasks;
-    asked.current = { key, tasks };
-    readThreadRecord(env, sessionId, fresh).then(
-      (next) =>
-        live &&
-        setKept((was) =>
-          // LifeOS's links did not read: the waits and the made things are new, the tasks the last ones known, as of then.
-          next.worksDown && was?.key === key ? { key, record: { ...next, works: was.record.works }, at: was.at, behind: true } : { key, record: next, at: Date.now(), behind: false },
-        ),
-      // A key that may not read it, or a host a release behind: the head is not drawn, the transcript is. Facts
-      // already shown stay, marked as possibly old.
-      () => live && setKept((was) => (was?.key === key && !was.behind ? { ...was, behind: true } : was)),
-    );
-    return () => {
-      live = false;
+    const a = asked.current;
+    const ask = (fresh: boolean): void => {
+      a.seq += 1;
+      const n = a.seq;
+      readThreadRecord(env, sessionId, fresh).then(
+        (next) =>
+          n === a.seq &&
+          setKept((was) =>
+            // LifeOS's links did not read: the waits and the made things are new, the tasks the last ones known, as of then.
+            next.worksDown && was?.key === key ? { key, record: { ...next, works: was.record.works }, at: was.at, behind: true } : { key, record: next, at: Date.now(), behind: false },
+          ),
+        // A key that may not read it, or a host a release behind: the head is not drawn, the transcript is. Facts
+        // already shown stay, marked as possibly old.
+        () => n === a.seq && setKept((was) => (was?.key === key && !was.behind ? { ...was, behind: true } : was)),
+      );
     };
+    if (a.key !== key) {
+      if (a.timer) clearTimeout(a.timer);
+      Object.assign(a, { key, tasks, fresh: false, timer: null });
+      ask(false);
+      return;
+    }
+    if (a.tasks !== tasks) a.fresh = true;
+    a.tasks = tasks;
+    if (a.timer) return;
+    a.timer = setTimeout(() => {
+      const fresh = a.fresh;
+      Object.assign(a, { fresh: false, timer: null });
+      ask(fresh);
+    }, HEAD_JOIN_MS);
   }, [env, sessionId, key, outcome, held, stamp, tasks]);
+  // Gone: no joined ask left to fire, no answer to land, and a mount again asks at once.
+  useEffect(
+    () => () => {
+      const a = asked.current;
+      if (a.timer) clearTimeout(a.timer);
+      Object.assign(a, { key: "", timer: null, seq: a.seq + 1 });
+    },
+    [],
+  );
   return kept?.key === key ? kept : null;
 }
 
