@@ -8,8 +8,10 @@ public extension OutboxModel {
         public var id: String
         public var name: String
         public var error: String
-        /// "Box did not answer", the error beside it in a quieter step.
+        /// "Box did not answer".
         public var line: String { "\(name) did not answer" }
+        /// The failed-read row's words: the host, then its error ("Box: Not connected"), never "did not answer" twice.
+        public var words: String { "\(name): \(error)" }
     }
 
     nonisolated static func failedReads(_ hosts: [(id: String, name: String, error: String?)]) -> [FailedRead] {

@@ -543,6 +543,7 @@ import TempCodeContract
         #expect(reads.map(\.id) == ["box"])
         #expect(reads[0].line == "Box did not answer")
         #expect(reads[0].error == "The host did not answer")
+        #expect(reads[0].words == "Box: The host did not answer")
         // Rows from another host never hide a failed read, and a failed read never shows as empty.
         #expect(OutboxModel.emptyState(bandsEmpty: false, anyReading: false, anyFailed: true) == nil)
         #expect(OutboxModel.emptyState(bandsEmpty: true, anyReading: false, anyFailed: true) == nil)

@@ -2527,7 +2527,9 @@ milestone 46 built, where it lives now:
   held detail's place line.
 - **The Outbox** is a place of the Work tab, a pushed list (the sidebar in
   the split poses) in Outbox 2's order (prototype A,
-  `.temp-code/prototypes/work-outbox-2/phone.html`):
+  `.temp-code/prototypes/work-outbox-2/phone.html`): first, each host whose
+  read failed as the failed-read row ("Box: Not connected"; Try Again reads
+  that host alone), its rows from before kept below; then
   **Asked in threads** (a thread's open request, one row each: a
   `checklist` glyph, its head "Send 10 mails to 10 people", the thread's
   title under it, the time; the row opens the request sheet), **Not sent**
@@ -2675,8 +2677,8 @@ milestone 46 built, where it lives now:
   "Changed since asked" for a row that changed since the ask, which starts
   unticked and can be ticked only once he opens it (the chevron pushes the
   item as it will go, and opening it asks the host for a fresh receipt,
-  `request.view`; a read that fails says "Not opened" and why, with Try
-  Again beside it). A read again that fails over the request on screen
+  `request.view`; a read that fails says "Not opened" and why in red, in
+  the failed-read row). A read again that fails over the request on screen
   (a push from another device) puts its reason and Try Again above the
   head until a read lands. A tick is the receipt the host issued for the row as
   drawn, never the item: a reload that moves a row's receipt or marks it

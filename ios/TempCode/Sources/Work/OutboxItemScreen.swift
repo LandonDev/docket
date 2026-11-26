@@ -365,13 +365,9 @@ struct OutboxItemScreen: View {
         return item.sessionId.flatMap { client.session($0)?.title }.map { "from \($0)" }
     }
 
-    /// A read that did not come back: its reason and Retry.
+    /// A read that did not come back: its reason in red, in the failed-read row of every Work place.
     private func readFailed(_ words: String) -> some View {
-        HStack(spacing: 12) {
-            Text(words).textStep(.meta, tint: Tint.destructiveText).fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
-            PillButton("Try Again") { Task { await load() } }
-        }
+        FailedRead(words: words, retry: { await load() }, identifier: "outbox-item-read-failed", insets: nil, tint: Tint.destructiveText)
     }
 
     /// Send waits until what it approves is on screen: a kept picture's bytes must draw.

@@ -48,8 +48,6 @@ struct OutboxScreen: View {
     @Environment(ShellNavigator.self) private var navigator
     @Environment(\.shellPose) private var pose
     @State private var confirmDiscard: OutboxModel.Entry?
-    /// Hosts whose Retry is reading.
-    @State private var retrying: Set<String> = []
     /// The rows that waited on him as the list last drew them, held-back ones in place: where the next pick is
     /// found when the shown one leaves (`OutboxModel.pickOrder`).
     @State private var seen: [String] = []
@@ -197,37 +195,13 @@ struct OutboxScreen: View {
         )
     }
 
-    /// "Box did not answer", its error under it, and Retry, which reads that host alone again.
+    /// The host and its error in the failed-read row of every Work place; Try Again reads that host alone again.
     private func failedRow(_ read: OutboxModel.FailedRead) -> some View {
-        HStack(spacing: Layout.rowGap) {
-            Circle()
-                .fill(Tint.destructive)
-                .frame(width: Layout.dotSize, height: Layout.dotSize)
-                .frame(width: Layout.glyphWidth + Layout.markWidth)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(read.line).textStep(.title).lineLimit(1)
-                Text(read.error).textStep(.meta).lineLimit(2)
-            }
-            Spacer(minLength: 8)
-            if retrying.contains(read.id) {
-                ProgressView()
-            } else {
-                PillButton("Try Again") { Task { await retry(read.id) } }
-            }
-        }
-        .padding(.vertical, Layout.rowVertical)
-        .frame(minHeight: Layout.rowHeight + 8)
-        .listRowInsets(Layout.rowInsets)
-        // Retry stays its own element, never folded into the row's words.
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("outbox-host-failed")
+        FailedRead(words: read.words, retry: { await retry(read.id) }, identifier: "outbox-host-failed")
     }
 
     private func retry(_ id: String) async {
         guard let client = model.registry.client(id) else { return }
-        retrying.insert(id)
-        defer { retrying.remove(id) }
         await client.work.refreshOutbox()
     }
 

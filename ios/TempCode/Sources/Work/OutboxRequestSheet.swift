@@ -540,14 +540,13 @@ private struct RequestRowDetail: View {
                             Text(effect).font(.subheadline).foregroundStyle(Color(.label)).fixedSize(horizontal: false, vertical: true)
                         }
                         if row.changed {
-                            HStack(spacing: Layout.rowGap) {
-                                Text(viewError.map { "Not opened: \($0)" } ?? (current.receipt == nil ? "Reading it as it stands now…" : "Changed since asked. Tick it to include it as it stands now."))
-                                    .textStep(.meta, tint: viewError == nil ? Color(.label) : Tint.destructiveText)
+                            if let viewError {
+                                // The failed-read row of every Work place, its words red; Try Again reads the row again.
+                                FailedRead(words: "Not opened: \(viewError)", retry: { await readRow() }, identifier: "outbox-request-row-failed", insets: nil, tint: Tint.destructiveText)
+                            } else {
+                                Text(current.receipt == nil ? "Reading it as it stands now…" : "Changed since asked. Tick it to include it as it stands now.")
+                                    .textStep(.meta, tint: Color(.label))
                                     .fixedSize(horizontal: false, vertical: true)
-                                if viewError != nil {
-                                    Spacer(minLength: Layout.rowGap)
-                                    PillButton("Try Again") { viewError = nil; Task { await readRow() } }
-                                }
                             }
                         }
                         ForEach(OutboxModel.notes(item, held: { HeldTime.of($0) })) { note in
@@ -602,6 +601,7 @@ private struct RequestRowDetail: View {
         do {
             let next = try await client.work.viewRow(request.id, ref: row.ref)
             shown = next
+            viewError = nil
             opened(next)
         } catch {
             viewError = ActionError.wrap(error).message

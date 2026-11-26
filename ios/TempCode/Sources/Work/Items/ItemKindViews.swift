@@ -130,7 +130,7 @@ private struct MeetingPage: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
                 Text(line.speaker.flatMap { names[$0] } ?? "Someone").textStep(.meta, weight: .semibold, tint: .primary)
-                Text(mediaClock(line.start)).textStep(.stamp).monospacedDigit().foregroundStyle(.secondary)
+                Text(mediaClock(line.start)).textStep(.stamp, tint: Color(.secondaryLabel))
             }
             Text(line.text).font(.body).foregroundStyle(.primary)
         }
@@ -476,7 +476,8 @@ private struct DashBlockView: View {
                 ForEach(figures.figures, id: \.id) { figure in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(figure.value ?? "–").font(.title2.weight(.semibold)).monospacedDigit()
-                        Text(figure.label).textStep(.meta).foregroundStyle(.secondary)
+                        // Label ink under the number, its line smaller still: the lines step down by size and weight, not ink.
+                        Text(figure.label).textStep(.meta, tint: Color(.label))
                         // The figure's line under its number reads at the 4.5:1 floor (baseline w39), as the Outbox's stamps do.
                         if let sub = figure.sub { Text(sub).textStep(.stamp, tint: Color(.label)) }
                     }
@@ -518,11 +519,12 @@ private struct DashBlockView: View {
                 Text(table.title).textStep(.title, weight: .semibold)
                 ScrollView(.horizontal) {
                     Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+                        // The head stays secondary at semibold; the cells read in label ink, as the chart's values do.
                         GridRow { ForEach(Array(table.head.enumerated()), id: \.offset) { Text($1).textStep(.meta, weight: .semibold) } }
                         ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
                             GridRow {
                                 ForEach(Array(row.enumerated()), id: \.offset) { column, cell in
-                                    Text(cell).textStep(.meta).monospacedDigit()
+                                    Text(cell).textStep(.meta, tint: Color(.label)).monospacedDigit()
                                         .gridColumnAlignment(column < table.numeric.count && table.numeric[column] ? .trailing : .leading)
                                 }
                             }
