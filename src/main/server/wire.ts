@@ -789,15 +789,35 @@ export const PART_METHODS: ReadonlySet<string> = new Set([
  * while the window holds all but UNACKED_CHARS of what was sent, so the shown thread's rows never sit behind more.
  * Off until the window says `#parts`.
  */
+/** What one socket's parts may hold, answers waiting whole or in part: SOCKET_MAX_BYTES's order, as chars. */
+export const PARTS_HELD_MAX_CHARS = 64 * 1024 * 1024
+/** Parts out and no ack that moves for this long: the window is not reading, and the socket closes. */
+export const PARTS_ACK_STALL_MS = 60_000
+
+export interface AnswerPartsOptions {
+  /** The socket's own close (SocketBudget's): 1013, so the window backs off. */
+  close?: (code: number, reason: string) => void
+  /** PARTS_HELD_MAX_CHARS unless a test names less. */
+  maxHeldChars?: number
+  setTimer?: (fn: () => void, ms: number) => unknown
+  clearTimer?: (handle: unknown) => void
+}
+
 export class AnswerParts {
   private on = false
+  /** Chars of answers waiting here, whole or in part, against PARTS_HELD_MAX_CHARS. */
+  private held = 0
+  private stall: unknown = null
   private readonly marked = new Set<string>()
   private queue: { id: string; text: string; at: number; compress: boolean }[] = []
   private sent = 0
   private acked = 0
   private closed = false
 
-  constructor(private readonly send: (text: string, compress: boolean) => void) {}
+  constructor(
+    private readonly send: (text: string, compress: boolean) => void,
+    private readonly options: AnswerPartsOptions = {}
+  ) {}
 
   enable(): void {
     this.on = true
@@ -816,6 +836,7 @@ export class AnswerParts {
   ack(chars: number): void {
     if (!Number.isSafeInteger(chars) || chars <= this.acked || chars > this.sent) return
     this.acked = chars
+    this.clearStall()
     this.pump()
   }
 
@@ -823,6 +844,11 @@ export class AnswerParts {
   take(id: string, text: string, compress: boolean): boolean {
     if (!this.marked.delete(id) || this.closed || text.length <= PART_CHARS) return false
     if (this.queue.some((q) => q.id === id)) return false
+    if (this.held + text.length > (this.options.maxHeldChars ?? PARTS_HELD_MAX_CHARS)) {
+      this.shut('answers waiting in parts passed 64 MiB')
+      return true
+    }
+    this.held += text.length
     this.queue.push({ id, text, at: 0, compress })
     this.pump()
     return true
@@ -849,14 +875,44 @@ export class AnswerParts {
       const last = end >= answer.text.length
       this.send(partText(answer.id, answer.at, last, body), answer.compress)
       this.sent += body.length
+      this.held -= body.length
       answer.at = end
       if (last) this.queue.shift()
     }
+    this.armStall()
+  }
+
+  /** Parts out: the window has PARTS_ACK_STALL_MS to move its ack, or the socket goes. */
+  private armStall(): void {
+    if (this.closed || this.sent === this.acked || this.stall !== null) return
+    const set = this.options.setTimer ?? ((fn, ms) => setTimeout(fn, ms).unref())
+    this.stall = set(() => {
+      this.stall = null
+      if (this.sent > this.acked) this.shut('parts went unacknowledged for 60 s')
+    }, PARTS_ACK_STALL_MS)
+  }
+
+  private clearStall(): void {
+    if (this.stall === null) return
+    ;(this.options.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>)))(this.stall)
+    this.stall = null
+  }
+
+  private shut(reason: string): void {
+    this.dispose()
+    this.options.close?.(1013, reason)
+  }
+
+  /** Chars of answers held here, whole or in part. */
+  get heldChars(): number {
+    return this.held
   }
 
   dispose(): void {
     this.closed = true
+    this.clearStall()
     this.queue = []
+    this.held = 0
     this.marked.clear()
   }
 }

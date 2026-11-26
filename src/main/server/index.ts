@@ -2692,12 +2692,16 @@ export async function startServer(
     const dropped = new Set<string>()
     let socketBudget: SocketBudget | null = null
     // A remote window's big content answers go in parts behind every other frame, once it asks (wire.ts AnswerParts).
-    const parts = new AnswerParts((text, compress) => {
-      if (ws.readyState !== ws.OPEN) return
-      if (compress) ws.send(text)
-      else ws.send(text, { compress: false })
-      socketBudget?.poll()
-    })
+    const parts = new AnswerParts(
+      (text, compress) => {
+        if (ws.readyState !== ws.OPEN) return
+        if (compress) ws.send(text)
+        else ws.send(text, { compress: false })
+        socketBudget?.poll()
+      },
+      // What the parts hold is the socket's too: past the bound, or with no ack for a minute, it closes as the budget does.
+      { close: (code, reason) => ws.close(code, reason) }
+    )
     ws.once('close', () => parts.dispose())
     const sendFrame = (frame: ServerFrame): void => {
       if (ws.readyState !== ws.OPEN) return

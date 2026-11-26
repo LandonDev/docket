@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { PART_CHARS, UNACKED_CHARS, partText, readAck, readPart } from '@shared/answerParts'
-import { AnswerParts } from './wire'
+import { AnswerParts, PARTS_ACK_STALL_MS } from './wire'
 import { Transport, type SocketLike } from '../../renderer/src/lib/connection/transport'
 
 /**
@@ -214,6 +214,53 @@ describe('AnswerParts framing and credit (M6 review, finding 10)', () => {
       w.deliver(partText(secondId, PART_CHARS, true, whole.slice(PART_CHARS)))
       expect((await second).content.length).toBe(PART_CHARS)
       w.t.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('AnswerParts bounds (M6 review, finding 1)', () => {
+  it('a window that never acks: past the held bound the socket closes 1013 once, and nothing more is sent or held', () => {
+    const wire: string[] = []
+    const closes: [number, string][] = []
+    const parts = new AnswerParts((t) => wire.push(t), { close: (code, reason) => closes.push([code, reason]), maxHeldChars: 16 * 1024 * 1024, setTimer: () => 0, clearTimer: () => undefined })
+    parts.enable()
+    let n = 0
+    for (; closes.length === 0 && n < 50; n++) {
+      parts.mark(String(n), 'fs.read')
+      parts.take(String(n), piece(4 * 1024 * 1024), true)
+    }
+    expect(closes).toEqual([[1013, 'answers waiting in parts passed 64 MiB']])
+    expect(n).toBeLessThan(6)
+    expect(parts.heldChars).toBe(0)
+    const sent = wire.length
+    parts.mark('late', 'fs.read')
+    parts.take('late', piece(4 * 1024 * 1024), true)
+    parts.ack(PART_CHARS)
+    expect(wire.length).toBe(sent)
+  })
+
+  it('parts out and no ack that moves for 60 s close the socket; an ack that moves in time keeps it', () => {
+    vi.useFakeTimers()
+    try {
+      const run = (ackAt: number | null): [number, string][] => {
+        const closes: [number, string][] = []
+        const parts = new AnswerParts(() => undefined, { close: (code, reason) => closes.push([code, reason]) })
+        parts.enable()
+        parts.mark('1', 'fs.read')
+        parts.take('1', piece(2 * 1024 * 1024), true)
+        if (ackAt !== null) {
+          vi.advanceTimersByTime(ackAt)
+          parts.ack(PART_CHARS)
+          vi.advanceTimersByTime(PARTS_ACK_STALL_MS - ackAt - 1)
+        } else vi.advanceTimersByTime(PARTS_ACK_STALL_MS - 1)
+        expect(closes).toEqual([])
+        vi.advanceTimersByTime(1)
+        return closes
+      }
+      expect(run(null)).toEqual([[1013, 'parts went unacknowledged for 60 s']])
+      expect(run(30_000)).toEqual([])
     } finally {
       vi.useRealTimers()
     }
