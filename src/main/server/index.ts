@@ -4236,6 +4236,7 @@ export async function startServer(
           case 'session.tune':
             await registry.tune(req.params.sessionId, {
               fast: req.params.fast,
+              ultrafast: req.params.ultrafast,
               context1m: req.params.context1m,
               model: req.params.model
             })
