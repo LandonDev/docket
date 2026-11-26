@@ -168,7 +168,8 @@
   the Mac reads, lists and fetches Mac files and runs Mac commands
   (`mac_*` tools) over a reverse RPC on the Mac's peer link
   (`remote/peerCalls.ts`: `peer.register`, `peer.call` push, `peer.reply`,
-  `peer.chunk`). The Mac decides everything in `remote/macBridge.ts`: a
+  `peer.chunk`). Small replies reuse the JSON encoded for the chunk size
+  check. The Mac decides everything in `remote/macBridge.ts`: a
   per-host policy (off by default), shared folders, and a Mac-local prompt
   for any other path and every command (`macBridge.decide` is local-only;
   a key sees what runs through `macBridge.activity`, read, and stops a

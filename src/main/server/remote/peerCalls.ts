@@ -444,11 +444,13 @@ export function handlePeerRequest(
 
 // ── the Mac side: answering a call over PeerLink.request ─────────────
 
-export type LinkRequest = (
-  method: string,
-  params?: unknown,
-  opts?: { timeoutMs?: number }
-) => Promise<unknown>
+export interface LinkRequestOptions {
+  timeoutMs?: number
+  /** The result JSON already encoded by replyOverLink to measure its size. */
+  encodedResult?: string
+}
+
+export type LinkRequest = (method: string, params?: unknown, opts?: LinkRequestOptions) => Promise<unknown>
 
 /** Chunks of one reply out at once, unacknowledged. */
 export const PEER_CHUNK_WINDOW = 2
@@ -465,9 +467,9 @@ export async function replyOverLink(
     await request('peer.reply', { callId, ok: false, error: outcome.error.slice(0, 4_000), ...away })
     return
   }
-  const json = JSON.stringify(outcome.result ?? null)
+  const json = JSON.stringify(outcome.result ?? null) ?? 'null'
   if (json.length <= chunkChars) {
-    await request('peer.reply', { callId, ok: true, result: outcome.result ?? null, ...away })
+    await request('peer.reply', { callId, ok: true, result: outcome.result ?? null, ...away }, { encodedResult: json })
     return
   }
   const chunks = Math.ceil(json.length / chunkChars)

@@ -7,6 +7,7 @@ import type { ServerFrame, ServerPush } from '@shared/contract'
 import type { SavedEnvironment } from '@shared/contract-remote'
 import type { WorkspaceMeta } from '@shared/domain'
 import type { BuildFacts } from '@shared/deployDrift'
+import type { LinkRequestOptions } from './peerCalls'
 import { HostError, environmentKey, listEnvironments, mintTicket, rememberPlatform, type HostContext } from './environments'
 
 /**
@@ -243,7 +244,7 @@ export class PeerLink {
   }
 
   /** One request; `timeoutMs` raises the 30 s default for a call that carries a lot (a harness.file chunk). */
-  request<T = unknown>(method: string, params?: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
+  request<T = unknown>(method: string, params?: unknown, opts: LinkRequestOptions = {}): Promise<T> {
     const ws = this.ws
     if (!ws || !this.connected) return Promise.reject(new Error(`${this.env.name} is not connected`))
     const id = `p${++this.seq}`
@@ -255,7 +256,12 @@ export class PeerLink {
       timer.unref()
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer })
       // A reply carrying a file's bytes (a piece of a far read) goes with no deflate (wire.ts carriesBytes).
-      const text = JSON.stringify({ id, method, params })
+      // The peer reply's chunk check already encoded its result.
+      const encoded = opts.encodedResult
+      const text = encoded === undefined
+        ? JSON.stringify({ id, method, params })
+        : JSON.stringify({ id, method, params: { ...(params as Record<string, unknown>), result: undefined } }).slice(0, -2) +
+          `,"result":${encoded}}}`
       if (carriesBytes(params, text)) ws.send(text, { compress: false })
       else ws.send(text)
     })

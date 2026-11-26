@@ -2,10 +2,11 @@ import { createServer } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { ENVIRONMENTS_PREFIX } from './environments'
+import { replyOverLink } from './peerCalls'
 import { PeerLink, Peers, connectedLine, type PeerEvents } from './peers'
 
 /** A host: hello first, then every request echoed back as its result, plus whatever the test pushes. */
-async function fakeHost(environmentId: string, onRequest?: (method: string) => boolean | void) {
+async function fakeHost(environmentId: string, onRequest?: (method: string, params: unknown) => boolean | void) {
   const server = createServer()
   const wss = new WebSocketServer({ server })
   const sockets = new Set<WebSocket>()
@@ -19,7 +20,7 @@ async function fakeHost(environmentId: string, onRequest?: (method: string) => b
     ws.send(JSON.stringify({ push: 'hello', environmentId, contract: 1, caps: ['admin'], build: { release: 270, version: '1.0.270', sha: 'f'.repeat(40), platform: 'linux' } }))
     ws.on('message', (data) => {
       const req = JSON.parse(String(data)) as { id: string; method: string; params?: unknown }
-      if (onRequest?.(req.method) === false) return
+      if (onRequest?.(req.method, req.params) === false) return
       if (req.method === 'fail') ws.send(JSON.stringify({ id: req.id, ok: false, error: 'nope' }))
       else ws.send(JSON.stringify({ id: req.id, ok: true, result: { method: req.method, params: req.params } }))
     })
@@ -191,6 +192,24 @@ describe('PeerLink', () => {
     await expect(workspaces()).rejects.toThrow('closed the socket')
     await onOpen.mock.calls[1]![1]()
     expect(methods).toEqual(['workspace.list', 'workspace.list', 'workspace.list'])
+  })
+
+  it('encodes a small result only once and sends it in the usual peer.reply', async () => {
+    const received = vi.fn()
+    const host = await fakeHost('env_a', received)
+    cleanup.push(host.close)
+    const env = { id: 'env_a', name: 'A', routes: [{ url: `ws://127.0.0.1:${host.port}/ws`, kind: 'loopback' as const }], addedAt: 1, caps: ['admin' as const], keyName: 'k' }
+    const store = storeWith({ [`${ENVIRONMENTS_PREFIX}env_a`]: JSON.stringify({ ...env, key: 'tc_x.secret' }) })
+    const link = new PeerLink(env, { store, environmentId: 'env_me', fetch: ticketFetch as unknown as typeof fetch }, {})
+    cleanup.push(async () => link.close())
+    await link.connect()
+    const value = { files: ['file "one"'] }
+    const result = { toJSON: vi.fn(() => value) }
+    const stringify = vi.spyOn(JSON, 'stringify')
+    await replyOverLink(link.request.bind(link), 'c1', { ok: true, result, away: true })
+    expect(stringify.mock.calls.filter(([input]) => input === result)).toHaveLength(1)
+    expect(result.toJSON).toHaveBeenCalledOnce()
+    expect(received).toHaveBeenCalledWith('peer.reply', { callId: 'c1', ok: true, result: value, away: true })
   })
 
   it('names the negotiated extensions on its connect line', async () => {
