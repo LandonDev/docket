@@ -168,7 +168,7 @@ function Body({
         {/* The session dropped while the form was open: its line, with the rule's press; what he typed stays. */}
         {down ? <DownLine session={down} /> : waits ? <HostLine live={host} /> : null}
         <Field label="Task">
-          <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" />
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" />
         </Field>
         <Field label="Due">
           <DateField value={due} onChange={setDue} />

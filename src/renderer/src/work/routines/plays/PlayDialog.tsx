@@ -124,7 +124,7 @@ function Body({ env, workspaceId, source, onClose, onSaved, pending, setPending 
     >
       <ModalBody>
         <Field label="Name">
-          <Input autoFocus value={form.name} disabled={drafting} onChange={(e) => patch({ name: e.target.value })} placeholder="Game assignment" autoComplete="off" />
+          <Input value={form.name} disabled={drafting} onChange={(e) => patch({ name: e.target.value })} placeholder="Game assignment" autoComplete="off" />
         </Field>
         <Field label="Instructions">
           <Textarea rows={8} value={form.instructions} disabled={drafting} onChange={(e) => patch({ instructions: e.target.value })} placeholder="The steps, in your words" />

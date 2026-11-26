@@ -66,7 +66,7 @@ function Body({ onAdd, onClose, pending, setPending }: { onAdd(q: FormQuestion):
     <form onSubmit={submit}>
       <ModalBody>
         <Field label="Question">
-          <Input autoFocus value={label} onChange={(e) => setLabel(e.target.value)} />
+          <Input value={label} onChange={(e) => setLabel(e.target.value)} />
         </Field>
         <FieldRow label="Kind">
           <ChoiceSelect label="Kind" value={type} options={KINDS} onChange={setType} />

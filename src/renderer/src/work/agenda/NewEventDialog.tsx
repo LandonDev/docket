@@ -186,7 +186,7 @@ function Body({
           </p>
         ) : null}
         <Field label="Event">
-          <Input autoFocus value={form.title} onChange={(e) => patch({ title: e.target.value })} autoComplete="off" />
+          <Input value={form.title} onChange={(e) => patch({ title: e.target.value })} autoComplete="off" />
         </Field>
         {/* Day, From and To on one row where Day keeps room for its date in words (420px); narrower, Day takes a row and the times share one. */}
         <div data-event-when className="@container/when">

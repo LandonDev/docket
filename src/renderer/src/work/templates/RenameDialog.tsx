@@ -68,7 +68,6 @@ function RenameForm({
       <ModalBody>
         <Field label="Name" error={error}>
           <Input
-            autoFocus
             value={name}
             readOnly={pending}
             spellCheck={false}

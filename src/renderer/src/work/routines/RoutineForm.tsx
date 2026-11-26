@@ -188,7 +188,7 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
     >
       <ModalBody>
         <Field label="Name">
-          <Input autoFocus value={form.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Morning sweep" autoComplete="off" />
+          <Input value={form.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Morning sweep" autoComplete="off" />
         </Field>
         {runs.length > 1 && !job ? (
           <Field label="Runs">

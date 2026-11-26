@@ -124,7 +124,6 @@ export function PeopleForm({
       <ModalBody className="gap-3">
         <InputGroup role="search" leading={<Search />}>
           <GroupInput
-            autoFocus
             aria-label="Search people"
             placeholder="Search"
             value={query}
@@ -391,7 +390,6 @@ export function NotesForm({
     >
       <ModalBody className="gap-2">
         <Textarea
-          autoFocus
           aria-label="Notes"
           placeholder="What was said, what was decided, what is still open"
           value={text}

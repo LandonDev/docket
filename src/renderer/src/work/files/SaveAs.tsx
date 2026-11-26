@@ -140,7 +140,7 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
             Name
           </label>
           <InputGroup trailing={<span className="text-[13px] text-muted-foreground">.{formatOf(format).ext}</span>}>
-            <GroupInput id="save-as-name" value={stem} autoFocus spellCheck={false} onChange={(e) => setStem(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void save()} />
+            <GroupInput id="save-as-name" value={stem} spellCheck={false} onChange={(e) => setStem(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void save()} />
           </InputGroup>
           <span className="text-xs text-muted-foreground">Format</span>
           <div className="flex min-w-0 items-center gap-2.5">

@@ -103,7 +103,6 @@ export function SaveForm({ env, workspaceId, source, name, fields, onClose, pend
       <ModalBody>
         <Field label="Name" error={nameError}>
           <Input
-            autoFocus
             value={value}
             readOnly={pending}
             spellCheck={false}

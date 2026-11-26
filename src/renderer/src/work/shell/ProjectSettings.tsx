@@ -197,7 +197,7 @@ export function WorkProjectFields({
       ) : (
         <div className="flex flex-col gap-4">
           <Field label="Name">
-            <Input autoFocus value={name} onChange={(e) => onName(e.target.value)} />
+            <Input value={name} onChange={(e) => onName(e.target.value)} />
           </Field>
           {reach.status === "local" ? null : (
             <div className="-my-2 flex flex-col">

@@ -299,7 +299,7 @@ function NameWorkspaceDialog({
         <form onSubmit={submit}>
           <ModalBody>
             <Field label="Name">
-              <Input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Side projects" />
+              <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Side projects" />
             </Field>
             <ErrorLine error={clash ? "A workspace there already has that name" : error} />
           </ModalBody>

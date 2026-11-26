@@ -45,7 +45,7 @@ function Body({ onAdd, onClose, pending, setPending }: { onAdd(text: string): Pr
     <form onSubmit={submit}>
       <ModalBody>
         <Field label="Option">
-          <Input autoFocus value={text} onChange={(e) => setText(e.target.value)} />
+          <Input value={text} onChange={(e) => setText(e.target.value)} />
         </Field>
         <ErrorLine error={error} />
       </ModalBody>

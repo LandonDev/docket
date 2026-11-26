@@ -448,6 +448,13 @@ Settings → Work.
   `project.setPreamble` and `work.project.open`. Tests:
   workProjectGate.test.ts.
 
+A Work dialog's field never sets `autoFocus`: Modal's own first focus
+(`openFocusOf`) takes the same field, and only then does the dialog keep the
+press that opened it, so Escape gives the focus back there (New task, New
+event, the walk of S9). `work/dialogFocus.dom.test.tsx` holds both, with the
+few fields that focus themselves inside a dialog already open listed with
+their reason.
+
 ## Errors on screen
 
 A host answers a refusal in its own words, and some were never written for

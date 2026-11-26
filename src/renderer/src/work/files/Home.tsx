@@ -307,7 +307,7 @@ export function SaveSearchDialog({ query, onSave, onClose }: { query: string; on
       }}
     >
       <ModalBody>
-        <Input aria-label="Name" autoFocus value={name} maxLength={80} onChange={(event) => setName(event.target.value)} />
+        <Input aria-label="Name" value={name} maxLength={80} onChange={(event) => setName(event.target.value)} />
       </ModalBody>
       <DialogFooter onCancel={onClose} confirmLabel="Save" pending={pending} disabled={!name.trim()} onConfirm={save} />
     </Modal>

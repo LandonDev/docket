@@ -53,7 +53,7 @@ function Body({ ask, session, onClose, pending, setPending }: { ask: NameAsk; se
     >
       <ModalBody>
         <Field label="Name">
-          <Input autoFocus value={name} maxLength={200} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setName(e.target.value)} autoComplete="off" spellCheck={false} />
+          <Input value={name} maxLength={200} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setName(e.target.value)} autoComplete="off" spellCheck={false} />
         </Field>
         <ErrorLine error={error} />
       </ModalBody>

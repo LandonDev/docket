@@ -55,7 +55,8 @@ describe("Save as Template", () => {
     await settle();
     const name = screen.getByRole("textbox") as HTMLInputElement;
     expect(name.value).toBe("Game report");
-    expect(document.activeElement).toBe(name);
+    // Modal's own first focus takes the name (no autoFocus, so Escape can give the focus back to the opener).
+    await waitFor(() => expect(document.activeElement).toBe(name));
     expect([name.selectionStart, name.selectionEnd]).toEqual([0, "Game report".length]);
     expect((screen.getByRole("checkbox", { name: "Use in all jobs" }) as HTMLElement).getAttribute("aria-checked")).toBe("false");
     expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();

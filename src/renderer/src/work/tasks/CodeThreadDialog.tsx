@@ -124,7 +124,6 @@ function Body({ task, sector, onStart, onClose }: { task: Pick<Task, "_id" | "ti
         <div className="flex min-w-0 flex-col gap-1">
           <InputGroup leading={<Search className="size-3.5" />}>
             <GroupInput
-              autoFocus
               value={query}
               placeholder="Find a workspace"
               aria-label="Workspace"
