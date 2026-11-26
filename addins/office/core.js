@@ -355,7 +355,7 @@
     // ── the connection ────────────────────────────────────────────────
     function connect(first) {
       clearTimeout(timer)
-      set('connecting', 'Connecting to TempCode…')
+      set('connecting', 'Connecting to Docket…')
       var sock = new env.WebSocket(env.url)
       ws = sock
       // A refused socket closes after its error; onclose decides what comes next.
@@ -376,7 +376,7 @@
         }
         if (m.t === 'welcome') {
           wait = 1000
-          set('connected', 'Connected to TempCode')
+          set('connected', 'Connected to Docket')
           fileInfo()
             .then(send)
             .then(watch)
@@ -393,10 +393,10 @@
         if (stopped) return
         if (ev.code === 4403) {
           env.storage.removeItem(KEY)
-          return set('unpaired', ev.reason || 'TempCode does not know this add-in. Pair it again.')
+          return set('unpaired', ev.reason || 'Docket does not know this add-in. Pair it again.')
         }
-        if (first.t === 'pair' && !env.storage.getItem(KEY)) return set('unpaired', ev.reason || 'That code did not work. Ask TempCode for a new one.')
-        set('offline', 'TempCode is not answering. Trying again…')
+        if (first.t === 'pair' && !env.storage.getItem(KEY)) return set('unpaired', ev.reason || 'That code did not work. Ask Docket for a new one.')
+        set('offline', 'Docket is not answering. Trying again…')
         timer = setTimeout(start, wait)
         wait = Math.min(wait * 2, 30000)
       }

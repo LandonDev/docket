@@ -1,3 +1,4 @@
+import { APP_NAME } from "@shared/appName";
 import { shortSubject, versionLine } from "@server/shared/codeUpdate";
 import { ask, message, updates, type UpdateStatus } from "./native";
 import { announceUpdateAvailable } from "./sounds";
@@ -38,9 +39,8 @@ export type UpdaterSnapshot = {
   error?: string;
 };
 
-/** The hand-built installer, for when the updater cannot finish on its own. */
-export const MANUAL_DOWNLOAD_URL =
-  "https://github.com/LandonDev/temp-code/releases/latest/download/TempCode-arm64.dmg";
+/** The newest release's page, for when the updater cannot finish on its own (no release carries a .dmg). */
+export const MANUAL_DOWNLOAD_URL = "https://github.com/LandonDev/temp-code/releases/latest";
 
 /** An error with a version to retry: the button downloads it again. */
 export function canRetry(snapshot: UpdaterSnapshot): boolean {
@@ -201,10 +201,10 @@ export async function runUpdateFlow(
   }
   if (manual && snapshot.phase === "error") {
     await message(`Couldn't check for updates.\n\n${snapshot.error}`, {
-      title: "TempCode",
+      title: APP_NAME,
     });
   } else if (manual && snapshot.phase !== "idle") {
-    await message("You're on the latest release.", { title: "TempCode" });
+    await message("You're on the latest release.", { title: APP_NAME });
   }
   return snapshot;
 }
@@ -233,7 +233,7 @@ export async function installPendingUpdate(
       error: "This dev instance can't apply updates. Use the installed app.",
     };
     onProgress?.(failed);
-    await message(failed.error!, { title: "TempCode" });
+    await message(failed.error!, { title: APP_NAME });
     return failed;
   }
   const started = snapshotFromStatus(await updates.apply());
@@ -245,7 +245,7 @@ export async function installPendingUpdate(
   onProgress?.(result);
   if (result.phase === "error") {
     await message(`Couldn't download the update.\n\n${result.error}`, {
-      title: "TempCode",
+      title: APP_NAME,
     });
   }
   return result;

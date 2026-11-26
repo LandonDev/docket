@@ -45,7 +45,7 @@ const WIDTHS = [1280, 1920, 3840] as const;
 const SECONDS = [3, 5, 10] as const;
 const HEIGHTS = [720, 1080] as const;
 const MAKERS = [
-  { id: "tempcode", label: "TempCode" },
+  { id: "tempcode", label: "Docket" },
   { id: "powerpoint", label: "PowerPoint" },
 ] as const;
 
@@ -93,7 +93,7 @@ export function deckRows(
         <>
           <PageMenuRow label="Each slide" value={`${options.video.seconds} seconds`} options={SECONDS.map((s) => ({ id: String(s), label: `${s} seconds` }))} onPick={(s) => set({ video: { ...options.video, seconds: Number(s) as (typeof SECONDS)[number] } })} />
           <PageMenuRow label="Quality" value={`${options.video.height}p`} options={HEIGHTS.map((h) => ({ id: String(h), label: `${h}p` }))} onPick={(h) => set({ video: { ...options.video, height: Number(h) as (typeof HEIGHTS)[number] } })} />
-          {powerpoint ? <PageMenuRow label="Made by" value={options.video.by === "powerpoint" ? "PowerPoint" : "TempCode"} options={MAKERS} onPick={(by) => set({ video: { ...options.video, by } })} /> : null}
+          {powerpoint ? <PageMenuRow label="Made by" value={options.video.by === "powerpoint" ? "PowerPoint" : "Docket"} options={MAKERS} onPick={(by) => set({ video: { ...options.video, by } })} /> : null}
           {hidden}
         </>
       ),

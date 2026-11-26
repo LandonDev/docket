@@ -103,7 +103,7 @@ describe("the rows of each format", () => {
     localStorage.clear();
     framed({ pdf: "ready", video: "asleep" }, 0);
     pick("Video");
-    await waitFor(() => expect(screen.getByRole("button", { name: "Made by: TempCode" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Made by: Docket" })).toBeTruthy());
     // A deck with no hidden slides has no switch for them.
     expect(screen.queryByRole("switch", { name: "Hidden slides" })).toBeNull();
   });

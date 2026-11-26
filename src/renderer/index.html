@@ -15,7 +15,9 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' tempcode-asset: data: blob: https://avatars.githubusercontent.com https://uploads.linear.app https://lh3.googleusercontent.com; font-src 'self' data:; connect-src 'self' ws: wss: ws://127.0.0.1:* ws://localhost:* http://localhost:5173 ws://localhost:5173 http://127.0.0.1:5173 ws://127.0.0.1:5173; media-src 'self' tempcode-asset: data: blob:; object-src 'none'; base-uri 'self'; frame-src tempcode-asset:"
     />
-    <title>TempCode</title>
+    <title>Docket</title>
+    <link rel="icon" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <script src="./boot.js"></script>
     <style>
       /* The splash paints before src/renderer/src/index.css loads, so its
@@ -57,14 +59,14 @@
         opacity: 0;
       }
 
-      /* The logo is one shape in white: drawn as a mask, it takes the
-         theme's ink and shows on a white ground as on a dark one. */
+      /* The mark is the icon's slabs as one shape (scripts/make-icons.ts):
+         drawn as a mask, it takes the theme's ink. */
       #boot-mark {
         width: 72px;
         height: 72px;
         background: var(--boot-foreground);
-        -webkit-mask: url("./monocode.png") center / contain no-repeat;
-        mask: url("./monocode.png") center / contain no-repeat;
+        -webkit-mask: url("./mark.png") center / contain no-repeat;
+        mask: url("./mark.png") center / contain no-repeat;
       }
     </style>
   </head>

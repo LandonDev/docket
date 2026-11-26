@@ -1,9 +1,9 @@
-# TempCode
+# Docket
 
-[![Download for Mac (Apple silicon)](https://img.shields.io/badge/Download%20for%20Mac-Apple%20silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/LandonDev/temp-code/releases/latest/download/TempCode-arm64.dmg)
+[![Download for Mac (Apple silicon)](https://img.shields.io/badge/Download%20for%20Mac-Apple%20silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/LandonDev/temp-code/releases/latest)
 [![All releases](https://img.shields.io/github/v/release/LandonDev/temp-code?style=for-the-badge&label=Releases&color=555)](https://github.com/LandonDev/temp-code/releases)
 
-TempCode is a Mac desktop app for working with coding agents. It runs the
+Docket is a Mac desktop app for working with coding agents. It runs the
 official agent CLIs under your own logins and gives them one workspace:
 projects, threads, a code editor, terminals, git, and an inbox.
 
@@ -21,8 +21,9 @@ projects, threads, a code editor, terminals, git, and an inbox.
 
 ## Install
 
-Apple silicon Mac on macOS 12 or newer. Download the dmg above, open it,
-and drag TempCode to Applications. The app is signed with a Developer ID;
+Apple silicon Mac on macOS 12 or newer. Open the newest release above,
+download its zip (or its dmg, when it has one) and drag TempCode to
+Applications. The app is signed with a Developer ID;
 the dmg is published on request (`bun run release:publish --dmg --notarize`).
 
 It needs on the machine:

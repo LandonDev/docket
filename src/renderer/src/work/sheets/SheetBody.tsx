@@ -889,7 +889,7 @@ export function TabEnd(props: Props) {
       <TabsList aria-label="Open in" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
         <TabsIndicator />
         <TabsTrigger value="tempcode" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
-          TempCode
+          Docket
         </TabsTrigger>
         <TabsTrigger value="app" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
           <BusyLabel busy={opening} label={app} />

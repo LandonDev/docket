@@ -126,7 +126,7 @@ function PairDialog({ link, known, onPaired, onClose }: { link: Link; known: rea
   };
   return (
     <Dialog {...root}>
-      <ModalPanel onClose={close} title="Pair the Office add-in" description="Enter this code in the TempCode pane in Excel, Word or PowerPoint." size="sm">
+      <ModalPanel onClose={close} title="Pair the Office add-in" description="Enter this code in the Docket pane in Excel, Word or PowerPoint." size="sm">
         <ModalBody>
           <div className="flex items-baseline justify-between gap-3">
             {code ? (

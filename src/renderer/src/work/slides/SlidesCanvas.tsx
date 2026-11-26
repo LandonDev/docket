@@ -1365,7 +1365,7 @@ export function TabEnd({ item, source, env }: CanvasBodyProps<SlidesState>) {
       <TabsList aria-label="Open in" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
         <TabsIndicator />
         <TabsTrigger value="tempcode" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
-          TempCode
+          Docket
         </TabsTrigger>
         <TabsTrigger value="powerpoint" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
           PowerPoint
@@ -1414,7 +1414,7 @@ export function Bar({ item, env, source, host: given, engine }: CanvasBodyProps<
     <>
       {/* Whole or gone: the narrow bar keeps Review alone rather than a cut sentence. */}
       <span data-narrow-hide className="min-w-0 truncate @max-[560px]/bar:hidden">
-        {pending === 1 ? "1 suggestion waits in TempCode" : `${pending} suggestions wait in TempCode`}
+        {pending === 1 ? "1 suggestion waits in Docket" : `${pending} suggestions wait in Docket`}
       </span>
       <Button variant="ghost" size="xs" className="shrink-0" onClick={() => store.set({ side: "tempcode" })}>
         Review

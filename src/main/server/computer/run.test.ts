@@ -806,7 +806,7 @@ describe('launch and open without taking the screen (§23)', () => {
     expect((await h.run('computer_apps', { launch: 'Preview', open: ['/missing/a.pdf'] })).body).toBe('no file at "/missing/a.pdf" on the Mac; check the path')
     const refused = make({ env: { FAKE_LAUNCH_REFUSE_APP: '1' } })
     expect((await refused.run('computer_apps', { launch: '/Applications/TempCode.app', open: ['/tmp/a.txt'] })).body).toBe(
-      "TempCode's own window is off limits to computer use"
+      "Docket's own window is off limits to computer use"
     )
   })
 

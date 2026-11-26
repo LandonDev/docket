@@ -1,3 +1,4 @@
+import { APP_NAME } from "@shared/appName";
 import { invoke, ask, windowPersisted } from "./native";
 import {
   hasInFlightSessions,
@@ -339,7 +340,7 @@ async function confirmQuitAndExit(
     const refs = inFlightRefs(sessions, tabs);
     if (refs.length > 0) {
       const ok = await ask(quitWhileBusyMessage(refs.length), {
-        title: "TempCode",
+        title: APP_NAME,
         kind: "warning",
         okLabel: "Quit",
       });

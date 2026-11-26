@@ -45,7 +45,7 @@ describe('computer banner page', () => {
   it('has one passive pill with the watch-only key cap and words', () => {
     const dom = new JSDOM(computerBannerPage()),
       doc = dom.window.document
-    expect(doc.querySelector('#pill > span')?.textContent).toBe('TempCode is using your Mac')
+    expect(doc.querySelector('#pill > span')?.textContent).toBe('Docket is using your Mac')
     expect(doc.querySelector('kbd')?.textContent).toBe('Esc')
     expect(doc.querySelector('#stop')?.textContent).toBe('to stop')
     expect(doc.querySelectorAll('script, button, input')).toHaveLength(0)

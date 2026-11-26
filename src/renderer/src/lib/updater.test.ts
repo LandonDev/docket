@@ -277,7 +277,7 @@ describe("runUpdateFlow", () => {
     await runUpdateFlow(false);
     expect(mocks.message).not.toHaveBeenCalled();
     await runUpdateFlow(true);
-    expect(mocks.message).toHaveBeenCalledWith("You're on the latest release.", { title: "TempCode" });
+    expect(mocks.message).toHaveBeenCalledWith("You're on the latest release.", { title: "Docket" });
   });
 
   it("leaves a running download alone", async () => {

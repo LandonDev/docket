@@ -1,4 +1,4 @@
-# TempCode's Office add-in
+# Docket's Office add-in
 
 A task pane add-in for Excel, Word and PowerPoint. Its pages are served by the
 Work service at `/w/addin/*`; the manifest names

@@ -13,6 +13,6 @@ describe("the Forms view's list", () => {
 
   it("says kind, state, count and last answer in one line", () => {
     expect(rowLine({ ...mergeForms([], [ms("x", 1, { lastAnswerAt: 5 })])[0]! }, () => "2:14 PM")).toBe("Microsoft · Collecting · 12 · 2:14 PM");
-    expect(rowLine(ours("a", 1), () => "")).toBe("TempCode · Draft");
+    expect(rowLine(ours("a", 1), () => "")).toBe("Docket · Draft");
   });
 });

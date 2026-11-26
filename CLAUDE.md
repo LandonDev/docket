@@ -1,9 +1,8 @@
 # temp-code — instructions for AI sessions
 
 This file is an index, loaded whole into every Claude thread's first request, and
-it holds to 40,000 bytes (scripts/claudeMdBudget.test.ts): at 305 KB it was most
-of a 200k window and every thread compacted on every request
-(docs/agents/prompt-overhead.md). A new subject's long account goes in
+it holds to 40,000 bytes (scripts/claudeMdBudget.test.ts; why:
+docs/agents/prompt-overhead.md). A new subject's long account goes in
 `docs/agents/<slug>.md`; this file gets one entry for it.
 
 ## One line: prod runs the newest published GitHub release
@@ -18,8 +17,8 @@ of a 200k window and every thread compacted on every request
   "Restart to update" (src/main/update.ts `selfUpdate`, the rules in
   updateTrigger.ts: a version it already runs or holds is ignored, and
   nothing installs without the restart click). Its data
-  lives in `~/Library/Application Support/TempCode/` (`dev:prod` still runs
-  on the older `temp-code/` dir).
+  lives in `~/Library/Application Support/temp-code/` (package.json's
+  `name`; the builder's `productName` names only the bundle).
 - No signed release reaches users until `bun run release:publish` runs (see
   below). But every `release-N` the box cuts is offered to the owner's own
   Mac app as a code-only update, run after his restart ("Code-only updates"
@@ -86,14 +85,12 @@ differs by origin, so it does not carry across; unread is the host's mark
 ("Read and unread: the host's mark" below) and does.
 
 ## The prod worktree is retired
-~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
-The updater no longer reads it or the source repo. Never build into or swap
-/Applications/TempCode.app yourself.
+~/IdeaProjects/temp-code-prod, the old updater's checkout, is read by
+nothing. Never build into or swap /Applications/TempCode.app yourself.
 
 ## Subjects: one entry each, the long account in docs/agents
 
-Read the file a task touches before changing that subject; each keeps its
-section's text as it was when CLAUDE.md was split (2026-11-11).
+Read the file a task touches before changing that subject.
 
 - **Releases** — `bun run gate` (scripts/gate.ts: `commit` and `publish`
   tiers, `TIER_PATHS`); a post-commit hook tags `release-N` on every green
@@ -123,6 +120,8 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   (`projects.preamble`), added to a thread's first message on every start
   path by `decidePreamble` (src/main/server/projectPreamble.ts).
   [docs/agents/project-preambles.md](docs/agents/project-preambles.md)
+- **Name and icon** — people read Docket, the OS shows TempCode
+  (src/shared/appName.ts); `bun run icons`. [docs/agents/name-and-icon.md](docs/agents/name-and-icon.md)
 - **UI standard** — docs/DESIGN.md wins every conflict; Kobra on Base UI under
   src/renderer/src/components/ui, mapped in components/README.md; the guard
   tests under src/renderer/src/lib/*Guard.test.ts; verify with typecheck, the

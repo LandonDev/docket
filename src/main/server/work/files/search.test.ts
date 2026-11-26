@@ -203,7 +203,7 @@ describe('a search by words inside', () => {
     expect(opened).toContain(join(rig.folder, 'Agenda.md'))
   })
 
-  it('says TempCode documents and sheets were searched by name only where the folder holds one its name did not match', async () => {
+  it('says Docket documents and sheets were searched by name only where the folder holds one its name did not match', async () => {
     const plain = join(rig.folder, 'Plain')
     mkdirSync(plain)
     writeFileSync(join(plain, 'notes.txt'), 'kickoff')
@@ -213,7 +213,7 @@ describe('a search by words inside', () => {
     // A name that matches is found by it: nothing about it went unsearched.
     expect((await walkNames(plain, ['show'], { texts: true })).sealed).toBe(false)
     const got = await search('kickoff')
-    expect(got.byName).toContain('TempCode documents and sheets')
+    expect(got.byName).toContain('Docket documents and sheets')
     expect(opened.filter((p) => p.endsWith('.tcdoc'))).toEqual([])
   })
 

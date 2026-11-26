@@ -10,7 +10,7 @@ import type { Caller, WorkCtx } from './modules'
 
 const METHOD = 'work.reveal'
 const NOT_FOUND = 'That destination is unavailable on this computer.'
-export const REVEAL_NO_DESKTOP = 'This host has no desktop window. Choose a computer with TempCode open.'
+export const REVEAL_NO_DESKTOP = 'This host has no desktop window. Choose a computer with Docket open.'
 export const REVEAL_ADMIN = 'forbidden: work.reveal needs admin for this Settings page'
 
 const LIFEOS_VIEWS = new Set<RevealTarget['view']>(['agenda', 'mail', 'messages', 'people', 'prep', 'projects', 'tasks'])

@@ -540,7 +540,7 @@ async function assertOpenCodeVersion(path: string, cwd: string): Promise<void> {
   const version = parseOpenCodeVersion(output);
   if (!version) {
     throw new Error(
-      `Could not read the OpenCode version. TempCode needs v${MINIMUM_OPENCODE_VERSION} or newer.`,
+      `Could not read the OpenCode version. Docket needs v${MINIMUM_OPENCODE_VERSION} or newer.`,
     );
   }
   if (compareSemver(version, MINIMUM_OPENCODE_VERSION) < 0) {

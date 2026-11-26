@@ -22,7 +22,7 @@ import type { HandSession } from "./session";
  * first, so the copy from just before is at the top of the list next time.
  */
 
-export const FIRST_WORDS = "Before TempCode changed it";
+export const FIRST_WORDS = "Before Docket changed it";
 
 export type Kept = { list: DeckVersion[] | null; error: string | null };
 

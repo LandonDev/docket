@@ -764,7 +764,7 @@ const DRIVE_WHO = 'Each file by its own sharing in Google Drive: a change to one
 export const filesTools: WorkTool[] = [
   tool({
     name: 'files_places',
-    description: "Start here: lists the places this workspace's files live in, on this computer and on each computer the workspace may use: its own folder, Teams and OneDrive libraries, and a Google Drive per Google account of the workspace (only the files TempCode made or the owner picked). Each has an id the other files_* tools take, and says who else can open what is in it.",
+    description: "Start here: lists the places this workspace's files live in, on this computer and on each computer the workspace may use: its own folder, Teams and OneDrive libraries, and a Google Drive per Google account of the workspace (only the files Docket made or the owner picked). Each has an id the other files_* tools take, and says who else can open what is in it.",
     input: {},
     readOnly: true,
     run: async (_a, ctx, workspaceId) => {

@@ -314,7 +314,7 @@ const ENDED: Record<Exclude<Failure, "gone" | "starting">, { title: string; deta
 export function Ended({ why, owner, kept = null, retry }: { why: Failure; owner: boolean; kept?: Remembered | null; retry(): void }) {
   // A host that is still starting after the wait is out of reach, said as that: never as an end.
   const out = why === "down" || why === "starting";
-  const words = out ? ENDED.down : why === "busy" ? ENDED.busy : owner ? { title: "This page has already been opened, or it ran out", detail: "Open it again from TempCode." } : endWords(kept);
+  const words = out ? ENDED.down : why === "busy" ? ENDED.busy : owner ? { title: "This page has already been opened, or it ran out", detail: "Open it again from Docket." } : endWords(kept);
   return (
     <main className="grid h-dvh place-items-center bg-background px-6 text-foreground">
       <Empty>

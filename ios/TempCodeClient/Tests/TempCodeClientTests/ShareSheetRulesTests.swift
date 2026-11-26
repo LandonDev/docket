@@ -12,7 +12,7 @@ struct ShareSheetRulesTests {
 
     @Test func `every file with the host is saved; one it refused says why; one that waits says the app will send it`() {
         #expect(SharePhase.after([item("a", .done), item("b", .done)], host: "The box") == .saved)
-        #expect(SharePhase.after([item("a", .done), item("b", .queued)], host: "The box") == .waiting("The box can’t be reached. TempCode will save this when it can."))
+        #expect(SharePhase.after([item("a", .done), item("b", .queued)], host: "The box") == .waiting("The box can’t be reached. Docket will save this when it can."))
         #expect(SharePhase.after([item("a", .queued), item("b", .refused, words: "The box takes files up to 200 MB.")], host: "The box") == .refused("The box takes files up to 200 MB."))
         #expect(SharePhase.after([item("a", .refused)], host: "The box") == .refused("The box did not take a."))
     }
@@ -23,7 +23,7 @@ struct ShareSheetRulesTests {
         #expect(SharePhase.after([], host: "The box", notQueued: ["a", "b"], total: 2) == .refused("Could not send any of the 2 files from this phone."))
         #expect(SharePhase.after([item("a", .done)], host: "The box", notQueued: ["b"], total: 2) == .refused("Could not send b from this phone. a is saved."))
         #expect(SharePhase.after([item("a", .done), item("c", .done)], host: "The box", notQueued: ["b"], total: 3) == .refused("Could not send b from this phone. The other 2 are saved."))
-        #expect(SharePhase.after([item("a", .queued), item("c", .queued)], host: "The box", notQueued: ["b", "d"], total: 4) == .refused("Could not send 2 of 4 files from this phone. The box can’t be reached. TempCode will save this when it can."))
+        #expect(SharePhase.after([item("a", .queued), item("c", .queued)], host: "The box", notQueued: ["b", "d"], total: 4) == .refused("Could not send 2 of 4 files from this phone. The box can’t be reached. Docket will save this when it can."))
     }
 
     @Test func `the bar is the share of every file's bytes together`() {

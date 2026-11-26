@@ -47,7 +47,7 @@ const STATE_WORDS: Record<string, string> = { draft: "Draft", collecting: "Colle
 
 /** A row's one muted line: "Microsoft · Collecting · 12 · 2:14 PM". */
 export function rowLine(row: FormListRow, time: (at: number) => string): string {
-  const parts = [row.kind === "ms" ? "Microsoft" : "TempCode", STATE_WORDS[row.state] ?? row.state];
+  const parts = [row.kind === "ms" ? "Microsoft" : "Docket", STATE_WORDS[row.state] ?? row.state];
   if (row.count !== null && row.state !== "draft") parts.push(String(row.count));
   if (row.lastAnswerAt) parts.push(time(row.lastAnswerAt));
   return parts.join(" · ");

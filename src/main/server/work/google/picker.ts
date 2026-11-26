@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net'
 import type { DatabaseSync } from 'node:sqlite'
 import { DRIVE_FILE } from './client'
 import { GOOGLE_KINDS, type GoogleKind } from '@shared/contract-work-google'
+import { APP_NAME } from '@shared/appName'
 
 /**
  * Google's desktop Picker (docs/agents/work-google.md "Picking a file"):
@@ -62,7 +63,7 @@ export function pickerUrl(o: { clientId: string; account: string; redirect: stri
 }
 
 const page = (line: string): string =>
-  `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>TempCode</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:13px/1.5 system-ui,sans-serif;color-scheme:light dark}p{margin:0;width:min(320px,calc(100vw - 48px))}</style></head><body><p>${line}</p></body></html>`
+  `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${APP_NAME}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:13px/1.5 system-ui,sans-serif;color-scheme:light dark}p{margin:0;width:min(320px,calc(100vw - 48px))}</style></head><body><p>${line}</p></body></html>`
 
 /**
  * Shows the Picker and answers the ids he picked: [] when he closed it. `open` shows a URL in the
@@ -85,12 +86,12 @@ export async function pick(o: { clientId: string; account: string; kinds?: reado
     }
     // Only Google's answer to this Picker, carrying its state; any other is ignored and the wait goes on.
     if (url.searchParams.get('state') !== state) {
-      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' }).end(page('This page is not for this Picker. Go back to TempCode.'))
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' }).end(page('This page is not for this Picker. Go back to Docket.'))
       return
     }
     const ids = (url.searchParams.getAll('picked_file_ids').join(',') || '').split(',').map((s) => s.trim()).filter((s) => /^[A-Za-z0-9_-]{1,200}$/.test(s))
     const error = url.searchParams.get('error')
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(page(error ? 'Nothing was picked. You can close this tab.' : 'Picked. You can close this tab and go back to TempCode.'))
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(page(error ? 'Nothing was picked. You can close this tab.' : 'Picked. You can close this tab and go back to Docket.'))
     done(error ? [] : ids)
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))

@@ -114,8 +114,8 @@ describe('resolveTarget', () => {
 
 describe('refusedTarget', () => {
   it('refuses reads and acts on TempCode itself, by pid and by the installed bundle id', () => {
-    expect(refusedTarget({ pid: 7, bundleId: 'com.github.Electron' }, 'read', 7)).toBe("TempCode's own window is off limits to computer use")
-    expect(refusedTarget({ pid: 8, bundleId: TEMPCODE_BUNDLE_ID }, 'read', 7)).toBe("TempCode's own window is off limits to computer use")
+    expect(refusedTarget({ pid: 7, bundleId: 'com.github.Electron' }, 'read', 7)).toBe("Docket's own window is off limits to computer use")
+    expect(refusedTarget({ pid: 8, bundleId: TEMPCODE_BUNDLE_ID }, 'read', 7)).toBe("Docket's own window is off limits to computer use")
     expect(refusedTarget({ pid: 8, bundleId: 'com.github.Electron' }, 'act', 7)).toBeNull()
   })
 
@@ -132,11 +132,11 @@ describe('refusedTarget', () => {
       expect(refusedTarget({ pid: 9, bundleId }, 'read', 7)).toBeNull()
       expect(refusedLaunch(bundleId)).toBe("Windows' password and consent prompts are the person's to answer")
     }
-    expect(refusedTarget({ pid: 8, bundleId: 'tempcode.exe' }, 'read', 7)).toBe("TempCode's own window is off limits to computer use")
-    expect(refusedLaunch('TempCode.exe')).toBe("TempCode's own window is off limits to computer use")
+    expect(refusedTarget({ pid: 8, bundleId: 'tempcode.exe' }, 'read', 7)).toBe("Docket's own window is off limits to computer use")
+    expect(refusedLaunch('TempCode.exe')).toBe("Docket's own window is off limits to computer use")
     // named by a path or without .exe, the file's own name decides
     expect(refusedLaunch('C:\\Windows\\System32\\consent.exe')).toBe("Windows' password and consent prompts are the person's to answer")
-    expect(refusedLaunch('C:/Users/me/AppData/Local/Programs/TempCode/TempCode.exe')).toBe("TempCode's own window is off limits to computer use")
+    expect(refusedLaunch('C:/Users/me/AppData/Local/Programs/TempCode/TempCode.exe')).toBe("Docket's own window is off limits to computer use")
     expect(refusedLaunch('consent')).toBe("Windows' password and consent prompts are the person's to answer")
     expect(refusedLaunch('C:\\Windows\\notepad.exe')).toBeNull()
     expect(refusedOpenItem('C:\\Users\\me\\Total.txt')).toBeNull()
@@ -171,8 +171,8 @@ describe('refusedTarget', () => {
   })
 
   it('refuses computer_apps { launch } of a refused app', () => {
-    expect(refusedLaunch('TempCode')).toMatch(/^TempCode's own window/)
-    expect(refusedLaunch(TEMPCODE_BUNDLE_ID)).toMatch(/^TempCode's own window/)
+    expect(refusedLaunch('TempCode')).toMatch(/^Docket's own window/)
+    expect(refusedLaunch(TEMPCODE_BUNDLE_ID)).toMatch(/^Docket's own window/)
     expect(refusedLaunch('com.apple.securityagent')).toMatch(/^macOS's password/)
     expect(refusedLaunch('TextEdit')).toBeNull()
   })

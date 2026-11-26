@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { OfficeError } from './carrier'
+import { OS_APP_NAME } from '@shared/appName'
 
 /**
  * One osascript run: the script on stdin, its arguments as `argv`, its
@@ -48,9 +49,9 @@ export function osaError(stderr: string): OfficeError {
   const app = /(Microsoft \w+)/.exec(stderr)?.[1] ?? 'the Office app'
   switch (code) {
     case '-1743':
-      return new OfficeError(`TempCode may not control ${app}: allow it in System Settings → Privacy & Security → Automation.`, 'not-allowed')
+      return new OfficeError(`${OS_APP_NAME} may not control ${app}: allow it in System Settings → Privacy & Security → Automation.`, 'not-allowed')
     case '-1744':
-      return new OfficeError(`${app} asks the owner once whether TempCode may control it: he answers that prompt on the Mac.`, 'needs-consent')
+      return new OfficeError(`${app} asks the owner once whether ${OS_APP_NAME} may control it: he answers that prompt on the Mac.`, 'needs-consent')
     case '-600':
       return new OfficeError(`${app} is not open.`, 'not-running')
     case '-1728':

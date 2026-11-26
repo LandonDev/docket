@@ -33,7 +33,7 @@ describe("the boot splash", () => {
     const body = html.slice(html.indexOf("<body>"));
     expect(body).toContain('<div id="boot-mark"></div>');
     expect(body).not.toMatch(/<img/);
-    expect(style).toMatch(/#boot-mark \{[^}]*background: var\(--boot-foreground\);[^}]*mask: url\("\.\/monocode\.png"\)/);
+    expect(style).toMatch(/#boot-mark \{[^}]*background: var\(--boot-foreground\);[^}]*mask: url\("\.\/mark\.png"\)/);
     expect(style).toMatch(/#boot-splash \{[^}]*\}/);
     expect(style).toContain("background: var(--boot-background)");
   });

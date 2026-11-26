@@ -10,6 +10,7 @@ import type { ComputerAction, ComputerError, ComputerErrorKind, ErrorReason } fr
 import { hostWords, localComputerPlatform, type ComputerPlatform } from './descriptions'
 import { noReadForTextLine } from './hostErrors'
 import { openItemName } from './words'
+import { OS_APP_NAME } from '../appName'
 
 export const BROWSER_PROOF_EXPIRED = 'refused: the browser input check expired before the step ran.'
 
@@ -100,8 +101,8 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
   already_running: () => 'another computer service is still stopping; try the call again in a few seconds',
   permission_missing: (e) =>
     e.which === 'screenRecording'
-      ? 'TempCode lacks the Screen Recording permission; the person turns it on under System Settings → Privacy & Security → Screen & System Audio Recording'
-      : 'TempCode lacks the Accessibility permission; the person turns it on under System Settings → Privacy & Security → Accessibility',
+      ? `${OS_APP_NAME} lacks the Screen Recording permission; the person turns it on under System Settings → Privacy & Security → Screen & System Audio Recording`
+      : `${OS_APP_NAME} lacks the Accessibility permission; the person turns it on under System Settings → Privacy & Security → Accessibility`,
   app_not_found: (e, ctx) => {
     const head = `no app matches ${ctx.app ? quote(ctx.app) : 'that name'}`
     if (!e.candidates?.length) return `${head}; computer_apps lists them all`

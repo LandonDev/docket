@@ -103,7 +103,7 @@ describe('hostHeadless', () => {
 describe('aboutPanelOptions', () => {
   it('reads the version with its short commit and the copyright', () => {
     expect(aboutPanelOptions({ release: 412, version: '1.0.412', sha: A })).toEqual({
-      applicationName: 'TempCode',
+      applicationName: 'Docket',
       applicationVersion: '1.0.412',
       version: 'aaaaaaa',
       copyright: 'Copyright © 2026 Landon Hale',

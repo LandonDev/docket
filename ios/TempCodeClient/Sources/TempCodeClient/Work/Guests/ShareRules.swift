@@ -84,8 +84,8 @@ public enum ShareRules {
     /// Why a file is not shared by link (`SHARE_REFUSALS`), each saying what to do instead; held to the host's by
     /// scripts/ios-share-fixture.test.ts.
     public static let refusals = [
-        "Guest links open TempCode documents. Save As a TempCode document to share this one.",
-        "Guest links open TempCode sheets. Save As a TempCode sheet to share this one.",
+        "Guest links open Docket documents. Save As a Docket document to share this one.",
+        "Guest links open Docket sheets. Save As a Docket sheet to share this one.",
         "This file lives in Teams. Share it from Teams.",
         "This document is a Teams file opened here. Share it from Teams.",
         "This file lives in Google Drive. Share it from Google.",
@@ -94,7 +94,7 @@ public enum ShareRules {
         "This document is saved to another file as it changes, so a guest can view it but not edit it.",
         "That file is not the one the thread asked to share any more. Nothing was made.",
         "Guests reach files on the box only. Keep this file in a workspace on the box to share it.",
-        "Guest links open TempCode documents and sheets only.",
+        "Guest links open Docket documents and sheets only.",
     ]
 
     /// The refusal a host's words hold, whatever came before it: said as the sheet's line, not as a failure.

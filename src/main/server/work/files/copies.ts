@@ -458,7 +458,7 @@ export async function freshBytes(ctx: WorkCtx, r: Pick<CopyRow, 'workspace_id' |
   const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(r.workspace_id), workspaceId: r.workspace_id }, signal } as never, r.host)
   const sink = bytesSink()
   const version = await farBytes((params) => far.call('office', 'filesRead', { source: ref, as: 'bytes', ...params }) as Promise<FarPiece>, sink)
-  if (typeof version !== 'string') throw new Error('The other computer runs an older TempCode: update it to reload here.')
+  if (typeof version !== 'string') throw new Error('The other computer runs an older Docket: update it to reload here.')
   return { data: sink.bytes(), version }
 }
 

@@ -49,5 +49,5 @@ html.esc #escape { display: inline-flex; }
 kbd { display: inline-flex; align-items: center; justify-content: center; height: 20px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); color: var(--foreground); font: 500 var(--key)/1 var(--font-sans); }
 #stop { color: var(--muted-foreground); }
 @media (prefers-reduced-motion: reduce) { #pill { transition-duration: var(--dur-fast); } }
-</style></head><body><div id="pill"><span>TempCode is using your Mac</span><span id="escape"><kbd>Esc</kbd><span id="stop">to stop</span></span></div></body></html>`
+</style></head><body><div id="pill"><span>Docket is using your Mac</span><span id="escape"><kbd>Esc</kbd><span id="stop">to stop</span></span></div></body></html>`
 }

@@ -51,7 +51,7 @@ export function stepTitle(step: SetupStep, giverName: string): string {
     case "lifeos":
       return "LifeOS";
     case "work":
-      return "TempCode's Work signed in to LifeOS";
+      return "Docket's Work signed in to LifeOS";
     case "folders":
       return "Folders in Files";
   }

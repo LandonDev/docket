@@ -206,7 +206,7 @@ enum DiagnosticsFile {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         encoder.dateEncodingStrategy = .iso8601
-        let url = FileManager.default.temporaryDirectory.appending(path: "TempCode-diagnostics.json")
+        let url = FileManager.default.temporaryDirectory.appending(path: "Docket-diagnostics.json")
         guard let data = try? encoder.encode(report), (try? data.write(to: url, options: .atomic)) != nil else { return nil }
         return url
     }

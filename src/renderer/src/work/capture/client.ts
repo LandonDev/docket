@@ -31,7 +31,7 @@ export function captureHost(port: () => Promise<number | null>, make = (url: str
     timer = null;
     open ??= (async () => {
       const p = await port();
-      if (!p) throw new Error("TempCode's host is not running.");
+      if (!p) throw new Error("Docket's host is not running.");
       const t = make(`ws://127.0.0.1:${p}`);
       t.onClose(() => {
         open = null;

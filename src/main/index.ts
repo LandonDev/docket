@@ -66,6 +66,7 @@ import { installWarningLog } from './warningLog'
 import { registerRevealWindow } from './revealWindow'
 import { queueWorkHandoff, registerWorkHandoff } from './workHandoff'
 import { APP_USER_MODEL_ID, localUserData } from './windowFrame'
+import { APP_NAME } from '../shared/appName'
 
 // First statement of the bundle: everything before this mark is Electron's
 // own init plus the compile of out/main/index.js (through boot.js). `start=`
@@ -122,7 +123,7 @@ const headless = isHeadless()
 const refuseHandoff = (words: string): void => {
   console.warn('[handoff]', words)
   void app.whenReady().then(() => {
-    if (Notification.isSupported()) new Notification({ title: 'TempCode', body: words }).show()
+    if (Notification.isSupported()) new Notification({ title: APP_NAME, body: words }).show()
   })
 }
 const handoff = queueWorkHandoff(async (params) => {
@@ -166,10 +167,11 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // The packaged app's userData follows its product name (TempCode); the
-  // years of dev-mode data live under the old package-name dir. First
-  // packaged boot copies the database over so nothing is lost. The old dir
-  // is a macOS path, so only a Mac looks.
+  // Electron names userData after package.json's productName, else its name
+  // (temp-code); the builder's productName names only the bundle, so a
+  // packaged Mac app runs in the same temp-code dir as dev mode and this finds
+  // the database already there. It copies only if that name ever changes.
+  // The old dir is a macOS path, so only a Mac looks.
   if (process.platform === 'darwin' && app.isPackaged && !process.env.TEMP_CODE_USER_DATA) {
     const dbPath = join(app.getPath('userData'), 'temp-code.db')
     const oldDir = join(homedir(), 'Library', 'Application Support', 'temp-code')

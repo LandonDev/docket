@@ -222,7 +222,7 @@ const enc = encodeURIComponent
 async function googleFailure(res: Response): Promise<GoogleError> {
   const body = (await res.json().catch(() => ({}))) as { error?: { message?: string; status?: string } }
   const said = body.error?.message ?? ''
-  if (res.status === 404) return new GoogleError('Google has no such file, or it was not picked for TempCode. Pick it again.', 'not-found')
+  if (res.status === 404) return new GoogleError('Google has no such file, or it was not picked for Docket. Pick it again.', 'not-found')
   if (res.status === 403) return new GoogleError(said.includes('comment') ? 'Google will not show this file\'s comments to this account.' : 'Google refused: this account cannot open or change that file.', 'refused')
   if (res.status === 400 && /revision/i.test(said)) return new GoogleError('The file changed in Google since it was read.', 'conflict')
   if (res.status === 400) return new GoogleError(`Google refused the change${said ? `: ${said.slice(0, 200)}` : '.'}`, 'bad-request')

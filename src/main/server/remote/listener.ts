@@ -104,7 +104,7 @@ export interface RemoteListenerOptions {
  * `GET /setup`: a browser that opens a setup link reads this and runs
  * nothing, so the fragment (the secret) is never read by a page of ours.
  */
-export const SETUP_PAGE = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>TempCode</title><p style="font:16px system-ui;margin:3em auto;max-width:28em">Paste this link into TempCode on the computer you are setting up.</p>'
+export const SETUP_PAGE = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Docket</title><p style="font:16px system-ui;margin:3em auto;max-width:28em">Paste this link into Docket on the computer you are setting up.</p>'
 const SETUP_PAGE_HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
   'Content-Security-Policy': "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",

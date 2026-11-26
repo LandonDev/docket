@@ -1,3 +1,4 @@
+import { OS_APP_NAME } from "@shared/appName";
 import { isWebMode, printPdfFile } from "../../lib/native";
 
 /**
@@ -20,7 +21,7 @@ export type PrintSay = (words: string, action?: { label: string; run(): void }) 
 export const PRINT_WORDS = {
   viewer: "Opened in your PDF viewer to print",
   // Said once a window's life, when the viewer stands in for a refused Automation grant.
-  allow: "Opened in your PDF viewer to print. To print in one step, allow TempCode to control Preview in System Settings, Privacy & Security, Automation.",
+  allow: `Opened in your PDF viewer to print. To print in one step, allow ${OS_APP_NAME} to control Preview in System Settings, Privacy & Security, Automation.`,
   tab: "The PDF is ready to print",
   open: "Open",
 } as const;

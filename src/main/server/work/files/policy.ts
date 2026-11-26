@@ -311,7 +311,7 @@ export function bytesRefusal(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, by: 
   return by.kind !== 'local' && sharedOf(ctx, source) ? SHARED_BYTES : null
 }
 /** Save to TempCode asks for a place of his own alone (`own`): one others can open is refused, at begin and at commit. */
-export const OWN_ONLY = 'Others can open that folder: Save to TempCode keeps files in a place of his own. Pick another folder.'
+export const OWN_ONLY = 'Others can open that folder: Save to Docket keeps files in a place of his own. Pick another folder.'
 
 /** What the door needs to know of one end of a change. */
 export type DoorPlace = Pick<FilePlace, 'id' | 'kind' | 'name' | 'host' | 'env' | 'shared' | 'can' | 'state' | 'vm' | 'group'>

@@ -7,7 +7,7 @@ import { kindOf, listEnvironments, type EnvironmentsStore } from './environments
 import { isForbiddenHostname, isPrivateAddress } from './addressGuard'
 import { readRemoteSettings } from './handlers'
 
-export const TEMPCODE_ORIGIN_REFUSAL = 'refused: TempCode pages are off limits to computer tools.'
+export const TEMPCODE_ORIGIN_REFUSAL = 'refused: Docket pages are off limits to computer tools.'
 
 export interface TempCodeOrigins extends BrowserEndpoints {
   linkedEndpoints?: readonly BrowserEndpoints[]

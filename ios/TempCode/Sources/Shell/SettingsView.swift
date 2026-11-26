@@ -149,7 +149,7 @@ struct SettingsView: View {
     /// One sentence under the row: what the switch does, or what stands in its way.
     private func pushFooter(_ push: PushRegistrar) -> String {
         guard push.enabled else { return "Approvals, questions, errors and finished work from every paired host." }
-        if push.permission == .denied { return "Notifications for TempCode are turned off in the phone's Settings." }
+        if push.permission == .denied { return "Notifications for Docket are turned off in the phone's Settings." }
         if let error = push.tokenError { return "The phone could not register for push: \(sentence(error))" }
         if push.device == nil { return "Waiting for the phone's push token." }
         if let failure = push.failures.values.first { return "A host refused the registration: \(sentence(failure))" }
@@ -199,7 +199,7 @@ private struct VersionFooter: View {
         let version = info?["CFBundleShortVersionString"] as? String ?? "0"
         let build = info?["CFBundleVersion"] as? String ?? "0"
         VStack(spacing: 2) {
-            Text("TempCode \(version) (\(build))")
+            Text("Docket \(version) (\(build))")
             Text("Contract \(contractVersion)")
         }
         .font(.footnote)

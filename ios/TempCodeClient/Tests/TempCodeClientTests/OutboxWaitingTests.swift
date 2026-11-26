@@ -483,7 +483,7 @@ private actor Gate {
         try? await Task.sleep(for: .milliseconds(50))
         #expect(sent == 0)
         #expect(wait.pending.isEmpty)
-        #expect(wait.outcomes["q"] == .failed("Not sent: TempCode left the screen"))
+        #expect(wait.outcomes["q"] == .failed("Not sent: Docket left the screen"))
     }
 
     @Test func aLostLinkCancelsOnlyThatHostsPress() async {

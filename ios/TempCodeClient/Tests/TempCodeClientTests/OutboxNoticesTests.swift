@@ -43,7 +43,7 @@ import Testing
 
     @Test func `a new press of an item drops its old cancel line, and a line about another item stays`() {
         var notices = OutboxNotices()
-        notices.result("Not sent: TempCode left the screen", refs: ["mac:a"])
+        notices.result("Not sent: Docket left the screen", refs: ["mac:a"])
         notices.result("Not sent: the link to Box was lost", refs: ["box:b"])
         // He sends A again: its cancel never comes back after the new countdown.
         notices.forget(refs: ["mac:a"])

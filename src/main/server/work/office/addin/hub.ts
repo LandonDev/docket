@@ -89,11 +89,11 @@ export class AddinHub {
     let paired: { id: string; key: string } | null = null
     if (first.t === 'pair') {
       paired = this.o.keys.pair(first.code, typeof first.name === 'string' ? first.name : `${app} on ${platform}`, app, from)
-      if (!paired) return this.toRelay({ t: 'refuse', conn, code: 4401, reason: 'That code did not work. Ask TempCode for a new one.' })
+      if (!paired) return this.toRelay({ t: 'refuse', conn, code: 4401, reason: 'That code did not work. Ask Docket for a new one.' })
       keyId = paired.id
     } else {
       keyId = this.o.keys.check(first.key)
-      if (!keyId) return this.toRelay({ t: 'refuse', conn, code: 4403, reason: 'TempCode does not know this add-in. Pair it again.' })
+      if (!keyId) return this.toRelay({ t: 'refuse', conn, code: 4403, reason: 'Docket does not know this add-in. Pair it again.' })
     }
     this.sessions.set(conn, { conn, keyId, app, platform, file: null, sheets: [], since: Date.now() })
     // Admitted first, so the add-in's answer to the welcome reaches us.
@@ -184,7 +184,7 @@ export class AddinHub {
 
   /** Closes every add-in on a key he removed. */
   kick(keyId: string): void {
-    for (const s of this.sessions.values()) if (s.keyId === keyId) this.toRelay({ t: 'refuse', conn: s.conn, code: 4403, reason: 'Removed in TempCode.' })
+    for (const s of this.sessions.values()) if (s.keyId === keyId) this.toRelay({ t: 'refuse', conn: s.conn, code: 4403, reason: 'Removed in Docket.' })
   }
 
   /** Key ids with an add-in on them now. */

@@ -12,7 +12,7 @@ struct CaptureControl: ControlWidget {
             }
         }
         .displayName("Capture")
-        .description("Opens Capture in TempCode.")
+        .description("Opens Capture in Docket.")
     }
 }
 
@@ -24,6 +24,6 @@ struct VoiceNoteControl: ControlWidget {
             }
         }
         .displayName("Voice Note")
-        .description("Opens Capture in TempCode, ready to talk.")
+        .description("Opens Capture in Docket, ready to talk.")
     }
 }

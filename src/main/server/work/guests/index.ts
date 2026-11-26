@@ -66,7 +66,7 @@ export const guestsTools: WorkTool[] = [
   {
     name: 'guest_link',
     description:
-      'Asks for a guest link: one named person outside may open one LifeOS document or sheet, or one TempCode document or sheet kept as a file (.tcdoc, .tcsheet), on a web page with no sign-in, to view, comment or edit, or one LifeOS project to view (its tasks, and its documents and sheets read-only), until the day it ends. It is held: nothing is made until the owner presses Create in the Outbox; you are then told the link is made, and he sends its address himself (you never see it). Use it when he asks to send someone one of his documents or to show someone a project.',
+      'Asks for a guest link: one named person outside may open one LifeOS document or sheet, or one Docket document or sheet kept as a file (.tcdoc, .tcsheet), on a web page with no sign-in, to view, comment or edit, or one LifeOS project to view (its tasks, and its documents and sheets read-only), until the day it ends. It is held: nothing is made until the owner presses Create in the Outbox; you are then told the link is made, and he sends its address himself (you never see it). Use it when he asks to send someone one of his documents or to show someone a project.',
     input: z.object({
       docId: z.string().optional().describe('A LifeOS document id (from the doc tools). Give one of docId, sheetId, projectId and path.'),
       sheetId: z.string().optional().describe('A LifeOS sheet id.'),

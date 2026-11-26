@@ -1,3 +1,4 @@
+import { APP_NAME } from "@shared/appName";
 import { leafIds, type LayoutNode } from "./layout";
 import { sessionDisplayTitle, UNTITLED_THREAD, type HarnessId } from "./session";
 
@@ -62,7 +63,7 @@ export function titleThread<S extends TitleThread>(
 export function windowTitle({ page, place, pane, project }: TitleFacts): string {
   if (page) return PAGE_TITLES[page];
   if (place) return place;
-  if (!pane) return "TempCode";
+  if (!pane) return APP_NAME;
   const name =
     pane.kind === "thread"
       ? pane.title.trim() || UNTITLED_THREAD

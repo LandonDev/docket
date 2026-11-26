@@ -7,9 +7,11 @@
     <!-- A published form's page (docs/agents/work-forms.md "The page"): the
          Work service serves it at /f/<publicId>; it reads the questions from
          /f/<publicId>/form and sends one answer back to /f/<publicId>. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'" />
     <meta name="color-scheme" content="light dark" />
     <title>Form</title>
+    <link rel="icon" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="./form.css" />
     <script type="module" src="./main.ts"></script>
   </head>

@@ -559,7 +559,7 @@ export class Keeper {
         this.set('setting-up', 'Setting Windows up')
         this.d.log(`winvm: setup: ${(await this.setupScript(token)).split('\n').filter((l) => l.startsWith('step:')).join(', ')}`)
         if (driver) await this.stageDriver(driver, true)
-        this.set('setting-up', "Copying TempCode's helper into Windows")
+        this.set('setting-up', "Copying Docket's helper into Windows")
         await this.serviceUp()
         this.set('setting-up', 'Restarting Windows')
         await this.d.guest.reboot()
@@ -820,7 +820,7 @@ export class Keeper {
     const want = this.d.hashFile(exe)
     if ((await this.d.guest.serviceHash()) !== want) {
       // the wake after an update keeps its own words throughout
-      if (this.name === 'waking' && this.step === WAKING_WORDS) this.set('waking', "Copying TempCode's helper into Windows")
+      if (this.name === 'waking' && this.step === WAKING_WORDS) this.set('waking', "Copying Docket's helper into Windows")
       this.d.log(`winvm: copied the service in (version ${await this.d.guest.installService(exe)})`)
     }
     await this.d.guest.startService()

@@ -90,7 +90,7 @@ export async function openFull(
   if (by.kind === 'model') throw new Error('The full editor is the owner\'s: a thread cannot open it.')
   if (by.kind === 'remote' && !by.caps.includes('admin')) throw new Error('The full editor opens only on the owner\'s own devices.')
   if (by.kind === 'remote' && !servesPublic(env)) throw new Error('The full editor opens only in a window on the box.')
-  if (by.kind === 'remote' && !opts.carry) throw new Error('Update TempCode on this computer to open the full editor from here.')
+  if (by.kind === 'remote' && !opts.carry) throw new Error('Update Docket on this computer to open the full editor from here.')
   // The route is the Work service's: it must be running before a token is worth anything.
   const local = ctx.service.url('/w/full/')
   const token = await fullEditorOf(ctx).open({ path, itemId: item.id, title: item.title, ...(opts.scheme ? { scheme: opts.scheme } : {}) })

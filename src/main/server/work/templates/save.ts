@@ -41,7 +41,7 @@ export interface SaveDeps {
 
 export const NOT_A_TEMPLATE = 'Only a Word, Excel or PowerPoint file, or a document or sheet kept as a file, can be a template.'
 export const ELSEWHERE = 'That file is on another computer: save it as a template from a window on that one.'
-export const STARTER_FIXED = "One of TempCode's own templates cannot be changed: use Edit a copy."
+export const STARTER_FIXED = "One of Docket's own templates cannot be changed: use Edit a copy."
 export const CHANGED = 'That template changed while it was asked about: nothing was deleted.'
 export const MOVED_UNDER = 'That template changed while it moved: it was left where it was.'
 export const PEER_CONFIRM = 'Another host of his cannot delete a template: delete it from a window.'

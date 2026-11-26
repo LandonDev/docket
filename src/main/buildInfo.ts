@@ -4,6 +4,7 @@ import release from '../../release.json'
 import { version as appVersion } from '../../package.json'
 import type { BuildFacts } from '../shared/deployDrift'
 import { versionLine } from '../shared/codeUpdate'
+import { APP_NAME } from '../shared/appName'
 import { codeBoot } from './codeBoot'
 import { isHeadless } from './headless'
 
@@ -159,7 +160,7 @@ export function aboutPanelOptions(info: BuildInfo, staged?: { bundleVersion: str
   credits: string
 } {
   return {
-    applicationName: 'TempCode',
+    applicationName: APP_NAME,
     applicationVersion: staged ? versionLine(staged.bundleVersion, staged.commit) : info.version,
     version: staged ? '' : info.sha ? info.sha.slice(0, 7) : '',
     copyright: COPYRIGHT,

@@ -53,7 +53,7 @@ describe("the Forms view", () => {
     host.ms = [{ formId: FORM, tenant: "purdue0", title: "Spring intramurals", state: "collecting", count: 4, lastAnswerAt: null, updatedAt: 20 }];
     render(<View {...props} />);
     await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(2));
-    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Spring intramuralsMicrosoft · Collecting · 4", "Volunteer sign-upTempCode · Draft"]);
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Spring intramuralsMicrosoft · Collecting · 4", "Volunteer sign-upDocket · Draft"]);
     fireEvent.click(screen.getByRole("button", { name: /Spring intramurals/ }));
     await waitFor(() => expect(host.opened).toHaveLength(1));
     expect(host.opened[0]).toMatchObject({ ref: { at: "msform", formId: FORM, workspaceId: "w1", tenant: "purdue0" }, name: "Spring intramurals" });

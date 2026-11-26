@@ -3,7 +3,7 @@ import type { ProjectTerminalDock } from "./projectTerminal";
 import { hasPendingApproval, type Session } from "./session";
 import { stopStreaming } from "./harness/toolBlock";
 
-export const INTERRUPT_MESSAGE = "Turn interrupted when TempCode quit.";
+export const INTERRUPT_MESSAGE = "Turn interrupted when Docket quit.";
 /** The note's words before the app's rename, still in snapshots saved then. */
 const LEGACY_INTERRUPT_MESSAGE = "Turn interrupted when MonoCode quit.";
 
@@ -59,9 +59,9 @@ export function inFlightRefs(
 
 export function quitWhileBusyMessage(count: number): string {
   if (count === 1) {
-    return "1 thread is still running. Quit anyway? It resumes when you reopen TempCode.";
+    return "1 thread is still running. Quit anyway? It resumes when you reopen Docket.";
   }
-  return `${count} threads are still running. Quit anyway? They resume when you reopen TempCode.`;
+  return `${count} threads are still running. Quit anyway? They resume when you reopen Docket.`;
 }
 
 /**

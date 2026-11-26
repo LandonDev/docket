@@ -3,6 +3,7 @@ import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { SIGNIN_TIMEOUT } from '@shared/addonGrantWords'
 import { PAIR_TOKENS } from '../remote/pairPage'
+import { APP_NAME } from '@shared/appName'
 
 /**
  * The loopback listener an add-on sign-in's redirect lands on
@@ -41,7 +42,7 @@ const escapeHtml = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.ch
 export function callbackPage(line: string, nonce: string): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TempCode</title>
+<title>${APP_NAME}</title>
 <style nonce="${nonce}">
   :root { color-scheme: light dark; ${vars(PAIR_TOKENS.dark)} ${vars(PAIR_TOKENS.shared)} }
   @media (prefers-color-scheme: light) { :root { ${vars(PAIR_TOKENS.light)} } }

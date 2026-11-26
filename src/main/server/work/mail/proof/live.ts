@@ -8,7 +8,7 @@ import { check, failed, note, Proof, sleep, textOf, until, type Inst } from '../
 
 /**
  * Milestone 23's done-when against real LifeOS: one mail, from the owner's
- * own account to his own address, subject "TempCode test, please ignore".
+ * own account to his own address, subject "Docket test, please ignore".
  * One isolated windowed instance under xvfb, signed in with a token minted
  * for this proof (read from a 0600 file, never printed). No model turn: the
  * thread's draft, its task and its rewrite are made through the thread's own
@@ -36,12 +36,12 @@ import { check, failed, note, Proof, sleep, textOf, until, type Inst } from '../
 const REAL = 'https://lifeos.landonhale.com'
 const TOKEN = readFileSync(process.argv[2] ?? '/tmp/m23-live/box.token', 'utf8').trim()
 const OUT = process.argv[3] ?? '/tmp/m23-live/shots'
-const SUBJECT = 'TempCode test, please ignore'
-const FIRST = 'A test from TempCode milestone 23, sent to myself. Please ignore it.'
-const REWRITE = 'A test from TempCode milestone 23, sent from my own account to my own address. Please ignore it.'
+const SUBJECT = 'Docket test, please ignore'
+const FIRST = 'A test from Docket milestone 23, sent to myself. Please ignore it.'
+const REWRITE = 'A test from Docket milestone 23, sent from my own account to my own address. Please ignore it.'
 const EDIT = ' Edited in the test.'
 /** The designed mail: its subject, a picture any browser may fetch, and a stamp that finds it again. */
-const DESIGNED = 'TempCode picture test, please ignore'
+const DESIGNED = 'Docket picture test, please ignore'
 const PICTURE = 'https://www.gstatic.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png'
 const STAMP = `proof-${Date.now()}`
 const PORT = 9283
@@ -215,7 +215,7 @@ try {
   if (process.env.M23_ONLY === 'designed') break held
   // The task the thread is about, made by a Work thread of the workspace, and the thread started from it.
   const helper = await call<{ id: string }>('session.create', { provider: 'claude', workspaceId: ws.id, threadType: 'chat', permission: 'auto', title: 'm23 proof helper' })
-  const task = json<{ id: string }>(await tool(helper.id, 'add_task', { sector, title: 'Answer the TempCode test mail', reason: 'm23 proof: completed by the send', key: `m23-${Date.now()}` }))
+  const task = json<{ id: string }>(await tool(helper.id, 'add_task', { sector, title: 'Answer the Docket test mail', reason: 'm23 proof: completed by the send', key: `m23-${Date.now()}` }))
   helperId = helper.id
   taskId = task.id
   const thread = await call<{ id: string; scope?: string }>('session.create', {
@@ -223,11 +223,11 @@ try {
     workspaceId: ws.id,
     threadType: 'chat',
     permission: 'auto',
-    title: 'TempCode test mail',
+    title: 'Docket test mail',
     // A thread with no message draws the new-thread layout, which has no canvas; this one's turn fails at
     // once (the instance has no model sign-in), so no model runs and the mail is made through its key.
-    firstMessage: 'Draft the TempCode test mail to me.',
-    about: { kind: 'task', label: 'Answer the TempCode test mail', ref: { at: 'lifeos', table: 'tasks', id: task.id } }
+    firstMessage: 'Draft the Docket test mail to me.',
+    about: { kind: 'task', label: 'Answer the Docket test mail', ref: { at: 'lifeos', table: 'tasks', id: task.id } }
   })
   check('the thread is a Work thread started from the task', thread.scope === 'work')
   // The helper's part is done; the thread itself reads the task from here on.
@@ -262,7 +262,7 @@ try {
   check("the thread's key cannot send it", send.isError === true, textOf(send).slice(0, 160))
 
   // The window: the thread with its mail beside it.
-  await showThread(thread.id, 'TempCode test mail')
+  await showThread(thread.id, 'Docket test mail')
   check('the window shows the draft in the composer beside the thread', await until('composer', 45_000, () => page<boolean>(`!!document.querySelector('.mail-editor .tiptap') && document.querySelector('.mail-editor .tiptap').textContent.includes(${JSON.stringify(FIRST.slice(0, 30))})`)))
   await sleep(1500)
   await shot('01-draft-beside-thread')
@@ -283,7 +283,7 @@ try {
     for (const step of leave) {
       await step().catch(() => null)
       await sleep(1500)
-      await showThread(thread.id, 'TempCode test mail')
+      await showThread(thread.id, 'Docket test mail')
       back = await until('composer again', 15_000, () => page<boolean>(`(() => { const el = document.querySelector('.mail-editor .tiptap'); if (!el) return false; const r = el.getBoundingClientRect(); const top = document.elementFromPoint(r.left + 10, r.top + 10); return !!top && el.contains(top) })()`))
       if (back) break
     }
@@ -357,9 +357,9 @@ try {
     `<table width="100%" cellpadding="0" cellspacing="0" bgcolor="#f1f5f9" style="background:#f1f5f9"><tr><td align="center" style="padding:24px">` +
     `<table width="480" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;font-family:Helvetica,Arial,sans-serif;color:#0f172a"><tr><td style="padding:24px">` +
     `<img src="${PICTURE}" width="92" height="30" alt="A logo"><h1 style="font-size:20px;margin:16px 0 8px">A designed test mail</h1>` +
-    `<p style="margin:0">Sent by the TempCode mail proof to myself. Please ignore it. ${STAMP}</p></td></tr></table></td></tr></table>`
+    `<p style="margin:0">Sent by the Docket mail proof to myself. Please ignore it. ${STAMP}</p></td></tr></table></td></tr></table>`
   designedId = (await (await fresh(own)).mutation(makeFunctionReference<'mutation'>('compose:send'), {
-    message: { kind: 'mail', accountId: mine!._id, to: [{ address: mine!.address }], cc: [], bcc: [], subject: DESIGNED, html: designed, text: `A designed test mail. Sent by the TempCode mail proof to myself. Please ignore it. ${STAMP}`, mode: 'new', attachments: [], forwardParts: [] },
+    message: { kind: 'mail', accountId: mine!._id, to: [{ address: mine!.address }], cc: [], bcc: [], subject: DESIGNED, html: designed, text: `A designed test mail. Sent by the Docket mail proof to myself. Please ignore it. ${STAMP}`, mode: 'new', attachments: [], forwardParts: [] },
     cause: 'press'
   })) as string
   type Found = { _id: string; subject: string }

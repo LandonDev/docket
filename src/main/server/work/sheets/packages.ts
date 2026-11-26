@@ -266,7 +266,7 @@ export class PackageStore {
     // (a shared workbook's copies go with its tab and at each start: the folder is made again)
     mkdirSync(this.dir(path), { recursive: true })
     copyFileSync(path, this.copyOf(path, rev))
-    this.db.prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations) VALUES (?, ?, ?, ?, ?, ?)').run(path, rev, 'file', this.now(), 'Changed outside TempCode', '[]')
+    this.db.prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations) VALUES (?, ?, ?, ?, ?, ?)').run(path, rev, 'file', this.now(), 'Changed outside Docket', '[]')
     this.db.prepare('UPDATE work_sheets_files SET rev = ?, stamp = ? WHERE path = ?').run(rev, stamp, path)
     this.prune(path)
     this.outside(path)
@@ -487,7 +487,7 @@ export class PackageStore {
     } catch {
       // Our own folder, not the workbook's: said as that, so he does not look for the fault beside his file.
       rmSync(copy, { force: true })
-      throw new Error('TempCode could not keep this version among its own files')
+      throw new Error('Docket could not keep this version among its own files')
     }
     let got: Awaited<ReturnType<typeof saveFile>>
     try {
@@ -603,7 +603,7 @@ export class PackageStore {
         if (!sameStamp(row.stamp, stampOf(path))) throw new ChangedOutside()
         stamp = await this.put(path, target, new Uint8Array(readFileSync(copy)), expect, next)
       } catch (err) {
-        if (err instanceof ChangedOutside) throw new Error('The file changed outside TempCode just now: open it again and restore.')
+        if (err instanceof ChangedOutside) throw new Error('The file changed outside Docket just now: open it again and restore.')
         throw new Error(`The file was not restored: ${saveWords(err)}`)
       }
       this.db.prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations) VALUES (?, ?, ?, ?, ?, ?)').run(path, next, by, this.now(), RESTORED, 'null')

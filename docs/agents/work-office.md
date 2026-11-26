@@ -597,10 +597,12 @@ manifest (`addins/office/manifest.xml`, or download it from
 it in local storage: clearing the cache or changing browser means uploading
 again. Excel on the Mac: copy the manifest to
 `~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/` (make `wef`
-if it is missing), restart Excel, then Home → Add-ins → TempCode. A tenant
+if it is missing), restart Excel, then Home → Add-ins → Docket. A tenant
 that hides Upload My Add-in, or a Mac with `OfficeWebAddinDisableAllCatalogs`
 set, simply does not get this carrier. The pane opens per workbook; it is
-not loaded on open.
+not loaded on open. A copy sideloaded before the add-in took Docket's name
+keeps showing TempCode until the manifest is uploaded again; its version
+went to 1.0.1.0 and its icon URLs carry `?v=2` so Office fetches the new art.
 
 ## The tools
 

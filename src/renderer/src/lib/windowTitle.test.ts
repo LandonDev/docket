@@ -15,7 +15,7 @@ describe("windowTitle", () => {
     );
   });
 
-  it("reads a draft's bare harness title as New thread, and TempCode with nothing open", () => {
+  it("reads a draft's bare harness title as New thread, and Docket with nothing open", () => {
     expect(windowTitle({ page: null, pane: threadPane({ title: "claude", harness: "claude" }), project: null })).toBe(
       "New thread",
     );
@@ -25,7 +25,7 @@ describe("windowTitle", () => {
     expect(windowTitle({ page: null, pane: threadPane({ title: "claude · Fix it", harness: "claude" }), project: null })).toBe(
       "Fix it",
     );
-    expect(windowTitle({ page: null, pane: null, project: null })).toBe("TempCode");
+    expect(windowTitle({ page: null, pane: null, project: null })).toBe("Docket");
   });
 
   it("names a file by its basename", () => {
@@ -55,8 +55,8 @@ describe("windowTitle", () => {
     );
   });
 
-  it("reads TempCode with nothing open", () => {
-    expect(windowTitle({ page: null, pane: null, project: null })).toBe("TempCode");
+  it("reads Docket with nothing open", () => {
+    expect(windowTitle({ page: null, pane: null, project: null })).toBe("Docket");
   });
 
   it("leaves the project off when there is none", () => {

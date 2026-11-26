@@ -432,7 +432,7 @@ export const NOT_KNOWN = 'Not known'
 /** What a job with no hours reads: "nothing" only of what was read. */
 export const nothingWords = (known: { calendar: boolean; desk: boolean }): string => (known.calendar ? (known.desk ? NOTHING_SEEN : NO_CALENDAR_SEEN) : known.desk ? NO_DESK_SEEN : NOT_KNOWN)
 export const CALENDAR_NOTE = 'Calendar time is measured.'
-export const DESK_NOTE = 'Desk time is an estimate from what you did in TempCode.'
+export const DESK_NOTE = 'Desk time is an estimate from what you did in Docket.'
 export const HOURS_NOTE = `${CALENDAR_NOTE} ${DESK_NOTE}`
 
 const count = (n: number, one: string, many: string): string => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`

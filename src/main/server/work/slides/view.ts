@@ -1156,7 +1156,7 @@ export const CHANGED_SINCE = 'The suggestions changed since this preview. Nothin
 const proposedRev = (deck: Deck): string | null => (deck.proposed ? deck.proposed.key.slice(0, 16) : null)
 
 /** A press with no revision on a deck others can open: an older client, which cannot say what he saw. */
-export const NAME_THE_REV = 'Others can open this deck, and this press did not say which suggestions it was made on. Nothing was accepted or rejected; update TempCode and look at them again.'
+export const NAME_THE_REV = 'Others can open this deck, and this press did not say which suggestions it was made on. Nothing was accepted or rejected; update Docket and look at them again.'
 
 /**
  * Refuses a press whose `rev` is not the changes' revision now. A press with none (an older client) is taken on a

@@ -398,7 +398,7 @@ describe("the slides kind", () => {
     expect(tabs.className).toContain("relative");
     expect(tabs.className).toContain("group-data-[orientation=horizontal]/tabs:h-6");
     fireEvent.click(within(tabs).getByRole("tab", { name: "PowerPoint" }));
-    const waiting = await screen.findByText("5 suggestions wait in TempCode");
+    const waiting = await screen.findByText("5 suggestions wait in Docket");
     // In a narrow bar the sentence goes whole and Review stays, never a sentence cut mid-word.
     expect(waiting.hasAttribute("data-narrow-hide")).toBe(true);
     expect(waiting.className).toContain("@max-[560px]/bar:hidden");
@@ -774,11 +774,11 @@ describe("the slides kind", () => {
       await waitFor(() => expect(within(bar).getByRole("button", { name: "Next change" }).hasAttribute("disabled")).toBe(false));
       fireEvent.click(within(bar).getByRole("button", { name: "Next change" }));
       await waitFor(() => expect(within(bar).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(false));
-      // To PowerPoint: the stage goes. Back to TempCode on the same slide while its new paint waits.
+      // To PowerPoint: the stage goes. Back to Docket on the same slide while its new paint waits.
       painting = new Promise((done) => (paintNow = done));
       fireEvent.click(within(tabs).getByRole("tab", { name: "PowerPoint" }));
       await waitFor(() => expect(document.querySelector("[data-slides-stage]")).toBeNull());
-      fireEvent.click(within(tabs).getByRole("tab", { name: "TempCode" }));
+      fireEvent.click(within(tabs).getByRole("tab", { name: "Docket" }));
       await found("[data-slides-stage]");
       bar = await screen.findByRole("toolbar", { name: "Review changes" });
       await new Promise((r) => setTimeout(r, 50));

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { APP_NAME, MAIN_MENU_IDS, MENU_COMMANDS, MENU_TREE, EMPTY_MENU_STATE, RENDERER_MENU_IDS, inAppMenus, resolveMenu, sameMenuState, type MenuNode, type MenuState, EDITOR_KEY_IDS, LIVE_KEY_IDS, LIVE_OFF_IDS, WORK_ONLY_IDS } from './menuTree'
+import { APP_NAME, OS_APP_NAME } from './appName'
+import { MAIN_MENU_IDS, MENU_COMMANDS, MENU_TREE, EMPTY_MENU_STATE, RENDERER_MENU_IDS, inAppMenus, resolveMenu, sameMenuState, type MenuNode, type MenuState, EDITOR_KEY_IDS, LIVE_KEY_IDS, LIVE_OFF_IDS, WORK_ONLY_IDS } from './menuTree'
 
 /** What Electron gives a role when the tree names none (macOS). */
 const ROLE_DEFAULTS: Record<string, [string, string?]> = {
-  about: [`About ${APP_NAME}`],
+  about: [`About ${OS_APP_NAME}`],
   services: ['Services'],
-  hide: [`Hide ${APP_NAME}`, 'Cmd+H'],
+  hide: [`Hide ${OS_APP_NAME}`, 'Cmd+H'],
   hideOthers: ['Hide Others', 'Alt+Cmd+H'],
   unhide: ['Show All'],
   undo: ['Undo', 'Cmd+Z'],
@@ -66,18 +67,18 @@ describe('menu tree', () => {
 
   it('reads every row of every menu as the table says', () => {
     expect(section(APP_NAME)).toEqual([
-      ['About TempCode'],
+      ['About Docket'],
       ['Check for Updates…'],
       '—',
       ['Settings…', 'Cmd+,'],
       '—',
       ['Services'],
       '—',
-      ['Hide TempCode', 'Cmd+H'],
+      ['Hide Docket', 'Cmd+H'],
       ['Hide Others', 'Alt+Cmd+H'],
       ['Show All'],
       '—',
-      ['Quit TempCode', 'Cmd+Q']
+      ['Quit Docket', 'Cmd+Q']
     ])
     expect(section('File')).toEqual([
       ['New Thread', 'Cmd+N'],
@@ -287,7 +288,7 @@ describe('resolveMenu', () => {
       expect(row('go_to_file').enabled).toBe(true)
     })
 
-    it('keeps TempCode\'s own keys: Close Tab, Settings, New Thread', () => {
+    it('keeps Docket\'s own keys: Close Tab, Settings, New Thread', () => {
       expect(row('close_tab').accelerator).toBe('CmdOrCtrl+W')
       expect(row('open_settings').accelerator).toBe('CmdOrCtrl+,')
       expect(row('new_tab').accelerator).toBe('CmdOrCtrl+N')

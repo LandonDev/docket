@@ -244,7 +244,7 @@ describe("the confirm flag and the host's own rules", () => {
     await h.run('computer_observe', { app: 'textedit' })
     expect(h.requests().find((r) => r.method === 'state.get')!.params.app).toEqual({ pid: 16800 })
     const before = h.requests().length
-    expect((await h.run('computer_apps', { launch: 'TempCode' })).body).toBe("TempCode's own window is off limits to computer use")
+    expect((await h.run('computer_apps', { launch: 'TempCode' })).body).toBe("Docket's own window is off limits to computer use")
     expect(h.requests().length).toBe(before)
   })
 })

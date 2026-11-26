@@ -16,7 +16,7 @@
       url: (location.protocol === 'http:' ? 'ws://' : 'wss://') + location.host + '/w/office',
       onState: function (s) {
         var unpaired = s.phase === 'unpaired'
-        status.textContent = unpaired ? s.words || 'Enter the code from TempCode → Settings → Work.' : s.words
+        status.textContent = unpaired ? s.words || 'Enter the code from Docket → Settings → Work.' : s.words
         form.hidden = !unpaired
         if (unpaired) code.focus()
       }

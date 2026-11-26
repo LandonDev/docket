@@ -53,7 +53,7 @@ const TEXT_FILE = /\.(md|markdown|txt|csv)$/i
 /** TempCode's own documents and sheets: their words stay with their own readers (docs/find.ts), so a search matches their names. */
 const OWN_FILE = /\.(tcdoc|tcsheet)$/i
 /** How a search names them where it searched them by name only. */
-export const OWN_BY_NAME = 'TempCode documents and sheets'
+export const OWN_BY_NAME = 'Docket documents and sheets'
 const CANCELLED = 'cancelled'
 
 /** One row found, and the id of the place it lies in. */

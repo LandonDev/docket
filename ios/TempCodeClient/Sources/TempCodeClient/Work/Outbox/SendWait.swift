@@ -108,10 +108,10 @@ public struct SendWait<Payload: Sendable & Hashable>: Sendable, Hashable {
         }
     }
 
-    /// "Not sent: lost the link to Mac", "2 not sent: TempCode left the screen".
+    /// "Not sent: lost the link to Mac", "2 not sent: Docket left the screen".
     public static func line(_ why: Why, hostName: String, count: Int = 1) -> String {
         let cause = switch why {
-        case .leftScreen: "TempCode left the screen"
+        case .leftScreen: "Docket left the screen"
         case .linkLost: "lost the link to \(hostName)"
         case .keyLost: "this iPhone’s key can’t send on \(hostName)"
         case .changed: "it changed after you pressed Send"
@@ -222,7 +222,7 @@ public struct SendWait<Payload: Sendable & Hashable>: Sendable, Hashable {
         startNext(now: now)
     }
 
-    /// TempCode left the screen: everything not yet sent goes back.
+    /// Docket left the screen: everything not yet sent goes back.
     public mutating func leftScreen() {
         let gone = cancel { _ in true }
         if !gone.isEmpty { notice = Notice(presses: gone, why: .leftScreen) }

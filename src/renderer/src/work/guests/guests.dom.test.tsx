@@ -176,7 +176,7 @@ describe("Share", () => {
     unmount();
     const word = render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/x/Letter.docx" }} kind="document" title="Letter" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    expect(await screen.findByText("Guest links open TempCode documents. Save As a TempCode document to share this one.")).toBeTruthy();
+    expect(await screen.findByText("Guest links open Docket documents. Save As a Docket document to share this one.")).toBeTruthy();
     expect(screen.queryByPlaceholderText("Name")).toBeNull();
     expect(calls.list).toEqual([]);
     word.unmount();

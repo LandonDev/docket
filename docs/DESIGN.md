@@ -1732,7 +1732,7 @@ Around the canvas:
     before" for the same reason). One 12px muted line closes the section
     and is **the bar's key**: a 12px piece of the bar (8px tall, its own
     corner), filled, before "Calendar time is measured." and an outlined
-    one before "Desk time is an estimate from what you did in TempCode.",
+    one before "Desk time is an estimate from what you did in Docket.",
     each 4px from its sentence, the two 12px apart (a narrow page, with no
     bar, drops them). Never a square or a dot: a dot before a sentence is a
     bullet. A job with no hours says "nothing" only as far as it was read:
@@ -4835,7 +4835,7 @@ or a rule under `:where([data-motion="reduced"])`; "Reduced motion" above).
 ### The Mac's computer-use banner
 
 The main process's computer banner is an Operate surface: one passive,
-32px pill, “TempCode is using your Mac” in 13px foreground, with a 20px
+32px pill, “Docket is using your Mac” in 13px foreground, with a 20px
 key cap in 11px type and muted “to stop” eight pixels after it while the
 Escape watch works. It uses the popover fill, border hairline and full
 radius, with no shadow or glow. It ignores clicks and never takes focus.

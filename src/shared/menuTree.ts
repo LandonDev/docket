@@ -14,9 +14,8 @@
  * lose their keys, and Print… takes ⌘P from Go to File… .
  */
 
+import { APP_NAME } from './appName'
 import { LIVE_KEY_IDS, LIVE_OFF_IDS, type MenuState } from './menuState'
-
-export const APP_NAME = 'TempCode'
 
 export interface MenuCommand {
   kind: 'command'
@@ -89,14 +88,14 @@ export const MENU_TREE: MenuSection[] = [
   {
     label: APP_NAME,
     items: [
-      role('about'),
+      role('about', `About ${APP_NAME}`),
       cmd('check_for_updates', 'Check for Updates…'),
       sep,
       cmd('open_settings', 'Settings…', 'CmdOrCtrl+,'),
       sep,
       role('services'),
       sep,
-      role('hide'),
+      role('hide', `Hide ${APP_NAME}`),
       role('hideOthers'),
       role('unhide'),
       sep,

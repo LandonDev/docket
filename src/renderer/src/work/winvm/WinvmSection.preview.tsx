@@ -13,7 +13,7 @@ const vga: WinvmDisplay = { device: "vga", width: 1280, height: 800, scale: 100,
 const virtio: WinvmDisplay = { device: "virtio", width: 2560, height: 1600, scale: 200, fit: true, detail: "sharp", canResize: true };
 const states: { name: string; state: WinvmState; points: { id: string; name: string; at: number; by: "owner" | "keeper" }[] | null; error?: string; pointsError?: string; screen?: WinvmScreen; resizeError?: string; office?: { status: VmOfficeStatus; libraries: number | null } }[] = [
   { name: "Not set up", state: at({ state: "none" }), points: [] },
-  { name: "Setting up", state: at({ state: "setting-up", step: "Copying TempCode's helper into Windows" }), points: [] },
+  { name: "Setting up", state: at({ state: "setting-up", step: "Copying Docket's helper into Windows" }), points: [] },
   { name: "Asleep, with points", state: at({ state: "asleep" }), points: [{ id: "p1", name: "Before setup", at: DAY, by: "keeper" }] },
   { name: "Awake, the larger screen picked", state: at({ state: "awake", sleepAfter: "2h" }), points: [], screen: "1920x1200" },
   { name: "Office and OneDrive signed in", state: at({ state: "asleep" }), points: [], office: { status: signedIn, libraries: 1 } },

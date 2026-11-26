@@ -15,5 +15,5 @@ export async function markdownOfFile(path: string): Promise<string> {
     const [{ readDocx }, { writeMarkdown }] = await Promise.all([import('work-kit/formats/docx'), import('work-kit/formats/markdown')])
     return writeMarkdown(readDocx(new Uint8Array(readFileSync(path))).blocks)
   }
-  throw new Error('A form is made from a Word document (.docx) or a TempCode document (.tcdoc).')
+  throw new Error('A form is made from a Word document (.docx) or a Docket document (.tcdoc).')
 }

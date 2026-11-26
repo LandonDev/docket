@@ -1,3 +1,4 @@
+import { APP_NAME } from "@shared/appName";
 import { NO_RELEASE_NOTES } from "./lib/releaseNotes";
 import { markKeyNav } from "./lib/navByKey";
 import { registry } from "./lib/connection";
@@ -739,7 +740,7 @@ export default function App() {
     void releaseNotesChunk.load().then(({ releaseNotesForVersion }) => {
       const document = releaseNotesForVersion(version);
       if (!document) {
-        void message(NO_RELEASE_NOTES, { title: "TempCode" });
+        void message(NO_RELEASE_NOTES, { title: APP_NAME });
         return;
       }
       shell.showWhatsNew({ version: document.source.version });

@@ -54,7 +54,7 @@ struct FormsScreen: View {
                             Section {
                                 ForEach(ours, id: \.id) { row in ourRow(row) }
                             } header: {
-                                if both { Text("TempCode").textStep(.meta, weight: .semibold) }
+                                if both { Text("Docket").textStep(.meta, weight: .semibold) }
                             }
                         }
                         if !ms.isEmpty {

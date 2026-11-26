@@ -222,7 +222,7 @@ export const winDirHost = (): WinDirHost => (host ??= helperOff() ? new WinDirHo
 export function folderReader(platform: NodeJS.Platform = process.platform, h: WinDirHost = winDirHost()): { mode: 'one read' | 'row by row' | 'not started'; words: string; why?: string } | null {
   if (platform !== 'win32') return null
   const now = h.state()
-  if (now.mode === 'row by row') return { mode: now.mode, words: 'Read row by row, which is slower: Windows did not let TempCode make its folder reader.', why: now.why }
+  if (now.mode === 'row by row') return { mode: now.mode, words: 'Read row by row, which is slower: Windows did not let Docket make its folder reader.', why: now.why }
   if (now.mode === 'one read') return { mode: now.mode, words: 'Read in one go.' }
   return { mode: now.mode, words: 'Read in one go from the first folder on it.' }
 }

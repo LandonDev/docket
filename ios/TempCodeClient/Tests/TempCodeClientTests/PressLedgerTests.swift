@@ -541,9 +541,9 @@ import TempCodeContract
         let file = Self.folder()
         let ledger = Self.ledger(file, clock: Clock(100))
         let asked = Box()
-        ledger.mayLeave = { _, key, _ in asked.keys.append(key); return "Not sent: TempCode left the screen" }
+        ledger.mayLeave = { _, key, _ in asked.keys.append(key); return "Not sent: Docket left the screen" }
         var sent = 0
-        await #expect(throws: ActionError.refused(message: "Not sent: TempCode left the screen", forbidden: false)) {
+        await #expect(throws: ActionError.refused(message: "Not sent: Docket left the screen", forbidden: false)) {
             try await ledger.run(.outboxSend, host: "mac", hostName: "Mac", ref: "host:a", rev: "10", linked: true, key: "k1") { () async throws -> OutboxItem in
                 sent += 1
                 return Self.item("a", state: "sent")
@@ -610,11 +610,11 @@ import TempCodeContract
         refusing.mayLeave = { _, _, method in method == .outboxSend ? nil : "Not sent" }
         let late = Box()
         _ = try? await refusing.run(.outboxSend, host: "mac", hostName: "Mac", ref: "host:b", rev: "10", linked: true, key: "k1") { () async throws -> OutboxItem in
-            refusing.mayLeave = { _, _, _ in "Not sent: TempCode left the screen" }
+            refusing.mayLeave = { _, _, _ in "Not sent: Docket left the screen" }
             late.keys.append(Transport.release.map { $0() } ?? "no check")
             return Self.item("b", state: "sent")
         }
-        #expect(late.keys == ["Not sent: TempCode left the screen"])
+        #expect(late.keys == ["Not sent: Docket left the screen"])
     }
 
     @Test func `a press outside the record (a grant, Reopen) is checked before it starts and as its frame is released`() async throws {
@@ -628,9 +628,9 @@ import TempCodeContract
         }
         #expect(out == 7 && seen.keys == [nil])
         #expect(asked.keys == ["k1 work.forms.close?open=true", "k1 work.forms.close?open=true"])
-        ledger.mayLeave = { _, _, _ in "Not sent: TempCode left the screen" }
+        ledger.mayLeave = { _, _, _ in "Not sent: Docket left the screen" }
         var ran = false
-        await #expect(throws: ActionError.refused(message: "Not sent: TempCode left the screen", forbidden: false)) {
+        await #expect(throws: ActionError.refused(message: "Not sent: Docket left the screen", forbidden: false)) {
             try await ledger.guarded(host: "mac", key: "k1", method: .clashesAnswer) { () async throws -> Int in ran = true; return 1 }
         }
         #expect(!ran)

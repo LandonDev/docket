@@ -83,7 +83,7 @@ import Testing
         #expect(!wait.holds("a") && !wait.holds("b"))
         #expect(wait.due(now: 10, check: Self.fine) == nil)
         #expect(wait.notice?.why == .leftScreen)
-        #expect(wait.notice?.line == "2 not sent: TempCode left the screen")
+        #expect(wait.notice?.line == "2 not sent: Docket left the screen")
     }
 
     @Test func `leaving the screen leaves a press already in flight alone`() {
@@ -174,7 +174,7 @@ import Testing
         press.key = "k1|approve|f3"
         wait.press(press, now: 0)
         #expect(wait.due(now: 5, check: .init(linked: true, maySend: true, rev: 1, key: "k1|approve|f4")) == nil)
-        #expect(wait.notice?.line == "Not sent: TempCode left the screen")
+        #expect(wait.notice?.line == "Not sent: Docket left the screen")
     }
 
     @Test func `a composer Send's capsule Undo takes back its own press, counting or still in line, and says nothing`() {

@@ -82,14 +82,14 @@ function hostUpgrade(req: IncomingMessage, socket: Parameters<NonNullable<Public
     // A new link knows none of the add-ins on the old one: they reconnect and say hello to it.
     if (r.host) {
       r.host.close(4409, 'another link took over')
-      for (const c of r.conns.values()) c.ws.close(4503, 'TempCode went away')
+      for (const c of r.conns.values()) c.ws.close(4503, 'Docket went away')
     }
     r.host = ws
     ws.on('error', () => ws.terminate())
     ws.on('close', () => {
       if (r.host !== ws) return
       r.host = null
-      for (const c of r.conns.values()) c.ws.close(4503, 'TempCode went away')
+      for (const c of r.conns.values()) c.ws.close(4503, 'Docket went away')
     })
     ws.on('message', (data: Buffer, binary: boolean) => {
       if (binary) return
@@ -115,7 +115,7 @@ function hostUpgrade(req: IncomingMessage, socket: Parameters<NonNullable<Public
 
 function addinUpgrade(req: IncomingMessage, socket: Parameters<NonNullable<PublicRoute['upgrade']>>[1], head: Buffer, ctx: RouteCtx): void {
   const r = relayOf(ctx)
-  if (!r.host) return refuseUpgrade(socket, 503, 'TempCode is not listening on this host')
+  if (!r.host) return refuseUpgrade(socket, 503, 'Docket is not listening on this host')
   const cf = req.headers['cf-connecting-ip']
   const from = typeof cf === 'string' ? cf.slice(0, 64) : (req.socket.remoteAddress ?? '?')
   const admitted = [...r.conns.values()].filter((c) => c.admitted).length

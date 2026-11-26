@@ -222,7 +222,7 @@ export const OFFICE_TOOLS: OfficeTool[] = [
   tool({
     name: 'office_doc_edit',
     description:
-      'Changes a document open in Word (for a TempCode document use `doc_*`): `insert` text at its `start` or `end`, or `find` and `replace` every match (an empty `replace` removes them). On a document others can open, your own idea is held in the Outbox, unseen by anyone else, and is written only when he approves it; `because: "asked"` with his words as `quote` writes it at once.',
+      'Changes a document open in Word (for a Docket document use `doc_*`): `insert` text at its `start` or `end`, or `find` and `replace` every match (an empty `replace` removes them). On a document others can open, your own idea is held in the Outbox, unseen by anyone else, and is written only when he approves it; `because: "asked"` with his words as `quote` writes it at once.',
     input: {
       document: z.string().describe('The document\'s key from `office_files`.'),
       insert: z.string().max(100_000).optional(),
@@ -250,7 +250,7 @@ export const OFFICE_TOOLS: OfficeTool[] = [
   }),
   tool({
     name: 'office_slides_replace',
-    description: 'Replaces text on every slide of a deck open in PowerPoint (for a TempCode deck use `slides_*`). On a deck others can open, your own idea is held in the Outbox, unseen by anyone else, and is written only when he approves it; `because: "asked"` with his words as `quote` writes it at once.',
+    description: 'Replaces text on every slide of a deck open in PowerPoint (for a Docket deck use `slides_*`). On a deck others can open, your own idea is held in the Outbox, unseen by anyone else, and is written only when he approves it; `because: "asked"` with his words as `quote` writes it at once.',
     input: { deck: z.string().describe('The deck\'s key from `office_files`.'), find: z.string().min(1).max(1_000), replace: z.string().max(1_000), ...Reason },
     readOnly: false,
     async run(a, env) {

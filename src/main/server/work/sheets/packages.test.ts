@@ -259,7 +259,7 @@ describe('an opened package', () => {
     writeFileSync(path, readFileSync(join(CORPUS, 'formats.xlsx')))
     shiftMtime(path, 5_000)
     expect(store.since(path, 0)).toEqual({ rev: 1, reload: true })
-    expect(store.history(path)[0]).toMatchObject({ rev: 1, by: 'file', label: 'Changed outside TempCode' })
+    expect(store.history(path)[0]).toMatchObject({ rev: 1, by: 'file', label: 'Changed outside Docket' })
   })
 
   it('takes a workbook of the same length put there with the same time for another file: a revision of its own, and an edit made before it is refused', async () => {

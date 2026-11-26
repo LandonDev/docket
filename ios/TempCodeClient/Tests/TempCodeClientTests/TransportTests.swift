@@ -72,11 +72,11 @@ import TempCodeContract
         _ = try await opening.value
         // The app went to the background while the frame waited behind an earlier write.
         let stopped = Task {
-            try await Transport.$release.withValue({ @MainActor in "Not sent: TempCode left the screen" }) {
+            try await Transport.$release.withValue({ @MainActor in "Not sent: Docket left the screen" }) {
                 try await transport.request(Methods.WorkspaceList.self, NoParams())
             }
         }
-        await #expect(throws: ActionError.refused(message: "Not sent: TempCode left the screen", forbidden: false)) { try await stopped.value }
+        await #expect(throws: ActionError.refused(message: "Not sent: Docket left the screen", forbidden: false)) { try await stopped.value }
         #expect(socket.sentRequests.isEmpty)
         #expect(await transport.pendingMethods.isEmpty)
         // A frame the check lets go is sent as ever.

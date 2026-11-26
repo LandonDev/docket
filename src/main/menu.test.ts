@@ -230,7 +230,7 @@ describe('menu state', () => {
     expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(2)
     for (const [section, id] of [['View', 'toggle_sidebar'], ['Go', 'open_search'], ['Go', 'go_to_file'], ['Edit', 'find']] as const) expect(row(section, id).accelerator, id).toBeUndefined()
     // an id that is no editor key is not taken at a window's word: Quit keeps ⌘Q
-    expect(row('TempCode', 'quit').accelerator).toBe('CmdOrCtrl+Q')
+    expect(row('Docket', 'quit').accelerator).toBe('CmdOrCtrl+Q')
     expect(row('Edit', 'find_in_project').accelerator).toBe('CmdOrCtrl+Shift+F')
     const print = row('File', 'print')
     expect(print).toMatchObject({ accelerator: 'CmdOrCtrl+P', registerAccelerator: false })

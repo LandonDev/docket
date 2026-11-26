@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>TempCode</string>
+	<string>Docket</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -36,11 +36,11 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>TempCode uses the camera to scan a receipt you choose to file.</string>
+	<string>Docket uses the camera to scan a receipt you choose to file.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>TempCode checks it is you before anything you send leaves this iPhone.</string>
+	<string>Docket checks it is you before anything you send leaves this iPhone.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>TempCode listens while you hold the microphone to take a voice note.</string>
+	<string>Docket listens while you hold the microphone to take a voice note.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Your voice notes are transcribed on this iPhone and never leave it.</string>
 	<key>NSSupportsLiveActivities</key>

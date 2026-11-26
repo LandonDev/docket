@@ -405,7 +405,7 @@ describe('the full editor\'s pieces', () => {
     const admin = { kind: 'remote' as const, caps: ['read', 'operate', 'approve', 'admin'] }
     // A host whose pages reach no farther than itself, and an older desktop that cannot carry it: one plain sentence each, no path.
     await expect(openFull(ctx, item, '/x.xlsx', admin, { carry: true }, { TEMP_CODE_USER_DATA: '/tmp/elsewhere' })).rejects.toThrow(/^The full editor opens only in a window on the box\.$/)
-    await expect(openFull(ctx, item, '/x.xlsx', admin, {}, { TEMP_CODE_WORK_PUBLIC_ORIGIN: 'https://tempcode.example' })).rejects.toThrow(/^Update TempCode on this computer to open the full editor from here\.$/)
+    await expect(openFull(ctx, item, '/x.xlsx', admin, {}, { TEMP_CODE_WORK_PUBLIC_ORIGIN: 'https://tempcode.example' })).rejects.toThrow(/^Update Docket on this computer to open the full editor from here\.$/)
   })
 
   it('answers another computer the page on the box\'s public origin, which the desktop carries on a loopback origin of its own', async () => {

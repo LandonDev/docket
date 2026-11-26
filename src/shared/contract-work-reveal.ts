@@ -50,7 +50,7 @@ export type RevealParams = z.infer<typeof RevealParamsSchema>
 export type RevealAnswer = z.infer<typeof RevealAnswerSchema>
 
 export const REVEAL_INVALID = 'bad request: Pick a known Work destination by its ID.'
-export const REVEAL_NO_WINDOW = 'Open a TempCode window on this computer first.'
+export const REVEAL_NO_WINDOW = 'Open a Docket window on this computer first.'
 export const REVEAL_LOCKED = 'Unlock this computer to open that destination.'
 
 type RevealItem =

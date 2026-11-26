@@ -72,6 +72,7 @@ import type { SessionTierGate, TierDecision, TierGateContext } from './tierGate'
 import type { Admitted, SettingsStore, TierVerdicts } from './verdicts'
 import type { CallTiming } from '@shared/computer/bridgeTiming'
 import { isFormsUrl } from '@shared/work/msforms'
+import { OS_APP_NAME } from '@shared/appName'
 
 /**
  * One computer call, start to end (docs/computer-protocol.md "Sessions" and
@@ -307,8 +308,8 @@ export type JournalDone = (entry: HistoryEntry, target: PictureTarget | null) =>
 
 /** Where a person turns a grant on, said once per install with the first refusal. */
 export const PERMISSION_SWITCH: Readonly<Record<PermissionName, string>> = {
-  accessibility: 'turn on TempCode under System Settings → Privacy & Security → Accessibility',
-  screenRecording: 'turn on TempCode under System Settings → Privacy & Security → Screen & System Audio Recording'
+  accessibility: `turn on ${OS_APP_NAME} under System Settings → Privacy & Security → Accessibility`,
+  screenRecording: `turn on ${OS_APP_NAME} under System Settings → Privacy & Security → Screen & System Audio Recording`
 }
 export const permissionPromptedSetting = (which: PermissionName): string => `computer.prompted.${which}`
 

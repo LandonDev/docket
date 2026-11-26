@@ -145,7 +145,7 @@ export function restingVm(vm: VmState): { line: string; busy: boolean; wakes: bo
 }
 
 /** The keeper's own words while it wakes the machine: the plate says "Waking the Windows VM" through all of them. */
-const WAKE_STEPS: ReadonlySet<string> = new Set([WAKING_LINE, "Copying TempCode's helper into Windows"]);
+const WAKE_STEPS: ReadonlySet<string> = new Set([WAKING_LINE, "Copying Docket's helper into Windows"]);
 
 /** What the VM's picture says while it has nothing live: its plate's words (Viewport.tsx `Plate`). */
 export interface VmPlateWords {

@@ -10,6 +10,7 @@ import { librariesOf, libraryId, rootsOf } from './files/library'
 import { lastReadFailure, missingLibraries, readVmBehind, storedStatus, vmLibraries, vmOfficeStatus } from './vm/files'
 import { vmState } from './vm/office'
 import { macCarrier } from './mac'
+import { OS_APP_NAME } from '@shared/appName'
 
 /**
  * The office pillar's rows for Connections (docs/agents/work-connections.md):
@@ -68,8 +69,8 @@ function appRow(a: OfficeAppState, platform: NodeJS.Platform, outlook: { problem
   const base = { id: `office.app:${a.app}`, pillar: 'office' as const, group: 'Office', title: name }
   if (outlook?.problem) return { ...base, state: 'needs-you', line: NEW_OUTLOOK_LINE[platform] ?? outlook.problem }
   if (a.waiting) return { ...base, state: 'needs-you', line: `On the Mac, press Allow where macOS asks whether ${name} may access files managed by OneDrive.` }
-  if (a.allowed === 'no') return { ...base, state: 'broken', line: `Allow TempCode to control ${name} in System Settings → Privacy & Security → Automation.` }
-  if (a.allowed === 'ask') return { ...base, state: 'needs-you', line: `Answer the Mac's prompt to let TempCode control ${name}.` }
+  if (a.allowed === 'no') return { ...base, state: 'broken', line: `Allow ${OS_APP_NAME} to control ${name} in System Settings → Privacy & Security → Automation.` }
+  if (a.allowed === 'ask') return { ...base, state: 'needs-you', line: `Answer the Mac's prompt to let ${OS_APP_NAME} control ${name}.` }
   if (outlook?.route?.error) return { ...base, state: 'broken', line: outlook.route.error }
   const as = outlook?.route?.accounts.length ? `signed in as ${listOf(outlook.route.accounts)}` : null
   return { ...base, state: 'working', line: [a.running ? 'Open' : 'Closed', as].filter(Boolean).join(', '), ...(as ? { personal: true as const } : {}) }

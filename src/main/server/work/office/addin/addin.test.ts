@@ -215,7 +215,7 @@ describe('the add-in through the relay', () => {
     await until(() => !addinHub()?.sessionFor('excel', BOOK))
     expect((await carrier.readRange(BOOK, 'Sheet1', 'A1')).values).toEqual([['from the desktop']])
     // With no desktop either, the call says where to open the file.
-    await expect(withAddin(null, addinHub).readRange(BOOK, 'Sheet1', 'A1')).rejects.toThrow('not open with the TempCode add-in')
+    await expect(withAddin(null, addinHub).readRange(BOOK, 'Sheet1', 'A1')).rejects.toThrow('not open with the Docket add-in')
   })
 
   it('closes an add-in whose key he removed', async () => {
@@ -223,7 +223,7 @@ describe('the add-in through the relay', () => {
     const { result } = await call('work.office.addin.list')
     await call('work.office.addin.remove', { id: (result as { keys: { id: string }[] }).keys[0]!.id })
     await until(() => a.state().phase === 'unpaired')
-    expect(a.states.at(-1)?.words).toBe('Removed in TempCode.')
+    expect(a.states.at(-1)?.words).toBe('Removed in Docket.')
     expect(((await call('work.office.addin.list')).result as { keys: unknown[] }).keys).toEqual([])
   })
 

@@ -30,8 +30,8 @@ export function guestRolesOf(source: Parameters<typeof guestTableOf>[0]): readon
  * host's refusals of a file, and the window's own for what is not ours. Each says what to do instead.
  */
 export const SHARE_REFUSALS = {
-  word: 'Guest links open TempCode documents. Save As a TempCode document to share this one.',
-  excel: 'Guest links open TempCode sheets. Save As a TempCode sheet to share this one.',
+  word: 'Guest links open Docket documents. Save As a Docket document to share this one.',
+  excel: 'Guest links open Docket sheets. Save As a Docket sheet to share this one.',
   teams: 'This file lives in Teams. Share it from Teams.',
   teamsCopy: 'This document is a Teams file opened here. Share it from Teams.',
   google: 'This file lives in Google Drive. Share it from Google.',
@@ -40,7 +40,7 @@ export const SHARE_REFUSALS = {
   linkedOut: 'This document is saved to another file as it changes, so a guest can view it but not edit it.',
   moved: 'That file is not the one the thread asked to share any more. Nothing was made.',
   noPage: 'Guests reach files on the box only. Keep this file in a workspace on the box to share it.',
-  other: 'Guest links open TempCode documents and sheets only.'
+  other: 'Guest links open Docket documents and sheets only.'
 } as const
 
 /** Whether words a host answered are one of the refusals above: said as the sheet's line, not as a failure. */

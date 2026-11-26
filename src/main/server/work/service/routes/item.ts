@@ -68,7 +68,7 @@ async function redeem(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx):
   const p = got ? passes(ctx).find((x) => { const want = Buffer.from(x.pass.ticketHash, 'hex'); return want.length === got.length && timingSafeEqual(want, got) }) : undefined
   if (!p || p.pass.ticketUntil <= now || p.pass.issuedAt < STARTED || used.has(p.linkId)) {
     LIMITS.failures.take(caller)
-    return json(res, 403, { error: 'This page has already been opened, or it ran out. Open it again from TempCode.' })
+    return json(res, 403, { error: 'This page has already been opened, or it ran out. Open it again from Docket.' })
   }
   for (const u of used) if (!ctx.links().has(u)) used.delete(u)
   used.add(p.linkId)
@@ -88,7 +88,7 @@ async function renew(req: IncomingMessage, res: ServerResponse, ctx: RouteCtx): 
   if (!p) {
     if (id) renewals.delete(hashOf(key).toString('hex'))
     LIMITS.failures.take(caller)
-    return json(res, 403, { error: 'This page ran out. Open it again from TempCode.' })
+    return json(res, 403, { error: 'This page ran out. Open it again from Docket.' })
   }
   answer(res, p)
 }

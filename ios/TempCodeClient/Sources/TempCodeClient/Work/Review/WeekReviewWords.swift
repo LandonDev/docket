@@ -51,7 +51,7 @@ extension WeekReview {
     }
     public static func nothingWords(_ known: Known) -> String { nothingWords(calendar: known.calendar, desk: known.desk) }
     public static let calendarNote = "Calendar time is measured."
-    public static let deskNote = "Desk time is an estimate from what you did in TempCode."
+    public static let deskNote = "Desk time is an estimate from what you did in Docket."
     public static let hoursNote = "\(calendarNote) \(deskNote)"
 
     /// "1,234 messages": US grouping whatever the phone's locale.

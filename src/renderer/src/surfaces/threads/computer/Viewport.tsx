@@ -1,3 +1,4 @@
+import { OS_APP_NAME } from "@shared/appName";
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import type { ComputerPreviewEndReason, HistoryPictureNone } from "@server/shared/contract-computer";
 import { Button } from "@renderer/components/ui/button";
@@ -54,7 +55,7 @@ export const ENDED_WORDS: Record<ComputerPreviewEndReason, string> = {
   closed: "The preview stopped",
   "window-closed": "The window closed",
   minimized: "The window is minimized",
-  permission: "Turn on Screen Recording for TempCode in System Settings",
+  permission: `Turn on Screen Recording for ${OS_APP_NAME} in System Settings`,
   restarted: "The preview stopped",
   error: "The preview stopped",
 };

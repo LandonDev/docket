@@ -287,7 +287,7 @@ describe('wake', () => {
     r.guest.hash = 'old'
     await r.keeper.wake()
     expect(r.guest.log).toContain('install')
-    expect(r.pushes.map((p) => p.step)).toContain("Copying TempCode's helper into Windows")
+    expect(r.pushes.map((p) => p.step)).toContain("Copying Docket's helper into Windows")
     await r.keeper.sleep()
     r.guest.log = []
     await r.keeper.wake()
@@ -468,7 +468,7 @@ describe('setup', () => {
     const s = await r.keeper.setup()
     expect(s.state).toBe('awake')
     expect(r.states()[0]).toBe('setting-up')
-    expect(r.pushes.map((p) => p.step).filter(Boolean)).toEqual(['Making the disk', LIVE_RESIZE_WORDS.driver, 'Starting Windows', 'Setting Windows up', "Copying TempCode's helper into Windows", 'Restarting Windows', 'Connecting to Windows'])
+    expect(r.pushes.map((p) => p.step).filter(Boolean)).toEqual(['Making the disk', LIVE_RESIZE_WORDS.driver, 'Starting Windows', 'Setting Windows up', "Copying Docket's helper into Windows", 'Restarting Windows', 'Connecting to Windows'])
     expect(r.machine.disk).toBe(true)
     expect(r.token()).toMatch(/^[0-9a-f]{64}$/)
     expect(r.guest.log).toEqual(['ready', 'install', 'start-service', 'reboot', 'ready', 'start-service', 'open-door'])

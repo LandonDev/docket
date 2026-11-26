@@ -351,7 +351,7 @@ describe("an item of a kind this build does not know", () => {
     expect(tabs[1].querySelector("svg")).not.toBeNull();
     fireEvent.pointerDown(tabs[1], { button: 0 });
     await waitFor(() => expect(container.querySelector("[data-canvas-pane]")?.getAttribute("data-kind")).toBe("hologram"));
-    await waitFor(() => expect(container.querySelector("[data-canvas-body]")?.textContent).toBe("Update TempCode to open this"));
+    await waitFor(() => expect(container.querySelector("[data-canvas-body]")?.textContent).toBe("Update Docket to open this"));
     // No bar of its own, no History, no failure line: one quiet line and nothing else.
     expect(container.querySelector("[data-canvas-bar]")).toBeNull();
     expect(container.querySelector("[data-canvas-state]")).toBeNull();
@@ -365,7 +365,7 @@ describe("an item of a kind this build does not know", () => {
   it("names it alone as a title, and it closes from More like any other", async () => {
     const { container } = await seat([NEWER]);
     expect(container.querySelector("[data-view-title]")?.textContent).toBe("Stage plot.holo");
-    await waitFor(() => expect(container.querySelector("[data-canvas-body]")?.textContent).toBe("Update TempCode to open this"));
+    await waitFor(() => expect(container.querySelector("[data-canvas-body]")?.textContent).toBe("Update Docket to open this"));
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Close" }));
     await waitFor(() => expect(host.current!.calls.some((c) => c.method === "work.canvas.close" && c.params.itemId === "newer")).toBe(true));

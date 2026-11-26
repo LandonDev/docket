@@ -86,7 +86,7 @@ describe('what Settings and doctor.get say of folders on mapped drives', () => {
     const broken = host(fakeHelper(() => null), async () => Promise.reject(new Error('csc.exe was refused by policy')))
     expect(folderReader('win32', broken)).toMatchObject({ mode: 'not started' })
     expect(await broken.read('J:\\Bench')).toBeNull()
-    expect(folderReader('win32', broken)).toEqual({ mode: 'row by row', words: 'Read row by row, which is slower: Windows did not let TempCode make its folder reader.', why: 'csc.exe was refused by policy' })
+    expect(folderReader('win32', broken)).toEqual({ mode: 'row by row', words: 'Read row by row, which is slower: Windows did not let Docket make its folder reader.', why: 'csc.exe was refused by policy' })
     const working = host(fakeHelper((id) => JSON.stringify({ id, rows: [] })))
     await working.read('J:\\Bench')
     expect(folderReader('win32', working)).toMatchObject({ mode: 'one read', words: 'Read in one go.' })

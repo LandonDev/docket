@@ -18,7 +18,7 @@ import { checkName, fileLocked, HELD_MOVED, NAME_TAKEN, notAsNamed, runOp, withF
 const PLACE_ITSELF = 'A place itself cannot be renamed or moved.'
 const WRITING = 'A thread is writing in this file. Try when it is done.'
 const NOT_A_FOLDER = 'That is a file, not a folder.'
-const GONE = (what: string): string => `${what} is not there any more, or TempCode may not see it.`
+const GONE = (what: string): string => `${what} is not there any more, or Docket may not see it.`
 /** One change names a Drive and some other place: a Google file lives in Google Drive. */
 export const DRIVE_APART = 'A Google file lives in Google Drive. Change Drive files apart from files elsewhere.'
 

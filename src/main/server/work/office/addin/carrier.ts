@@ -23,11 +23,11 @@ export function withAddin(desktop: OfficeCarrier | null, hub: () => AddinHub | n
   }
   const orDesktop = (what: string): OfficeCarrier => {
     if (desktop) return desktop
-    throw new OfficeError(`${what} is not open with the TempCode add-in, and this host has no Office of its own.`, 'not-running')
+    throw new OfficeError(`${what} is not open with the Docket add-in, and this host has no Office of its own.`, 'not-running')
   }
   const noDesktop = (app: OfficeApp): OfficeCarrier => {
     if (desktop) return desktop
-    throw new OfficeError(`The TempCode add-in does not carry ${app === 'outlook' ? 'Outlook' : app}, and this host has no Office of its own.`, 'not-installed')
+    throw new OfficeError(`The Docket add-in does not carry ${app === 'outlook' ? 'Outlook' : app}, and this host has no Office of its own.`, 'not-installed')
   }
   const desktopFiles = async <T>(read: (c: OfficeCarrier) => Promise<T[]>): Promise<T[]> => (desktop ? read(desktop).catch(() => []) : [])
   const merge = <T extends OfficeFile>(mine: T[], theirs: T[]): T[] => [...mine, ...theirs.filter((t) => !mine.some((m) => m.key === t.key))]

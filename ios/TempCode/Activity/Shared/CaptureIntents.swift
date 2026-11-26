@@ -7,7 +7,7 @@ import TempCodeClient
 /// the app and the widget extension (the controls name them); the system runs them in the app.
 nonisolated struct CaptureIntent: AppIntent {
     static let title: LocalizedStringResource = "Capture"
-    static let description = IntentDescription("Opens Capture in TempCode, ready to type a note.")
+    static let description = IntentDescription("Opens Capture in Docket, ready to type a note.")
     static let openAppWhenRun = true
 
     init() {}
@@ -22,7 +22,7 @@ nonisolated struct CaptureIntent: AppIntent {
 /// The same sheet with the keyboard down, so the hold control is under the thumb.
 nonisolated struct VoiceNoteIntent: AppIntent {
     static let title: LocalizedStringResource = "Voice Note"
-    static let description = IntentDescription("Opens Capture in TempCode, ready to hold and talk.")
+    static let description = IntentDescription("Opens Capture in Docket, ready to hold and talk.")
     static let openAppWhenRun = true
 
     init() {}

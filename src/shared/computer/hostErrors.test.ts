@@ -26,7 +26,7 @@ describe('host error kinds', () => {
     expect(noReadForTextLine('TextEdit', 'Notes')).toBe('read TextEdit\'s window "Notes" before typing into it')
   })
   it('refuse TempCode, the system prompts, and an app it could not check, each in its own words', () => {
-    expect(hostErrorLine('refused_app', 'tempcode')).toBe("TempCode's own window is off limits to computer use")
+    expect(hostErrorLine('refused_app', 'tempcode')).toBe("Docket's own window is off limits to computer use")
     expect(hostErrorLine('refused_app', 'prompts')).toBe("macOS's password and Touch ID prompts are the person's to answer")
     expect(hostErrorLine('refused_app', 'unchecked')).toContain("couldn't check which app this is")
   })

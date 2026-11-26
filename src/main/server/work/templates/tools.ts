@@ -46,7 +46,7 @@ function itemSource(ctx: ToolCtx, itemId: string): { item: CanvasItem; source: C
 export const templateTools: WorkTool[] = [
   {
     name: 'template_list',
-    description: "Lists this workspace's templates: each one's name, what it makes (document, sheet or deck), its group (this job's, all jobs', or one of TempCode's starters) and the fields it asks for.",
+    description: "Lists this workspace's templates: each one's name, what it makes (document, sheet or deck), its group (this job's, all jobs', or one of Docket's starters) and the fields it asks for.",
     input: z.object({}),
     readOnly: true,
     run: async (_args, ctx) => {

@@ -577,7 +577,7 @@ public struct RequestPress: Sendable, Hashable {
 public final class RequestPressWait {
     public enum Outcome: Sendable, Hashable {
         case answered(OutboxRequest)
-        /// It did not go, or the host refused it: the whole line ("Not sent: TempCode left the screen").
+        /// It did not go, or the host refused it: the whole line ("Not sent: Docket left the screen").
         case failed(String)
         /// It went and no answer came: read back on the next link, never sent again from here.
         case checking
@@ -655,7 +655,7 @@ public final class RequestPressWait {
         if showing[requestId, default: 0] == 0 { toldOff?(outcome) }
     }
 
-    /// TempCode left the screen: every press still waiting goes back, and says so.
+    /// Docket left the screen: every press still waiting goes back, and says so.
     public func leftScreen() {
         cancel(.leftScreen) { _ in true }
     }

@@ -133,7 +133,7 @@ export const codexPluginsOff = (env: NodeJS.ProcessEnv = process.env): boolean =
 export const CODEX_WORK_OFF = ['plugins', 'remote_plugin', 'apps', 'hooks', 'skill_mcp_dependency_install', 'tool_suggest'] as const
 const workFeatures = (): Record<string, false> => Object.fromEntries(CODEX_WORK_OFF.map((f) => [f, false as const]))
 /** The Work home's whole config.toml. */
-export const CODEX_WORK_CONFIG = `# TempCode's Codex home for Work threads. Rewritten before every thread starts; edits do not survive.\n[features]\n${CODEX_WORK_OFF.map((f) => `${f} = false`).join('\n')}\n`
+export const CODEX_WORK_CONFIG = `# Docket's Codex home for Work threads. Rewritten before every thread starts; edits do not survive.\n[features]\n${CODEX_WORK_OFF.map((f) => `${f} = false`).join('\n')}\n`
 /** The system config files a home cannot outrank. */
 export const CODEX_SYSTEM_CONFIG = ['/etc/codex/config.toml', '/etc/codex/managed_config.toml', '/etc/codex/requirements.toml'] as const
 /**

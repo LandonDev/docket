@@ -175,7 +175,7 @@ describe('a save into a library\'s workbook', () => {
     chmodSync(dir, 0o500)
     const before = readFileSync(book)
     try {
-      await expect(s.edit(book, 0, [set(sheet, 1, 0, { v: 5 })], 'owner')).rejects.toThrow('The file was not saved: TempCode could not keep this version among its own files')
+      await expect(s.edit(book, 0, [set(sheet, 1, 0, { v: 5 })], 'owner')).rejects.toThrow('The file was not saved: Docket could not keep this version among its own files')
     } finally {
       chmodSync(dir, 0o700)
     }

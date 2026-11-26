@@ -137,7 +137,7 @@ final class MessagesPresses {
     private func leftScreen() {
         let held = [wait.counting].compactMap { $0 } + wait.queued
         wait.leftScreen()
-        for press in held { putBack(press.payload, "Not sent: TempCode left the screen") }
+        for press in held { putBack(press.payload, "Not sent: Docket left the screen") }
         schedule()
     }
 

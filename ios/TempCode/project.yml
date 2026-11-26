@@ -75,7 +75,7 @@ targets:
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: TempCode
+        CFBundleDisplayName: Docket
         CFBundleShortVersionString: "0.1"
         CFBundleVersion: "1"
         UILaunchScreen: {}
@@ -91,12 +91,12 @@ targets:
         CADisableMinimumFrameDurationOnPhone: true
         ITSAppUsesNonExemptEncryption: false
         # A voice note (Work/Capture): heard and transcribed on the phone only.
-        NSMicrophoneUsageDescription: TempCode listens while you hold the microphone to take a voice note.
+        NSMicrophoneUsageDescription: Docket listens while you hold the microphone to take a voice note.
         NSSpeechRecognitionUsageDescription: Your voice notes are transcribed on this iPhone and never leave it.
         # A receipt (Work/Money): the document camera, read on the phone, sent to his own host.
-        NSCameraUsageDescription: TempCode uses the camera to scan a receipt you choose to file.
+        NSCameraUsageDescription: Docket uses the camera to scan a receipt you choose to file.
         # Face ID before a Send, a Discard or another outward press (Work/PressGates.swift), on by default.
-        NSFaceIDUsageDescription: TempCode checks it is you before anything you send leaves this iPhone.
+        NSFaceIDUsageDescription: Docket checks it is you before anything you send leaves this iPhone.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         # Open in Word on a shared Office file (Work/Files): canOpenURL asks whether an Office app is installed.
@@ -108,8 +108,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios
         INFOPLIST_KEY_UIUserInterfaceStyle: Automatic
-        # The catalog holds no app icon (the app has never had one); the application preset names AppIcon.
-        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        # Sources/Assets.xcassets/AppIcon.appiconset, made by `bun run icons` (scripts/make-icons.ts).
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # LifeKitUI calls presentationPlacement behind #available(iOS 27.1, *), but the SDK marks it 27.0,
         # so the symbol is bound strongly and dyld refuses the app on the iOS 27.0 simulator runtime, which
         # lacks it. Weak, the missing symbol is null and the availability check skips it.
@@ -133,7 +133,7 @@ targets:
     info:
       path: Activity/Info.plist
       properties:
-        CFBundleDisplayName: TempCode
+        CFBundleDisplayName: Docket
         CFBundleShortVersionString: "0.1"
         CFBundleVersion: "1"
         NSExtension:
@@ -141,7 +141,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios.activity
-        INFOPLIST_KEY_CFBundleDisplayName: TempCode
+        INFOPLIST_KEY_CFBundleDisplayName: Docket
   # The notification service extension: adds the host's name to an alert's
   # subtitle when the phone pairs with several hosts (the host cannot know).
   TempCodeNotificationService:
@@ -159,7 +159,7 @@ targets:
     info:
       path: NotificationService/Info.plist
       properties:
-        CFBundleDisplayName: TempCode
+        CFBundleDisplayName: Docket
         CFBundleShortVersionString: "0.1"
         CFBundleVersion: "1"
         NSExtension:
@@ -168,7 +168,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios.notificationservice
-        INFOPLIST_KEY_CFBundleDisplayName: TempCode
+        INFOPLIST_KEY_CFBundleDisplayName: Docket
         # UNNotificationServiceExtension's overrides are nonisolated and run off the main thread.
         SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
   # Save to TempCode (docs/agents/work-phone-files.md): the share sheet's way into a Work workspace's own
@@ -198,7 +198,7 @@ targets:
     info:
       path: ShareExtension/Info.plist
       properties:
-        CFBundleDisplayName: Save to TempCode
+        CFBundleDisplayName: Save to Docket
         CFBundleShortVersionString: "0.1"
         CFBundleVersion: "1"
         NSExtension:
@@ -213,7 +213,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios.share
-        INFOPLIST_KEY_CFBundleDisplayName: Save to TempCode
+        INFOPLIST_KEY_CFBundleDisplayName: Save to Docket
   TempCodeUITests:
     type: bundle.ui-testing
     platform: iOS

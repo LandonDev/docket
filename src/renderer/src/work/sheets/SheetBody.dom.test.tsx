@@ -1244,7 +1244,7 @@ describe("the sheet kind", () => {
     resetSheetSyncs();
     open(sheetView({ reach: { parts: ["a pivot table"], to: "excel" } }));
     const tabs = await screen.findByRole("tablist", { name: "Open in" });
-    expect(within(tabs).getByRole("tab", { name: "TempCode" })).toBeTruthy();
+    expect(within(tabs).getByRole("tab", { name: "Docket" })).toBeTruthy();
     fireEvent.click(within(tabs).getByRole("tab", { name: "Excel" }));
     await waitFor(() => expect(sheetHost.calls).toContainEqual(["switch", null]));
   });
@@ -1260,7 +1260,7 @@ describe("the sheet kind", () => {
     const full = within(tabs).getByRole("tab", { name: "Full editor" });
     fireEvent.click(full);
     await waitFor(() => expect(full.querySelector('[data-slot="busy-label"]')?.hasAttribute("data-busy")).toBe(true));
-    fireEvent.click(within(tabs).getByRole("tab", { name: "TempCode" }));
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Docket" }));
     fireEvent.click(full);
     expect(sheetHost.calls.filter((c) => c[0] === "switch")).toHaveLength(1);
     started();
@@ -1339,7 +1339,7 @@ describe("the sheet kind", () => {
     await gridUp();
     await screen.findByRole("button", { name: /Agent suggests/ });
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    expect(await screen.findByText(/Save As a TempCode sheet to share this one|Share it from Teams/)).toBeTruthy();
+    expect(await screen.findByText(/Save As a Docket sheet to share this one|Share it from Teams/)).toBeTruthy();
     cleanup();
     resetSheetSyncs();
     resetCanvasStore();

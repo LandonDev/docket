@@ -207,7 +207,7 @@ export class Session {
 
   /** A new comment on the words `quote`, or a reply on a thread: plain words only. */
   async comment(c: { quote: string; text: string } | { threadId: string; text: string }): Promise<{ threadId?: string; commentId?: string }> {
-    if (this.mode.kind !== "guest") throw new Error("Comments are made in TempCode.");
+    if (this.mode.kind !== "guest") throw new Error("Comments are made in Docket.");
     return (await (await this.authed(`/g/${this.mode.id}/comment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) })).json()) as {
       threadId?: string;
       commentId?: string;

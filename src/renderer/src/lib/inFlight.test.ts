@@ -175,8 +175,8 @@ describe("markTurnInterrupted", () => {
 
 describe("quitWhileBusyMessage", () => {
   it("counts threads, names the app and says they resume on reopen", () => {
-    expect(quitWhileBusyMessage(1)).toBe("1 thread is still running. Quit anyway? It resumes when you reopen TempCode.");
-    expect(quitWhileBusyMessage(3)).toBe("3 threads are still running. Quit anyway? They resume when you reopen TempCode.");
+    expect(quitWhileBusyMessage(1)).toBe("1 thread is still running. Quit anyway? It resumes when you reopen Docket.");
+    expect(quitWhileBusyMessage(3)).toBe("3 threads are still running. Quit anyway? They resume when you reopen Docket.");
   });
 });
 

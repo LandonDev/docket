@@ -38,7 +38,7 @@ public enum SharePhase: Equatable, Sendable {
     }
 
     public static func unreachable(_ host: String) -> String {
-        "\(host) can’t be reached. TempCode will save this when it can."
+        "\(host) can’t be reached. Docket will save this when it can."
     }
 
     /// The share of the whole that has gone, by bytes: the files already done, plus the part of the one

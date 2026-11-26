@@ -52,5 +52,5 @@ export function formFolderOf(at: FolderRef, shown: Copy, twin: Copy): FolderRef 
 
 export const FORM_KIND_WORDS: Record<FormKind, { label: string; line: string }> = {
   microsoft: { label: "Microsoft Form", line: "People sign in to answer. Answers go to a workbook in this folder." },
-  tempcode: { label: "TempCode Form", line: "Anyone with the link can answer. Answers go to a sheet in Work." },
+  tempcode: { label: "Docket Form", line: "Anyone with the link can answer. Answers go to a sheet in Work." },
 };

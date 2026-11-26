@@ -71,7 +71,7 @@ export function slideDetail(info: DeckInfo, slideId: number): string | null {
     if (sh.cells) lines.push(...sh.cells.map((row, n) => `    row ${n}: ${row.map((c) => JSON.stringify(c)).join(' | ')}`))
   }
   lines.push(`  transition: ${comesAs(s.transition)}`)
-  if (s.builds) lines.push(`  builds: ${s.builds.whole ? `shown whole in TempCode's show (${s.builds.whole})` : `${Math.max(0, s.builds.steps.length - 1)} presses${s.builds.order ? ` (order ${s.builds.order.join(', ')}${s.builds.fade ? `; fade ${s.builds.fade.join(', ')}` : ''})` : ''}`}`)
+  if (s.builds) lines.push(`  builds: ${s.builds.whole ? `shown whole in Docket's show (${s.builds.whole})` : `${Math.max(0, s.builds.steps.length - 1)} presses${s.builds.order ? ` (order ${s.builds.order.join(', ')}${s.builds.fade ? `; fade ${s.builds.fade.join(', ')}` : ''})` : ''}`}`)
   if (info.theme) lines.push(`  theme: fonts ${info.theme.major} and ${info.theme.minor}; colours ${Object.entries(info.theme.colors).map(([slot, hex]) => `${slot} #${hex}`).join(', ')}`)
   return lines.join('\n')
 }
