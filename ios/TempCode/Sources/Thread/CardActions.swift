@@ -57,7 +57,7 @@ struct ApprovalActions: View {
     }
 
     private func blockLine(_ block: ActionBlock) -> some View {
-        Text(block.text(now: Date().timeIntervalSince1970 * 1000))
+        Text(block.answerText(now: Date().timeIntervalSince1970 * 1000, host: client.environment.name))
             .font(.footnote)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 4)
@@ -116,7 +116,7 @@ struct QuestionActions: View {
     }
 
     private func blockLine(_ block: ActionBlock) -> some View {
-        Text(block.text(now: Date().timeIntervalSince1970 * 1000))
+        Text(block.answerText(now: Date().timeIntervalSince1970 * 1000, host: client.environment.name))
             .font(.footnote)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 4)

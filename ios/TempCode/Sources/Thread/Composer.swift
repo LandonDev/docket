@@ -285,7 +285,7 @@ struct ComposerBar: View {
     /// The box, with this thread's field and button. A Work thread's box takes a row dragged in as its chip
     /// (`ChipDrag`: a file, a person, a held item), exactly as an `@` pick does.
     private var box: some View {
-        ComposerBox(placeholder: placeholder, draft: draft, focused: focused, blocked: block.map { $0.text(now: Date().timeIntervalSince1970 * 1000) }, canAttach: canAttach, attachEnabled: uploads.count < Self.maxPhotos, onAttach: { picking = true }) {
+        ComposerBox(placeholder: placeholder, draft: draft, focused: focused, blocked: block.map { $0.sendText(now: Date().timeIntervalSince1970 * 1000, host: client.environment.name) }, canAttach: canAttach, attachEnabled: uploads.count < Self.maxPhotos, onAttach: { picking = true }) {
             ComposerButton(intent: intent, enabled: enabled, offersQueue: offersQueue, holding: $holding, reduced: reduceMotion, onTap: act, onQueue: queue)
         }
         .dropDestination(for: ChipDrag.self) { drags, _ in
@@ -302,7 +302,7 @@ struct ComposerBar: View {
 
     private var placeholder: String {
         if let block {
-            return block.text(now: Date().timeIntervalSince1970 * 1000)
+            return block.sendText(now: Date().timeIntervalSince1970 * 1000, host: client.environment.name)
         }
         return chrome.placeholder
     }
@@ -630,6 +630,7 @@ private struct ComposerField: View {
     let focused: FocusState<Bool>.Binding
     let off: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var text: Binding<String> {
         Binding {
@@ -646,7 +647,7 @@ private struct ComposerField: View {
     var body: some View {
         TextField(prompt, text: text, axis: .vertical)
             .transcriptType(TranscriptType.prose)
-            .lineLimit(1...ComposerMetrics.maxLines)
+            .lineLimit(1...ComposerHeight.maxLines(accessibilityText: typeSize.isAccessibilitySize))
             .focused(focused)
             .disabled(off)
             .accessibilityLabel(label)

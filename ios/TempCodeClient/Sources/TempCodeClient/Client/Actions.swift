@@ -58,6 +58,30 @@ public enum ActionBlock: Sendable, Hashable {
         }
     }
 
+    /// Who can, by the act, where this key may not: the desktop's words
+    /// (src/renderer/src/lib/linkMayCore.ts `sendElsewhere`, `answerElsewhere`).
+    public static func sendElsewhere(_ host: String) -> String { "Send from a computer that manages \(nameInLine(host))" }
+    public static func answerElsewhere(_ host: String) -> String { "Answer from a computer that manages \(nameInLine(host))" }
+
+    /// The composer's words: a read key says where to send from; any other block its own line.
+    public func sendText(now: Double, host: String) -> String {
+        self == .readOnly ? Self.sendElsewhere(host) : text(now: now)
+    }
+
+    /// A question or approval card's one line where its presses would be: a key that may not answer says
+    /// where to answer from; any other block its own line.
+    public func answerText(now: Double, host: String) -> String {
+        self == .readOnly || self == .noApprove ? Self.answerElsewhere(host) : text(now: now)
+    }
+
+    /// The key's own reach stops it, not the link: said once, by the composer; a failure card's missing presses say nothing.
+    public var isKeyLimit: Bool {
+        switch self {
+        case .readOnly, .noApprove, .noAdmin: true
+        default: false
+        }
+    }
+
     /// The host is the problem, not the key: a retry can lift it.
     public var isTransient: Bool {
         switch self {

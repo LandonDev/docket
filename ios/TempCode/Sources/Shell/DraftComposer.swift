@@ -90,7 +90,7 @@ struct DraftComposer: View {
     }
 
     private var block: String? {
-        target?.client.operateBlock.map { $0.text(now: Date().timeIntervalSince1970 * 1000) }
+        target.flatMap { target in target.client.operateBlock.map { $0.sendText(now: Date().timeIntervalSince1970 * 1000, host: target.client.environment.name) } }
     }
 
     /// The host's catalog has landed (the model is known) and nothing is in flight.

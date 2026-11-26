@@ -60,6 +60,9 @@ private func entry(_ item: GithubInboxItem, host: String = "h1") -> InboxEntry {
         #expect(out.map(\.environmentId) == ["mac", "mac", "box", "box", "box"])
         #expect(out.first?.id == "mac:acme/zeta#1")
         #expect(out.first?.hostName == "Mac")
+        // One item two computers both read is one row, the first computer's.
+        let twice = [hosts[0], InboxModel.Host(environmentId: "mac", name: "Mac", snapshot: snapshot([repo("acme/app", items: [sameTimePr])]))]
+        #expect(InboxModel.entries(twice).filter { $0.item.number == 9 }.map(\.environmentId) == ["box"])
     }
 
     @Test(arguments: [

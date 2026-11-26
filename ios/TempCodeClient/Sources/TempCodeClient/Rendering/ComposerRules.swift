@@ -117,6 +117,13 @@ public enum ComposerHeight {
         Int(((maxHeight - natural(lines: 0)) / line).rounded(.down))
     }
 
+    /// The field's line cap at a text size: at the accessibility sizes a line is twice as tall and the
+    /// keyboard takes most of the screen, so the field scrolls past two lines and the dock's controls stay
+    /// above the keyboard.
+    public static func maxLines(accessibilityText: Bool) -> Int {
+        accessibilityText ? min(maxLines, 2) : maxLines
+    }
+
     public static func scrolls(lines: Int) -> Bool {
         lines > maxLines
     }

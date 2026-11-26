@@ -217,8 +217,11 @@ public enum HomeSections {
     /// A host that gets a status row: refused or offline at once; between
     /// retries, or unreachable since launch (connecting with a retry pending),
     /// once it has been so for `holdMs` (`awayMs`, how long the transport has
-    /// been in its state; nil counts as long enough).
-    public nonisolated static func troubled(_ status: EnvironmentStatus, awayMs: Double? = nil) -> Bool {
+    /// been in its state; nil counts as long enough). A host the box relays
+    /// whose relay says it is locked, asleep or unreachable gets no row: its
+    /// foot row's detail line already says that, in one word.
+    public nonisolated static func troubled(_ status: EnvironmentStatus, awayMs: Double? = nil, relay: RelayState? = nil) -> Bool {
+        if let relay, relay != .available { return false }
         let held = (awayMs ?? holdMs) >= holdMs
         switch status.transport {
         case .unauthorized, .offline: return true
@@ -487,6 +490,35 @@ public enum HomeSections {
             seen: { env in hosts.first { $0.environmentId == env }?.seen ?? [:] },
             floor: { env in hosts.first { $0.environmentId == env }?.floor ?? 0 }
         )
+    }
+
+    /// What tells same-named workspaces apart on Home, by workspace id: for
+    /// a name two or more rows share, the computer's name when each sits on
+    /// its own computer, else the shortest run of parent folders that differs
+    /// ("work", "work/old"); nothing for a name only one row has.
+    public nonisolated static func nameHints(_ workspaces: [HomeWorkspace], hostName: (String) -> String?) -> [String: String] {
+        var out: [String: String] = [:]
+        let groups = Dictionary(grouping: workspaces) { $0.name.lowercased() }.values.filter { $0.count > 1 }
+        for group in groups {
+            let hosts = group.map { $0.members.first?.environmentId ?? "" }
+            if Set(hosts).count == group.count {
+                for (workspace, host) in zip(group, hosts) { out[workspace.id] = hostName(host) }
+                continue
+            }
+            let parents = group.map { workspace -> [String] in
+                let parts = (workspace.members.first?.workspace.path ?? "").split(separator: "/").map(String.init)
+                return Array(parts.dropLast())
+            }
+            let deepest = parents.map(\.count).max() ?? 0
+            for depth in 1...max(1, deepest) {
+                let hints = parents.map { $0.suffix(depth).joined(separator: "/") }
+                if Set(hints).count == hints.count || depth == deepest {
+                    for (workspace, hint) in zip(group, hints) where !hint.isEmpty { out[workspace.id] = hint }
+                    break
+                }
+            }
+        }
+        return out
     }
 
     /// Every workspace keyed by its link (`ProjectPairs.key`), in first-seen

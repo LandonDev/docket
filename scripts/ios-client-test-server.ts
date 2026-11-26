@@ -82,8 +82,8 @@
  * checks every seeded id is used once.
  *
  * The relay seed (remote/relayLoopback.ts): four fake hosts reachable through
- * this server, one per state (Studio Mac available, locked, asleep and
- * unreachable since five minutes ago), listed in the JSON line as
+ * this server, one per state (Studio Mac available, Mac mini locked, MacBook
+ * Air asleep and iMac unreachable since five minutes ago), listed in the JSON line as
  * `relayHosts`. A lane to the available or locked host
  * (`/ws?ticket=…&host=<id>`) lists this server's own seeded threads under
  * that host's id; the asleep one answers `unavailable: the Mac is asleep`;
@@ -1549,14 +1549,15 @@ server.macBridge.seed([
   })
 ])
 
-// ── the relay seed: four fake hosts, one per state ──────────────────────
+// ── the relay seed: four fake hosts, one per state, each under a name of its own (the state is the row's
+// detail line's to say, never the name's) ──
 const relayId = (word: string): string => `env_relay${word}`.padEnd(26, '0')
 const relayRow = { platform: 'darwin', link: 'up' as const, since: Date.now(), screen: 'unlocked' as const, power: 'awake' as const, lastSeenAt: Date.now(), build: null }
 const relaySeed = [
   { environmentId: relayId('Available'), name: 'Studio Mac', state: 'available', row: relayRow },
-  { environmentId: relayId('Locked'), name: 'Studio Mac (locked)', state: 'locked', row: { ...relayRow, screen: 'locked' as const } },
-  { environmentId: relayId('Asleep'), name: 'Studio Mac (asleep)', state: 'asleep', row: { ...relayRow, power: 'asleep' as const } },
-  { environmentId: relayId('Unreachable'), name: 'Studio Mac (unreachable)', state: 'unreachable', row: { ...relayRow, link: 'down' as const, since: Date.now() - 5 * 60_000 } }
+  { environmentId: relayId('Locked'), name: 'Mac mini', state: 'locked', row: { ...relayRow, screen: 'locked' as const } },
+  { environmentId: relayId('Asleep'), name: 'MacBook Air', state: 'asleep', row: { ...relayRow, power: 'asleep' as const } },
+  { environmentId: relayId('Unreachable'), name: 'iMac', state: 'unreachable', row: { ...relayRow, link: 'down' as const, since: Date.now() - 5 * 60_000 } }
 ]
 // The work set (TC_TEST_NO_RELAY=1) seeds none: a relayed host here is this server under another id, so it would list the same Outbox again.
 const relayed = process.env.TC_TEST_NO_RELAY === '1' ? [] : relaySeed

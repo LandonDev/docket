@@ -54,7 +54,10 @@ struct FailureCard: View {
                     .foregroundStyle(.secondary)
                     .padding(.top, Self.causeGap)
                 Group {
-                    if let block, !block.isTransient {
+                    if let block, block.isKeyLimit {
+                        // The key may not act: the composer says so once; the card's missing presses say nothing.
+                        EmptyView()
+                    } else if let block, !block.isTransient {
                         Text(block.text(now: Date().timeIntervalSince1970 * 1000))
                             .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)

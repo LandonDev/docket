@@ -249,7 +249,7 @@ public enum MasterBoard {
         case .error:
             return Fleet.Line(StatusDetail.text(m.failure?.summary) ?? "Failed", tone: .danger)
         case .waiting:
-            return Fleet.Line("Waiting for approval", tone: .warning, detail: StatusDetail.of(m))
+            return Fleet.Line(StatusWord.needsYou, tone: .warning, detail: StatusDetail.of(m))
         default:
             return Fleet.line(status: m.status, items: [], activity: m.activity, statusDetail: m.statusDetail)
         }

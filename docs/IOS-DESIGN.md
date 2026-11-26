@@ -130,7 +130,10 @@ about what is active or what a workspace's state is.
 copies linked across hosts (one `linkId`) are one row. The row is the
 workspace's mark at 28 pt (the repo icon in a continuous `size / 4`
 corner with a hairline outline, else the git host's mark, else a folder),
-the name in the title step at medium, and the desktop column's one status,
+the name in the title step at medium (a name two rows share gets one meta
+line under it: the computer's name when each is on its own computer, else
+the shortest parent folders that differ, `HomeSections.nameHints`), and the
+desktop column's one status,
 loudest first (useProjectSignals.ts `workspaceRailStatuses`): paused (the
 pause glyph in warning), needs you (a warning dot: waiting on an answer,
 failed, or recoverable), working, unread (an info dot), else nothing. A
@@ -153,7 +156,9 @@ row at the top of Home with the action (Retry, Sign In Again), never a
 blank screen; its words are the computer's page's sentence
 (`ConnectionStatusText`, `ConnectionSentence`), never the socket's raw error
 (Diagnostics shows that); a host reached through the box folds under
-the box's row while the box is in trouble (`HomeHostInput.via`). A host's
+the box's row while the box is in trouble (`HomeHostInput.via`), and one the
+relay says is locked, asleep or unreachable gets no row: its foot row's line
+already says so, in that one word (`HomeSections.troubled(relay:)`). A host's
 one-off notes ("3 threads resumed after restart") are quiet lines at the
 top. Adding a computer lives in Settings → Computers.
 
@@ -514,10 +519,13 @@ title's weight), the author, the repository's name with the number dim, the
 one word the item waits on in the color that means it (Changes requested
 warning, Checks failing destructive, Approved success, Your review info,
 Merged violet, Closed destructive for a pull request, Draft and an issue's
-Closed plain), and the host's name when there are several; at accessibility
+Closed plain); never the host, which cut the repository and itself on a
+phone's width (the item's screen names it under the repository when there are
+several); at accessibility
 sizes two lines, who over what. Nothing else is colored. Rows sit on
 `Layout.rowInsets` and the separator starts at the title. Rows sort newest
-first across every host, as the desktop does, with no sections. Swipe
+first across every host, as the desktop does, with no sections; one item two
+computers both read is one row, the first computer's (`InboxModel.entries`). Swipe
 trailing marks read or unread (info tint; full swipe), swipe leading opens on
 GitHub, and the context menu has both plus Copy Link; a mark swaps the weight
 with no animation. The rules are `InboxModel` in the client package
@@ -830,7 +838,10 @@ changes: the header is one line, the mark leading the title and no words
 composer has focus and returns on dismiss, out on `Motion.collapse` and
 back the way a row appears (`Motion.appear(reduced:)`), so the newest rows
 and the field are what the 150 pt body shows with the keyboard up; a swipe
-still switches segments while the bar is away. Focus, not a keyboard frame,
+still switches segments while the bar is away. At the accessibility text
+sizes the bar leaves with focus in any pose, and the field scrolls past two
+lines (`ComposerHeight.maxLines(accessibilityText:)`), so Steer and the add
+button stay above the keyboard. Focus, not a keyboard frame,
 is the signal: UIKit reports zero-height keyboards around a fold.
 
 **The vertical bar** (the inner display in landscape, the outer display) is
@@ -1140,8 +1151,12 @@ colour), Retry last. The phone's set is the desktop's within its reach
 (`FailureActions`): Route automatically, Continue on another model (the
 composer's model menu; the pick continues the thread on it through
 `session.continue`) and Retry; no line sends the person to the desktop. A key
-that cannot approve sees the reason in the buttons' place; a link down for
-a moment sees them at half opacity with the reason under them.
+that may not act sees nothing in the buttons' place: the composer says it once,
+in the desktop's words ("Send from a computer that manages the box",
+`ActionBlock.sendText`); an approval or question card, whose presses are the
+thing missing, says "Answer from a computer that manages the box"
+(`answerText`). A link down for a moment sees the buttons at half opacity with
+the reason under them.
 
 The sheets (`Shell/ThreadSheets.swift`) are the system sheet at medium and
 large, 16 pt corners, the drag indicator shown, Cancel on the left and the
@@ -1908,7 +1923,9 @@ the agent works in one and the host's name when the agent lives on another
 host than its root; the activity line on the kit's sizer (a hidden one-line
 text fixes the height) swapping in place with the 150 ms cross-fade and
 2 pt blur (a queued agent's line is the host's reason, "Waiting for …", a
-stopped one's "the harness is gone": the dot says the state); the stats line when there
+stopped one's "the harness is gone", a waiting one's the question or the
+approval when its transcript says which, else "Needs you" (never an assumed
+approval; `Fleet.Line.beside`): the dot says the state); the stats line when there
 is anything to say. Elapsed over cost on the right, `caption` tabular with
 `numericText`: one step above the stamp on purpose, because `caption2
 tertiary` fails the contrast floor on the needs-you tint. A live row's

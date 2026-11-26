@@ -78,10 +78,12 @@ public enum ThreadPose {
     /// keyboard up the body is about 150 pt, and the newest rows and the
     /// field are what a landscape phone shows. Focus, not a keyboard frame,
     /// is the signal: UIKit reports zero-height keyboards around a fold.
-    public static func segmentBarShown(mode: ThreadLayoutMode, compactHeight: Bool, composerFocused: Bool) -> Bool {
+    /// At the accessibility text sizes it leaves with focus in any height:
+    /// the keyboard and the larger dock leave no room for it above them.
+    public static func segmentBarShown(mode: ThreadLayoutMode, compactHeight: Bool, composerFocused: Bool, accessibilityText: Bool = false) -> Bool {
         switch mode {
         case .single, .twoPane: false
-        case .pager: !(compactHeight && composerFocused)
+        case .pager: !((compactHeight || accessibilityText) && composerFocused)
         }
     }
 

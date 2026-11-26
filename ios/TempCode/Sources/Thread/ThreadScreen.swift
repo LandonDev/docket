@@ -31,6 +31,7 @@ struct ThreadScreen: View {
     /// The shell's navigator, where the screen sits in one: a Work thread with an item is a wide route (`ShellPaths.wide`).
     @Environment(ShellNavigator.self) private var navigator: ShellNavigator?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
     // The shell's split pose. Planner 1's `\.shellPose` (`isSplit`, `.stack(short: true)`)
     // replaces these two reads when it lands; the detail column's own size class
     // is the system's and not promised, so nothing else here reads one.
@@ -136,7 +137,7 @@ struct ThreadScreen: View {
                     // An implementation board asks for its widest task; other heroes start at half.
                     let fit = kind == .implementation ? ThreadPose.boardFit(labels: facts.todoLabels) : nil
                     let columns = ThreadPose.columns(width: width, hairline: Hairline.thickness(scale: displayScale), division: division, fit: fit)
-                    let barShown = ThreadPose.segmentBarShown(mode: mode, compactHeight: compactHeight, composerFocused: composerFocused)
+                    let barShown = ThreadPose.segmentBarShown(mode: mode, compactHeight: compactHeight, composerFocused: composerFocused, accessibilityText: typeSize.isAccessibilitySize)
                     posed(width: width, mode: mode, columns: columns, division: division, barShown: barShown,
                           segments: segments, segment: segment, kind: kind, session: session, phase: phase)
                 }

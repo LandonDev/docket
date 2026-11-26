@@ -194,7 +194,7 @@ private struct AgentSendBar: View {
 
     /// Why the field is off, in the field's own words, or nil when it may send.
     private var held: String? {
-        if let block { return block.text(now: Date().timeIntervalSince1970 * 1000) }
+        if let block { return block.sendText(now: Date().timeIntervalSince1970 * 1000, host: client.environment.name) }
         switch session?.status {
         case .stopped?: return "Resume to send"
         case .queued?: return "Starts when its turn comes"

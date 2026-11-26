@@ -67,10 +67,15 @@ import TempCodeContract
     @Test func `the line follows the status`() {
         #expect(Fleet.line(status: .watching, items: []) == Fleet.Line("Watching", tone: .muted))
         let question = item(.question(QuestionItem(seq: 1, ts: 0, request: QuestionRequestEvent(requestId: "r", questions: [.init(question: "Which db?\nmore", options: [])]), answers: nil, resolved: false)))
-        #expect(Fleet.line(status: .waiting, items: [question]) == Fleet.Line("Has a question", tone: .warning, detail: "Which db?"))
+        #expect(Fleet.line(status: .waiting, items: [question]) == Fleet.Line("Needs you", tone: .warning, detail: "Which db?"))
         let approval = item(.approval(ApprovalItem(seq: 1, ts: 0, request: ApprovalRequestEvent(requestId: "1", toolName: "Bash", title: "rm -rf build"), allowed: nil, auto: false)))
-        #expect(Fleet.line(status: .waiting, items: [approval]) == Fleet.Line("Waiting for approval", tone: .warning, detail: "rm -rf build"))
-        #expect(Fleet.line(status: .waiting, items: []) == Fleet.Line("Waiting for approval", tone: .warning))
+        #expect(Fleet.line(status: .waiting, items: [approval]) == Fleet.Line("Needs you", tone: .warning, detail: "rm -rf build"))
+        #expect(Fleet.line(status: .waiting, items: []) == Fleet.Line("Needs you", tone: .warning))
+        // Not loaded: no approval assumed; what the host said is the detail when it said something.
+        #expect(Fleet.line(status: .waiting, items: [], statusDetail: "Answer a question") == Fleet.Line("Needs you", tone: .warning, detail: "Answer a question"))
+        // Beside the needs-you mark, under its group, the detail stands alone.
+        #expect(Fleet.Line("Needs you", tone: .warning, detail: "rm -rf build").beside == Fleet.Line("rm -rf build", tone: .warning))
+        #expect(Fleet.Line("Needs you", tone: .warning).beside == Fleet.Line("Needs you", tone: .warning))
         #expect(Fleet.line(status: .error, items: [item(errorItem(1, "Rate limited"))]) == Fleet.Line("Rate limited", tone: .danger))
         #expect(Fleet.line(status: .error, items: []) == Fleet.Line("Failed", tone: .danger))
         let tool = item(toolItem(2, name: "Grep", input: ["pattern": .string("foo")]))

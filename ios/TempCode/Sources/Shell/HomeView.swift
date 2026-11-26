@@ -35,6 +35,8 @@ struct HomeView: View {
         // Read so the hold's end draws again: a reconnecting host gets its row once `HomeSections.holdMs` has passed.
         let _ = holdTick
         let home = HomeSections.home(hosts: HomeRows.inputs(clients, notes: slots.hostNotes))
+        // Same-named workspaces tell themselves apart by their computer or folder.
+        let hints = HomeSections.nameHints(home.entries.compactMap { if case .workspace(let w) = $0.kind { w } else { nil } }) { model.registry.client($0)?.environment.name }
         Group {
             if !model.ready {
                 Color.clear
@@ -46,7 +48,7 @@ struct HomeView: View {
                     AwayEndNote()
                     Section {
                         ForEach(home.entries) { entry in
-                            WorkspaceEntryRow(entry: entry)
+                            WorkspaceEntryRow(entry: entry, hint: hints[entry.id])
                                 .launchRow(entry) // the launch's first and first cached row on screen (Perf/LaunchFrames.swift)
                         }
                         // A host whose only workspaces are Work's lists nothing here and is not empty.
@@ -185,6 +187,8 @@ struct WorkspaceEntryRow: View {
     @Environment(NewThreadPresenter.self) private var presenter
     @Environment(ShellNavigator.self) private var navigator
     let entry: HomeSections.Entry
+    /// What tells this row from a same-named one (`HomeSections.nameHints`): a computer's name or a folder.
+    var hint: String? = nil
     @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = 28
 
     var body: some View {
@@ -196,6 +200,12 @@ struct WorkspaceEntryRow: View {
                     Text(name)
                         .textStep(.title, weight: .medium)
                         .lineLimit(1)
+                    if let hint {
+                        Text(hint)
+                            .textStep(.meta)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                    }
                     if case .busy(let running)? = entry.status {
                         WorkingLine(running: running)
                     }

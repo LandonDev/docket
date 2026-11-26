@@ -17,7 +17,8 @@ enum HomeRows {
             HomeHostInput(
                 environmentId: client.environment.id,
                 name: client.environment.name,
-                troubled: HomeSections.troubled(client.status, awayMs: now.timeIntervalSince(client.transportSince) * 1000),
+                troubled: HomeSections.troubled(client.status, awayMs: now.timeIntervalSince(client.transportSince) * 1000,
+                                                relay: client.environment.isRelayed ? client.relayState : nil),
                 hasShell: client.hasShell,
                 floor: Int(client.environment.addedAt),
                 workspaces: client.workspaces,

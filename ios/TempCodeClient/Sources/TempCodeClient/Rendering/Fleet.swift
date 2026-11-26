@@ -311,7 +311,7 @@ public enum Fleet {
 
     /// A row's status line. `text` leads in its tone; with a `detail` it is
     /// the state's word, drawn medium, and the detail follows as its own
-    /// text in regular weight and secondary colour ("Waiting for approval"
+    /// text in regular weight and secondary colour ("Needs you"
     /// "rm -rf build"). Never one string joined with a dash or a dot.
     public struct Line: Sendable, Hashable {
         public var text: String
@@ -326,6 +326,13 @@ public enum Fleet {
 
         /// The line as one string, for an accessibility label: "Word: Detail".
         public var plain: String { detail == nil ? text : StatusDetail.plain(word: text, detail: detail) }
+
+        /// As a fleet row draws it beside the needs-you mark, under the Needs you group: the detail alone when one
+        /// is known ("rm -rf build", the question), else the word.
+        public var beside: Line {
+            guard text == StatusWord.needsYou, let detail else { return self }
+            return Line(detail, tone: tone)
+        }
     }
 
     /// The row's one-line status and its colour; compaction shows while live.
@@ -344,20 +351,22 @@ public enum Fleet {
         case .paused?: return Line("Paused", tone: .muted)
         default: break
         }
+        // The desktop's word for a waiting row; the question or the approval is its detail only when the transcript
+        // says which (an unloaded one is not assumed to be an approval), else what the host said, if anything.
         if status == .waiting {
             for entry in items.reversed() {
                 switch entry.item {
                 case .question(let question) where !question.resolved:
                     let q = question.request.questions.first?.question ?? ""
-                    return Line("Has a question", tone: .warning, detail: q.isEmpty ? nil : firstLine(q))
+                    return Line(StatusWord.needsYou, tone: .warning, detail: q.isEmpty ? nil : firstLine(q))
                 case .approval(let approval) where approval.allowed == nil:
                     let title = approval.request.title ?? approval.request.toolName
-                    return Line("Waiting for approval", tone: .warning, detail: title)
+                    return Line(StatusWord.needsYou, tone: .warning, detail: title)
                 default:
                     continue
                 }
             }
-            return Line("Waiting for approval", tone: .warning)
+            return Line(StatusWord.needsYou, tone: .warning, detail: said)
         }
         if status == .error {
             let last = lastErrorLine(items)

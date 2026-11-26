@@ -215,7 +215,7 @@ private var utc: Calendar {
         // The person's first: waiting, failed, working.
         #expect(agents?.lines.map(\.id) == ["a11", "a111", "a1"])
         #expect(agents?.lines.map(\.what) == [
-            MasterBoard.WhatLine(text: "Waiting for approval", tone: .warning, detail: "Bash"),
+            MasterBoard.WhatLine(text: "Needs you", tone: .warning, detail: "Bash"),
             MasterBoard.WhatLine(text: "Failed", tone: .danger),
             MasterBoard.WhatLine(text: "Editing Rail.tsx", tone: .muted)
         ])

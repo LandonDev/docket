@@ -16,6 +16,7 @@ struct InboxItemView: View {
     private let store = InboxStore.shared
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(AppModel.self) private var model
     @State private var failed = false
     @State private var diffFailed = false
     /// Bumped by Retry; the load task keys on it.
@@ -90,6 +91,13 @@ struct InboxItemView: View {
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    // The computer it came from, with two or more: the list's rows leave it to this screen.
+                    if model.registry.ordered.count > 1 {
+                        Text(client.environment.name)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 8)
                 AgoText(InboxModel.ms(item.updatedAt))

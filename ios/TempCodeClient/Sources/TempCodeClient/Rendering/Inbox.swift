@@ -64,12 +64,16 @@ public enum InboxModel {
 
     /// Every item of every host, newest first; ties by repo, then kind
     /// ("issue" before "pr"), then number descending (the desktop's sortInboxItems).
+    /// One GitHub item that two computers both read is one row, the first
+    /// computer's in registry order: the row no longer names its computer, so
+    /// two would read the same.
     public static func entries(_ hosts: [Host]) -> [InboxEntry] {
         var out: [InboxEntry] = []
+        var held: Set<String> = []
         for host in hosts {
             guard let snapshot = host.snapshot else { continue }
             for repo in snapshot.repos {
-                for item in repo.items {
+                for item in repo.items where held.insert("\(item.repo.lowercased())#\(item.kind.rawValue)#\(item.number)").inserted {
                     out.append(InboxEntry(environmentId: host.environmentId, hostName: host.name, item: item, updatedMs: ms(item.updatedAt)))
                 }
             }

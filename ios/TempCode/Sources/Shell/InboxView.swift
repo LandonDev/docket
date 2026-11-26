@@ -6,8 +6,8 @@ import TempCodeContract
 /// the last snapshot on disk and asks each host for its stored snapshot when
 /// it opens, with no animation; a pull runs `github.inboxRefresh` (the inbox
 /// is a poll, so this is the one place a pull is right) and only then does
-/// the list reorder with the default animation. Rows name the host when
-/// there are several; a row is unread by weight alone, and the swipes mark
+/// the list reorder with the default animation. Rows never name the host
+/// (the item's screen does, with several); a row is unread by weight alone, and the swipes mark
 /// it read or open it on GitHub. The rules are `InboxModel`; this is the list.
 struct InboxView: View {
     @Environment(AppModel.self) private var model
@@ -38,7 +38,7 @@ struct InboxView: View {
             ForEach(entries) { entry in
                 let unread = store.isUnread(entry)
                 Button { open(entry) } label: {
-                    InboxRow(entry: entry, unread: unread, status: InboxModel.status(of: entry.item, viewer: store.snapshot(for: entry.environmentId)?.viewer), showHost: clients.count > 1)
+                    InboxRow(entry: entry, unread: unread, status: InboxModel.status(of: entry.item, viewer: store.snapshot(for: entry.environmentId)?.viewer))
                 }
                 .tag(InboxModel.key(environmentId: entry.environmentId, item: entry.item))
                 .buttonStyle(.pressable)
@@ -215,7 +215,6 @@ struct InboxRow: View {
     let entry: InboxEntry
     let unread: Bool
     let status: InboxStatus?
-    let showHost: Bool
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .subheadline) private var avatarSize: CGFloat = 36
     private let gap: CGFloat = 12
@@ -234,7 +233,7 @@ struct InboxRow: View {
                     Spacer(minLength: 0)
                     AgoText(entry.updatedMs)
                 }
-                InboxRowMeta(entry: entry, weight: weight, status: status, showHost: showHost)
+                InboxRowMeta(entry: entry, weight: weight, status: status)
             }
         }
         .padding(.vertical, 10)
@@ -253,19 +252,19 @@ struct InboxRow: View {
 
 /// The dim line under the title: the kind glyph (its stroke the title's
 /// weight), the author, the repository and number, the status word in its
-/// color, the host. One line that truncates the repository first; at
-/// accessibility sizes two lines, who over what, so the status never pushes
-/// the row past the screen.
+/// color. No host: with it the line cut both the repository and the host,
+/// and the item's screen names it. One line that truncates the repository
+/// first; at accessibility sizes two lines, who over what, so the status
+/// never pushes the row past the screen.
 private struct InboxRowMeta: View {
     let entry: InboxEntry
     let weight: Font.Weight
     let status: InboxStatus?
-    let showHost: Bool
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         Group {
-            if typeSize.isAccessibilitySize, status != nil || showHost {
+            if typeSize.isAccessibilitySize, status != nil {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) { who }
                     HStack(spacing: 8) { what }
@@ -302,14 +301,6 @@ private struct InboxRowMeta: View {
                 .foregroundStyle(status.tone.color)
                 .lineLimit(1)
                 .layoutPriority(1)
-        }
-        if showHost {
-            HStack(spacing: 3) {
-                MetaGlyph("desktopcomputer", label: "Host")
-                Text(entry.hostName)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
         }
     }
 }

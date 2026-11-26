@@ -430,7 +430,7 @@ struct AgentRow: View {
                         }
                     }
                     AgentMetaLine(agent: meta, branch: Fleet.branch(cwd: meta.cwd, parentCwd: parentCwd), environmentId: agent.environmentId)
-                    ActivityLine(line: line, live: live, override: agent.remote ? hostLine : nil)
+                    ActivityLine(line: line.beside, live: live, override: agent.remote ? hostLine : nil)
                     if !stats.isEmpty {
                         AgentStatsLine(stats: stats)
                     }
