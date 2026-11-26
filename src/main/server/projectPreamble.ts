@@ -94,7 +94,8 @@ function projectPreamble(input: DecideInput): string | null {
 
 /** The house rules as first seeded: every thread ran typecheck, the tests
  *  and the build itself, twice with the rebase. Kept so the migration below
- *  recognises a saved default nobody edited. */
+ *  recognises a saved default nobody edited: it stays as it was seeded,
+ *  the bundle's old name included. */
 export const HOUSE_PREAMBLE_V1 = `- Work in your own git worktree: \`git worktree add .claude/worktrees/{{worktree}} -b {{worktree}} master\`, symlink the main checkout's node_modules into it, bun is at /srv/agents/home/.bun/bin. Run vitest with NODE_ENV=test; gateway.test.ts fails on Linux and is not yours. \`bun run typecheck\`, the tests and \`bun run build\` must be green before you merge.
 - When green: \`git fetch origin\`, rebase onto origin/master (many sibling threads merge in parallel; resolve conflicts, re-run the gate), fast-forward master, push origin master. Commit messages are plain prose, no AI attribution trailers.
 - Never touch /Applications/TempCode.app, never run box-update or the Mac release, never edit the user's Mac checkout, never send into the user's threads.
@@ -109,7 +110,7 @@ export const HOUSE_PREAMBLE_V1 = `- Work in your own git worktree: \`git worktre
  *  gate runs once on the merged tree. */
 export const HOUSE_PREAMBLE = `- Work in your own git worktree: \`git worktree add .claude/worktrees/{{worktree}} -b {{worktree}} master\`, symlink the main checkout's node_modules into it, bun is at /srv/agents/home/.bun/bin. Run vitest with NODE_ENV=test; gateway.test.ts fails on Linux and is not yours. Run typecheck and the tests you wrote or touched; do not run the full test suite or the build. Land with the merge_branch tool: it typechecks your branch in a queue, holds the merge on a failure, and the batch's gate runs once on the merged tree.
 - When green: \`git fetch origin\`, rebase onto origin/master (many sibling threads merge in parallel; resolve conflicts), then call merge_branch: it fast-forwards master and pushes. Commit messages are plain prose, no AI attribution trailers.
-- Never touch /Applications/TempCode.app, never run box-update or the Mac release, never edit the user's Mac checkout, never send into the user's threads.
+- Never touch /Applications/Docket.app (or /Applications/TempCode.app on an old install), never run box-update or the Mac release, never edit the user's Mac checkout, never send into the user's threads.
 - Update docs and CLAUDE.md so they say what is now true. Every new behaviour gets a unit test.
 - For every renderer change: invoke /impeccable (run its context script once, read craft-floor before editing; Operate surface, precision and restraint), /emil-design-eng and /better-ui, and follow them. docs/DESIGN.md wins conflicts.`
 

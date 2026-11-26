@@ -162,6 +162,12 @@ describe('the house rules', () => {
     expect(HOUSE_PREAMBLE).not.toContain('must be green before you merge')
     expect(HOUSE_PREAMBLE_V1).toContain('must be green before you merge')
   })
+
+  it('keep a thread off the installed app by both its names', () => {
+    expect(HOUSE_PREAMBLE).toContain('- Never touch /Applications/Docket.app (or /Applications/TempCode.app on an old install), never run box-update')
+    // the old text as seeded, so the migration still knows a saved copy nobody edited
+    expect(HOUSE_PREAMBLE_V1).toContain('- Never touch /Applications/TempCode.app, never run box-update')
+  })
 })
 
 describe('migrateHousePreamble', () => {

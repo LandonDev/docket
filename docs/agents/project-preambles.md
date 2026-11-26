@@ -13,7 +13,11 @@
   `workspace.setPreamble` (admin). The temp-code workspace's default is
   seeded once from the old house-rules block (`HOUSE_PREAMBLE`,
   `seedHousePreamble` at boot; marker setting `preamble-seeded:house`), so
-  a cleared default stays cleared.
+  a cleared default stays cleared. Its keep-off line names the installed app
+  by both names, `/Applications/Docket.app` and `/Applications/TempCode.app`
+  for an old install. A default saved before that change keeps the old line
+  (TempCode.app alone) until someone edits it in "Preamble…"; nothing
+  rewrites a saved default but the one migration from `HOUSE_PREAMBLE_V1`.
 - Application: `decidePreamble` (src/main/server/projectPreamble.ts) runs
   in `SessionRegistry.send` on the FIRST message of a thread in a project,
   which every start path ends in: the composer, plan → build,
