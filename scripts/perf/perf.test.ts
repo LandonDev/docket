@@ -8,7 +8,7 @@ import { guardedArgs, wrapped } from './guarded'
 import { LOAD_DELTAS_A_SECOND, loadStream } from './lib/load'
 import { askedTwice, askKey, countFrame, middle, type Counts, type Sample } from './lib/probe'
 import { ROWS, rowsMatching } from './rows'
-import { WIRE_TAP } from './rows/code'
+import { LOST_MEASURED_MS, pressAgain, WIRE_TAP } from './rows/code'
 import { cleanupLists } from '../journeys/lib/shape'
 import { chosen, coreCount, flags, lastCores, parseLink, type RunResults } from './run'
 import { asks, latest, perfTable, withSection } from './table'
@@ -277,6 +277,15 @@ describe("the code rows' tap on the page's sockets", () => {
     expect(wire.sentAt).toBeGreaterThan(0)
     expect(heard).toHaveLength(1)
     expect(wire.dropped).toBe(0)
+  })
+})
+
+describe('a row with a measured cap', () => {
+  it('presses again only while every press drew and the presses so far took under the cap', () => {
+    expect(pressAgain([{ usable: 31_259 }], LOST_MEASURED_MS)).toBe(false)
+    expect(pressAgain([{ usable: 4000 }, { usable: 5000 }], LOST_MEASURED_MS)).toBe(true)
+    expect(pressAgain([{ usable: 4000 }, { usable: null }], LOST_MEASURED_MS)).toBe(false)
+    expect(pressAgain([{ usable: 20_000 }, { usable: 10_000 }], LOST_MEASURED_MS)).toBe(false)
   })
 })
 

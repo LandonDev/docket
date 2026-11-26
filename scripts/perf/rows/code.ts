@@ -303,6 +303,9 @@ async function coldLong(ctx: PerfCtx): Promise<void> {
  */
 /** thread-open-lost presses again only while its presses so far took less than this, ms. */
 export const LOST_MEASURED_MS = 30_000
+/** Whether a row with a measured cap presses again: the last press drew, and the presses so far took under the cap. */
+export const pressAgain = (samples: Pick<Sample, 'usable'>[], capMs: number): boolean =>
+  samples.every((s) => s.usable !== null) && samples.reduce((ms, s) => ms + (s.usable ?? 0), 0) < capMs
 const threadOpenLost: Row = {
   id: 'thread-open-lost',
   family: 'code',
@@ -320,7 +323,7 @@ const threadOpenLost: Row = {
         const dropped = await ctx.page.eval<boolean>('window.__perfWire.dropped > 0')
         samples.push(dropped ? sample : { ...sample, error: [sample.error, 'no answer was dropped: the open asked no session.events for the thread'].filter(Boolean).join('; ') })
         // A run measures 60 s at most: today one press takes about 31 s, so a second waits for the fix (D06's 10 s).
-        if (sample.usable === null || samples.reduce((ms, s) => ms + (s.usable ?? 0), 0) >= LOST_MEASURED_MS) break
+        if (!pressAgain(samples, LOST_MEASURED_MS)) break
       }
       return withDiagnosis(ctx, long.id, samples)
     } finally {
