@@ -5,6 +5,7 @@
  * The CDP times come from lib/frames.ts (`WireLog`), set on the epoch clock beside the page's own.
  */
 import { randomBytes } from 'node:crypto'
+import { PART_CHARS } from '../../../src/shared/answerParts'
 import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SEED_SHORT, SEED_THREADS } from '../lib/seedNames'
@@ -360,8 +361,9 @@ const streamUnderBulk: Row = {
         wait: 60_000
       })
       const bulk = await ctx.page.eval<{ bytes: number; error: string | null }>('({ bytes: window.__perfBulk?.bytes ?? 0, error: window.__perfBulk?.error ?? null })')
-      // The read done: its last big answer as CDP saw it arrive, on the same clock as the stream's frames.
-      const big = log.since(during).filter((e) => onBox(e) && e.kind === 'received' && (e.bytes ?? 0) > BULK_BYTES / 2)
+      // The read done: its last big answer as CDP saw it arrive, on the same clock as the stream's frames. A host that
+      // sends big answers in parts (src/shared/answerParts.ts) sends no frame past a part: its last part is the end.
+      const big = log.since(during).filter((e) => onBox(e) && e.kind === 'received' && (e.bytes ?? 0) >= PART_CHARS)
       const doneAt = big.at(-1)?.at ?? (await pageEpoch(ctx, 'window.__perf.usable')) ?? Infinity
       const calmFrames = frames(log.since(before).slice(0, during - before))
       const calm = spread(gaps(calmFrames))
