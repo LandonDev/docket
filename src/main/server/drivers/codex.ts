@@ -1377,21 +1377,19 @@ export const codexDriver: HarnessDriver = {
     // The first turn's gates start now, with the thread up on its account: the model list, and the app-server's own
     // word that every first MCP server is known and settled (`mcpServerStatus/list` on the thread answers once each
     // has; an older app-server without it leaves the statuses and their grace). Both stay within their bounds.
-    if (firstTurnGate) {
-      modelGate = waitForModel()
-      conn
-        .request('mcpServerStatus/list', { threadId, detail: 'toolsAndAuthOnly' }, { timeoutMs: Math.max(1, mcpBailAt - performance.now()) })
-        .then(
-          (res) => {
-            const { settled, names } = mcpSettledOf(res)
-            const stranger = work ? names.find((n) => n !== 'app') : undefined
-            if (stranger) breakFence(stranger)
-            else if (settled) mcpSettled?.()
-            if (stranger || settled) mcpSettled = null
-          },
-          () => {}
-        )
-    }
+    modelGate = waitForModel()
+    conn
+      .request('mcpServerStatus/list', { threadId, detail: 'toolsAndAuthOnly' }, { timeoutMs: Math.max(1, mcpBailAt - performance.now()) })
+      .then(
+        (res) => {
+          const { settled, names } = mcpSettledOf(res)
+          const stranger = work ? names.find((n) => n !== 'app') : undefined
+          if (stranger) breakFence(stranger)
+          else if (settled) mcpSettled?.()
+          if (stranger || settled) mcpSettled = null
+        },
+        () => {}
+      )
     // A move of the scope reaches the live app-server at once (a symlinked root would not refresh).
     const untrackSkills = skillScope
       ? trackCodexSkills({
