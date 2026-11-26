@@ -12,6 +12,7 @@ import { useSaved } from "../parts/useSaved";
 import { Advanced } from "./Advanced";
 import { mayHereWords, useMacBridgePolling } from "./MaySheet";
 import { SignIns } from "./SignIns";
+import { ComputerGate } from "./read";
 
 /**
  * Settings › Sharing, "Who and what may reach this Mac." (docs/agents/settings.md "The pages: computers"): who can sign
@@ -23,14 +24,15 @@ import { SignIns } from "./SignIns";
 export function SharingPage({ advancedOpen = false }: { advancedOpen?: boolean } = {}) {
   const host = useHost(LOCAL_ENVIRONMENT_ID);
   useMacBridgePolling();
+  // One computer's page: if this Mac does not answer, that is said once, with no section under it.
   return (
-    <>
+    <ComputerGate host={host} probe="remote.status">
       <SignIns host={host} rows="sharing" />
       <OtherComputers />
       <Advanced host={host} rows="sharing" open={advancedOpen}>
         <LoadRow />
       </Advanced>
-    </>
+    </ComputerGate>
   );
 }
 
@@ -76,7 +78,7 @@ export function LoadRow() {
       description={
         <>
           <span className="block tabular-nums">
-            Load {load.load.toFixed(1)} on {load.cores} cores
+            {`Load ${load.load.toFixed(1)} on ${load.cores} cores${load.pinned ? "" : ", the default limit"}`}
           </span>
           {load.busy ? <span className="block text-warning">Holding new commands until under {trimNumber(load.resumeBelow)}</span> : null}
         </>
@@ -85,7 +87,8 @@ export function LoadRow() {
       <CommitField
         kind="decimal"
         aria-label="Pause other computers' commands above load"
-        value={load.pinned ? load.limit : null}
+        // The limit in force, in ink; clearing the field goes back to the default.
+        value={load.limit}
         allowEmpty
         min={0.1}
         max={10_000}

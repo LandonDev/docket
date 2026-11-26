@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Skill, SkillMeta } from "@shared/contract-skills";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
-import { PageActions, PageEmpty, PageError, PageRowsSkeleton } from "../../../components/page";
+import { PageActions, PageEmpty, PageRowsSkeleton } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { registry, type Link } from "../../../lib/connection";
 import { homeNote, refusalWords } from "../../../lib/settingsHome";
@@ -14,6 +14,7 @@ import { usePublishHome } from "../../../lib/settings/pageHome";
 import { useHost } from "../parts/hostRpc";
 import { ListFilter, useListFilter } from "../parts/ListFilter";
 import { ManagedLine } from "../parts/ManagedLine";
+import { ReadFailure } from "../parts/ReadFailure";
 import { SettingSection } from "../parts/SettingRow";
 
 const NONE: readonly SkillMeta[] = [];
@@ -92,15 +93,7 @@ export function SkillsBody({ link }: { link: Link }) {
         {data ? <ListFilter filter={filter} label="Find a skill" /> : null}
         {!data ? (
           error ? (
-            <PageError
-              action={
-                <Button variant="ghost" size="sm" onClick={retry}>
-                  Retry
-                </Button>
-              }
-            >
-              {error}
-            </PageError>
+            <ReadFailure computer={link.environmentId} error={error} retry={retry} />
           ) : (
             <PageRowsSkeleton rows={3} description={2} control="switch" />
           )
@@ -113,7 +106,8 @@ export function SkillsBody({ link }: { link: Link }) {
               skill={skill}
               workspaceName={scopeName(skill.workspaceId, names)}
               blocked={blocked}
-              readOnly={readOnly}
+              // While the box is out of reach a row is words too, as on Add-ons.
+              readOnly={readOnly || blocked}
               error={rowErrors[skill.id]}
               onToggle={(on) => toggle(skill, on)}
               onPick={(id) => pick(skill, id)}

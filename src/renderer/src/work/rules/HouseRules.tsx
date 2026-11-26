@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import type { HouseRule, RuleProposal, RulesPage } from "@shared/contract-work-rules";
 import { ChevronRight, GripVertical, Search } from "../../chrome/icons";
-import { PageEmpty, PageError, PageRow, PageRowsSkeleton } from "../../components/page";
+import { PageEmpty, PageRow, PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "../../components/ui/collapsible";
@@ -16,11 +16,12 @@ import { setWorkspaceSettings } from "../shell/actions";
 import { lifeosHostName } from "../shell/lifeos";
 import { downWords } from "../shell/lifeosDown";
 import { useLiveDown } from "../shell/lifeosLive";
-import { addRule, decideProposal, editRule, orderRules, removeRule, useRulesPage, useVoice, type Again } from "./data";
+import { addRule, decideProposal, editRule, orderRules, removeRule, useRulesPage, useVoice } from "./data";
 import { Evidence, fromEdits } from "./Evidence";
 import { SaveMark } from "../../surfaces/settings/parts/SaveMark";
 import { SettingRow, SettingSection } from "../../surfaces/settings/parts/SettingRow";
 import { useSaved } from "../../surfaces/settings/parts/useSaved";
+import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
 import { inWords } from "../../lib/settings/workWords";
 import { RuleDialog, type RuleDialogOf, type RuleMoves } from "./RuleDialog";
 
@@ -47,15 +48,6 @@ function Marked({ text, find }: { text: string; find: string }): ReactNode {
       <mark className="rounded-[2px] bg-(--sel-bg) text-inherit">{text.slice(at, at + find.length)}</mark>
       {text.slice(at + find.length)}
     </>
-  );
-}
-
-/** A failed read's Retry: it asks again, spinning, with the error still said beside it. */
-function RetryRead({ again }: { again: Again }) {
-  return (
-    <Button variant="ghost" size="sm" disabled={again.retrying} onClick={again.retry}>
-      <BusyLabel busy={again.retrying} label="Retry" />
-    </Button>
   );
 }
 
@@ -89,7 +81,7 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
         }
       >
         {load.status === "loading" ? <PageRowsSkeleton rows={3} control="switch" /> : null}
-        {load.status === "error" ? <PageError action={<RetryRead again={again} />}>{load.error}</PageError> : null}
+        {load.status === "error" ? <ReadFailure computer={env} error={load.error} retry={again.retry} /> : null}
         {page ? <RuleList env={env} workspaceId={workspace.id} page={page} put={put} onOpen={(rule) => setDialog({ kind: "rule", rule })} /> : null}
       </SettingSection>
       {page?.proposals.length ? (
@@ -265,7 +257,7 @@ export function VoiceRow({ workspace }: { workspace: WorkspaceMeta }) {
         ? "No mail sent in the last 30 days"
         : `${v.count} ${v.count === 1 ? "mail" : "mails"}${v.from[0] ? ` from ${v.from[0]}` : ""} since ${DAY.format(v.since ?? Date.now())}`;
   if (facts.status === "loading") return <PageRowsSkeleton rows={1} description control="switch" />;
-  if (facts.status === "error") return <PageError action={<RetryRead again={again} />}>{facts.error}</PageError>;
+  if (facts.status === "error") return <ReadFailure computer={workspace.environmentId} error={facts.error} retry={again.retry} />;
   return (
     <SettingRow
       id="job.voice"

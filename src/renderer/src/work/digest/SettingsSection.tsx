@@ -3,10 +3,13 @@ import { DEFAULT_LEVEL, LEVEL_NAMES } from "@shared/work/digest";
 import type { DigestField } from "@shared/contract-work-digest";
 import { TELL_LEVELS, type TellGroup, type TellLevel } from "@shared/work/tell";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageActions, PageError, PageRowsSkeleton, PageSection } from "../../components/page";
-import { BusyLabel, Button } from "../../components/ui/button";
+import { PageActions, PageRowsSkeleton, PageSection } from "../../components/page";
+import { Button } from "../../components/ui/button";
 import { ChoiceCombobox } from "../../components/choice-combobox";
 import { cn } from "../../lib/cn";
+
+/** A line's first word in capitals: "this Mac did not take it" opens as "This Mac…". */
+const opening = (line: string): string => line.charAt(0).toUpperCase() + line.slice(1);
 
 /** "the box", "the box and MacBook Pro", "the box, PURDUE-LT and MacBook Pro". */
 const listOf = (names: readonly string[]): string => (names.length < 3 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
@@ -16,11 +19,12 @@ import { useWorkHosts } from "../../lib/workSwitch";
 import { settingTitle } from "../../lib/settings/map";
 import { SaveMark } from "../../surfaces/settings/parts/SaveMark";
 import { ManagedLine } from "../../surfaces/settings/parts/ManagedLine";
+import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
 import { computerInLine, useComputerNames } from "../../lib/settings/computerName";
 import { thisDesktopInLine } from "../../lib/native";
 import { SettingRow, SettingSection } from "../../surfaces/settings/parts/SettingRow";
 import { useSaved } from "../../surfaces/settings/parts/useSaved";
-import { refusedLine, unansweredLine } from "./notice";
+import { refusedLine } from "./notice";
 import { hostsHold, loadDigest, openDigestSheet, setDigest, useDigest } from "./store";
 
 /**
@@ -79,7 +83,6 @@ export function SettingsSection() {
   // Who can change them, for a key that may set none: the computers with Work on, by name.
   const names = useComputerNames();
   const workNames = listOf(environments.filter((e) => workOn.has(e.id)).map((e) => computerInLine(names(e.id))));
-  const nameOf = (environmentId: string): string => environments.find((e) => e.id === environmentId)?.name ?? "A computer";
   // A row's red line: who refused its last write, and the value he asked for. It outlives edits to other rows, and
   // goes once each host that refused is known to hold that value, whoever wrote it there (his next write, or the
   // window bringing a host to it).
@@ -88,7 +91,6 @@ export function SettingsSection() {
     const r = refused[row];
     return r && !hostsHold(r.hosts, row, r.want) ? r.line : undefined;
   };
-  const [retrying, setRetrying] = useState(false);
   const settings = view.settings;
   useEffect(() => void loadDigest(), []);
 
@@ -100,11 +102,19 @@ export function SettingsSection() {
     setRefused((prev) => {
       const next = { ...prev };
       if (failed.length === 0) delete next[row];
-      else next[row] = { line: refusedLine(failed.map((f) => nameOf(f.environmentId))), want, hosts: failed.map((f) => f.environmentId) };
+      else next[row] = { line: opening(refusedLine(failed.map((f) => computerInLine(names(f.environmentId))))), want, hosts: failed.map((f) => f.environmentId) };
       return next;
     });
     return failed.length === 0;
   };
+  // The computers that did not answer, one line each, together at the page's head.
+  const failures = view.errors.length ? (
+    <PageSection>
+      {view.errors.map((e) => (
+        <ReadFailure key={e.environmentId} computer={e.environmentId} error={e.error} retry={loadDigest} />
+      ))}
+    </PageSection>
+  ) : null;
   const open = (
     <PageActions>
       <Button variant="ghost" size="sm" onClick={() => openDigestSheet(true)}>
@@ -117,27 +127,9 @@ export function SettingsSection() {
       <>
         {open}
         {view.loaded ? (
-          <PageSection>
-            <PageError
-              action={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={retrying}
-                  onClick={() => {
-                    setRetrying(true);
-                    void loadDigest().finally(() => setRetrying(false));
-                  }}
-                >
-                  <BusyLabel busy={retrying} label="Retry" />
-                </Button>
-              }
-            >
-              {/* In his words, as the list says it: never the link's own error text. */}
-              {unansweredLine(view.errors.map((e) => nameOf(e.environmentId))) || "The digest's settings did not load"}
-            </PageError>
-          </PageSection>
-        ) : (
+          // Each computer that did not answer, named once on the page, its Retry asking every read again.
+          failures
+                ) : (
           // Each control at the width its row lands with, so nothing moves.
           <>
             <SettingSection of="digest.at">
@@ -154,7 +146,10 @@ export function SettingsSection() {
   return (
     <>
       {open}
-      <SettingSection of="digest.at" description={workNames ? `Kept the same on ${workNames}` : undefined}>
+      {/* Part of the computers answered: what came stands, the others are named with Retry, and the set is not
+          said to be the same everywhere until every one has answered. */}
+      {failures}
+      <SettingSection of="digest.at" description={workNames && !failures ? `Kept the same on ${workNames}` : undefined}>
         {writable ? null : <ManagedLine computer={workNames} />}
         <SettingRow id="digest.at" description={zoneWords(settings.zone)} error={refusal("at")}>
           {writable ? (

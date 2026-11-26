@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ReadFailure } from "./parts/ReadFailure";
+import { NO_ANSWER } from "../../lib/connection/openRead";
 import { EDITOR_IDS, EDITOR_LABELS, type EditorChoice, type EditorConfig } from "@shared/editor";
 import type { LspStatusRow } from "@shared/domain";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageError, PageRowsSkeleton } from "../../components/page";
+import { PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { CONSOLE } from "../../components/ui/console";
@@ -15,7 +17,6 @@ import { registry } from "../../lib/connection";
 import { useHostRead } from "../../lib/connection/hostRead";
 import { chooseEditorSetting, loadEditorConfig, useEditorConfig } from "../../lib/editorConfig";
 import { isWebMode } from "../../lib/nativeWeb";
-import { thisDesktopInLine } from "../../lib/native";
 import { keyCaps } from "../../lib/keys";
 import { retryBlockedEnsures } from "../../lib/monaco/lspGate";
 import { computerInLine, useComputerName } from "../../lib/settings/computerName";
@@ -106,15 +107,7 @@ function OpenFilesIn() {
         {config === undefined ? (
           <PageRowsSkeleton rows={[{ description: true, control: "select" }]} />
         ) : (
-          <PageError
-            action={
-              <Button variant="ghost" size="sm" onClick={ask}>
-                Retry
-              </Button>
-            }
-          >
-            Could not read the editors on {thisDesktopInLine()}
-          </PageError>
+          <ReadFailure computer={registry.primary().environmentId} error={NO_ANSWER} retry={ask} />
         )}
       </SettingSection>
     );
@@ -299,15 +292,7 @@ function JavaSection() {
       vars={{ mac }}
     >
       {failed ? (
-        <PageError
-          action={
-            <Button variant="ghost" size="sm" onClick={() => void doctor.retry()}>
-              Retry
-            </Button>
-          }
-        >
-          {doctor.error}
-        </PageError>
+        <ReadFailure computer={registry.primary().environmentId} error={doctor.error ?? ""} retry={doctor.retry} />
       ) : (
         <>
           <SettingRow

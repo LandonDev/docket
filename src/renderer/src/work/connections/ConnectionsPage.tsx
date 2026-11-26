@@ -23,6 +23,8 @@ import { FirstCheckBones } from "./FirstCheckBones";
 import { checkFailure, commandOf, fixVariant, markOf, sectionsOf, signOutAsk, signsOut, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
 import { confirmAction } from "../../chrome/ConfirmDialog";
 import { computerInLine, useComputerNames } from "../../lib/settings/computerName";
+import { ComputerName } from "../../surfaces/settings/parts/ComputerName";
+import { OpenCue } from "../../surfaces/settings/parts/SettingRow";
 import { COPIED_MS, copyText } from "../../lib/clipboard";
 
 /**
@@ -53,7 +55,7 @@ export function ConnectionsPage() {
   const on = useWorkHosts();
   // Each computer by its one name, and this window's own as "this Mac" mid-sentence.
   const names = useComputerNames();
-  const hosts = environments.filter((e) => on.has(e.id)).map((e) => ({ ...e, name: names(e.id).name, inLine: computerInLine(names(e.id)) }));
+  const hosts = environments.filter((e) => on.has(e.id)).map((e) => ({ ...e, name: names(e.id).name, inLine: computerInLine(names(e.id)), own: names(e.id).own }));
   const [views, setViews] = useState<Record<string, HostView>>(() =>
     Object.fromEntries(hosts.flatMap((h) => {
       const report = lastReports.get(h.id);
@@ -103,7 +105,7 @@ export function ConnectionsPage() {
     }
   });
 
-  const shown: HostView[] = hosts.map((h) => ({ ...(linked(h.id) ? (views[h.id] ?? { id: h.id, name: h.name, status: "checking" }) : { id: h.id, name: h.name, status: "offline" }), inLine: h.inLine }) as HostView);
+  const shown: HostView[] = hosts.map((h) => ({ ...(linked(h.id) ? (views[h.id] ?? { id: h.id, name: h.name, status: "checking" }) : { id: h.id, name: h.name, status: "offline" }), inLine: h.inLine, own: h.own }) as HostView);
   const checking = shown.some((h) => h.status === "checking");
   useEffect(() => {
     if (!checking) setRound(false);
@@ -178,18 +180,26 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
     <>
       {away.length || machines.length ? (
         <PageSection title="Computers" data-setting="connections.list">
-          {away.map((one) =>
-            one.status === "offline" ? (
-              <PageRow key={one.id} title={one.name} description={<StatusMark state="stopped" word="Offline" detail="Checked when it is back" />} />
-            ) : (
-              <PageRow key={one.id} title={one.name} description={<StatusMark className={STATE_LINE} state="failed" word={"silent" in one && one.silent ? "Did not answer" : "Not checked"} detail={one.status === "failed" ? one.error : one.status === "checking" ? one.failed?.error : undefined} />}>
-                {/* The row's own press, at the LifeOS rows' weight; it spins while the check it began runs, and a new cause replaces the reason. */}
-                <Button data-host-retry variant={fixVariant("broken")} size="sm" disabled={one.status === "checking"} onClick={() => onRecheck(one.id, "hosts")}>
+          {away.map((one) => {
+            const title = <ComputerName computer={{ name: one.name, own: !!one.own }} />;
+            if (one.status === "offline") return <PageRow key={one.id} title={title} description={<StatusMark state="stopped" word="Offline" detail="Checked when it is back" />} />;
+            const why = one.status === "failed" ? one.error : one.status === "checking" ? one.failed?.error : undefined;
+            // Work off there is no failure and no Retry can mend it: the words, and the way to the switch.
+            if (why && workOff(why))
+              return (
+                <PageRow key={one.id} data-work-off={one.id} title={title} description={why} onOpen={() => requestSettings("work", "work.on")} openLabel="Work is on for">
+                  <OpenCue />
+                </PageRow>
+              );
+            return (
+              <PageRow key={one.id} title={title} description={<StatusMark className={STATE_LINE} state="failed" word={"silent" in one && one.silent ? "Did not answer" : "Not checked"} detail={why} />}>
+                {/* The row's own press, a ghost as every Retry is; it spins while the check it began runs, and a new cause replaces the reason. */}
+                <Button data-host-retry variant="ghost" size="sm" disabled={one.status === "checking"} onClick={() => onRecheck(one.id, "hosts")}>
                   <BusyLabel busy={one.status === "checking" && one.by === "hosts"} label="Retry" />
                 </Button>
               </PageRow>
-            ),
-          )}
+            );
+          })}
           {machines.map((placed) => (
             <ConnectionRow key={placed.key} placed={placed} now={now} checking={checking.has(placed.hostId)} spinning={checking.get(placed.hostId) === placed.key} onRetry={() => onRecheck(placed.hostId, placed.key)} onDone={() => onRecheck(placed.hostId)} />
           ))}
@@ -284,7 +294,7 @@ function FixRow({ placed, now, checking, spinning, onRetry, onDone }: { placed: 
       >
         {row.until ? <span className="text-xs tabular-nums text-muted-foreground">{lapseWords(row, now)}</span> : null}
         {retry ? (
-          <Button variant={fixVariant(row.state)} size="sm" disabled={checking} onClick={onRetry}>
+          <Button variant="ghost" size="sm" disabled={checking} onClick={onRetry}>
             <BusyLabel busy={spinning} label="Retry" />
           </Button>
         ) : null}
@@ -315,6 +325,9 @@ export function lapseWords(row: Pick<HealthRow, "until" | "group" | "id">, now: 
   const what = row.group === "Windows VM" ? "Licence" : /sign/i.test(row.id) ? "Sign-in" : null;
   return what ? `${what} ${line.charAt(0).toLowerCase()}${line.slice(1)}` : line;
 }
+
+/** A check refused because Work is off on that computer: words and the way to Setup, never a failure. */
+export const workOff = (why: string): boolean => /^Work is off\b/i.test(why.trim());
 
 /** The command a host put in a row's line, copied at a press: the word says Copied for a moment after. */
 function CopyFix({ command }: { command: string }) {

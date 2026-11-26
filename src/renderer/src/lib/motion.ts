@@ -8,7 +8,7 @@ import { useSyncExternalStore } from "react";
  * streaming reveal's fades) keep moving whatever the setting, so they never
  * read the rule at all.
  *
- * The person chooses in Settings → Appearance → Motion: Follow this computer
+ * The person chooses in Settings → Appearance → Motion: Follow this Mac
  * (the default: the system's reduce-motion setting, which Windows also turns
  * on when its animation effects are off), Full or Reduced. The choice is kept
  * per window origin, as the themes are. `initMotion` writes the resolved

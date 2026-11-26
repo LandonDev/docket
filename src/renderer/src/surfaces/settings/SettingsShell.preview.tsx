@@ -32,7 +32,7 @@ export const SHELL_WINDOWS: Record<"mac" | "web" | "alone", ListWindow> = {
     has: { publish: true, winvm: true },
     computers: [
       { id: "env_box", name: "The box", platform: "linux" },
-      { id: "env_pc", name: "PURDUE-LT", platform: "win32", offline: true },
+      { id: "env_pc", name: "PURDUE-LT", platform: "win32" },
     ],
     vmOn: "env_box",
     jobs: JOBS,

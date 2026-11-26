@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { settingsList, type ListWindow } from "./list";
-import { searchSettings } from "./search";
+import { searchSettings, type SearchWindow } from "./search";
 
 const MAC: ListWindow = {
   web: false,
@@ -100,14 +100,15 @@ describe("search", () => {
   it("answers an old name with the new home and says what it was", () => {
     const hosts = find("hosts");
     // Each old-name hit says what of Hosts went there, so two pages of one group read apart.
-    expect(hosts.slice(0, 4).map((result) => [result.title, result.was])).toEqual([
+    expect(hosts.slice(0, 5).map((result) => [result.title, result.was])).toEqual([
+      ["Updates", "Was “Hosts, Release, Code updates”"],
       ["Threads on this Mac", "Was “Hosts, Running threads, Stuck after, Attachment limit”"],
       ["Sharing", "Was “Hosts, Clients, Mac bridge, Remote access”"],
       ["Publish", "Was “Hosts, Release”"],
       ["Sync", "Was “Hosts, Sync”"],
     ]);
     // The pages Hosts became, and no more: not every row that once stood on it.
-    expect(hosts.map((result) => result.title)).toEqual(["Threads on this Mac", "Sharing", "Publish", "Sync", "The box", "PURDUE-LT"]);
+    expect(hosts.map((result) => result.title)).toEqual(["Updates", "Threads on this Mac", "Sharing", "Publish", "Sync", "The box", "PURDUE-LT"]);
     expect(find("hosts sync").map((result) => result.title)).toEqual(expect.arrayContaining(["Sync", "Agent settings", "Agents' memory"]));
     expect(find("harness config")[0]).toMatchObject({ title: "Agent settings", page: "sync", row: "sync.settings", was: "Was “Hosts, Sync, Harness config”" });
     expect(find("ghost text")[0]).toMatchObject({ title: "Inline suggestions", was: "Was “Editor, Completions, Ghost text”" });
@@ -164,5 +165,19 @@ describe("search", () => {
   it("finds an add-on or a skill by its name", () => {
     const hits = searchSettings("linear", settingsList(MAC), {}, [{ title: "linear", page: "addons", path: "Everywhere, Add-ons" }]);
     expect(hits.map((result) => result.title)).toContain("linear");
+  });
+});
+
+describe("rows a window cannot draw", () => {
+  it("lists the capture key only where Work is on for this computer, and another computer's own-Mac rows only on a desktop", () => {
+    const at = (window: SearchWindow, query: string) => searchSettings(query, settingsList(MAC), { mac: "this Mac" }, [], window).map((r) => r.row);
+    expect(at({ work: true, workHere: false }, "open capture")).not.toContain("keys.capture");
+    expect(at({ work: true, workHere: true }, "open capture")).toContain("keys.capture");
+    expect(at({ web: true }, "addresses")).not.toContain("pc.addresses");
+    expect(at({}, "addresses")).toContain("pc.addresses");
+  });
+  it("finds Updates and Sharing by what Hosts held", () => {
+    const pages = searchSettings("code updates", settingsList(MAC), { mac: "this Mac" }, []).map((r) => r.page);
+    expect(pages).toContain("updates");
   });
 });

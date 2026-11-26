@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { setWorkOn } from "../../lib/workSwitch";
 import { CATALOG } from "@server/shared/catalog";
 import { DEFAULT_PLAN_SETTINGS } from "@server/shared/plans";
 import { DEFAULT_REVIEW_SETTINGS } from "@server/shared/review";
+import { emptyAccounts } from "@server/shared/accounts";
 import { DEFAULT_RULES, withProbedDefaults } from "@server/shared/rules";
 import { Page, PageEmpty } from "../../components/page";
-import { registry, type Link } from "../../lib/connection";
+import { WEB_ENVIRONMENT_ID, registry, type Link } from "../../lib/connection";
 import { noteSeen } from "../../lib/connection/lastSeen";
 import { IDLE_STATUS, type EnvironmentStatus } from "../../lib/connection/types";
 import { NO_ANSWER } from "../../lib/connection/openRead";
+import { FailuresSaidOnce } from "./parts/ReadFailure";
 import { bindServer } from "../../lib/native";
 import { settingsSectionDescription } from "../../lib/settings";
 import { dropHarnessAvailability } from "../../lib/harness/availability";
@@ -149,6 +151,8 @@ const ANSWERS: Record<string, unknown> = {
   "power.status": { mode: "while-working", supported: true, holding: true, onBattery: false },
   "power.settings.set": { mode: "never", supported: true, holding: false, onBattery: false },
   "code.settings.get": { host: "env_box", hosts: [{ id: "env_box", name: "The box" }], cannot: null },
+  // A computer with no AI account to pick: the workspace page and the project sheet say Auto.
+  "accounts.list": emptyAccounts(),
   "appshots.get": { enabled: true, destination: "automatic", sound: true },
 };
 
@@ -643,6 +647,8 @@ const WORK_ANSWERS: Record<string, unknown> = {
   "work.outbox.list": { items: [], waiting: 0 },
   "work.outbox.grants": { grants: [GRANT("g1", "j1", "Mail to Sam Ortiz"), GRANT("g2", "j1", "Mail to the Esports staff list"), GRANT("g3", "j2", "Posts to #releases", "teams.post")] },
   "work.outbox.offers": { offers: [] },
+  // The grants are the box's: this Mac answers with none of its own.
+  "local:work.outbox.grants": { grants: [] },
   "work.outbox.rules": { addons: TOOL_CARDS },
   "work.digest.list": { days: [], rows: [] },
   "work.digest.get": { at: "07:30", zone: "America/Chicago", levels: { results: "digest", meetings: "now" }, nextAt: Date.now() + 20 * 3_600_000 },
@@ -725,38 +731,6 @@ function AsWorkComputers({ on, given = [], children }: { on: readonly string[]; 
 let workBefore: Pick<typeof registry, "statusOf" | "statuses" | "environment"> | null = null;
 const ownEnvironmentsOf = registry.environmentsSnapshot.bind(registry);
 
-/**
- * A page with a sheet or dialog open over it, as the window shows it: the page in a box `height` tall, and a copy of
- * what the sheet put in the body laid over that box (a fixed panel has no window to sit in on a shot's long page).
- */
-function OpenOver({ height = 760, children }: { height?: number; children: ReactNode }) {
-  const into = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const box = into.current;
-    // The map's guard reads the page's own rows: a test draws no copy of the sheet over them.
-    if (!box || (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.VITEST) return;
-    const copy = (): void => {
-      box.replaceChildren(...[...document.body.children].filter((el) => !el.contains(box)).map((el) => el.cloneNode(true)));
-      for (const el of box.querySelectorAll("[data-starting-style], [data-ending-style]")) {
-        el.removeAttribute("data-starting-style");
-        el.removeAttribute("data-ending-style");
-      }
-    };
-    const watch = new MutationObserver((changes) => {
-      if (changes.some((c) => !box.contains(c.target))) copy();
-    });
-    watch.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
-    copy();
-    return () => watch.disconnect();
-  }, []);
-  return (
-    <div className="relative flex flex-col gap-6 overflow-hidden" style={{ height }}>
-      {children}
-      <style>{"[data-open-copy] *, [data-open-copy] *::before { transition: none !important; animation: none !important; }"}</style>
-      <div ref={into} data-open-copy aria-hidden style={{ position: "absolute", inset: 0, zIndex: 100, transform: "translateZ(0)", pointerEvents: "none" }} />
-    </div>
-  );
-}
 
 /** Mail as LifeOS answers it (work-kit's fixture client): pictures that ask, two senders whose pictures always show. */
 const MAIL_CLIENT = (() => {
@@ -814,6 +788,7 @@ const CONNECTION_HOSTS: HostView[] = [
     id: "local",
     name: "MacBook Pro",
     inLine: "this Mac",
+    own: true,
     status: "ready",
     report: {
       host: "local",
@@ -868,11 +843,21 @@ const PAGES: Record<
   },
   "computer-box-offline": {
     title: "The box",
-    description: <ComputerLine environmentId="env_box" />,
     environments: THREE_COMPUTERS,
+    // Seen two minutes ago, as the link notes on every open: the line says when. The line draws first, so it notes it.
+    description: <SeenAgo environmentId="env_box" minutes={2}><ComputerLine environmentId="env_box" /></SeenAgo>,
     statuses: { env_box: { transport: "offline", lastHello: helloOf(["read", "operate", "approve", "admin"], 397) } },
-    // Seen two minutes ago, as the link notes on every open: the line says when.
-    body: () => <AsMac><SeenAgo environmentId="env_box" minutes={2}><OtherComputerPage environmentId="env_box" /></SeenAgo></AsMac>,
+    body: () => <AsMac><OtherComputerPage environmentId="env_box" /></AsMac>,
+  },
+  // The box's own page as /ui draws it: the one computer that serves the page, with its sign-ins and Advanced, no
+  // version and no On this Mac (a browser has no "this Mac").
+  "computer-box-web": {
+    title: "The box",
+    description: <ComputerLine environmentId={WEB_ENVIRONMENT_ID} />,
+    environments: [{ id: WEB_ENVIRONMENT_ID, name: "The box", routes: [], credentialRef: WEB_ENVIRONMENT_ID }] as unknown as typeof THREE_COMPUTERS,
+    statuses: { [WEB_ENVIRONMENT_ID]: { lastHello: helloOf(["read", "operate", "approve", "admin"], 397) } },
+    answers: Object.fromEntries(Object.entries(ANSWERS).filter(([key]) => key.startsWith("env_box:")).map(([key, value]) => [`${WEB_ENVIRONMENT_ID}:${key.slice("env_box:".length)}`, value])),
+    body: () => <OtherComputerPage environmentId={WEB_ENVIRONMENT_ID} advancedOpen />,
   },
   "computer-box-advanced": {
     title: "The box",
@@ -931,7 +916,8 @@ const PAGES: Record<
     description: settingsSectionDescription("updates"),
     environments: THREE_COMPUTERS,
     statuses: { env_box: { lastHello: helloOf(["read", "operate", "approve", "admin"], 397) }, env_pc: { transport: "offline" } },
-    body: () => <WithVersion><UpdatesPage onOpenWhatsNew={() => {}} /></WithVersion>,
+    // A Mac's window: Updates is a desktop page, and this Mac is "this Mac" in its lines.
+    body: () => <AsMac><WithVersion><UpdatesPage onOpenWhatsNew={() => {}} /></WithVersion></AsMac>,
   },
   away: { title: "Away", description: settingsSectionDescription("away"), body: () => <WithWorkOn><BackFromAway><AwayPage /></BackFromAway></WithWorkOn> },
   defaults: {
@@ -1014,7 +1000,8 @@ const PAGES: Record<
   workspace: {
     title: "temp-code",
     description: "/srv/agents/work/temp-code, on this Mac",
-    body: () => <WorkspacePage workspaceId="w1" />,
+    // A Mac's window: the page's computer is this Mac, by its name.
+    body: () => <AsMac><WorkspacePage workspaceId="w1" /></AsMac>,
     answers: { "project.list": [{ id: "p1", workspaceId: "w1", name: "settings-2", mode: "worktree", branch: "tc/settings-2", cwd: "/w", archived: false, createdAt: 1 }, { id: "p2", workspaceId: "w1", name: "unread-marks", mode: "worktree", branch: "tc/unread-marks", cwd: "/w", archived: false, createdAt: 1 }] },
   },
   addons: { title: "Add-ons", description: <HomeLine page="addons" />, body: () => <AddonsPage /> },
@@ -1025,9 +1012,11 @@ const PAGES: Record<
     title: "temp-code",
     description: "/srv/agents/work/temp-code, on this Mac",
     body: () => (
-      <WithWorkOn>
-        <WorkspacePage workspaceId="w1" job={<CodeWorkspaceSector workspaceId="w1" />} />
-      </WithWorkOn>
+      <AsMac>
+        <WithWorkOn>
+          <WorkspacePage workspaceId="w1" job={<CodeWorkspaceSector workspaceId="w1" />} />
+        </WithWorkOn>
+      </AsMac>
     ),
     answers: { "work.lifeos.status": { lifeos: { state: "connected", ownerId: "owner", since: 0 }, keys: [] } },
   },
@@ -1049,7 +1038,7 @@ const PAGES: Record<
   project: {
     title: "temp-code",
     description: "/srv/agents/work/temp-code, on this Mac",
-    body: () => <ProjectSheet />,
+    body: () => <AsMac><ProjectSheet /></AsMac>,
     answers: { "project.list": [PROJECT], "turnpass.get": { verify: true, build: false, commit: "push" } },
   },
   // A Mac's window, so this Mac is its own row and its bridge is read.
@@ -1084,15 +1073,13 @@ const PAGES: Record<
   "work-off": workPage({ body: () => <AsWorkComputers on={[]}><WorkPage /></AsWorkComputers> }),
   work: workPage({ body: () => <AsWorkComputers on={["env_box", "local"]} given={["env_pc"]}><WorkPage /></AsWorkComputers> }),
   "work-given": workPage({ body: () => <AsWorkComputers on={["env_box", "env_pc"]} given={["env_box", "env_pc"]}><WorkPage /></AsWorkComputers> }),
-  "work-grants": workPage({ body: () => <AsWorkComputers on={["env_box"]}><OpenOver><WorkPage /><StoreGrantsSheet open onOpenChange={() => {}} /></OpenOver></AsWorkComputers> }),
-  "work-tools": workPage({ body: () => <AsWorkComputers on={["env_box"]}><OpenOver><WorkPage /><ToolsSheet open onOpenChange={() => {}} /></OpenOver></AsWorkComputers> }),
+  "work-grants": workPage({ body: () => <AsWorkComputers on={["env_box"]}><WorkPage /><StoreGrantsSheet open onOpenChange={() => {}} /></AsWorkComputers> }),
+  "work-tools": workPage({ body: () => <AsWorkComputers on={["env_box"]}><WorkPage /><ToolsSheet open onOpenChange={() => {}} /></AsWorkComputers> }),
   "work-confirm": workPage({
     body: () => (
       <AsWorkComputers on={["env_box", "local"]}>
-        <OpenOver height={560}>
-          <WorkPage />
-          <ConfirmDialog {...workOffAsk("the box", 5)} confirmLabel="Turn off" onCancel={() => {}} onConfirm={() => {}} onDone={() => {}} />
-        </OpenOver>
+        <WorkPage />
+        <ConfirmDialog {...workOffAsk("the box", 5)} confirmLabel="Turn off" onCancel={() => {}} onConfirm={() => {}} onDone={() => {}} />
       </AsWorkComputers>
     ),
   }),
@@ -1117,7 +1104,7 @@ const PAGES: Record<
     answers: WORK_ANSWERS,
     body: () => (
       <AsWorkComputers on={["env_box", "local"]}>
-        <ConnectionsView hosts={[{ id: "env_box", name: "The box", status: "checking" }, { id: "local", name: "MacBook Pro", inLine: "this Mac", status: "checking" }]} onRecheck={() => {}} />
+        <ConnectionsView hosts={[{ id: "env_box", name: "The box", status: "checking" }, { id: "local", name: "MacBook Pro", inLine: "this Mac", own: true, status: "checking" }]} onRecheck={() => {}} />
       </AsWorkComputers>
     ),
   },
@@ -1130,7 +1117,7 @@ const PAGES: Record<
         <ConnectionsView
           hosts={[
             { id: "env_box", name: "The box", status: "failed", silent: true },
-            { id: "local", name: "MacBook Pro", inLine: "this Mac", status: "failed", error: "Work is off on this Mac" },
+            { id: "local", name: "MacBook Pro", inLine: "this Mac", own: true, status: "failed", error: "Work is off on this Mac" },
           ]}
           onRecheck={() => {}}
         />
@@ -1138,7 +1125,7 @@ const PAGES: Record<
     ),
   },
   files: { title: "Files", answers: FILES_ANSWERS, body: () => <AsWorkComputers on={["env_box", "local"]}><FilesPage /></AsWorkComputers> },
-  "files-guests": { title: "Files", answers: FILES_ANSWERS, body: () => <AsWorkComputers on={["env_box", "local"]}><OpenOver><FilesPage guestsOpen /></OpenOver></AsWorkComputers> },
+  "files-guests": { title: "Files", answers: FILES_ANSWERS, body: () => <AsWorkComputers on={["env_box", "local"]}><FilesPage guestsOpen /></AsWorkComputers> },
   "skills-offline": {
     title: "Skills",
     description: <HomeLine page="skills" />,
@@ -1212,6 +1199,10 @@ const ownEnvironments = registry.environmentsSnapshot.bind(registry);
 
 export function SettingsPagePreview({ page, host }: { page: keyof typeof PAGES; host: HostMode }) {
   useState(() => {
+    // A Mac's desktop window unless the fixture says otherwise: the shot page has no bridge of its own, which every
+    // page would read as the box's web page (isWebMode), naming no computer as this Mac.
+    const api = (window as unknown as { api?: Record<string, unknown> }).api;
+    if (!api) (window as unknown as { api: unknown }).api = { platform: "darwin" };
     const linked = PAGES[page].environments;
     Object.assign(registry, { environmentsSnapshot: linked ? () => linked : page === "defaults" || page === "defaults-places" || page === "updates" ? () => TWO_HOSTS : page === "job" ? () => JOB_HOSTS : page === "archive" ? () => ONE_HOST : ownEnvironments });
     statuses = PAGES[page].statuses ?? {};
@@ -1224,10 +1215,10 @@ export function SettingsPagePreview({ page, host }: { page: keyof typeof PAGES; 
     if (page === "job") workspaceStore.attach({ ...link, environmentId: "env_box" } as Link);
   });
   const { title, description, body, bare } = PAGES[page];
-  if (bare) return <>{body()}</>;
+  if (bare) return <FailuresSaidOnce>{body()}</FailuresSaidOnce>;
   return (
     <Page title={title} description={description}>
-      {body()}
+      <FailuresSaidOnce>{body()}</FailuresSaidOnce>
     </Page>
   );
 }

@@ -572,7 +572,8 @@ describe("the held request and the audit list", () => {
     expect(screen.getByText(/^Edit, Run of show, made \w{3} \d+, revoked \w{3} \d+$/)).toBeTruthy();
     // Replace address… and Revoke… sit in the live row's menu, there at rest; the revoked row says so in a word.
     expect(screen.getAllByRole("button", { name: /'s link$/ })).toHaveLength(1);
-    expect(document.querySelector('[data-guest-link="old"]')!.textContent).toContain("Revoked");
+    // The revoked link says when, once, in its line.
+    expect(document.querySelector('[data-guest-link="old"]')!.textContent!.match(/revoked/gi)).toHaveLength(1);
     await pickLink("Revoke…");
     expect(confirm.asked.at(-1)).toMatchObject({ action: "Revoke" });
   });

@@ -5,6 +5,16 @@ import type { AddonGrantView } from "@shared/contract-addonGrants";
 import type { AddonRow, AddonStatus } from "@shared/contract-addons";
 import { fakeStoreHost, type FakeStoreHost } from "../storeHost.testkit";
 
+vi.mock("../../../lib/settings/computerName", async (original) => {
+  const real = await original<typeof import("../../../lib/settings/computerName")>();
+  const own = { name: "MacBook Pro", own: true };
+  return {
+    ...real,
+    useComputerName: () => own,
+    useComputerNames: () => (id: string) => (id === "local" ? own : { name: "The box", own: false }),
+    useReadFailWords: () => (error: string) => real.readFailWords(error, own),
+  };
+});
 vi.mock("../../../components/choice-select", async () => await import("../../../components/choice-select-body"));
 vi.mock("../../../lib/sounds", () => ({ playCue: () => {} }));
 const keyMay = vi.hoisted(() => ({ write: true }));
@@ -92,7 +102,7 @@ describe("Settings → Add-ons", () => {
     const host = seeded();
     host.state.refuse.set("addons.list", NO_ANSWER);
     await show(host);
-    expect(screen.getByRole("alert").textContent).toBe(NO_ANSWER);
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
     host.state.refuse.delete("addons.list");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     expect(rowOf("github")).toBeTruthy();
@@ -107,13 +117,13 @@ describe("Settings → Add-ons", () => {
     await show(seeded());
     expect([...document.querySelectorAll("[data-addon]")].map((r) => r.getAttribute("data-addon"))).toEqual(["github", "local", "mobbin", "slack"]);
     expect(rowOf("github").textContent).toContain("Connected24 tools");
-    expect(rowOf("github").textContent).toContain("key saved");
+    expect(rowOf("github").textContent).toContain("Key saved");
     // No secret's name, no builder's sentence, no thread named beside a key.
     expect(rowOf("github").textContent).not.toContain("GITHUB_TOKEN");
     expect(rowOf("github").textContent).not.toContain("written by");
     expect(rowOf("mobbin").textContent).toContain("Not connected");
     expect(rowOf("mobbin").textContent).not.toContain("socket hang up");
-    expect(rowOf("mobbin").textContent).toContain("signed in");
+    expect(rowOf("mobbin").textContent).toContain("Signed in");
     expect(rowOf("mobbin").textContent).not.toContain("refreshed on");
     expect(rowOf("slack").textContent).toContain("Needs a key");
     expect(rowOf("slack").textContent).not.toContain("X-Api-Key");
@@ -139,17 +149,18 @@ describe("Settings → Add-ons", () => {
     expect((screen.getByRole("switch", { name: "github" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("turns every control off while the home is offline", async () => {
+  it("draws the rows as words while the home is offline: no switch, no ⋯, nothing to open", async () => {
     const host = seeded();
-    host.state.home = { name: "box", online: false };
+    host.state.home = { name: "The box", online: false };
     await show(host);
     for (const name of ["github", "local", "mobbin", "slack"]) {
       const row = rowOf(name);
-      for (const control of [within(row).getByRole("switch", { name }), within(row).getByRole("button", { name: `Edit ${name}` })])
-        expect(control.hasAttribute("disabled") || control.getAttribute("aria-disabled") === "true").toBe(true);
-      // Nothing is offered that cannot work: no ⋯ while the box is out of reach.
-      expect(within(row).queryByRole("button", { name: `${name} actions` })).toBeNull();
+      // Nothing is offered that cannot work while the box is out of reach.
+      expect(within(row).queryByRole("switch")).toBeNull();
+      expect(within(row).queryByRole("button")).toBeNull();
     }
+    // An off row says so in words when there is no switch to read.
+    expect(rowOf("local").textContent).toContain("Off");
     expect(screen.queryByRole("button", { name: "Add…" })).toBeNull();
   });
 
@@ -194,14 +205,14 @@ describe("Settings → Add-ons", () => {
     host.state.refuse.set("addons.grant.list", NO_ANSWER);
     await show(host);
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toBe(NO_ANSWER);
+    expect(alert.textContent).toBe("This Mac did not answer.");
     expect(rowOf("slack").compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const m = await menu("github");
     expect(item(m, "Add key…").getAttribute("aria-disabled")).toBe("true");
     await act(async () => fireEvent.keyDown(m, { key: "Escape" }));
     host.state.refuse.delete("addons.grant.list");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
-    expect(rowOf("github").textContent).toContain("key saved");
+    expect(rowOf("github").textContent).toContain("Key saved");
   });
 
   it("signs an OAuth add-on out with addons.grant.clear, once the confirm says so", async () => {
@@ -299,7 +310,7 @@ describe("Settings → Add-ons", () => {
     expect(screen.queryByRole("switch")).toBeNull();
     expect(screen.queryByRole("button", { name: "github actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add…" })).toBeNull();
-    expect(screen.getByText("Changed from a computer that manages the box")).toBeTruthy();
+    expect(screen.getByText("Changed from a computer that manages the box.")).toBeTruthy();
     keyMay.write = true;
   });
 

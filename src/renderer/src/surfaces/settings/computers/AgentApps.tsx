@@ -39,7 +39,7 @@ export function AgentApps({ host, rows }: { host: Host; rows: "here" | "pc" }) {
   const [installing, setInstalling] = useState(false);
   return (
     <SettingSection of={`${rows}.apps`}>
-      <SectionRead read={doctor} rows={HARNESSES.slice(0, 3).map(() => ({ description: true, media: true, control: "none" as const }))}>
+      <SectionRead read={doctor} computer={host.environmentId} rows={HARNESSES.slice(0, 3).map(() => ({ description: true, media: true, control: "none" as const }))}>
         {(value) => {
           // The apps it has, each a row; the rest, which most never install, behind one row that opens their commands.
           const has = HARNESSES.filter((harness) => value[harness]?.found);

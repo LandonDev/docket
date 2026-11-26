@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MailWaiting } from "@shared/contract-work-mail";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageError, PageRowsSkeleton } from "../../components/page";
+import { PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -18,6 +18,7 @@ import { connectingWords } from "../shell/lifeosWords";
 import { useDownAction } from "../shell/DownSignIn";
 import { SettingRow } from "../../surfaces/settings/parts/SettingRow";
 import { useSaved } from "../../surfaces/settings/parts/useSaved";
+import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
 import { inWords } from "../../lib/settings/workWords";
 
 /**
@@ -185,7 +186,7 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
     <>
       {load.status === "loading" ? <PageRowsSkeleton rows={[{ control: "select" }, { description: true, control: "switch" }]} /> : null}
       {load.status === "error" ? (
-        <PageError action={retry}>{load.error}</PageError>
+        <ReadFailure computer={env} error={load.error} retry={() => setAttempt((n) => n + 1)} />
       ) : null}
       {value ? (
         <>

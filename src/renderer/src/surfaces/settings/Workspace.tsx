@@ -9,7 +9,7 @@ import { PreambleDialog } from "../../chrome/PreambleDialog";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { OrchestrationRulesEditor } from "../../chrome/OrchestrationRules";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageError, PageRow, PageRowsSkeleton } from "../../components/page";
+import { PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
@@ -21,6 +21,8 @@ import { useAccounts } from "../../stores/accounts";
 import { pinRowShown, shortName } from "../../lib/accountScope";
 import { useLinkMay } from "../../lib/linkMay";
 import { useComputerName } from "../../lib/settings/computerName";
+import { useAccountsRead } from "./parts/useAccountsRead";
+import { ReadFailure } from "./parts/ReadFailure";
 import { ListFilter, useListFilter } from "./parts/ListFilter";
 import { ManagedLine } from "./parts/ManagedLine";
 import { SaveMark } from "./parts/SaveMark";
@@ -74,22 +76,18 @@ function WorkspaceShapes({ workspace, error, retry }: { workspace: WorkspaceMeta
   const projects = useProjects().filter((p) => p.workspaceId === workspace.id && !p.archived).length;
   const may = useLinkMay(workspace.environmentId, "turnpass.set");
   const control = (kind: "button" | "switch" | "select" | "field") => (may ? kind : ("none" as const));
+  // Refused: the one line, the computer named, and nothing under it. Bones say "waiting", which this no longer is.
+  if (error) {
+    return (
+      <PageSection>
+        <ReadFailure computer={workspace.environmentId} error={error} retry={retry} />
+      </PageSection>
+    );
+  }
   return (
     <>
       <SettingSection of="ws.threads">
-        {error ? (
-          <PageError
-            action={
-              <Button variant="ghost" size="sm" onClick={retry}>
-                <BusyLabel busy={false} label="Retry" />
-              </Button>
-            }
-          >
-            {error}
-          </PageError>
-        ) : (
-          <PageRowsSkeleton rows={[{ description: true, control: control("button") }, { description: true, control: control("button") }]} />
-        )}
+        <PageRowsSkeleton rows={[{ description: true, control: control("button") }, { description: true, control: control("button") }]} />
       </SettingSection>
       <SettingSection of="ws.checks">
         <PageRowsSkeleton rows={[{ control: control("switch") }, { control: control("switch") }, { control: control("select") }]} />
@@ -149,9 +147,23 @@ export function preambleWords(workspace: Pick<WorkspaceMeta, "preamble" | "pream
  * account runs out; a project or a thread can still pin its own. Each saves with the mark; a refusal puts it back.
  */
 function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
-  const { snapshot } = useAccounts(workspace.environmentId);
+  // The accounts are their own read: bones until the computer answers, then the true value; never the empty
+  // snapshot standing in for an answer ("Auto, no other account" before anything was asked).
+  const accounts = useAccountsRead(workspace.environmentId);
   const may = useLinkMay(workspace.environmentId, "workspace.setAccounts");
   const pins = workspace.accountPins ?? {};
+  const snapshot = accounts.snapshot;
+  if (!snapshot) {
+    return (
+      <SettingSection of="ws.accounts">
+        {accounts.error ? (
+          <ReadFailure computer={workspace.environmentId} error={accounts.error} retry={accounts.retry} />
+        ) : (
+          <PageRowsSkeleton rows={2} media control={may ? "select" : "none"} />
+        )}
+      </SettingSection>
+    );
+  }
   const rows = ROUTED_PROVIDERS.filter((provider) => pinRowShown(provider, snapshot.providers[provider].profiles, pins[provider] ?? ""));
   if (rows.length === 0) return null;
   return (

@@ -3,6 +3,8 @@ import { computerInLine, useComputerName, useComputerNames } from "../../../lib/
 import { usePageHome, type HomePage } from "../../../lib/settings/pageHome";
 import { everyLine, type SettingsHome } from "../../../lib/settingsHome";
 import { nameInLine } from "../../../lib/hostWords";
+import { thisDesktopInLine } from "../../../lib/native";
+import { isWebMode } from "../../../lib/nativeWeb";
 
 /**
  * The line under an Everywhere page's title: where its one set is kept, as the page's store answered
@@ -12,7 +14,9 @@ import { nameInLine } from "../../../lib/hostWords";
  */
 export function HomeLine({ page }: { page: HomePage }) {
   const home = usePageHome(page);
-  const here = computerInLine(useComputerName(registry.primaryEnvironmentId));
+  // Where this window's own computer keeps the set: "this Mac" in a desktop window, the computer's name at /ui.
+  const own = computerInLine(useComputerName(registry.primaryEnvironmentId));
+  const here = isWebMode() ? own : thisDesktopInLine();
   const name = useHomeName(home);
   return <span data-home-line="">{everyLine(home, here, name)}</span>;
 }

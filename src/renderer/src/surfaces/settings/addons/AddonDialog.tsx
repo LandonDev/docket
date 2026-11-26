@@ -41,6 +41,9 @@ export function AddonDialog(props: Props) {
   );
 }
 
+/** Shared words that say "host" said as Settings says it: "computer". */
+const computerWords = (text: string): string => text.replace(/\b(H|h)osts?\b/g, (word) => `${word[0] === "H" ? "C" : "c"}omputer${word.endsWith("s") ? "s" : ""}`);
+
 /** Code in a field: the mono face one size below the field's 13px. */
 const MONO = "font-mono text-xs";
 
@@ -68,6 +71,8 @@ function AddonForm({ link, row, workspaces, home, onClose, onSaved, pending, set
     { value: "fields", label: "Key" },
     { value: "oauth", label: "Sign in", ...(command && !commandSignsIn ? { disabled: true, note: COMMAND_NO_SIGNIN } : {}) },
   ];
+  // The approval card's own words (src/shared/addons.ts), said in Settings' words: a host is a computer here.
+  const runsWhere = computerWords(addonCard(specOf(form), { name: form.name }, { workspaceName: null, replaces: false }).input.note ?? "");
   const where = [{ value: "", label: everyWorkspace(home) }, ...workspaces.map((w) => ({ value: w.id, label: w.name }))];
 
   const save = () => {
@@ -153,10 +158,12 @@ function AddonForm({ link, row, workspaces, home, onClose, onSaved, pending, set
           <FieldRow label="Sign-in">
             <ChoiceToggle label="Sign-in" value={form.auth} options={auths} onChange={(auth) => patch({ auth })} />
           </FieldRow>
-          <FieldRow label="Computers">
-            <ChoiceToggle label="Computers" value={form.hosts} options={HOSTS} onChange={(hosts) => patch({ hosts })} />
-          </FieldRow>
         </div>
+        {/* Above its choices, so three choices never draw over the label in a narrow window; the approval card's words
+            for the transport under it, where they wrap whole. */}
+        <Field label="Computers" hint={runsWhere}>
+          <ChoiceToggle label="Computers" value={form.hosts} options={HOSTS} onChange={(hosts) => patch({ hosts })} />
+        </Field>
         {commandSignsIn ? (
           <Field label="Name for the sign-in token">
             <Input value={form.tokenEnv} onChange={(e) => patch({ tokenEnv: e.target.value })} spellCheck={false} autoComplete="off" className={MONO} />
@@ -164,7 +171,7 @@ function AddonForm({ link, row, workspaces, home, onClose, onSaved, pending, set
         ) : null}
         <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter note={addonCard(specOf(form), { name: form.name }, { workspaceName: null, replaces: false }).input.note} onCancel={onClose} confirmLabel={row ? "Save" : "Add"} pending={pending} />
+      <DialogFooter onCancel={onClose} confirmLabel={row ? "Save" : "Add"} pending={pending} />
     </form>
   );
 }

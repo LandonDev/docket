@@ -107,7 +107,7 @@ export function PublishPage() {
   };
   return (
     <PageSection>
-      <SectionRead read={read} rows={[{ description: true, control: "button" }, { control: "field", wide: true }]}>
+      <SectionRead read={read} computer={LOCAL_ENVIRONMENT_ID} rows={[{ description: true, control: "button" }, { control: "field", wide: true }]}>
         {(value) => (
           <>
             <SettingRow

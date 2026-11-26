@@ -153,10 +153,11 @@ describe("AddonDialog", () => {
     expect(screen.getByRole("dialog")).toBe(dialog);
   });
 
-  it("says what a command and an address do, in the approval card's words", () => {
+  it("says what a command and an address do, in the approval card's words, under Computers where it wraps", () => {
     const { dialog } = open(null);
-    const note = () => dialog.querySelector("[data-footer-note]")!.textContent;
-    expect(note()).toBe("It runs as you on every host that starts it.");
+    const note = () => dialog.querySelector("[data-slot=dialog-field]:has([aria-label=Computers]) [data-slot=field-hint], [data-slot=dialog-field]:has([aria-label=Computers]) p")?.textContent ?? within(dialog).getByText(/It runs as you|Its tools send/).textContent;
+    expect(dialog.querySelector("[data-footer-note]")).toBeNull();
+    expect(note()).toBe("It runs as you on every computer that starts it.");
     press(dialog, "Address");
     expect(note()).toBe("Its tools send requests to this address.");
   });

@@ -11,6 +11,7 @@ import { computerOfSection, settingsPageOf, settingsSectionDescription, settings
 import { useFoundRow } from "../lib/settings/reveal";
 import { isHomePage } from "../lib/settings/pageHome";
 import { HomeLine } from "./settings/parts/HomeLine";
+import { FailuresSaidOnce } from "./settings/parts/ReadFailure";
 import { computerInLine, useComputerName } from "../lib/settings/computerName";
 import { focusSettingsSearch, settingsSearch, useSettingsSearch } from "../lib/settings/searchStore";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
@@ -230,6 +231,7 @@ export function SettingsView({
           )
         ) : (
           <Page title={title} description={description}>
+            <FailuresSaidOnce>
             {/* A page not yet built on PageSection renders inside one block, so the
                 frame's 24px section gap never lands between its rows. */}
             {section === "general" ? <GeneralPage /> : null}
@@ -270,6 +272,7 @@ export function SettingsView({
                 onDeleteProject={onDeleteProject}
               />
             ) : null}
+            </FailuresSaidOnce>
           </Page>
         )}
       </div>

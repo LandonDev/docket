@@ -138,11 +138,12 @@ back on a refusal, its reason under the row.
 - **Shortcuts** (`Keybindings.tsx`, page `keybindings`). Find a shortcut narrows every group. From any app: Open
   capture (`CaptureKeyRow`, work/capture/, on a desktop with Work on for this computer; `<userData>/capture.json`)
   and Appshot, the double ⌘ (a Mac's alone), "Turned on in Appshots". Then `KEYBINDING_GROUPS` (lib/settings.ts),
-  with Find a Setting under App and the old Hosts group named Computers.
+  with Find a setting under App and the old Hosts group named Computers.
 - **Updates** (`Updates.tsx`, page `updates`, desktop only). Docket and its version with the updater's one button;
   Release notes; Quick updates from (`code.settings.*`, docs/agents/code-only-updates.md). Other computers: one open
   row per linked computer with its version and how far behind master (`useDeployDrift`), opening its page at
-  `pc.version`.
+  `pc.version`; a computer that is behind ends its row in Update…, the same confirm as its page's
+  (`useComputerUpdate`, computers/update.ts), in place of the chevron.
 - **Appshots** (`surfaces/AppshotsSettings.tsx`, Mac desktop). Appshots, Add the window to, Shutter sound (`appshots.*`
   through lib/appshots.ts); a macOS grant only while it is missing (`Permissions missingOnly`).
 - **Computer use** (`Computer.tsx`, Mac desktop; "Available on a Mac" in a window elsewhere). See docs/LAYOUT.md
@@ -157,7 +158,8 @@ back on a refusal, its reason under the row.
   `openMaySheet(id)` (`lib/settings/maySheet.ts`) from Sharing, from Computer use's "Who may use this Mac's apps" and
   from a computer's On this Mac; `MaySheetHost`, mounted by SettingsView, hears the ask. A search result for one of
   its rows opens it (`inMaySheet`, `SearchResult.computer`). In order: Files and commands, a `RadioGroup` of the four
-  levels each with its line (lowering it while its commands run asks first, naming how many end); Use this Mac's apps
+  levels each with its line (lowering it asks first only when it ends something, naming what as the server ends it,
+  `whatEnds`: Off and Read end its commands, Off its live app sessions too); Use this Mac's apps
   once above Off (on asks first; off asks while sessions are live); its dev sites, with each forwarded site and Open;
   its commands, threads and apps at once, the commands and apps counted from the list Running now draws (`nowWords`), so
   the two never disagree; the folders it reads without asking, Add folder… opening a dialog that names the computer;
@@ -194,15 +196,18 @@ through `useSaved`.
 - **Another computer's page** (`computer:<environmentId>`, `ComputerPage.tsx` `OtherComputerPage`): the line under the
   title is `ComputerLine` (connected, where; offline, when last seen, with Try again on the title line; a key it no
   longer takes, Sign in again…; a key that may not change it adds "Its settings are changed from a computer that
-  manages the box."). The page's first read (`admission.get`, any key) stands for the computer: failed, the page says
-  "The box did not answer." once with Retry, its title line claims no connection, and only On this Mac stays. Then
+  manages the box."). The page's first read (`admission.get`, any key) stands for the computer: while it is out the
+  title line and the version are bones; failed, the page says "The box did not answer." once with Retry
+  (`ReadFailure`), its title line claims no connection, and only On this Mac stays. Threads and Sharing are held the
+  same way by `ComputerGate` (computers/read.tsx): one line for a silent computer, no section under it. Then
   Docket <version> and how far behind, Update… asking first (it restarts; its running threads pause about a minute)
   with the update's log; Threads on <computer>; Agent apps; Who can sign in; Work, under its heading, "Work on the box",
   On or Off, opening the Work page at its switch (`work.on`), the switch's one home; Set up from this Mac for a
-  computer set up with a link (`SetUpHere.tsx`: what it was given with Stop… or Start, then Remove… on a row of its
-  own); Advanced; On this Mac: What <computer> may do on this Mac (the sheet), Name (a field,
-  `remote.environments.update`) and Addresses this Mac tries (`RoutesDialog`), held in their shape and said once with
-  Retry on a failure, and "This Mac's link to the box" with Forget… (asks first; this Mac drops its link and the
+  computer set up with a link (`SetUpHere.tsx`, its line "Stop and Remove are done from this Mac.": what it was given
+  with Stop… or Start, then "This Mac's setup of it" with Remove…; its shape held while read, a failure said with
+  Retry); Advanced; On this Mac: What <computer> may do on this Mac (the sheet, opened only once the policy is read),
+  Name (a field, `remote.environments.update`) and Addresses this Mac tries (`RoutesDialog`), held in their shape and
+  said once with Retry on a failure ("This Mac did not answer."), and "This Mac's link to the box" with Forget… (asks first; this Mac drops its link and the
   computer still lets it in until removed there). At /ui the one computer is the one serving the page: no version and
   no On this Mac.
 - **Windows VM** (`winvm`, `Winvm.tsx`): the computer the list names (`useWinvmKnown`, mounted by SettingsView, asks
@@ -237,8 +242,10 @@ the set the computer last confirmed on a refusal.
   model with a ladder), Access with its level's line (`lib/settings/access.ts`; choosing Full access asks first),
   Linked projects start on (with two or more computers), "Different in N places", an open row listing the jobs and
   workspaces with a set of their own, opening a dialog with Use New threads beside each; last, while a set is stored,
-  Docket's defaults with Use…, asking first. The heading's line says the set is "For every job and workspace without a
-  set of its own." When both of the page's reads fail, one line under Start with says so, and its Retry asks both. Builds from plans: Start the build when a plan is done, Archive
+  Docket's defaults with Use…, asking first. When both of the page's reads fail, one line (`ReadFailure`) says so, naming the
+  computer, with no heading over it and nothing under it, and its Retry asks both. Use New threads (the dialog's footer
+  and each row of "Different in N places") is offered only to a key that may write that place's set, and asks first
+  when it would give the place Full access. Builds from plans: Start the build when a plan is done, Archive
   the plan's thread once the build starts, Build model (a searchable list, `ChoiceCombobox`), Build effort, Build
   context. A job's or a workspace's own set has one editor, `ThreadDefaultsDialog` (`workspace`, `onClose`): its rows
   save as they change, its footer has Use New threads while the place keeps a set, else "Same as New threads", and
@@ -248,7 +255,8 @@ the set the computer last confirmed on a refusal.
 - **Reviews** (`surfaces/ReviewSettings.tsx`, `chrome/ReviewFields.tsx`). Review before merge; while on: Review model
   (a searchable list grouped by agent app), Effort, Stop the merge for, Wait at most ("Past it the merge goes ahead
   unreviewed", a field that commits on Enter or blur), and "Different in N projects", asked of each code project's
-  own computer (`review.get` per project), opening a dialog of them, each row opening its project sheet. The project
+  own computer (`review.get` per project), shown with Reviews off too, opening a dialog of them, each row opening its
+  project sheet; a computer that did not answer leaves the count partial, said by its name with Retry. The project
   sheet draws the same fields (`compact`) under its own Save. The open row says which projects have reviews off ("settings-2
   has reviews off") and which keep their own review model; each of the dialog's rows says the same.
 - **Subagents** (`Orchestration.tsx`, page `orchestration`; `chrome/OrchestrationRules.tsx`). The lead thread: Gives
@@ -264,7 +272,9 @@ the set the computer last confirmed on a refusal.
   stored, Docket's defaults with Use…, asking first (it deletes every rule). A code workspace's own set is the same
   editor whose last row is its own set with Use Subagents….
 - **Away** (`Away.tsx`, page `away`). Code threads; Work threads while some computer has Work on; each on the one store
-  the rail reads (`lib/away.ts`), so a flip on the page is what the rail shows, with one `away.set`. A refusal puts the
+  the rail reads (`lib/away.ts`), so a flip on the page is what the rail shows, with one `away.set`. The page asks
+  `away.get` itself, so it shows bones before an answer and the one line with Retry after a failure, never Off; a key
+  that may not approve sees On or Off as words; the switches' line names the computers it holds for. A refusal puts the
   switch back with the store's own toast. Last time away, once a stretch away has ended: "Ended 6:40 PM, 3 decisions
   made for you", every computer's tally, opening Back from Away's list (`chrome/AwayReviewDialog.tsx`); a stretch with
   no decisions says so and opens nothing.
@@ -368,8 +378,8 @@ Every row on them changes that job or workspace alone, on its own computer.
   (Sharing with what the job's computer may do on this Mac open over it), another's says to change it on that
   computer. The page hangs on one read (`useJobRead`: the job's settings, the desktops its computer knows, this
   machine's host id), and on this computer having said its name (`useOwnComputerNamed`): until then every section
-  stands as its heading and its rows' shape; refused, it is one red line with one Retry under the first heading, the
-  sections after it keeping their shape. Then Windows VM (where the job's computer has one) and Copy Teams files to
+  stands as its heading and its rows' shape; refused, it is one `ReadFailure` naming the computer ("The box did not
+  answer.") with one Retry, and nothing under it: no heading, no bones. Then Windows VM (where the job's computer has one) and Copy Teams files to
   <computer> (`TeamsCopyRow`; off asks first, it deletes the copies). New threads: Model and access, "Set for this
   job: …" or "Same as New threads: …" with Change… opening the start set's dialog (`StartSetRow`,
   `surfaces/settings/parts/StartSetRow.tsx`). Rules and Proposed (`work/rules/HouseRules.tsx`). Writing and mail:
@@ -389,8 +399,10 @@ Every row on them changes that job or workspace alone, on its own computer.
   workspace's own set is deleted). Its job (`CodeWorkspaceSector`, Work's chunk, passed in as `job` while Work is on
   for its computer): Job, the LifeOS job its threads may read. Projects, a find field past eight, each an open row to
   its sheet, ending in a chevron. An agent app with no account to pick reads "Auto, no other account to pick" and opens
-  AI accounts. The page hangs on one read, After each turn's (`useTurnPassRead`): until it answers every section
-  stands in its shape, and refused it is one red line with one Retry under New threads. A key that may not change the page's admin rows (`turnpass.set`, `build.set`, `workspace.setAccounts`,
+  AI accounts. Accounts are their own read (`useAccountsRead`, `parts/useAccountsRead.ts`): bones until the computer
+  answers, then the true value, never the store's empty snapshot standing in. The page hangs on one read, After each
+  turn's (`useTurnPassRead`): until it answers every section stands in its shape; refused, it is one `ReadFailure` and
+  nothing under it. A key that may not change the page's admin rows (`turnpass.set`, `build.set`, `workspace.setAccounts`,
   `workspace.setPreamble`, `rules.set`, `defaults.set`) reads their values as words, and one line under New threads
   says who can.
 - **The project sheet** (code; `ProjectSettingsBody` in `chrome/ProjectDialogs.tsx`, opened from a workspace page's
@@ -402,7 +414,11 @@ Every row on them changes that job or workspace alone, on its own computer.
   changed group on its own: one refused leaves the rest saved, and the line over the footer says which did not and
   why, then which did ("After each turn did not save: Disk full. Name saved.", `partialSaveWords`). Cancel, Escape and
   the close button ask before dropping a changed draft. Save waits until every group has answered; a group that did
-  not is said once in its place with Retry at the end of the line, and the footer says "Only what loaded is saved".
+  not is said in its place by a `ReadFailure` (the sheet keeps its own `FailuresSaidOnce`, so groups one computer did
+  not answer are one line), and the footer says "Only what loaded is saved". When every group fails, one line heads
+  the sheet with one Retry that asks them all, and no group is drawn. Each group's bones are drawn as its `FieldRow`s
+  (`FieldBones`: no hairline; Plans two switches and three selects); Accounts read their own state
+  (`useAccountsRead`), and an agent app with no account to pick says its value as words.
   Use workspace setting and Use global setting sit at the end of their group's heading line. A project's account
   that follows the workspace reads "Same as the workspace (Auto)", the workspace page's word. A red line is in the house's words (`refusalWords`; DOCKET's
   `dialogErrorWords` once it lands). Tests: `chrome/ProjectDialogs.dom.test.tsx`.

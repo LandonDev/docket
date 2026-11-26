@@ -83,8 +83,8 @@ describe("addonFacts", () => {
   it("says a workspace's own scope, the computers unless line two does, and the grant; never every workspace or the writer", () => {
     const r = row({ spec: { ...stdio, platforms: ["darwin"] }, writtenBy: { kind: "thread", sessionId: "s", environmentId: "e", title: "Fix the build" } });
     const g = grant({ fields: [{ name: "GITHUB_TOKEN", set: true }] });
-    expect(addonFacts(r, addonMark(r, status("ready", { tools: 2 }), g), g, null)).toEqual(["Macs only", "key saved"]);
-    expect(addonFacts(r, addonMark(r, status("other-platform"), g), g, "temp-code")).toEqual(["temp-code", "key saved"]);
+    expect(addonFacts(r, addonMark(r, status("ready", { tools: 2 }), g), g, null)).toEqual(["Key saved", "Macs only"]);
+    expect(addonFacts(r, addonMark(r, status("other-platform"), g), g, "temp-code")).toEqual(["Key saved", "temp-code"]);
     const plain = row({ writtenBy: { kind: "person", key: "Phone" } });
     expect(addonFacts(plain, addonMark(plain, status("off"), null), null, null)).toEqual([]);
   });

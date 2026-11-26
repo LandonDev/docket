@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { PageError, PageRow, PageRowsSkeleton } from "../../components/page";
-import { BusyLabel, Button } from "../../components/ui/button";
+import { PageRow, PageRowsSkeleton } from "../../components/page";
+import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { useHostRead } from "../../lib/connection/hostRead";
 import { SettingSwitch } from "../../components/setting-switch";
@@ -10,10 +10,15 @@ import { useEnvironments } from "../../lib/connection";
 import { defineChunk } from "../../lib/lazyChunk";
 import { hostFailure } from "../../lib/hostFailure";
 import { managedElsewhere } from "../../lib/linkMay";
-import { computerInLine, useComputerNames } from "../../lib/settings/computerName";
+import { computerInLine } from "../../lib/settings/computerName";
+import { ReadFailure } from "./parts/ReadFailure";
 
-/** "the box", "the box and MacBook Pro", "the box, PURDUE-LT and MacBook Pro". */
-const listOf = (names: readonly string[]): string => (names.length < 3 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+/** A computer's jobs in one form on every row where Work is on: "No jobs", "1 job", "5 jobs". */
+export const jobsWords = (n: number): string => (n === 0 ? "No jobs" : n === 1 ? "1 job" : `${n} jobs`);
+
+/** A sentence's stop, where it has none yet. */
+const withStop = (line: string): string => (/[.!?]$/.test(line) ? line : `${line}.`);
+
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { setWorkOn, useWorkHosts } from "../../lib/workSwitch";
 import { ComputerName } from "./parts/ComputerName";
@@ -47,37 +52,23 @@ export function workOffAsk(computer: string, jobs: number): ConfirmRequest {
 export function WorkPage() {
   const environments = useEnvironments();
   const on = useWorkHosts();
-  const names = useComputerNames();
   // Each computer's read that failed, with its Retry: said once over the rows, never once a row.
-  const [failed, setFailed] = useState<Record<string, () => Promise<void>>>({});
-  const [retrying, setRetrying] = useState(false);
-  const report = useCallback((id: string, retry: (() => Promise<void>) | null) => {
+  const [failed, setFailed] = useState<Record<string, { retry: () => Promise<void>; error: string }>>({});
+  const report = useCallback((id: string, fail: { retry: () => Promise<void>; error: string } | null) => {
     setFailed((was) => {
-      if ((retry === null) === !(id in was)) return was;
+      if (fail === null ? !(id in was) : was[id]?.error === fail.error) return was;
       const { [id]: _gone, ...rest } = was;
-      return retry ? { ...rest, [id]: retry } : rest;
+      return fail ? { ...rest, [id]: fail } : rest;
     });
   }, []);
   const down = environments.filter((e) => e.id in failed);
-  const retryAll = (): void => {
-    setRetrying(true);
-    void Promise.all(down.map((e) => failed[e.id]!())).finally(() => setRetrying(false));
-  };
-  const said = listOf(down.map((e) => computerInLine(names(e.id))));
   return (
     <>
       <SettingSection of="work.on">
-        {down.length ? (
-          <PageError
-            action={
-              <Button variant="ghost" size="sm" disabled={retrying} onClick={retryAll}>
-                <BusyLabel busy={retrying} label="Retry" />
-              </Button>
-            }
-          >
-            {`${said.charAt(0).toUpperCase()}${said.slice(1)} did not say whether Work is on.`}
-          </PageError>
-        ) : null}
+        {/* Each computer that did not say is named once, over the rows; its Retry asks every read that failed alike. */}
+        {down.map((e) => (
+          <ReadFailure key={e.id} computer={e.id} error={failed[e.id]!.error} retry={failed[e.id]!.retry} />
+        ))}
         {environments.map((environment) => (
           <WorkOnRow key={environment.id} environmentId={environment.id} report={report} />
         ))}
@@ -88,13 +79,13 @@ export function WorkPage() {
 }
 
 /** One computer's switch: one press, one `work.set`, to this computer alone. */
-export function WorkOnRow({ environmentId, report }: { environmentId: string; report?: (id: string, retry: (() => Promise<void>) | null) => void }) {
+export function WorkOnRow({ environmentId, report }: { environmentId: string; report?: (id: string, fail: { retry: () => Promise<void>; error: string } | null) => void }) {
   const computer = useHost(environmentId);
   // The switch stands only once this computer has said, on this page, whether Work is on: a remembered value is no fact.
   const read = useHostRead(computer.link, () => computer.request<{ enabled: boolean }>("work.get", {}));
   const answered = read.value !== undefined;
   const failedRead = !answered && read.error !== null;
-  useEffect(() => report?.(environmentId, failedRead ? read.retry : null), [failedRead, environmentId, report]);
+  useEffect(() => report?.(environmentId, failedRead ? { retry: read.retry, error: read.error ?? "" } : null), [failedRead, read.error, environmentId, report]);
   useEffect(() => () => report?.(environmentId, null), [environmentId, report]);
   useEffect(() => {
     if (read.value) setWorkOn(environmentId, !!read.value.enabled);
@@ -122,11 +113,9 @@ export function WorkOnRow({ environmentId, report }: { environmentId: string; re
       : !answered
         ? <Skeleton className="mt-0.5 h-3 w-24" />
         : !may
-          ? managedElsewhere(computer.name.name)
-          : on && jobs > 0
-            ? jobs === 1
-              ? "1 job"
-              : `${jobs} jobs`
+          ? withStop(managedElsewhere(computer.name.name))
+          : on
+            ? jobsWords(jobs)
             : undefined;
   const control = !computer.connected || (failed && report) ? null : failed ? (
     <Button variant="ghost" size="sm" onClick={() => void read.retry()}>

@@ -3,7 +3,7 @@ import { ChoiceSelect } from "../components/choice-select";
 import { useAccounts } from "../stores/accounts";
 import { pinRowShown, shortName } from "../lib/accountScope";
 import { PROVIDER_NAME } from "@server/shared/usageMeter";
-import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
+import { ROUTED_PROVIDERS, type AccountPins , type AccountsSnapshot } from "@server/shared/accounts";
 import type { WorkspaceMeta } from "../lib/tcserver/types";
 
 /*
@@ -18,17 +18,21 @@ import type { WorkspaceMeta } from "../lib/tcserver/types";
  */
 export function AccountPinFields({
   environmentId,
+  snapshot: given,
   value,
   onChange,
   inheritLabel,
 }: {
   environmentId: string;
+  /** The accounts as the page read them; the store's when not given. */
+  snapshot?: AccountsSnapshot;
   value: AccountPins;
   onChange: (next: AccountPins) => void;
   /** What an unset provider falls back to, e.g. "Same as the workspace (a@x)". */
   inheritLabel: (provider: (typeof ROUTED_PROVIDERS)[number]) => string;
 }) {
-  const { snapshot } = useAccounts(environmentId);
+  const stored = useAccounts(environmentId).snapshot;
+  const snapshot = given ?? stored;
   return (
     <div className="flex flex-col">
       {ROUTED_PROVIDERS.map((provider) => {
@@ -38,11 +42,14 @@ export function AccountPinFields({
         if (!pinRowShown(provider, profiles, current)) return null;
         return (
           <FieldRow key={provider} label={providerName(provider)}>
+            {profiles.length === 0 && current === "" ? (
+              // Nothing to pick: the value as words, never a select that cannot open.
+              <span data-account-value className="text-[13px] text-muted-foreground">{inheritLabel(provider)}</span>
+            ) : (
             <ChoiceSelect
               label={providerName(provider)}
               size="sm"
               value={current}
-              disabled={profiles.length === 0 && current === ""}
               options={[
                 { value: "", label: inheritLabel(provider) },
                 ...profiles.map((p) => ({ value: p.name, label: shortName(p) })),
@@ -55,6 +62,7 @@ export function AccountPinFields({
                 onChange(next);
               }}
             />
+            )}
           </FieldRow>
         );
       })}

@@ -23,7 +23,7 @@ export type HostView =
   | ({ id: string; name: string; status: "failed"; error?: string; silent?: boolean; report?: HealthReport } & InLine);
 
 /** The computer's name mid-sentence where it is not its own name: "this Mac" for this window's own computer. */
-type InLine = { inLine?: string };
+type InLine = { inLine?: string; own?: boolean };
 
 export interface PlacedRow {
   key: string;

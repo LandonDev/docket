@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { shortHostName } from "@shared/hostNames";
 import { LOCAL_ENVIRONMENT_ID, WEB_ENVIRONMENT_ID, registry, useEnvironmentStatus, useEnvironments } from "../connection";
+import { NO_ANSWER } from "../connection/openRead";
 import { nameInLine } from "../hostWords";
 import { isWebMode } from "../nativeWeb";
 import { thisDesktopInLine, thisDesktopName } from "../native";
@@ -44,7 +45,8 @@ export function computerNameOf(id: string, known: ComputerNames, said?: string |
 }
 
 /** A computer's name inside a sentence: this window's own is "this Mac"; "The box" reads "the box". */
-export const computerInLine = (computer: ComputerName): string => (computer.own ? thisDesktopInLine() : nameInLine(computer.name));
+export const computerInLine = (computer: ComputerName): string =>
+  computer.own ? thisDesktopInLine() : computer.name === UNNAMED_COMPUTER ? "another computer" : nameInLine(computer.name);
 
 // ── This window's own computer ───────────────────────────────────────
 
@@ -64,7 +66,7 @@ function askOwnName(): void {
     .then(
       (status) => {
         settled = true;
-        if (status.name) ownName = shortHostName(status.name);
+        if (status?.name) ownName = shortHostName(status.name);
         for (const listener of listeners) listener();
       },
       () => {
@@ -103,7 +105,8 @@ export function useComputerNames(): (id: string, said?: string | null) => Comput
   const name = useSyncExternalStore(subscribeOwn, () => ownName);
   const web = isWebMode();
   const known: ComputerNames = {
-    own: { id: hello?.environmentId ?? null, name: web ? (environments.find((environment) => environment.id === WEB_ENVIRONMENT_ID)?.name ?? null) : name },
+    // Before its hello, this window's own computer is the one its primary link reaches.
+    own: { id: hello?.environmentId ?? (web ? null : registry.primaryEnvironmentId), name: web ? (environments.find((environment) => environment.id === WEB_ENVIRONMENT_ID)?.name ?? null) : name },
     environments,
     web,
   };
@@ -113,4 +116,23 @@ export function useComputerNames(): (id: string, said?: string | null) => Comput
 /** One computer's name in this window. */
 export function useComputerName(id: string, said?: string | null): ComputerName {
   return useComputerNames()(id, said);
+}
+
+/** A sentence's first word in capitals: "this Mac" opens a line as "This Mac". */
+const opening = (words: string): string => words.charAt(0).toUpperCase() + words.slice(1);
+
+/**
+ * A read's failure as a Settings line says it: the computer that did not answer by its name ("This Mac did not
+ * answer.", "The box did not answer."), never "The computer"; any other reason as the computer gave it, with its stop.
+ */
+export function readFailWords(error: string, computer: ComputerName): string {
+  if (!error || error === NO_ANSWER) return `${opening(computerInLine(computer))} did not answer.`;
+  const said = opening(error.trim());
+  return /[.!?]$/.test(said) ? said : `${said}.`;
+}
+
+/** `readFailWords` for one computer, by its id. */
+export function useReadFailWords(id: string): (error: string) => string {
+  const computer = useComputerName(id);
+  return (error) => readFailWords(error, computer);
 }

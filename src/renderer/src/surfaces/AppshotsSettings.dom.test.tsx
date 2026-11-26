@@ -15,7 +15,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock("../components/choice-select", async () => await import("../components/choice-select-body"));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
-vi.mock("../lib/native", () => ({ openUrl: vi.fn() }));
+vi.mock("../lib/native", async (original) => ({ ...(await original<typeof import("../lib/native")>()), openUrl: vi.fn() }));
 vi.mock("../lib/appshots", () => ({
   useAppshotSettings: () => state.settings,
   useAppshotSettingsStatus: () => state.status,
@@ -101,7 +101,7 @@ describe("Appshots page", () => {
   it("says why the load failed, and Retry asks again", () => {
     state.status = { loaded: false, loadError: "not connected", writeError: null };
     render(<AppshotsPage />);
-    expect(screen.getByText("not connected").className).toContain("text-destructive");
+    expect(screen.getByText("Not connected.").className).toContain("text-destructive");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(state.load).toHaveBeenCalled();
   });

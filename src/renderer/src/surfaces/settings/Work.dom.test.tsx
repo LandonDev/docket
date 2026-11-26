@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NO_ANSWER } from "../../lib/connection/openRead";
 
 const state = vi.hoisted(() => ({
   /** computers this window's key cannot switch */
@@ -45,7 +46,7 @@ vi.mock("./parts/hostRpc", () => ({
       // The row's own read of the switch: not a write.
       if (method === "work.get") {
         if (state.unread.has(env)) return new Promise(() => {});
-        if (state.readFails.has(env)) throw new Error("The host did not answer");
+        if (state.readFails.has(env)) throw new Error(NO_ANSWER);
         return { enabled: state.on.has(env) };
       }
       state.calls.push({ env, method, params });
@@ -165,7 +166,7 @@ describe("Settings → Work: Work is on for", () => {
     expect(within(rowOf("env_pc")).queryByRole("switch")).toBeNull();
     // A failed read is one line over the rows with one Retry, never one a row.
     expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
-    expect(screen.getByRole("alert").textContent).toBe("PURDUE-LT did not say whether Work is on.");
+    expect(screen.getByRole("alert").textContent).toBe("PURDUE-LT did not answer.");
     expect(within(rowOf("local")).getByRole("switch")).toBeTruthy();
   });
 

@@ -10,12 +10,14 @@ import { ModalBody, ModalPanel, useClosingDialog } from "./Modal";
 import { CheckRow, Field, FieldRow } from "./DialogField";
 import { Dialog } from "@renderer/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
-import { PageError, PageRowsSkeleton } from "@renderer/components/page";
+import { Skeleton } from "@renderer/components/ui/skeleton";
+import { useAccountsRead } from "../surfaces/settings/parts/useAccountsRead";
+import { FailuresSaidOnce, ReadFailure } from "../surfaces/settings/parts/ReadFailure";
 import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
 import { START_ON_OPTIONS } from "../lib/tcserver/defaults";
 import { useThreadDefaults } from "../lib/tcserver/workspaces";
 import { ChoiceSelect } from "../components/choice-select";
-import { BusyLabel, Button } from "@renderer/components/ui/button";
+import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import { ChoiceToggle } from "../components/choice-toggle";
@@ -32,8 +34,7 @@ import { AccountPinFields, projectInheritLabel } from "./AccountPinFields";
 import { registry } from "../lib/connection";
 import { managedElsewhere, useLinkMay } from "../lib/linkMay";
 import { refusalWords } from "../lib/settingsHome";
-import { useAccounts } from "../stores/accounts";
-import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
+import { ROUTED_PROVIDERS, emptyAccounts, type AccountPins } from "@server/shared/accounts";
 import type { BuildConfig } from "@server/shared/build";
 import { TURN_PASS_OFF, passEnabled, type TurnPass } from "@server/shared/turnpass";
 import { prettyCwd } from "../lib/paths";
@@ -225,18 +226,27 @@ function Section({ label, action, children }: { label: string; action?: ReactNod
   );
 }
 
-/** A group's read that failed: its words, and Retry at the end of the same line, as a page says it. */
-function GroupError({ error, retry }: { error: string; retry: () => void }) {
+/**
+ * A group's rows while its read is out, drawn as its `FieldRow`s are: the label, the control's shape at its end (or,
+ * `stacked`, a label over a full-width field), no hairline between them, since the loaded rows have none.
+ */
+function FieldBones({ rows, stacked = false }: { rows: readonly ("switch" | "select" | "field")[]; stacked?: boolean }) {
   return (
-    <PageError
-      action={
-        <Button type="button" variant="ghost" size="sm" onClick={retry}>
-          <BusyLabel busy={false} label="Retry" />
-        </Button>
-      }
-    >
-      {error}
-    </PageError>
+    <div role="status" aria-label="Loading" className={stacked ? "flex flex-col gap-4" : "flex flex-col"}>
+      {rows.map((control, i) =>
+        stacked ? (
+          <div key={i} data-slot="field-bone" className="flex flex-col gap-1.5">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-8 w-full rounded-lg" />
+          </div>
+        ) : (
+          <div key={i} data-slot="field-bone" className="flex min-h-11 items-center justify-between gap-3 py-2">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className={control === "switch" ? "h-[18px] w-8 rounded-full" : "h-7 w-40 rounded-md"} />
+          </div>
+        ),
+      )}
+    </div>
   );
 }
 
@@ -536,7 +546,9 @@ function ProjectSettingsBody({
     };
   }, [homeWorkspace.id, home.id, home.cwd, home.environmentId, buildAttempt]);
   const [pins, setPins] = useState<AccountPins>(home.accountPins ?? {});
-  const { snapshot } = useAccounts(home.environmentId);
+  // The accounts are their own read (`useAccountsRead`): bones until the computer answers, never the empty snapshot.
+  const accounts = useAccountsRead(home.environmentId);
+  const snapshot = accounts.snapshot ?? emptyAccounts();
   // A key that may not pin accounts (a given computer's) is not drawn them: the host would refuse the save.
   const mayPin = useLinkMay(home.environmentId, "project.setAccounts");
   // The rest of the sheet but the name and branch is the host's admin rule: a key that may not save a group reads it
@@ -639,8 +651,18 @@ function ProjectSettingsBody({
 
   // Save waits until every group has answered: a group still reading has nothing of his to save yet, and one that did
   // not answer is never written, which the footer says.
-  const loading = (!turnPass.error && (pass === undefined || inherited === undefined)) || (!buildError && savedBuild === undefined) || (!reviewLoad.error && !reviewScope) || (!plansFailure && !planScope);
-  const unloaded = !!(turnPass.error || buildError || reviewLoad.error || plansFailure);
+  const accountsWait = mayPin && !accounts.snapshot;
+  const loading = (!turnPass.error && (pass === undefined || inherited === undefined)) || (!buildError && savedBuild === undefined) || (!reviewLoad.error && !reviewScope) || (!plansFailure && !planScope) || (accountsWait && !accounts.error);
+  const unloaded = !!(turnPass.error || buildError || reviewLoad.error || plansFailure || (accountsWait && accounts.error));
+  // Every group failed: one computer's silence, said once at the head of the sheet with one Retry that asks them all.
+  const allFailed = !!(turnPass.error && buildError && reviewLoad.error && plansFailure && (!accountsWait || accounts.error));
+  const retryAll = (): void => {
+    turnPass.retry();
+    setBuildAttempt((n) => n + 1);
+    reviewLoad.retry();
+    plansFailure?.retry();
+    if (accountsWait) accounts.retry();
+  };
 
   // Cancel, Escape, the backdrop and the close button: a changed draft asks before it is dropped.
   const cancel = async (): Promise<void> => {
@@ -652,6 +674,8 @@ function ProjectSettingsBody({
   return (
     <Sheet {...root} onOpenChange={(open) => (open ? root.onOpenChange(open) : void cancel())}>
       <SheetContent side="right" showCloseButton={!pending} aria-busy={pending || undefined}>
+        {/* The sheet's own failures, said once among themselves: four groups one computer did not answer are one line. */}
+        <FailuresSaidOnce>
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
           <SheetHeader>
             <SheetTitle>Project settings</SheetTitle>
@@ -696,6 +720,10 @@ function ProjectSettingsBody({
                   </FieldRow>
                 </Section>
               ) : null}
+              {allFailed ? (
+                <ReadFailure computer={home.environmentId} error={turnPass.error ?? ""} retry={retryAll} />
+              ) : (
+                <>
               <Section label="After each turn" action={pass && may.pass ? <FollowButton label="Use workspace setting" onClick={() => setPass(null)} /> : undefined}>
                 {pass !== undefined && inherited !== undefined ? (
                   may.pass ? (
@@ -704,9 +732,9 @@ function ProjectSettingsBody({
                     <TurnPassWords value={shownPass} />
                   )
                 ) : turnPass.error ? (
-                  <GroupError error={turnPass.error} retry={turnPass.retry} />
+                  <ReadFailure computer={home.environmentId} error={turnPass.error} retry={turnPass.retry} />
                 ) : (
-                  <PageRowsSkeleton rows={[{ control: "switch" }, { control: "switch" }, { control: "select" }]} />
+                  <FieldBones rows={["switch", "switch", "select"]} />
                 )}
               </Section>
               <Section label="Reviews" action={review && may.review ? <FollowButton label="Use global setting" onClick={() => setReview(null)} /> : undefined}>
@@ -718,19 +746,26 @@ function ProjectSettingsBody({
                 ) : reviewScope ? (
                   <ReviewFields value={shownReview} onChange={setReview} environmentId={home.environmentId} compact />
                 ) : reviewLoad.error ? (
-                  <GroupError error={reviewLoad.error} retry={reviewLoad.retry} />
+                  <ReadFailure computer={home.environmentId} error={reviewLoad.error} retry={reviewLoad.retry} />
                 ) : (
-                  <PageRowsSkeleton rows={[{ control: "switch" }]} />
+                  <FieldBones rows={["switch"]} />
                 )}
               </Section>
               {mayPin ? (
                 <Section label="Accounts">
-                  <AccountPinFields
-                    environmentId={home.environmentId}
-                    value={pins}
-                    onChange={setPins}
-                    inheritLabel={projectInheritLabel(homeWorkspace, [...snapshot.providers.claude.profiles, ...snapshot.providers.codex.profiles])}
-                  />
+                  {accounts.snapshot ? (
+                    <AccountPinFields
+                      environmentId={home.environmentId}
+                      snapshot={accounts.snapshot}
+                      value={pins}
+                      onChange={setPins}
+                      inheritLabel={projectInheritLabel(homeWorkspace, [...snapshot.providers.claude.profiles, ...snapshot.providers.codex.profiles])}
+                    />
+                  ) : accounts.error ? (
+                    <ReadFailure computer={home.environmentId} error={accounts.error} retry={accounts.retry} />
+                  ) : (
+                    <FieldBones rows={["select", "select"]} />
+                  )}
                 </Section>
               ) : null}
               <Section label="Plans" action={plans && may.plans ? <FollowButton label="Use global setting" onClick={() => setPlans(null)} /> : undefined}>
@@ -743,18 +778,18 @@ function ProjectSettingsBody({
                 ) : planScope && shownPlans ? (
                   <PlanSettingsFields value={shownPlans} onChange={setPlans} environmentId={home.environmentId} compact />
                 ) : plansFailure ? (
-                  <GroupError error={plansFailure.error} retry={plansFailure.retry} />
+                  <ReadFailure computer={home.environmentId} error={plansFailure.error} retry={plansFailure.retry} />
                 ) : (
-                  // The five rows PlanSettingsFields draws, in their shape.
-                  <PageRowsSkeleton rows={5} />
+                  // The rows PlanSettingsFields draws, in their shape: two switches, three selects.
+                  <FieldBones rows={["switch", "switch", "select", "select", "select"]} />
                 )}
               </Section>
               <Section label="Build" action={buildOverride && may.build ? <FollowButton label="Use workspace setting" onClick={() => setBuildOverride(null)} /> : undefined}>
                 {savedBuild === undefined ? (
                   buildError ? (
-                    <GroupError error={buildError} retry={() => setBuildAttempt((n) => n + 1)} />
+                    <ReadFailure computer={home.environmentId} error={buildError} retry={() => setBuildAttempt((n) => n + 1)} />
                   ) : (
-                    <PageRowsSkeleton rows={2} control="none" />
+                    <FieldBones rows={["field", "field"]} stacked />
                   )
                 ) : may.build ? (
                   <BuildFields value={buildOverride ?? wsBuild ?? BUILD_EMPTY} onChange={setBuildOverride} detected={detected} />
@@ -769,6 +804,8 @@ function ProjectSettingsBody({
                   </>
                 )}
               </Section>
+                </>
+              )}
             </div>
           </div>
           {/* Under the scroller, beside the foot: a failed save is never scrolled out of sight. */}
@@ -779,6 +816,7 @@ function ProjectSettingsBody({
           ) : null}
           <Footer onCancel={() => void cancel()} confirmLabel="Save" pending={pending} disabled={!dirty || !!blocked || loading} note={blocked ?? (unloaded ? "Only what loaded is saved" : note)} />
         </form>
+        </FailuresSaidOnce>
       </SheetContent>
     </Sheet>
   );

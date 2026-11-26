@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const box = vi.hoisted(() => ({
   grants: [] as Record<string, unknown>[],
+  errors: [] as { environmentId: string; error: string }[],
   loaded: true,
   removed: [] as string[],
   calls: [] as { env: string; method: string; params: unknown }[],
@@ -15,7 +16,8 @@ const box = vi.hoisted(() => ({
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../outbox/store", () => ({
   useOutboxPage: () => {},
-  useOutbox: () => ({ grants: box.grants, loaded: box.loaded, errors: [] }),
+  useOutbox: () => ({ grants: box.grants, loaded: box.loaded, complete: box.loaded && !box.errors.length, errors: box.errors }),
+  loadHost: async () => {},
   removeGrant: async (grant: { id: string; environmentId: string }) => void box.removed.push(`${grant.environmentId}:${grant.id}`),
 }));
 vi.mock("../../lib/tcserver/workspaces", () => ({
@@ -25,12 +27,21 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
   ],
 }));
 vi.mock("../../lib/linkMay", async (original) => ({ ...(await original<object>()), useLinksMay: () => (env: string) => !box.cannot.has(env) }));
-vi.mock("../../lib/settings/computerName", () => ({
-  useComputerNames: () => (id: string) => ({ name: id === "env_box" ? "The box" : "MacBook Pro", own: id === "local" }),
-  computerInLine: (c: { name: string; own: boolean }) => (c.own ? "this Mac" : c.name === "The box" ? "the box" : c.name),
-}));
+vi.mock("../../lib/settings/computerName", async (original) => {
+  const real = await original<typeof import("../../lib/settings/computerName")>();
+  const nameOf = (id: string) => ({ name: id === "env_box" ? "The box" : "MacBook Pro", own: id === "local" });
+  return {
+    ...real,
+    useComputerNames: () => nameOf,
+    useComputerName: nameOf,
+    computerInLine: (c: { name: string; own: boolean }) => (c.own ? "this Mac" : c.name === "The box" ? "the box" : c.name),
+    useReadFailWords: (id: string) => (error: string) => real.readFailWords(error, nameOf(id)),
+  };
+});
 vi.mock("../../lib/connection", async (original) => ({ ...(await original<object>()), useEnvironments: () => [{ id: "env_box", name: "The box" }, { id: "local", name: "MacBook Pro" }] }));
 vi.mock("../../lib/workSwitch", () => ({ useWorkHosts: () => box.on }));
+const opened = vi.hoisted(() => ({ outbox: 0 }));
+vi.mock("../../stores/shell", () => ({ shell: { openOutbox: () => void opened.outbox++ } }));
 const card = (addonId: string, name: string, tools: { tool: string; words: string; rule: string | null }[], lifeos = false) => ({
   addonId,
   name,
@@ -59,6 +70,7 @@ const settle = () => act(async () => void (await new Promise((done) => setTimeou
 afterEach(() => {
   cleanup();
   box.grants = [];
+  box.errors = [];
   box.loaded = true;
   box.removed = [];
   box.calls = [];
@@ -106,6 +118,33 @@ describe("Things threads may send on their own", () => {
     const sheet = await screen.findByRole("dialog");
     fireEvent.change(within(sheet).getByRole("searchbox", { name: "Find a grant" }), { target: { value: "sam" } });
     expect([...sheet.querySelectorAll("[data-grant]")].map((r) => r.getAttribute("data-grant"))).toEqual(["g4"]);
+  });
+});
+
+describe("the grants' read", () => {
+  it("never says None for a computer that did not answer: it names that computer with Retry, and holds the row", async () => {
+    box.loaded = true;
+    box.errors = [{ environmentId: "env_box", error: "The computer did not answer" }, { environmentId: "local", error: "The computer did not answer" }];
+    render(<GrantsRow id="work.grants" />);
+    const row = document.querySelector<HTMLElement>('[data-setting="work.grants"]')!;
+    expect(row.textContent).not.toContain("None");
+    expect(screen.getAllByRole("alert").map((a) => a.textContent)).toEqual(["The box did not answer.", "this Mac did not answer.".replace(/^t/, "T")]);
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(2);
+    // Nothing read: no way into a sheet that could show nothing.
+    expect(screen.queryByRole("button", { name: "Things threads may send on their own" })).toBeNull();
+  });
+
+  it("holds bones while a computer is out, and says the count once all answered", () => {
+    box.loaded = false;
+    render(<GrantsRow id="work.grants" />);
+    expect(document.querySelector('[data-setting="work.grants"] [data-slot=skeleton]')).toBeTruthy();
+  });
+
+  it("opens the Outbox from the sheet, where a grant is made", async () => {
+    render(<GrantsRow id="work.grants" />);
+    fireEvent.click(screen.getByRole("button", { name: "Things threads may send on their own" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Open the Outbox" }));
+    expect(opened.outbox).toBe(1);
   });
 });
 

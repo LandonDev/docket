@@ -1,3 +1,4 @@
+import { NO_ANSWER } from "../../lib/connection/openRead";
 import type { DigestDay, DigestPush, DigestSettings } from "@shared/contract-work-digest";
 import type { TellRow } from "@shared/work/tell";
 
@@ -53,7 +54,7 @@ export function linkOf(world: World, env: string) {
     onClose: () => () => undefined,
     request: async (method: string, params: Record<string, unknown> = {}) => {
       world.calls.push({ env, method, params });
-      if (world.down.has(env)) throw new Error("socket closed");
+      if (world.down.has(env)) throw new Error(NO_ANSWER);
       switch (method) {
         case "work.digest.list":
           return { days: world.days.get(env) ?? [], rows: world.rows.get(env) ?? [], waiting: 0, groups: [] };

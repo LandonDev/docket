@@ -1,4 +1,6 @@
+import { registry } from "../lib/connection";
 import { useCallback, useEffect } from "react";
+import { ReadFailure } from "./settings/parts/ReadFailure";
 import type { AppshotDestination } from "@server/shared/appshots";
 import {
   loadAppshotSettings,
@@ -9,9 +11,8 @@ import {
   useAppshotSettingsStatus,
 } from "../lib/appshots";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
-import { PageError, PageRowsSkeleton, PageSection } from "../components/page";
+import { PageRowsSkeleton, PageSection } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
-import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { Permissions } from "./settings/parts/Permissions";
 import { SettingRow } from "./settings/parts/SettingRow";
@@ -85,15 +86,7 @@ export function AppshotsPage() {
           </SettingRow>
         </>
       ) : loadError ? (
-        <PageError
-          action={
-            <Button variant="ghost" size="sm" onClick={() => void loadAppshotSettings()}>
-              Retry
-            </Button>
-          }
-        >
-          {loadError}
-        </PageError>
+        <ReadFailure computer={registry.primary().environmentId} error={loadError} retry={loadAppshotSettings} />
       ) : (
         <PageRowsSkeleton rows={[{ control: "switch" }, { description: true, control: "select" }, { control: "switch" }]} />
       )}

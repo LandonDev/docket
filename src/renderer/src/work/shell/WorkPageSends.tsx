@@ -4,12 +4,15 @@ import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "../../components/ui/sheet";
+import { Skeleton } from "../../components/ui/skeleton";
+import { shell } from "../../stores/shell";
 import { useEnvironments } from "../../lib/connection";
 import { withDeadline } from "../../lib/connection/openRead";
 import { useLinksMay } from "../../lib/linkMay";
 import { hostFailure } from "../../lib/hostFailure";
-import { computerInLine, useComputerNames } from "../../lib/settings/computerName";
+import { computerInLine, readFailWords, useComputerNames } from "../../lib/settings/computerName";
+import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { ListFilter, useListFilter, filterList, LIST_FILTER_PAST } from "../../surfaces/settings/parts/ListFilter";
@@ -19,7 +22,7 @@ import { SettingRow } from "../../surfaces/settings/parts/SettingRow";
 import { hostRequest } from "../../surfaces/settings/parts/hostRpc";
 import { useSaved } from "../../surfaces/settings/parts/useSaved";
 import { grantLine, WORK_CHATS_KEY } from "../outbox/model";
-import { removeGrant, useOutbox, useOutboxPage, type HostGrant } from "../outbox/store";
+import { loadHost, removeGrant, useOutbox, useOutboxPage, type HostGrant } from "../outbox/store";
 
 /**
  * What Work threads may do without his press (docs/agents/settings.md "The pages: Work"): the standing send grants,
@@ -39,17 +42,48 @@ export function grantsWords(grants: readonly Pick<HostGrant, "environmentId" | "
   return `${grants.length} across ${jobs.size} jobs`;
 }
 
-/** The open row to the grants sheet: one sheet, opened from Work and from Mail alike. */
-export function GrantsRow({ id }: { id: "work.grants" | "mail.grants" }) {
+/**
+ * The grants' read: the count once every computer with Work on has answered; bones while one is out; each computer
+ * that failed named once on the page (`ReadFailure`), its Retry asking it again.
+ */
+export function useGrantsRead() {
   useOutboxPage();
   const view = useOutbox();
+  const names = useComputerNames();
+  const [retrying, setRetrying] = useState(false);
+  const retry = (): Promise<void> => {
+    setRetrying(true);
+    return Promise.all(view.errors.map((e) => loadHost(e.environmentId, { whole: true }))).then(
+      () => setRetrying(false),
+      () => setRetrying(false),
+    );
+  };
+  return { view, failed: view.errors, retry, retrying, failWords: view.errors.map((e) => readFailWords(e.error, names(e.environmentId))).join(" ") };
+}
+
+/** The open row to the grants sheet: one sheet, opened from Work and from Mail alike. */
+export function GrantsRow({ id }: { id: "work.grants" | "mail.grants" }) {
+  const read = useGrantsRead();
+  const { view, failed } = read;
+  const workOn = useWorkHosts();
   const jobName = useGrantJobName();
   const [open, setOpen] = useState(false);
-  // Until every computer with Work on has answered, the count would be a guess: it waits.
-  const description = view.loaded ? grantsWords(view.grants, jobName) : undefined;
+  // The count stands only once every computer answered; part of a list says it is part, the others named below.
+  const description = view.complete
+    ? grantsWords(view.grants, jobName)
+    : failed.length
+      ? view.grants.length
+        ? `${grantsWords(view.grants, jobName)} on the computers that answered`
+        : undefined
+      : <Skeleton className="mt-0.5 h-3 w-28" />;
+  // Nothing read at all: the row holds its name, with no way into a sheet that could show nothing.
+  const nothing = failed.length > 0 && failed.length >= workOn.size;
   return (
     <>
-      <SettingRow id={id} description={description} onOpen={() => setOpen(true)} openLabel="Things threads may send on their own" />
+      <SettingRow id={id} description={description} onOpen={nothing ? undefined : () => setOpen(true)} openLabel="Things threads may send on their own" />
+      {failed.map((e) => (
+        <ReadFailure key={e.environmentId} computer={e.environmentId} error={e.error} retry={read.retry} />
+      ))}
       <StoreGrantsSheet open={open} onOpenChange={setOpen} />
     </>
   );
@@ -63,10 +97,20 @@ function useGrantJobName(): (workspaceId: string) => string {
 
 /** The sheet over the Outbox's store: every computer with Work on, each grant removed from the computer that holds it. */
 export function StoreGrantsSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  useOutboxPage();
-  const view = useOutbox();
+  const read = useGrantsRead();
   const jobName = useGrantJobName();
-  return <GrantsSheet open={open} onOpenChange={onOpenChange} grants={view.grants} loaded={view.loaded} errors={view.errors} jobName={jobName} />;
+  return (
+    <GrantsSheet
+      open={open}
+      onOpenChange={onOpenChange}
+      grants={read.view.grants}
+      loaded={read.view.loaded}
+      failWords={read.failed.length ? read.failWords : null}
+      retry={read.retry}
+      retrying={read.retrying}
+      jobName={jobName}
+    />
+  );
 }
 
 const grantWords = (grant: HostGrant, job: string): string => `${grant.label} ${job}`;
@@ -76,18 +120,22 @@ export function GrantsSheet({
   onOpenChange,
   grants,
   loaded,
-  errors,
+  failWords,
+  retry,
+  retrying = false,
   jobName,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   grants: readonly HostGrant[];
   loaded: boolean;
-  errors: readonly { environmentId: string; error: string }[];
+  /** The computers whose grants did not come, in the house's words; null when every one answered. */
+  failWords: string | null;
+  retry?: () => void;
+  retrying?: boolean;
   jobName: (workspaceId: string) => string;
 }) {
   const may = useLinksMay();
-  const names = useComputerNames();
   const workspaces = useWorkspaces();
   const words = useCallback((grant: HostGrant) => grantWords(grant, jobName(grant.workspaceId)), [jobName]);
   const filter = useListFilter(grants, words);
@@ -112,12 +160,22 @@ export function GrantsSheet({
         </SheetHeader>
         <div className="@container/page flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-5 pb-5">
           <ListFilter filter={filter} label="Find a grant" />
-          {errors.map((e) => (
-            <PageError key={e.environmentId}>{`${capital(computerInLine(names(e.environmentId)))} did not answer.`}</PageError>
-          ))}
-          {!loaded && grants.length === 0 && errors.length === 0 ? (
+          {failWords ? (
+            <PageError
+              action={
+                retry ? (
+                  <Button variant="ghost" size="sm" disabled={retrying} onClick={retry}>
+                    <BusyLabel busy={retrying} label="Retry" />
+                  </Button>
+                ) : undefined
+              }
+            >
+              {failWords}
+            </PageError>
+          ) : null}
+          {!loaded && grants.length === 0 && !failWords ? (
             <PageRowsSkeleton rows={3} description control="button" />
-          ) : grants.length === 0 && errors.length === 0 ? (
+          ) : grants.length === 0 && !failWords ? (
             <PageEmpty>{`None yet. ${GRANTS_MADE}`}</PageEmpty>
           ) : (
             filter.shown.map((grant) => {
@@ -141,12 +199,17 @@ export function GrantsSheet({
           )}
           {error ? <PageError>{error}</PageError> : null}
         </div>
+        {/* A grant is made from a held item: the way there, from the sheet that lists them. */}
+        <SheetFooter className="border-t border-border">
+          <Button variant="secondary" onClick={() => (onOpenChange(false), shell.openOutbox())}>
+            Open the Outbox
+          </Button>
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   );
 }
 
-const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
 // ── each add-on's tools ─────────────────────────────────────────────
 
@@ -189,7 +252,7 @@ function useToolCards(open: boolean, hosts: readonly string[]) {
     for (const id of hosts)
       withDeadline(hostRequest<{ addons: ToolRulesCard[] }>(id, "work.outbox.rules", {})).then(
         (answer) => live && setByHost((was) => ({ ...was, [id]: { cards: answer.addons } })),
-        (err: unknown) => live && setByHost((was) => ({ ...was, [id]: { ...was[id], error: hostFailure(id, err, "did not list its add-ons' tools") } })),
+        (err: unknown) => live && setByHost((was) => ({ ...was, [id]: { ...was[id], error: err instanceof Error ? err.message : String(err) } })),
       );
     return () => {
       live = false;
@@ -239,7 +302,7 @@ export function ToolsSheet({ open, onOpenChange }: { open: boolean; onOpenChange
                     </Button>
                   }
                 >
-                  {read.error}
+                  {readFailWords(read.error, names(id))}
                 </PageError>
               ) : (
                 <PageRowsSkeleton key={id} rows={3} control="select" />

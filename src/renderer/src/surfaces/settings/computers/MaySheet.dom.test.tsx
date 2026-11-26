@@ -50,7 +50,7 @@ vi.mock("../../../chrome/ConfirmDialog", async (original) => ({
   },
 }));
 
-const { MayBody, MaySheetHost, mayHereWords, nowWords } = await import("./MaySheet");
+const { MayBody, MaySheetHost, mayHereWords, nowWords, whatEnds } = await import("./MaySheet");
 const { openMaySheet } = await import("../../../lib/settings/maySheet");
 
 const host = (over: Partial<MacBridgeHostPolicy> = {}): MacBridgeHostPolicy => ({
@@ -97,6 +97,21 @@ describe("Files and commands", () => {
     expect(confirms).toEqual([]);
     expect(calls).toEqual([["policy", "env_box", "full"]]);
     expect(screen.getByText("Saved")).toBeTruthy();
+  });
+
+  it("asks only about what the chosen level ends, as the server ends it", async () => {
+    const now = { commands: 2, waiting: 1, apps: 1 };
+    // Full access to Read and run keeps commands and app sessions: nothing to ask.
+    expect(whatEnds("read+run", now)).toBeNull();
+    expect(whatEnds("read", now)).toBe("3 commands it runs here end.");
+    expect(whatEnds("off", now)).toBe("3 commands it runs here end, and 1 live app session ends.");
+    expect(whatEnds("off", { commands: 0, waiting: 0, apps: 2 })).toBe("2 live app sessions end.");
+    running = [{ kind: "run", status: "running" }];
+    draw({ policy: "full" });
+    fireEvent.click(screen.getByText("Read and run"));
+    await flush();
+    expect(confirms).toEqual([]);
+    expect(calls).toEqual([["policy", "env_box", "read+run"]]);
   });
 
   it("asks before lowering it while its commands run, naming how many end", async () => {
@@ -188,7 +203,7 @@ describe("the rest", () => {
     running = [{ kind: "run", status: "running" }, { kind: "run", status: "held" }];
     draw();
     expect(document.querySelector("[data-setting='sharing.commands']")?.textContent).toContain("1 running now, 1 waiting");
-    expect(document.querySelector("[data-setting='sharing.threads']")?.textContent).toContain("None here now");
+    expect(document.querySelector("[data-setting='sharing.threads']")?.textContent).toContain("None running now");
     expect(nowWords(0)).toBe("None running now");
   });
 

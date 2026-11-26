@@ -9,6 +9,10 @@ import { resetLifeos, setLifeosSession, setLifeosStatus } from "./lifeos";
 
 // A link's transport by hand where a test sets one; else the real hook.
 const transport = vi.hoisted(() => ({ now: null as string | null }));
+vi.mock("../../lib/settings/computerName", async (original) => {
+  const real = await original<typeof import("../../lib/settings/computerName")>();
+  return { ...real, useReadFailWords: () => (error: string) => real.readFailWords(error, { name: "The box", own: false }) };
+});
 vi.mock("../../lib/connection", async (original) => {
   const real = await original<typeof import("../../lib/connection")>();
   return {
@@ -33,7 +37,7 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => ({
     { id: "bare", name: "site", environmentId: "env_box", sector: null, kind: "code", path: "/b" },
   ],
 }));
-const reads = vi.hoisted(() => ({ fail: true, asked: 0, error: "The host did not answer" }));
+const reads = vi.hoisted(() => ({ fail: true, asked: 0, error: "The computer did not answer" }));
 vi.mock("./actions", async (original) => ({
   ...(await original<object>()),
   workspaceSettings: async () => {
@@ -67,15 +71,15 @@ describe("a job's page", () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
     render(<WorkWorkspacePage workspaceId="ws" />);
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.getByText("The host did not answer")).toBeTruthy();
+    expect(screen.getByText("The box did not answer.")).toBeTruthy();
     reads.fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     // Council round 12 (the walk): the line stays, its Retry spinning, until the answer replaces it.
-    expect(screen.getByText("The host did not answer")).toBeTruthy();
+    expect(screen.getByText("The box did not answer.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeTruthy();
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     expect(reads.asked).toBe(2);
-    expect(screen.queryByText("The host did not answer")).toBeNull();
+    expect(screen.queryByText("The box did not answer.")).toBeNull();
   });
 
   it("says a read that failed in his words and names the computer, never the link's own text", async () => {
@@ -87,7 +91,7 @@ describe("a job's page", () => {
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     expect(screen.getByText("The box did not send this job's settings.")).toBeTruthy();
     expect(screen.queryByText(/srv\/agents/)).toBeNull();
-    reads.error = "The host did not answer";
+    reads.error = "The computer did not answer";
   });
 
   /** Council round 10 (Opus Settings 3): the sign-out was said a second time, above Waiting on's line. */
@@ -122,7 +126,7 @@ describe("a workspace page for a key that may not change it", () => {
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     expect(screen.queryAllByRole("switch")).toEqual([]);
     expect(document.querySelector("[data-defaults]")).toBeNull();
-    expect(screen.getAllByText("Changed from a computer that manages the box")).toHaveLength(1);
+    expect(screen.getAllByText("Changed from a computer that manages the box.")).toHaveLength(1);
     expect(screen.getByText("PURDUE-LT").closest("[data-slot=page-row]")?.textContent).toContain("Not allowed");
     expect(request.mock.calls.map((c: unknown[]) => c[0]).filter((m) => m === "work.workspace.set" || m === "work.mail.waiting")).toEqual([]);
   });
@@ -149,7 +153,7 @@ describe("a code workspace's LifeOS sector", () => {
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     expect(screen.queryByRole("combobox", { name: "Job" })).toBeNull();
     expect(screen.getByText("Purdue")).toBeTruthy();
-    expect(screen.getByText("Changed from a computer that manages the box")).toBeTruthy();
+    expect(screen.getByText("Changed from a computer that manages the box.")).toBeTruthy();
   });
 });
 

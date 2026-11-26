@@ -29,30 +29,33 @@ export function FilesPage({ guestsOpen = false }: { /** The guest links' sheet o
     <>
       {hosts
         .filter((h) => isDesktop(h.platform) || own(h.id))
-        .map((h) => (
+        .map((h, i) => (
           <TeamsFilesRow
             key={h.id}
+            // What a row's switch means is said once a page, over its first list.
+            explain={i === 0}
             link={registry.linkOf(h.id)}
             host={h.name}
             title={settingTitle("files.folders", { computer: computerInLine(names(h.id)) })}
             setting="files.folders"
             editable={own(h.id)}
-            elsewhere={`Changed in Docket on ${computerInLine(names(h.id))}`}
+            elsewhere={`Changed from ${computerInLine(names(h.id))}.`}
           />
         ))}
       {/* A computer that keeps no Windows VM draws no section for it. */}
       {hosts
         .filter((h) => !isDesktop(h.platform))
-        .map((h) => (
+        .map((h, i) => (
           <TeamsFilesRow
             key={`vm:${h.id}`}
+            explain={!hosts.some((d) => isDesktop(d.platform) || own(d.id)) && i === 0}
             link={registry.linkOf(h.id)}
             host={h.name}
             title={settingTitle("files.vm")}
             setting="files.vm"
             vm
             editable={own(h.id)}
-            elsewhere={`Changed in Docket on ${computerInLine(names(h.id))}`}
+            elsewhere={`Changed from ${computerInLine(names(h.id))}.`}
           />
         ))}
       <SettingSection of="files.guests">

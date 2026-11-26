@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ReadFailure } from "./parts/ReadFailure";
 import type { ComputerAppVerdict, ComputerServiceState, ComputerSettings } from "@server/shared/contract-computer";
 import type { ActiveAppMode } from "@server/shared/computer/scheduleRules";
 import { verdictWords } from "@server/shared/computer/words";
@@ -59,16 +60,6 @@ export function ComputerPage() {
   const perms = useComputerPermissions(link, service);
   useEffect(() => onComputerSettings(link, set), [link, set]);
 
-  const retryRead = (
-    <Button variant="ghost" size="sm" onClick={() => void settings.retry()}>
-      Retry
-    </Button>
-  );
-  const permsRetry = (
-    <Button variant="ghost" size="sm" onClick={perms.retry}>
-      Retry
-    </Button>
-  );
 
   return (
     <>
@@ -77,7 +68,7 @@ export function ComputerPage() {
         {settings.value ? (
           <SettingsRows link={link} value={settings.value} onSaved={set} />
         ) : settings.error ? (
-          <PageError action={retryRead}>{settings.error}</PageError>
+          <ReadFailure computer={link.environmentId} error={settings.error} retry={settings.retry} />
         ) : (
           <PageRowsSkeleton rows={[{ control: "number" }, { control: "select" }, { control: "switch" }, { control: "switch" }]} />
         )}
@@ -87,9 +78,9 @@ export function ComputerPage() {
 
       <SettingSection of="computer.accessibility">
         {perms.value === null ? (
-          <PageError action={permsRetry}>Couldn't read the permissions</PageError>
+          <ReadFailure computer={link.environmentId} error="Couldn't read the permissions" retry={perms.retry} />
         ) : perms.error ? (
-          <PageError action={permsRetry}>{perms.error}</PageError>
+          <ReadFailure computer={link.environmentId} error={perms.error} retry={perms.retry} />
         ) : (
           <Permissions
             accessibility={perms.value ? perms.value.accessibility : null}

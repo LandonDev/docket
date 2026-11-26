@@ -1,22 +1,24 @@
 import { useState } from "react";
 import { ThreadDefaultsDialog } from "../../../chrome/ThreadDefaultsDialog";
-import { PageError, PageRowsSkeleton } from "../../../components/page";
-import { BusyLabel, Button } from "../../../components/ui/button";
+import { PageRowsSkeleton } from "../../../components/page";
+import { Button } from "../../../components/ui/button";
 import { EFFORT_LABELS, PERMISSION_LABELS, effortLadder, modelForDefaults, type DefaultsScope } from "../../../lib/tcserver/defaults";
 import type { WorkspaceMeta } from "../../../lib/tcserver/types";
 import { useThreadDefaults, useThreadDefaultsError } from "../../../lib/tcserver/workspaces";
+import { ReadFailure } from "./ReadFailure";
 import { SettingRow } from "./SettingRow";
 
 /**
  * What a job's or a code workspace's new threads start with, values in force and whose they are: "Set for this job: …"
  * when it keeps its own, "Same as New threads: …" when it follows the set every computer reads. The model, its effort
- * where it has a ladder, and the access, lower case mid-line.
+ * where it has a ladder, and the access by its own name.
  */
 export function startSetWords(scope: DefaultsScope, whose: "job" | "workspace", environmentId?: string): string {
   const model = modelForDefaults(scope.defaults, environmentId);
   const parts = [model.name];
   if (effortLadder(model).length > 1) parts.push(EFFORT_LABELS[scope.defaults.reasoning]);
-  parts.push(PERMISSION_LABELS[scope.defaults.permission].toLowerCase());
+  // Access keeps its own capitals inside the sentence: "Full access", "Auto-accept edits".
+  parts.push(PERMISSION_LABELS[scope.defaults.permission]);
   return `${scope.overridden ? `Set for this ${whose}` : "Same as New threads"}: ${parts.join(", ")}`;
 }
 
@@ -31,17 +33,7 @@ export function StartSetRow({ id, workspace, whose, may }: { id: "job.threads" |
   const [open, setOpen] = useState(false);
   if (!scope) {
     if (failure) {
-      return (
-        <PageError
-          action={
-            <Button variant="ghost" size="sm" onClick={failure.retry}>
-              <BusyLabel busy={false} label="Retry" />
-            </Button>
-          }
-        >
-          {failure.error}
-        </PageError>
-      );
+      return <ReadFailure computer={workspace.environmentId} error={failure.error} retry={failure.retry} />;
     }
     return <PageRowsSkeleton rows={[{ description: true, control: may ? "button" : "none" }]} />;
   }

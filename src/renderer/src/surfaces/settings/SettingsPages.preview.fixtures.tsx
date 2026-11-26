@@ -3,7 +3,8 @@
 // SETTINGS_PREVIEW=editor,sharing keeps those pages' fixtures alone, so each page's shots stay readable.
 const PAGES = [
   "winvm",
-  "updates",
+  // The box's page as /ui draws it: a browser, so before the Mac windows.
+  "computer-box-web",
   "away",
   "defaults",
   "defaults-offline",
@@ -24,7 +25,6 @@ const PAGES = [
   "accounts",
   "reviews",
   "reviews-off",
-  "workspace",
   // One dialog or sheet open over its page: shoot each alone.
   "defaults-places",
   "orchestration-models",
@@ -32,10 +32,9 @@ const PAGES = [
   "addons-add",
   "addons-edit",
   "skills-edit",
-  "workspace-work",
-  "project",
   // A Mac's desktop window from here on (AsMac in the preview): keep these last.
   "general",
+  "updates",
   "editor",
   "editor-licence",
   "keybindings-work",
@@ -53,6 +52,9 @@ const PAGES = [
   "publish",
   "publish-running",
   "job",
+  "workspace",
+  "workspace-work",
+  "project",
   "archive",
   // Work's pages are a Mac's window too, with three computers.
   "work-off",

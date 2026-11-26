@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WinvmPoint, WinvmState } from "@shared/contract-work-winvm";
 import { registry } from "../../../lib/connection";
+import { NO_ANSWER } from "../../../lib/connection/openRead";
 import { GIVEN_KEY, READ_KEY, resetTestKey, testKey } from "../../../lib/linkMay.testkit";
 import { TURN_ON, WinvmHost, WinvmPage, WinvmWorkspaceRow, pointsOf, stateOf, winvmRow } from "./Winvm";
 import { tellSettingsList } from "../../../lib/settings/useListWindow";
@@ -272,12 +273,14 @@ describe("Settings › Windows VM", () => {
     let answer!: (v: unknown) => void;
     const request = vi.fn(async (method: string) => {
       if (method !== "work.winvm.state") return Promise.reject(new Error("not handled"));
-      return request.mock.calls.filter(([m]) => m === "work.winvm.state").length === 1 ? Promise.reject(new Error("No answer in 4 s")) : new Promise((r) => (answer = r));
+      return request.mock.calls.filter(([m]) => m === "work.winvm.state").length === 1 ? Promise.reject(new Error(NO_ANSWER)) : new Promise((r) => (answer = r));
     });
     vi.spyOn(registry, "linkOf").mockReturnValue({ request, onPush: () => () => undefined, onOpen: () => () => undefined } as never);
     render(<WinvmHost env="box" />);
     await flush();
-    const line = screen.getByText("The box did not answer. Try again once it is connected.");
+    // One line naming the computer (ReadFailure), never the link's raw words.
+    const line = document.querySelector("[data-read-failure]")!;
+    expect(line.textContent).toMatch(/did not answer\./);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await flush();
     expect(line.isConnected).toBe(true);
@@ -285,7 +288,7 @@ describe("Settings › Windows VM", () => {
     expect(retry.disabled).toBe(true);
     expect(retry.querySelector("[data-busy]")).not.toBeNull();
     await act(async () => answer(at({ state: "asleep" })));
-    expect(screen.queryByText("The box did not answer. Try again once it is connected.")).toBeNull();
+    expect(document.querySelector("[data-read-failure]")).toBeNull();
   });
 
   it("stands in as many rows as will land while its state is read", async () => {

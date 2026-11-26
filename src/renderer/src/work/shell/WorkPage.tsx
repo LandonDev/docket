@@ -3,10 +3,11 @@ import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ThreadDefaultsEditor } from "../../chrome/ThreadDefaultsDialog";
 import { Modal, ModalBody } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageError, PageRow } from "../../components/page";
+import { PageRow } from "../../components/page";
 import { Skeleton } from "../../components/ui/skeleton";
-import { startAway, useAway } from "../../lib/away";
-import { useEnvironments } from "../../lib/connection";
+import { awayStore, startAway, useAway } from "../../lib/away";
+import { useStore } from "zustand";
+import { registry, useEnvironments } from "../../lib/connection";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { isWebMode } from "../../lib/nativeWeb";
 import { thisDesktopInLine } from "../../lib/native";
@@ -14,10 +15,10 @@ import { ACCESS_NAMES, accessWords } from "../../lib/settings/access";
 import { useComputerNames } from "../../lib/settings/computerName";
 import type { PermissionPolicy, WorkspaceMeta } from "../../lib/tcserver/types";
 import { scopeKey, useWorkspaceCatalog, useWorkspaces, workspaceStore } from "../../lib/tcserver/workspaces";
-import { BusyLabel, Button } from "../../components/ui/button";
 import { useLinksMay } from "../../lib/linkMay";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { OpenCue, SettingRow, SettingSection } from "../../surfaces/settings/parts/SettingRow";
+import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
 import { StartAddressesRow } from "../clashes/StartPlaces";
 import { setWorkHome, workHome } from "./actions";
 import { GrantsRow, ToolsRow } from "./WorkPageSends";
@@ -79,7 +80,6 @@ function JobsAccess() {
     .sort((a, b) => a.name.localeCompare(b.name));
   const { defaults, defaultsErrors } = useWorkspaceCatalog();
   const [open, setOpen] = useState<WorkspaceMeta | null>(null);
-  const [retrying, setRetrying] = useState(false);
   const may = useLinksMay();
   const key = jobs.map((j) => `${j.environmentId}:${j.id}`).join(",");
   useEffect(() => {
@@ -90,27 +90,29 @@ function JobsAccess() {
   const failed = jobs.filter((job) => !levelOf(job) && defaultsErrors.has(scopeKey(job.environmentId, job.id)));
   const levels = jobs.map(levelOf).filter((level): level is PermissionPolicy => !!level);
   const common = mostOf(levels);
-  const retry = (): void => {
-    setRetrying(true);
-    void Promise.all(failed.map((job) => workspaceStore.loadDefaults(job.environmentId, job.id))).finally(() => setRetrying(false));
-  };
+  // One line a computer whose jobs did not answer (the page says a silence once: `ReadFailure`), its Retry asking them again.
+  const failedOn = [...new Set(failed.map((job) => job.environmentId))];
+  const failures = failedOn.map((environmentId) => {
+    const ones = failed.filter((job) => job.environmentId === environmentId);
+    return (
+      <ReadFailure
+        key={environmentId}
+        computer={environmentId}
+        error={defaultsErrors.get(scopeKey(environmentId, ones[0]!.id)) ?? ""}
+        retry={() => Promise.all(ones.map((job) => workspaceStore.loadDefaults(job.environmentId, job.id)))}
+      />
+    );
+  });
+  // Every job's read failed: the line alone, with no heading and no rows standing on nothing.
+  if (failed.length === jobs.length) return <>{failures}</>;
   return (
     <>
       <SettingSection of="work.access" description={common && levels.length === jobs.length ? accessWords(common) : undefined}>
-        {failed.length ? (
-          <PageError
-            action={
-              <Button variant="ghost" size="sm" disabled={retrying} onClick={retry}>
-                <BusyLabel busy={retrying} label="Retry" />
-              </Button>
-            }
-          >
-            {failed.length === jobs.length ? "The jobs' access did not load." : `The access of ${failed.map((j) => j.name).join(" and ")} did not load.`}
-          </PageError>
-        ) : null}
+        {failures}
         {jobs.map((job) => {
           const level = levelOf(job);
-          const opens = may(job.environmentId, "defaults.set");
+          // A job whose set has not come (out, or failed) holds its name alone: no value, and no way in yet.
+          const opens = may(job.environmentId, "defaults.set") && !!level;
           return (
             <PageRow
               key={job.id}
@@ -155,6 +157,8 @@ export function JobThreadsDialog({ job, onClose }: { job: WorkspaceMeta; onClose
 /** Away for Work threads is Away's own switch: this row says where it stands and goes there. */
 function AwayRow() {
   const { work } = useAway();
+  // Away's state stands once this computer has said it: a default is no answer. Away's own page holds its read.
+  const known = useStore(awayStore, (state) => state.pending !== null || registry.primaryEnvironmentId in state.hosts);
   useEffect(() => startAway(), []);
-  return <SettingRow id="work.away" description={work ? "Away is on for Work threads" : "Off for Work threads"} onOpen={() => requestSettings("away", "away.work")} openLabel="Away" />;
+  return <SettingRow id="work.away" description={known ? (work ? "Away is on for Work threads" : "Off for Work threads") : undefined} onOpen={() => requestSettings("away", "away.work")} openLabel="Away" />;
 }

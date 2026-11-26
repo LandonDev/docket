@@ -962,7 +962,12 @@ settings_set() {
   done
   appearance light
   xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
-  shot settings-a11y settings
+  # The first launch after a text-size change stood on Home past the settle (round 1's settings-a11y showed Home while
+  # host-detail-a11y, the second launch, reached its page): one launch at the new size to settle, unshot, then
+  # Settings itself, with twice the settle.
+  launch_app settings
+  sleep "$SETTLE"
+  shot settings-a11y settings "" "" "" "$((SETTLE * 2))"
   shot host-detail-a11y hosts "" "" host
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
 }

@@ -34,6 +34,8 @@ vi.mock("../winvm/signIn", () => ({ signInOnVm }));
 
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
+const asked = vi.hoisted(() => ({ settings: [] as unknown[][] }));
+vi.mock("../../lib/monaco/debugTab", async (original) => ({ ...(await original<object>()), requestSettings: (...args: unknown[]) => void asked.settings.push(args) }));
 const { ConnectionsPage, ConnectionsView, forgetReports } = await import("./ConnectionsPage");
 const { FirstCheckBones } = await import("./FirstCheckBones");
 const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
@@ -356,12 +358,12 @@ describe("Connections", () => {
   });
 
   it("says a host that refuses was not checked, never that it did not answer, with the refusal's words and Retry", async () => {
-    vi.spyOn(registry, "linkOf").mockReturnValue({ request: vi.fn(async () => Promise.reject(new Error("Work is off on this host"))) } as never);
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request: vi.fn(async () => Promise.reject(new Error("The disk is full"))) } as never);
     render(<ConnectionsPage />);
     await settle();
     expect(screen.getByText("Not checked")).toBeTruthy();
     expect(screen.queryByText("Did not answer")).toBeNull();
-    expect(screen.getByText("Work is off on the box. Turn it on in Settings, Work.")).toBeTruthy();
+    expect(screen.getByText(/The disk is full/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
@@ -369,7 +371,7 @@ describe("Connections", () => {
   it("keeps a Hosts row in place while its Retry checks, spinning that Retry alone, and a new cause replaces the reason", async () => {
     let answer: (err: Error) => void = () => {};
     let asks = 0;
-    const request = vi.fn(() => (++asks === 1 ? Promise.reject(new Error("Work is off on this host")) : new Promise((_, no) => (answer = no))));
+    const request = vi.fn(() => (++asks === 1 ? Promise.reject(new Error("The disk is full")) : new Promise((_, no) => (answer = no))));
     vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
     render(
       <Page title="Connections">
@@ -378,12 +380,12 @@ describe("Connections", () => {
     );
     await settle();
     const retry = () => document.querySelector<HTMLButtonElement>("[data-host-retry]")!;
-    expect(retry().className).toContain("secondary");
+    expect(retry().getAttribute("data-variant")).toBe("ghost");
     fireEvent.click(retry());
     await settle();
     // The row stands, its words as they were, its Retry spinning; Check again does not spin for it.
     expect(screen.getByText("Not checked")).toBeTruthy();
-    expect(screen.getByText("Work is off on the box. Turn it on in Settings, Work.")).toBeTruthy();
+    expect(screen.getByText(/The disk is full/)).toBeTruthy();
     expect(retry().disabled).toBe(true);
     expect(retry().querySelector("[data-busy]")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Check again" }).querySelector("[data-busy]")).toBeNull();
@@ -457,5 +459,21 @@ describe("Connections", () => {
     const first = page.container.innerHTML;
     page.unmount();
     expect(render(<FirstCheckBones />).container.innerHTML).toBe(first);
+  });
+});
+
+describe("a computer Work is off on", () => {
+  it("is words and a way to Setup, never a failure with Retry; this Mac's own row carries its mark", async () => {
+    render(<ConnectionsView hosts={[{ id: "local", name: "MacBook Pro", own: true, status: "failed", error: "Work is off on this Mac" }, { id: "box", name: "The box", status: "failed", silent: true }]} onRecheck={() => {}} />);
+    const row = document.querySelector<HTMLElement>('[data-work-off="local"]')!;
+    expect(row.textContent).toContain("Work is off on this Mac");
+    expect(row.textContent).toContain("this Mac");
+    expect(row.querySelector(".text-destructive")).toBeNull();
+    expect(row.querySelector("[data-host-retry]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Work is on for" }));
+    expect(asked.settings.at(-1)).toEqual(["work", "work.on"]);
+    // A computer that did not answer keeps its Retry, a ghost as every Retry is.
+    const retry = document.querySelector<HTMLElement>("[data-host-retry]")!;
+    expect(retry.getAttribute("data-variant") ?? retry.className).toMatch(/ghost/);
   });
 });

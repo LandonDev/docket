@@ -7,7 +7,7 @@ import { BusyLabel, Button } from "../../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { Modal, ModalBody } from "../../../chrome/Modal";
-import { registry } from "../../../lib/connection";
+import { LOCAL_ENVIRONMENT_ID, registry } from "../../../lib/connection";
 import { useHostRead, type HostRead } from "../../../lib/connection/hostRead";
 import { revealPath } from "../../../lib/fs";
 import { thisDesktopInLine } from "../../../lib/native";
@@ -105,7 +105,7 @@ export function SyncPage() {
       </>
     );
   return (
-    <SectionRead read={harness} rows={1}>
+    <SectionRead read={harness} computer={LOCAL_ENVIRONMENT_ID} rows={1}>
       {(value) => <SyncBody harness={value} memory={memory.value ?? null} names={names.map((n) => n.said)} onHarness={harness.set} onMemory={memory.set} />}
     </SectionRead>
   );

@@ -37,7 +37,7 @@ describe("Appearance", () => {
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Size and motion"]);
     expect(screen.getByRole("combobox", { name: "Theme" }).textContent).toContain("Dark");
     expect(screen.getByRole("combobox", { name: "Text size" }).textContent).toContain("100%");
-    expect(screen.getByRole("combobox", { name: "Motion" }).textContent).toContain("Follow this computer");
+    expect(screen.getByRole("combobox", { name: "Motion" }).textContent).toContain("Follow this Mac");
     expect(screen.getByRole("combobox", { name: "Editor text size" }).textContent).toContain("13px");
     expect(screen.queryByRole("combobox", { name: "Work" })).toBeNull();
   });
@@ -86,7 +86,7 @@ describe("Appearance", () => {
     expect(document.documentElement.dataset.motion).toBe("reduced");
     await choose("Motion", "Full");
     expect(document.documentElement.dataset.motion).toBe("full");
-    await choose("Motion", "Follow this computer");
+    await choose("Motion", "Follow this Mac");
     expect(localStorage.getItem("docket.motion")).toBeNull();
     stop();
   });

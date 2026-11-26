@@ -14,12 +14,11 @@ export type SkillMenuPick = "edit" | "remove";
 const MENU: MenuRow[] = [{ kind: "item", id: "edit", label: "Edit…" }, { kind: "sep" }, { kind: "item", id: "remove", label: "Remove…", danger: true }];
 
 /** The row's third line: which agent apps get it, the workspace it is for (every workspace is the list's rule, said on
- *  no row), its version, the thread that wrote it. */
+ *  no row), and its version. */
 export const skillFacts = (skill: SkillMeta, workspaceName: string | null): string[] => [
   andList((skill.harnesses === "all" ? [...SKILL_HARNESSES] : SKILL_HARNESSES.filter((h) => skill.harnesses.includes(h))).map((h) => CLI_LABELS[h])),
   ...(workspaceName ? [workspaceName] : []),
   `v${skill.version}`,
-  ...(skill.writtenBy.kind === "thread" ? [`written by ${skill.writtenBy.title || "a thread"}`] : []),
 ];
 
 /**
@@ -69,7 +68,8 @@ export function SkillRowView({
             {skill.description}
           </span>
           <span className="mt-1 block">
-            <Facts parts={skillFacts(skill, workspaceName)} />
+            {/* With no switch to read (a key that may not write, the box out of reach), an off skill says so first. */}
+            <Facts parts={readOnly && !skill.enabled ? ["Off", ...skillFacts(skill, workspaceName)] : skillFacts(skill, workspaceName)} />
           </span>
         </>
       }

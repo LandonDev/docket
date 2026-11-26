@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { thisDesktopInLine } from "../../lib/native";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageSection } from "../../components/page";
 import {
@@ -25,7 +26,8 @@ const THEMES: { value: ThemePreference; label: string }[] = [
 ];
 
 const MOTIONS: { value: MotionPreference; label: string }[] = [
-  { value: "system", label: "Follow this computer" },
+  // "Follow this Mac", "Follow this PC": the computer's own setting for motion.
+  { value: "system", label: `Follow ${thisDesktopInLine()}` },
   { value: "full", label: "Full" },
   { value: "reduced", label: "Reduced" },
 ];

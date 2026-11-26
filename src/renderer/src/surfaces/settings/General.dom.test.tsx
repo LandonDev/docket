@@ -186,7 +186,7 @@ describe("General", () => {
       page();
       await flush();
       const section = screen.getByRole("region", { name: "Composer" });
-      expect(within(section).getAllByRole("alert").map((line) => line.textContent)).toEqual(["doctor.get failed: no handler"]);
+      expect(within(section).getAllByRole("alert").map((line) => line.textContent)).toEqual(["Doctor.get failed: no handler."]);
       expect(screen.queryByRole("button", { name: "Model picker shows" })).toBeNull();
       probe.answer = "installed";
       await act(async () => fireEvent.click(within(section).getByRole("button", { name: "Retry" })));
@@ -309,7 +309,7 @@ describe("General", () => {
       page();
       await flush();
       const inbox = screen.getByRole("region", { name: "Inbox" });
-      expect(within(inbox).getByRole("alert").textContent).toBe("Linear did not answer");
+      expect(within(inbox).getByRole("alert").textContent).toBe("Linear did not answer.");
       expect(document.querySelector('[data-setting="general.linearTeams"]')).toBeNull();
       linear.teamsFail = false;
       await act(async () => fireEvent.click(within(inbox).getByRole("button", { name: "Retry" })));
@@ -335,7 +335,7 @@ describe("General", () => {
       await flush();
       const section = screen.getByRole("region", { name: "Inbox" });
       expect(screen.queryByRole("button", { name: "Connect…" })).toBeNull();
-      expect(section.querySelector("[role=alert]")?.textContent).toBe("The host did not answer");
+      expect(section.querySelector("[role=alert]")?.textContent).toBe("The host did not answer.");
       linear.pending = null;
       await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
       expect(screen.getByRole("button", { name: "Disconnect…" })).toBeTruthy();

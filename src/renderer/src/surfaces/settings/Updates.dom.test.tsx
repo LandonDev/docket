@@ -17,6 +17,27 @@ const host = vi.hoisted(() => ({
   refuse: null as string | null,
   read: "answers" as "answers" | "pending" | "refused",
   calls: [] as { method: string; params: unknown }[],
+  deploy: null as Record<string, unknown> | null,
+}));
+vi.mock("../../lib/hostJobs", async (original) => {
+  const real = await original<typeof import("../../lib/hostJobs")>();
+  return {
+    ...real,
+    // The deploy store's own registry is not this test's: its read and its start answer from `host`.
+    refreshDeployStatus: async (id: string) => {
+      if (host.deploy) real.hostJobsStore.setState((s) => ({ deploy: { ...s.deploy, [id]: host.deploy as never } }));
+      return host.deploy;
+    },
+    startDeploy: async (id: string) => void host.calls.push({ method: "host.deploy", params: { id } }),
+  };
+});
+const confirms = vi.hoisted(() => ({ asked: [] as { title: string }[], answer: true }));
+vi.mock("../../chrome/ConfirmDialog", async (original) => ({
+  ...(await original<typeof import("../../chrome/ConfirmDialog")>()),
+  confirmAction: async (request: { title: string }) => {
+    confirms.asked.push(request);
+    return confirms.answer;
+  },
 }));
 const link = vi.hoisted(() => ({
   environmentId: "local",
@@ -27,6 +48,8 @@ const link = vi.hoisted(() => ({
     if (method === "code.settings.get" && host.read === "pending") return new Promise(() => {});
     if (method === "code.settings.get" && host.read === "refused") throw new Error("The computer did not answer");
     if (method === "code.settings.get") return host.code;
+    if (method === "host.deployStatus" && host.deploy) return host.deploy;
+    if (method === "host.deploy") return { ...host.deploy, phase: "running" };
     if (method === "code.settings.set") {
       if (host.refuse) throw new Error(host.refuse);
       host.code = { ...host.code, host: (params as { host: string | null }).host };
@@ -41,7 +64,7 @@ const computers = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<typeof import("../../lib/connection")>()),
-  registry: { primary: () => link, primaryEnvironmentId: "local" },
+  registry: { primary: () => link, link: () => link, linkOf: () => link, primaryEnvironmentId: "local" },
   useEnvironments: () => [{ id: "local", name: "This Mac" }, ...computers.list],
   useEnvironmentStatus: (id: string) => ({ transport: computers.hello[id] ? "open" : "closed", lastHello: computers.hello[id] }),
 }));
@@ -215,7 +238,7 @@ describe("Updates", () => {
       host.read = "refused";
       page();
       await flush();
-      expect(screen.getAllByRole("alert").map((line) => line.textContent)).toEqual(["The computer did not answer"]);
+      expect(screen.getAllByRole("alert").map((line) => line.textContent)).toEqual(["This Mac did not answer."]);
       host.read = "answers";
       await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
       await flush();
@@ -252,6 +275,26 @@ describe("Updates", () => {
       expect(asked.settings).toContainEqual(["computer:env_box", "pc.version"]);
     });
 
+    it("ends a behind computer's row in Update…, with its page's one confirm", async () => {
+      resetDeployDriftForTest({ release: 399, version: "1.0.399" } as never);
+      computers.list = [{ id: "env_box", name: "The box" }];
+      computers.hello = { env_box: { build: { release: 397, version: "1.0.397" } } };
+      host.deploy = { job: "deploy", phase: "idle", installed: true, installHint: "", version: "1.0.397", target: null, startedAt: null, finishedAt: null, exit: null, stoppable: false };
+      try {
+        page();
+        for (let i = 0; i < 6; i++) await flush();
+        const section = screen.getByRole("region", { name: "Other computers" });
+        // The row's press is Update…, not the chevron.
+        expect(section.querySelectorAll("[data-slot=open-cue]")).toHaveLength(0);
+        fireEvent.click(screen.getByRole("button", { name: "Update…" }));
+        await flush();
+        expect(confirms.asked.at(-1)).toEqual(expect.objectContaining({ title: "Update The box?" }));
+        expect(host.calls.some((c) => c.method === "host.deploy")).toBe(true);
+      } finally {
+        host.deploy = null;
+      }
+    });
+
     it("is absent with no other computer", async () => {
       page();
       await flush();
@@ -260,7 +303,7 @@ describe("Updates", () => {
 
     it("says how far behind in words", () => {
       expect(versionWords("1.0.399", 0, true)).toBe("1.0.399, up to date");
-      expect(versionWords("1.0.398", 1, true)).toBe("1.0.398, one release behind");
+      expect(versionWords("1.0.398", 1, true)).toBe("1.0.398, 1 release behind");
       expect(versionWords(null, null, false)).toBe("Offline");
       expect(versionWords("1.0.398", null, false)).toBe("1.0.398, offline");
     });

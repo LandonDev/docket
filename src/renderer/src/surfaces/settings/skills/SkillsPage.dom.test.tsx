@@ -6,6 +6,16 @@ import { fakeStoreHost, type FakeStoreHost } from "../storeHost.testkit";
 
 const h = vi.hoisted(() => ({ cut: new Set<string>() }));
 
+vi.mock("../../../lib/settings/computerName", async (original) => {
+  const real = await original<typeof import("../../../lib/settings/computerName")>();
+  const own = { name: "MacBook Pro", own: true };
+  return {
+    ...real,
+    useComputerName: () => own,
+    useComputerNames: () => (id: string) => (id === "local" ? own : { name: "The box", own: false }),
+    useReadFailWords: () => (error: string) => real.readFailWords(error, own),
+  };
+});
 vi.mock("../../../components/choice-select", async () => await import("../../../components/choice-select-body"));
 vi.mock("../../../lib/sounds", () => ({ playCue: () => {} }));
 const keyMay = vi.hoisted(() => ({ write: true }));
@@ -112,7 +122,7 @@ describe("Settings → Skills", () => {
     const host = seeded();
     host.state.refuse.set("skills.list", NO_ANSWER);
     await show(host);
-    expect(screen.getByRole("alert").textContent).toBe(NO_ANSWER);
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
     host.state.refuse.delete("skills.list");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     expect(rowOf("tidy")).toBeTruthy();
@@ -123,28 +133,37 @@ describe("Settings → Skills", () => {
     expect(screen.getByText("No skills")).toBeTruthy();
   });
 
-  it("says each skill's agent apps, scope, version and thread writer, sorted by name", async () => {
+  it("says each skill's agent apps, scope and version, sorted by name", async () => {
     await show(seeded());
     expect([...document.querySelectorAll("[data-skill]")].map((r) => r.getAttribute("data-skill"))).toEqual(["impeccable", "tidy"]);
     expect(rowOf("impeccable")!.textContent).toContain("Claude Code, Codex and Muse Code");
     // Every workspace is the list's rule, said on no row.
     expect(rowOf("impeccable")!.textContent).not.toContain("Every workspace");
     expect(rowOf("impeccable")!.textContent).toContain("v3");
-    expect(rowOf("impeccable")!.textContent).toContain("written by Polish the rail");
+    // No thread named on a row: who wrote it is not the row's to say.
+    expect(rowOf("impeccable")!.textContent).not.toContain("written by");
     expect(rowOf("tidy")!.textContent).toContain("Codex");
     expect(rowOf("tidy")!.textContent).toContain("temp-code");
     expect(rowOf("tidy")!.textContent).not.toContain("written by");
   });
 
-  it("says where the copy lives, and turns every control off while it is offline", async () => {
+  it("draws the rows as words while the box is offline, as Add-ons does", async () => {
     const host = seeded();
-    host.state.home = { name: "box", online: false };
+    host.state.home = { name: "The box", online: false };
     await show(host);
-    expect((screen.getByRole("switch", { name: "tidy" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Edit tidy" }) as HTMLButtonElement).disabled).toBe(true);
-    // Nothing is offered that cannot work: no ⋯ and no New skill… while the box is out of reach.
+    // Nothing is offered that cannot work: no switch, no ⋯, nothing to open, no New skill….
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit tidy" })).toBeNull();
     expect(screen.queryByRole("button", { name: "tidy actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "New skill…" })).toBeNull();
+  });
+
+  it("says Off on a switched-off skill's line when there is no switch to read", async () => {
+    const { SkillRowView } = await import("./SkillRow");
+    const { files: _files, ...rest } = tidy;
+    const meta = { ...rest, enabled: false };
+    render(<SkillRowView skill={meta} workspaceName={null} blocked readOnly onToggle={async () => {}} onPick={() => {}} />);
+    expect(document.querySelector(`[data-skill="${meta.name}"]`)!.textContent).toContain("OffCodex");
   });
 
   it("folds the skills push in", async () => {

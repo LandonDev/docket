@@ -16,6 +16,8 @@ const [MAC_COMMAND] = keyCaps("mod", true);
  */
 
 /** The page a row is on: a fixed page, any other computer's page, any job's or any code workspace's. */
+export type SettingNeed = "desktop" | "mac" | "work" | "workHere";
+
 export type SettingPage = StaticSettingsSectionId | "computer:*" | "job" | "workspace";
 
 /** What a change reaches. */
@@ -54,9 +56,9 @@ export type SettingEntry = {
   scope: SettingScope;
   store: SettingStore;
   kind?: SettingKind;
-  /** What the row needs of the window beyond its page being listed: the desktop app, a Mac, Work on. Search lists it
-   *  only where the page draws it. */
-  needs?: readonly ("desktop" | "mac" | "work")[];
+  /** What the row needs of the window beyond its page being listed: the desktop app, a Mac, Work on somewhere, Work on
+   *  for this computer. Search lists it only where the page draws it. */
+  needs?: readonly SettingNeed[];
 };
 
 const e = (
@@ -209,7 +211,7 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
   e("pc.add", "computer:*", "Who can sign in to {computer}", "Add…", "computer", "host", ["Hosts › a host › ⋯ › Pair a device…"], "act"),
   e("pc.work", "computer:*", "Work", "Work on {computer}", "computer", "none", ["Settings › Work › Work is on for"], "open"),
   e("pc.setup", "computer:*", "Set up from {mac}", "Accounts it was given", "computer", "box", ["Hosts › Computers"]),
-  e("pc.setupRemove", "computer:*", "Set up from {mac}", "Its setup", "computer", "box", ["Hosts › Computers › Remove"], "act"),
+  e("pc.setupRemove", "computer:*", "Set up from {mac}", "{mac}'s setup of it", "computer", "box", ["Hosts › Computers › Remove"], "act"),
   e("pc.reach", "computer:*", "Advanced", "Let other devices reach {computer}", "computer", "host", ["Hosts › Remote access (that host's own page only)"]),
   e("pc.port", "computer:*", "Advanced", "Port", "computer", "host", ["Hosts › Port (that host's own page only)"]),
   e("pc.address", "computer:*", "Advanced", "Web address", "computer", "host", ["Hosts › Public origin (that host's own page only)"]),
@@ -289,14 +291,22 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
 ];
 
 /** Rows a page draws only in some windows (the page's own gates, said once here for search). */
-const NEEDS: Record<string, readonly ("desktop" | "mac" | "work")[]> = {
+const NEEDS: Record<string, readonly SettingNeed[]> = {
   "general.awake": ["desktop"],
   "editor.openIn": ["desktop"],
-  "keys.capture": ["desktop", "work"],
+  "keys.capture": ["desktop", "workHere"],
   "keys.appshot": ["desktop", "mac"],
   "work.home": ["desktop"],
   "files.word": ["desktop"],
   "accounts.connections": ["work"],
+  // Another computer's page in a browser draws neither its version nor what this Mac keeps of it (ComputerPage.tsx).
+  "pc.version": ["desktop"],
+  "pc.setup": ["desktop"],
+  "pc.setupRemove": ["desktop"],
+  "pc.may": ["desktop"],
+  "pc.name": ["desktop"],
+  "pc.addresses": ["desktop"],
+  "pc.forget": ["desktop"],
 };
 for (const entry of SETTINGS_MAP as SettingEntry[]) if (NEEDS[entry.id]) entry.needs = NEEDS[entry.id];
 

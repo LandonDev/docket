@@ -1,16 +1,16 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { AdmissionState } from "@server/shared/contract-admission";
 import type { SavedEnvironment } from "@server/shared/contract-remote";
-import { PageActions, PageError, PageSection } from "../../../components/page";
+import { PageActions, PageSection } from "../../../components/page";
+import { ReadFailure } from "../parts/ReadFailure";
+import { cn } from "../../../lib/cn";
 import { BusyLabel, Button } from "../../../components/ui/button";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { LOCAL_ENVIRONMENT_ID, WEB_ENVIRONMENT_ID, forgetSeen, registry, useEnvironmentStatus, useLastSeenAt } from "../../../lib/connection";
 import { useHostRead } from "../../../lib/connection/hostRead";
-import { useDeployDrift } from "../../../lib/deployDrift";
 import { originText } from "../../../lib/hostConnection";
-import { deployConfirmText } from "../../../lib/hostJobCard";
-import { refreshDeployStatus, startDeploy, useDeployStatuses, usePublishStatus, watchJob } from "../../../lib/hostJobs";
-import { useMacBridgeHosts } from "../../../lib/macBridge";
+import { refreshMacBridgeHosts } from "../../../lib/macBridge";
+import type { MacBridgeHostPolicy } from "@server/shared/contract-macbridge";
 import { requestSettings } from "../../../lib/monaco/debugTab";
 import { thisDesktopInLine } from "../../../lib/native";
 import { isWebMode } from "../../../lib/nativeWeb";
@@ -34,36 +34,39 @@ import { mayHereWords } from "./MaySheet";
 import { SetUpHere } from "./SetUpHere";
 import { SignIns } from "./SignIns";
 import { ThreadsRows } from "./ThreadsRows";
+import { behindWords, useComputerUpdate } from "./update";
+
+export { behindWords };
 import { SectionRead, useComputerRead } from "./read";
 
-/** The computers whose page asked and got no answer: their title line then claims no connection (round 1, rule 1). */
-const unanswered = new Set<string>();
-const unansweredListeners = new Set<() => void>();
-function markUnanswered(environmentId: string, failed: boolean): void {
-  if (unanswered.has(environmentId) === failed) return;
-  if (failed) unanswered.add(environmentId);
-  else unanswered.delete(environmentId);
-  for (const listener of unansweredListeners) listener();
+/** How each computer's page's first read stands: out, failed, or answered. While it is out the title line and the
+ *  version are bones; failed, they claim nothing (round 2, rules 1 and 4). A computer with no page open is absent. */
+type Reach = "waiting" | "silent";
+const reaches = new Map<string, Reach>();
+const reachListeners = new Set<() => void>();
+function markReach(environmentId: string, reach: Reach | null): void {
+  if ((reaches.get(environmentId) ?? null) === reach) return;
+  if (reach) reaches.set(environmentId, reach);
+  else reaches.delete(environmentId);
+  for (const listener of reachListeners) listener();
 }
-const useUnanswered = (environmentId: string): boolean =>
+const useReach = (environmentId: string): Reach | null =>
   useSyncExternalStore(
     (listener) => {
-      unansweredListeners.add(listener);
-      return () => unansweredListeners.delete(listener);
+      reachListeners.add(listener);
+      return () => reachListeners.delete(listener);
     },
-    () => unanswered.has(environmentId),
+    () => reaches.get(environmentId) ?? null,
   );
+
+/** A line's bone while the computer has not answered: it holds the line's place and says nothing yet. */
+const LineBone = ({ width = "w-48" }: { width?: string }) => (
+  <span data-slot="skeleton" aria-label="Loading" className={cn("inline-block h-3 rounded-md bg-skeleton align-middle", width)} />
+);
 
 /** The computer this page is about, as this window reaches it: the box's own page at /ui, else a linked computer. */
 const servedHere = (environmentId: string): boolean => environmentId === WEB_ENVIRONMENT_ID;
 
-/** "Two releases behind", "Up to date": how far a computer's build is from master's. */
-export function behindWords(behind: number | null): string | undefined {
-  if (behind === null) return undefined;
-  if (behind <= 0) return "Up to date";
-  const words = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
-  return `${words[behind - 1] ?? behind} ${behind === 1 ? "release" : "releases"} behind`;
-}
 
 /** The line under a computer's title: how this window reaches it, in the house's words. */
 export function computerLineWords({
@@ -100,12 +103,15 @@ export function ComputerLine({ environmentId }: { environmentId: string }) {
   const host = useHost(environmentId);
   const web = servedHere(environmentId);
   const url = registry.link(environmentId)?.transport?.url ?? registry.environment(environmentId)?.routes[status.route ?? 0]?.url;
-  const silent = useUnanswered(environmentId);
+  const reach = useReach(environmentId);
+  const silent = reach === "silent";
   const words = computerLineWords({ transport: status.transport, url, lastSeen, name: host.name.name, web });
   // A key that may not change it: the page's values are words, and who can is said once, here, as a sentence.
   const managed = status.transport === "open" && !silent && !host.may("remote.settings.set", {});
-  // A computer whose page got no answer: the page says so once, in its body; the line claims no connection.
+  // A computer whose page got no answer: the page says so once, in its body; the line claims no connection. While its
+  // first read is out, the line waits as a bone.
   if (silent && status.transport === "open") return null;
+  if (reach === "waiting" && status.transport === "open") return <LineBone width="w-64" />;
   return (
     <>
       <span data-computer-line={status.transport}>{words}</span>
@@ -159,29 +165,17 @@ export function OtherComputerPage({ environmentId, advancedOpen = false }: { env
 function InReach({ host, web, advancedOpen }: { host: Host; web: boolean; advancedOpen: boolean }) {
   const environmentId = host.environmentId;
   const reach = useComputerRead<AdmissionState>(host, "admission.get");
-  const [retrying, setRetrying] = useState(false);
   const failed = reach.value === undefined && reach.error !== null;
+  const state: Reach | null = failed ? "silent" : reach.value === undefined ? "waiting" : null;
   useEffect(() => {
-    markUnanswered(environmentId, failed);
-    return () => markUnanswered(environmentId, false);
-  }, [environmentId, failed]);
+    markReach(environmentId, state);
+    return () => markReach(environmentId, null);
+  }, [environmentId, state]);
   if (failed)
     return (
       <>
         <PageSection>
-          <PageError
-            data-unanswered=""
-            action={
-              <Button variant="ghost" size="sm" disabled={retrying} onClick={() => {
-                setRetrying(true);
-                void reach.retry().finally(() => setRetrying(false));
-              }}>
-                <BusyLabel busy={retrying} label="Retry" />
-              </Button>
-            }
-          >
-            {`${host.name.name} did not answer.`}
-          </PageError>
+          <ReadFailure computer={environmentId} error={reach.error ?? ""} retry={reach.retry} />
         </PageSection>
         {web ? null : <OnThisMac host={host} />}
       </>
@@ -200,61 +194,24 @@ function InReach({ host, web, advancedOpen }: { host: Host; web: boolean; advanc
   );
 }
 
-/** Docket <version>, how far behind, Update… asking first (it restarts; its running threads pause), and the log. */
+/** Docket <version>, how far behind, Update… asking first (`useComputerUpdate`: the one confirm Updates' row uses
+ *  too), and the log. While the computer has not answered its first read, the row waits as bones. */
 function VersionSection({ host }: { host: Host }) {
   const id = host.environmentId;
-  const drift = useDeployDrift(id);
-  const deploy = useDeployStatuses()[id] ?? null;
-  const publish = usePublishStatus();
-  const manage = host.may("host.deploy");
-  // Asked only while the computer is in reach: an Update… waits for it anyway.
-  const admission = useHostRead<AdmissionState>(host.connected ? host.link : undefined, () => host.request<AdmissionState>("admission.get"), `${id}:admission`);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!manage || !host.connected) return;
-    const refresh = (): void => void refreshDeployStatus(id);
-    refresh();
-    const timer = window.setInterval(refresh, 5_000);
-    return () => window.clearInterval(timer);
-  }, [id, manage, host.connected]);
-  useEffect(() => {
-    if (deploy && (deploy.phase === "pending" || deploy.phase === "running")) watchJob(id, "deploy");
-  }, [deploy, id]);
-  const version = drift.deployedVersion ?? deploy?.version ?? null;
-  if (!version && !deploy) return null;
-  const running = deploy?.phase === "pending" || deploy?.phase === "running";
-  const update = async (): Promise<void> => {
-    const threads = admission.value?.running ?? 0;
-    const pause = threads > 0 ? ` ${threads} running ${threads === 1 ? "thread pauses" : "threads pause"} about a minute.` : "";
-    const ok = await confirmAction({
-      title: `Update ${host.name.name}?`,
-      body: `${deployConfirmText(host.name.name, version, drift.masterVersion ?? publish?.masterVersion ?? null)}${pause}`,
-      action: "Update",
-      danger: true,
-    });
-    if (!ok) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await startDeploy(id, "master");
-    } catch (err) {
-      setError(refusalWords(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const up = useComputerUpdate(id);
+  const waiting = useReach(id) === "waiting";
+  if (!up.version && !up.notInstalled && !up.offered) return null;
   return (
     <PageSection>
       <SettingRow
         id="pc.version"
-        vars={{ version: version ?? "" }}
-        description={deploy && !deploy.installed ? `Run ${deploy.installHint} once from this Mac's checkout to update it from here` : behindWords(drift.behind)}
-        error={error ?? undefined}
+        vars={{ version: waiting ? "" : (up.version ?? "") }}
+        description={waiting ? <LineBone width="w-32" /> : (up.notInstalled ?? behindWords(up.behind))}
+        error={up.error ?? undefined}
       >
-        {manage && deploy?.installed ? (
-          <Button variant="secondary" size="sm" disabled={busy || running || !host.connected} onClick={() => void update()}>
-            <BusyLabel busy={busy || running} label="Update…" />
+        {up.offered && !waiting ? (
+          <Button variant="secondary" size="sm" disabled={up.busy} onClick={() => void up.update()}>
+            <BusyLabel busy={up.busy} label="Update…" />
           </Button>
         ) : null}
       </SettingRow>
@@ -266,10 +223,12 @@ function VersionSection({ host }: { host: Host }) {
 /** Whether Work is on there, opening the Work page at its switch: the switch's one home. */
 function WorkRow({ environmentId }: { environmentId: string }) {
   const on = useWorkHosts().has(environmentId);
+  // Said only once the computer has answered: while it is out, its state waits as a bone.
+  const waiting = useReach(environmentId) === "waiting";
   const computer = computerInLine(useHost(environmentId).name);
   return (
     <SettingSection of="pc.work">
-      <SettingRow id="pc.work" vars={{ computer }} description={on ? "On" : "Off"} onOpen={() => requestSettings("work", "work.on")} openLabel={`Work on ${computer}`} />
+      <SettingRow id="pc.work" vars={{ computer }} description={waiting ? <LineBone width="w-8" /> : on ? "On" : "Off"} onOpen={() => requestSettings("work", "work.on")} openLabel={`Work on ${computer}`} />
     </SettingSection>
   );
 }
@@ -279,7 +238,8 @@ function OnThisMac({ host }: { host: Host }) {
   const id = host.environmentId;
   const local = registry.primary();
   const saved = useHostRead<SavedEnvironment[]>(local, () => local.request<SavedEnvironment[]>("remote.environments.list", {}), "saved");
-  const bridge = useMacBridgeHosts().find((h) => h.environmentId === id);
+  // What it may do here, read of this Mac's own server, and put where the sheet reads it once known.
+  const policies = useHostRead<MacBridgeHostPolicy[]>(local, () => refreshMacBridgeHosts(), "macBridge.policy");
   const env = saved.value?.find((e) => e.id === id);
   const named = useSaved();
   const [routes, setRoutes] = useState(false);
@@ -309,49 +269,61 @@ function OnThisMac({ host }: { host: Host }) {
       setForgetError(refusalWords(err));
     }
   };
+  // This Mac's two reads of its own record (the saved link, and what the computer may do here) stand or fall as one:
+  // their rows wait in their shape, and a failure is one line naming this Mac, with one Retry.
+  const record = {
+    value: saved.value && policies.value ? { saved: saved.value, policies: policies.value } : undefined,
+    error: saved.error ?? policies.error,
+    retry: () => Promise.all([saved.retry(), policies.retry()]).then(() => undefined),
+    set: () => {},
+  };
+  const policy = policies.value?.find((h) => h.environmentId === id);
   return (
     <SettingSection of="pc.may" vars={{ computer, mac }}>
-      <SettingRow
-        id="pc.may"
-        vars={{ computer, mac }}
-        description={bridge ? mayHereWords(bridge) : "Nothing"}
-        onOpen={() => openMaySheet(id)}
-        openLabel={`What ${computer} may do on ${mac}`}
-      />
-      {/* The record's two rows wait in their shape, or say once that this Mac did not answer, with Retry. */}
-      <SectionRead read={saved} rows={[{ control: "field" }, { description: true, control: "none" }]}>
-        {() => null}
-      </SectionRead>
-      {env ? (
-        <>
-          <SettingRow id="pc.name" vars={{ mac }} saved={named}>
-            <CommitField
-              aria-label={`${host.name.name}'s name on ${mac}`}
-              value={env.name}
-              className="w-64 @max-[30rem]/page:w-full"
-              onCommit={(name) =>
-                name ? named.run(async () => {
-                  await local.request("remote.environments.update", { id, name });
-                  await changed();
-                }) : false
-              }
+      <SectionRead read={record} computer={LOCAL_ENVIRONMENT_ID} rows={[{ description: true, control: "none" }, { control: "field" }, { description: true, control: "none" }, { control: "button" }]}>
+        {() => (
+          <>
+            <SettingRow
+              id="pc.may"
+              vars={{ computer, mac }}
+              description={policy ? mayHereWords(policy) : "Nothing"}
+              {...(policy ? { onOpen: () => openMaySheet(id), openLabel: `What ${computer} may do on ${mac}` } : {})}
             />
-          </SettingRow>
-          <SettingRow
-            id="pc.addresses"
-            vars={{ mac }}
-            description={env.routes.map((route) => originText(route.url)).join(", then ") || "None"}
-            onOpen={() => setRoutes(true)}
-            openLabel={`Addresses ${mac} tries`}
-          />
-        </>
-      ) : null}
-      {/* The record of the link, with its one act; what Forget… loses is the confirm's to say. */}
-      <SettingRow id="pc.forget" vars={{ computer, mac }} error={forgetError ?? undefined}>
-        <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void forget()}>
-          Forget…
-        </Button>
-      </SettingRow>
+            {env ? (
+              <>
+                <SettingRow id="pc.name" vars={{ mac }} saved={named}>
+                  <CommitField
+                    aria-label={`${host.name.name}'s name on ${mac}`}
+                    value={env.name}
+                    className="w-64 @max-[30rem]/page:w-full"
+                    onCommit={(name) =>
+                      name
+                        ? named.run(async () => {
+                            await local.request("remote.environments.update", { id, name });
+                            await changed();
+                          })
+                        : false
+                    }
+                  />
+                </SettingRow>
+                <SettingRow
+                  id="pc.addresses"
+                  vars={{ mac }}
+                  description={env.routes.map((route) => originText(route.url)).join(", then ") || "None"}
+                  onOpen={() => setRoutes(true)}
+                  openLabel={`Addresses ${mac} tries`}
+                />
+              </>
+            ) : null}
+            {/* The record of the link, with its one act; what Forget… loses is the confirm's to say. */}
+            <SettingRow id="pc.forget" vars={{ computer, mac }} error={forgetError ?? undefined}>
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void forget()}>
+                Forget…
+              </Button>
+            </SettingRow>
+          </>
+        )}
+      </SectionRead>
       {routes && env ? <RoutesDialog env={env} onClose={() => setRoutes(false)} onChanged={changed} /> : null}
     </SettingSection>
   );

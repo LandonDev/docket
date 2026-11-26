@@ -4,6 +4,7 @@ import { useHost } from "../parts/hostRpc";
 import { AgentApps } from "./AgentApps";
 import { DevicesGroup, useDevicesPolling } from "./Devices";
 import { ThreadsRows } from "./ThreadsRows";
+import { ComputerGate } from "./read";
 
 /**
  * Settings › Threads, "Threads on this Mac" (docs/agents/settings.md "The pages: computers"): how many threads run at
@@ -14,11 +15,12 @@ export function ThreadsPage({ onOpenSession }: { onOpenSession?: (sessionId: str
   const host = useHost(LOCAL_ENVIRONMENT_ID);
   useDevicesPolling();
   const devices = useHostDevicesHosts()?.find((d) => d.local) ?? null;
+  // One computer's page: if it does not answer, that is said once, with no section under it.
   return (
-    <>
+    <ComputerGate host={host}>
       <ThreadsRows host={host} rows="here" />
       <AgentApps host={host} rows="here" />
       {devices ? <DevicesGroup host={devices} onOpenSession={onOpenSession} /> : null}
-    </>
+    </ComputerGate>
   );
 }

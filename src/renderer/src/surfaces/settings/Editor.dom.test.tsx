@@ -48,7 +48,12 @@ vi.mock("../../lib/editorConfig", () => ({
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../lib/monaco/lspGate", () => ({ retryBlockedEnsures: vi.fn() }));
 vi.mock("../../lib/sounds", () => ({ playCue: vi.fn() }));
-vi.mock("../../lib/settings/computerName", () => ({ useComputerName: () => ({ name: "MacBook Pro", own: true }), computerInLine: () => "this Mac" }));
+vi.mock("../../lib/settings/computerName", async (original) => ({
+  ...(await original<typeof import("../../lib/settings/computerName")>()),
+  useComputerName: () => ({ name: "MacBook Pro", own: true }),
+  computerInLine: () => "this Mac",
+  useReadFailWords: () => (error: string) => (error === "The computer did not answer" ? "This Mac did not answer." : /[.!?]$/.test(error) ? error : `${error}.`),
+}));
 
 const { EditorPage, serverWords } = await import("./Editor");
 
@@ -77,7 +82,7 @@ describe("Editor", () => {
     render(<EditorPage />);
     await act(async () => {});
     const others = screen.getByRole("region", { name: "Other editors" });
-    expect(within(others).getByRole("alert").textContent).toBe("Could not read the editors on this Mac");
+    expect(within(others).getByRole("alert").textContent).toBe("This Mac did not answer.");
     editorRead.answer = { editor: "auto", effective: "code", installed: { idea: false, code: true, xed: false } };
     await act(async () => fireEvent.click(within(others).getByRole("button", { name: "Retry" })));
     expect(screen.getByText("Auto opens VS Code")).toBeTruthy();
@@ -131,7 +136,7 @@ describe("Editor", () => {
     const java = screen.getByRole("region", { name: "Java on this Mac" });
     expect(java.textContent).not.toContain("No JDK found");
     expect(java.textContent).not.toContain("Not downloaded");
-    expect(java.querySelector("[role=alert]")?.textContent).toBe("The host did not answer");
+    expect(java.querySelector("[role=alert]")?.textContent).toBe("The host did not answer.");
     host.doctorFails = false;
     await act(async () => fireEvent.click(within(java).getByRole("button", { name: "Retry" })));
     expect(java.textContent).toContain("21, language support ready");

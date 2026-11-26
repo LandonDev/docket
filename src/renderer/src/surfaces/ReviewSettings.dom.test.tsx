@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOME_RECHECK_MS } from "../lib/settingsHome";
 import type { ReviewSettings } from "@server/shared/review";
@@ -11,6 +11,16 @@ const state = vi.hoisted(() => ({
   opens: new Set<() => void>(),
 }));
 
+vi.mock("../lib/settings/computerName", async (original) => {
+  const real = await original<typeof import("../lib/settings/computerName")>();
+  const own = { name: "MacBook Pro", own: true };
+  return {
+    ...real,
+    useComputerName: () => own,
+    useComputerNames: () => (id: string) => (id === "local" ? own : { name: "The box", own: false }),
+    useReadFailWords: () => (error: string) => real.readFailWords(error, own),
+  };
+});
 vi.mock("../components/choice-select", async () => await import("../components/choice-select-body"));
 vi.mock("../components/choice-combobox", async () => await import("../components/choice-combobox-body"));
 vi.mock("../chrome/ProjectDialogs", () => ({
@@ -19,6 +29,8 @@ vi.mock("../chrome/ProjectDialogs", () => ({
 const catalog = vi.hoisted(() => ({
   projects: [] as { id: string; name: string; environmentId: string; workspaceId: string }[],
   own: new Set<string>(),
+  on: new Set<string>(),
+  silent: new Set<string>(),
 }));
 vi.mock("../lib/tcserver/workspaces", () => ({
   useWorkspaceCatalog: () => ({ projects: catalog.projects, workspaces: [{ id: "w1", name: "temp-code", environmentId: "local" }] }),
@@ -36,8 +48,12 @@ vi.mock("../lib/connection", () => ({
       },
       request: (method: string, params: unknown, options?: unknown) => {
         const projectId = (params as { projectId?: string | null }).projectId;
-        if (method === "review.get" && projectId)
-          return Promise.resolve({ override: null, global: null, settings: null, source: catalog.own.has(projectId) ? "project" : "global" });
+        if (method === "review.get" && projectId) {
+          if (catalog.silent.has(projectId)) return Promise.reject(new Error("The computer did not answer"));
+          const on = catalog.on.has(projectId);
+          const own = on ? { beforeMerge: true, provider: "codex", model: "gpt-6.1-sol", reasoning: "high", blockOn: "confirmed", maxMinutes: 15 } : null;
+          return Promise.resolve({ override: own, global: null, settings: own, source: catalog.own.has(projectId) ? "project" : "global" });
+        }
         return method === "review.get" ? state.get!({ params, options }) : state.set(params);
       },
     }),
@@ -88,6 +104,8 @@ beforeEach(() => {
   state.opens.clear();
   catalog.projects = [];
   catalog.own = new Set();
+  catalog.on = new Set();
+  catalog.silent = new Set();
 });
 afterEach(() => {
   cleanup();
@@ -157,12 +175,12 @@ describe("Reviews page", () => {
     state.connected = false;
     render(<ReviewsPage />);
     await act(() => vi.advanceTimersByTimeAsync(10_000));
-    expect(screen.getByText("The computer did not answer").className).toContain("text-destructive");
+    expect(screen.getByText("This Mac did not answer.").className).toContain("text-destructive");
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     await openSocket();
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(screen.getByRole("switch", { name: "Review before merge" })).toBeTruthy();
-    expect(screen.queryByText("The computer did not answer")).toBeNull();
+    expect(screen.queryByText("This Mac did not answer.")).toBeNull();
   });
 
   it("lands an answer that comes after the deadline, with no Retry and no new socket", async () => {
@@ -171,10 +189,10 @@ describe("Reviews page", () => {
     state.get = () => new Promise((resolve) => (answerNow = resolve));
     render(<ReviewsPage />);
     await act(() => vi.advanceTimersByTimeAsync(10_000));
-    expect(screen.getByText("The computer did not answer")).toBeTruthy();
+    expect(screen.getByText("This Mac did not answer.")).toBeTruthy();
     await act(async () => answerNow({ override: null, global: SETTINGS, settings: SETTINGS, source: "global" }));
     expect(screen.getByRole("switch", { name: "Review before merge" })).toBeTruthy();
-    expect(screen.queryByText("The computer did not answer")).toBeNull();
+    expect(screen.queryByText("This Mac did not answer.")).toBeNull();
   });
 
   it("says why the load failed, and Retry asks again", async () => {
@@ -182,7 +200,7 @@ describe("Reviews page", () => {
       throw new Error("not connected");
     };
     await renderPage();
-    expect(screen.getByText("not connected").className).toContain("text-destructive");
+    expect(screen.getByText("Not connected.").className).toContain("text-destructive");
     answer(SETTINGS);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -313,5 +331,38 @@ describe("ReviewFields compact", () => {
     rerender(<ReviewFields value={{ ...SETTINGS, beforeMerge: true }} onChange={() => {}} environmentId="local" compact />);
     expect(screen.getByRole("combobox", { name: "Stop the merge for" })).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Wait at most" })).toBeTruthy();
+  });
+});
+
+describe("Different in N projects, beside Reviews off", () => {
+  it("still names a project that keeps reviews on while Reviews is off", async () => {
+    catalog.projects = [{ id: "p1", name: "settings-2", environmentId: "local", workspaceId: "w1" }];
+    catalog.own = new Set(["p1"]);
+    catalog.on = new Set(["p1"]);
+    answer({ ...SETTINGS, beforeMerge: false });
+    await renderPage();
+    await act(async () => {});
+    const row = document.querySelector("[data-setting='reviews.different']") as HTMLElement;
+    expect(row.textContent).toContain("settings-2 has its own review model");
+  });
+
+  it("says the count is partial when a computer did not answer for a project, with Retry", async () => {
+    catalog.projects = [
+      { id: "p1", name: "settings-2", environmentId: "local", workspaceId: "w1" },
+      { id: "p2", name: "docket", environmentId: "env_box", workspaceId: "w1" },
+    ];
+    catalog.own = new Set(["p1"]);
+    catalog.silent = new Set(["p2"]);
+    answer({ ...SETTINGS, beforeMerge: true });
+    await renderPage();
+    await act(async () => {});
+    const line = document.querySelector("[data-unread]")!.closest("[data-slot=page-error-line]") as HTMLElement;
+    expect(line.textContent).toContain("The box did not answer, so 1 of its projects is not counted.");
+    catalog.silent = new Set();
+    await act(async () => {
+      fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    });
+    await act(async () => {});
+    expect(document.querySelector("[data-unread]")).toBeNull();
   });
 });

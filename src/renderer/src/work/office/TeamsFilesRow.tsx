@@ -3,10 +3,10 @@ import type { TeamsLibrary, TeamsPlace, TeamsRoot } from "@shared/contract-work-
 import { Field } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
-import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { PageEmpty, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { ChoiceSelect } from "../../components/choice-select";
-import { BusyLabel, Button } from "../../components/ui/button";
+import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -14,6 +14,7 @@ import { StatusMark } from "../../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import type { Link } from "../../lib/connection/link";
 import { useHostRead } from "../../lib/connection/hostRead";
+import { NO_ANSWER } from "../../lib/connection/openRead";
 import { pickFolder } from "../../lib/fs";
 import { nameInLine } from "../../lib/hostWords";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -23,6 +24,8 @@ import { ListFilter, useListFilter } from "../../surfaces/settings/parts/ListFil
 import { SaveMark } from "../../surfaces/settings/parts/SaveMark";
 import { useSaved } from "../../surfaces/settings/parts/useSaved";
 import { useKeptRetry } from "./keptRetry";
+import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
+import { OpenCue } from "../../surfaces/settings/parts/SettingRow";
 import { MoreHorizontal } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 
@@ -80,6 +83,15 @@ const keepsVm = (value: Libraries): boolean => value.libraries.some((l) => l.vm)
 /** An off folder's section: on a computer that keeps a VM, a path with a drive letter is the guest's; else every off folder is its own. */
 const offIn = (folder: string, value: Libraries, vm: boolean): boolean => (keepsVm(value) && /^[A-Za-z]:[\\/]/.test(folder)) === vm;
 
+/** His Retry through the kept line, answered with the read's own promise so the press spins until it settles. */
+function retryKept(kept: { press(retry: () => void): void }, retry: () => Promise<void>): Promise<void> {
+  let asked: Promise<void> = Promise.resolve();
+  kept.press(() => {
+    asked = retry();
+  });
+  return asked;
+}
+
 /** What a row's switch does, said once over the list. */
 const LISTED_LINE = "On means listed in Files.";
 /** A folder he added leaves the list from its menu: one press, nothing on disk changes, Add folder… brings it back. */
@@ -90,6 +102,15 @@ export function mostOpens(modes: readonly OpensIn[]): OpensIn | undefined {
   const live = modes.filter((m) => m === "live").length;
   const here = modes.length - live;
   return live === here ? undefined : live > here ? "live" : "here";
+}
+
+/** The section's line: what a switch means (once a page) and how its Office files open, or none. */
+function sectionLine(any: boolean, explain: boolean, common: OpensIn | undefined): string | undefined {
+  if (!any) return undefined;
+  const parts: string[] = [];
+  if (explain) parts.push(LISTED_LINE);
+  if (common) parts.push(`${OPENS_LINE[common]}.`);
+  return parts.length ? parts.join(" ") : undefined;
 }
 
 type FolderRowValue = { folder: string; title: string; library: TeamsLibrary | null; on: boolean };
@@ -103,6 +124,7 @@ export function TeamsFilesRow({
   vm = false,
   setting,
   elsewhere,
+  explain = false,
 }: {
   link: Link | null | undefined;
   title: string;
@@ -112,8 +134,10 @@ export function TeamsFilesRow({
   vm?: boolean;
   /** The section's place in the map (lib/settings/map.ts). */
   setting?: string;
-  /** Where the list is changed, for a window that may not: "Changed in Docket on PURDUE-LT". */
+  /** Where the list is changed, for a window that may not: "Changed from PURDUE-LT.". */
   elsewhere?: string;
+  /** Say what a row's switch means: once a page, on its first folders section. */
+  explain?: boolean;
 }) {
   const read = useHostRead(link, () => link!.request<Libraries>("work.office.filesLibraries", {}));
   // A dialog's failed save says so in the dialog alone; a row's, under the row.
@@ -137,21 +161,12 @@ export function TeamsFilesRow({
   );
   const common = modes.value ? mostOpens([...modes.value.values()]) : undefined;
   if (!value)
-    return (
+    // A read that failed is its computer's one line, with no heading and no bones; bones only while it is out.
+    return kept.error ? (
+      <ReadFailure computer={link?.environmentId ?? ""} error={kept.error === NO_ANSWER ? NO_ANSWER : folderFailure(new Error(kept.error), host, "could not list its folders")} retry={() => retryKept(kept, read.retry)} />
+    ) : (
       <PageSection title={title} data-setting={setting}>
-        {kept.error ? (
-          <PageError
-            action={
-              <Button variant="ghost" size="sm" disabled={kept.retrying} onClick={() => kept.press(read.retry)}>
-                <BusyLabel busy={kept.retrying} label="Retry" />
-              </Button>
-            }
-          >
-            {folderFailure(kept.error, host, "could not list its folders")}
-          </PageError>
-        ) : (
-          <PageRowsSkeleton rows={3} description control="switch" />
-        )}
+        <PageRowsSkeleton rows={3} description control="switch" />
       </PageSection>
     );
   // A computer with no Windows VM set up has no VM section at all.
@@ -188,7 +203,7 @@ export function TeamsFilesRow({
     void modes.retry();
   };
   return (
-    <PageSection title={title} action={add} data-setting={setting} description={shown.length ? [LISTED_LINE, common ? `${OPENS_LINE[common]}.` : null].filter(Boolean).join(" ") : undefined}>
+    <PageSection title={title} action={add} data-setting={setting} description={sectionLine(shown.length > 0, explain, common)}>
       <ListFilter filter={filter} label="Find a folder" />
       {shown.length ? null : <PageEmpty>{noneLine(value.places, vm)}</PageEmpty>}
       {filter.shown.map((row) => (
@@ -277,6 +292,8 @@ function FolderRow({
           <SaveMark state={saved.state} />
           {/* One control for listing on every row; a folder he added can also be taken off the list, in its menu. */}
           <SettingSwitch label={row.title} on={row.on} disabled={busy} onChange={(on) => saved.run(() => onSwitch(on))} />
+          {/* A library opens its own dialog: the row says so at rest, as every row that opens does. */}
+          {onOpen ? <OpenCue /> : null}
           {row.library && !row.library.found ? (
             <RowsMenu
               label={`${row.title} actions`}

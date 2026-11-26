@@ -74,8 +74,6 @@ struct HostBuildSection: View {
                 }
                 RowErrorLine(message: $actionError)
             }
-        } header: {
-            Text("Build")
         } footer: {
             FooterText(lines: footer(build: build, isMac: isMac, admin: admin, open: open, installed: installed, canDeploy: canDeploy))
         }

@@ -12,6 +12,10 @@ import type { DraftEdit, HouseRule, RuleProposal } from "@shared/contract-work-r
 const calls: { method: string; params: Record<string, unknown> }[] = [];
 const state: { rules: HouseRule[]; proposals: RuleProposal[]; line: RuleProposal[]; fail: Set<string>; gate: Promise<void> | null; voice: unknown } = { rules: [], proposals: [], line: [], fail: new Set(), gate: null, voice: null };
 
+vi.mock("../../lib/settings/computerName", async (original) => {
+  const real = await original<typeof import("../../lib/settings/computerName")>();
+  return { ...real, useReadFailWords: () => (error: string) => real.readFailWords(error, { name: "The box", own: false }) };
+});
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   registry: {
@@ -164,7 +168,7 @@ describe("a read that failed", () => {
     state.fail.add("work.rules.list");
     render(<RulesPage workspace={WORKSPACE} />);
     await settle();
-    expect(screen.getByRole("alert").textContent).toBe("The box did not answer");
+    expect(screen.getByRole("alert").textContent).toBe("The box did not answer.");
     state.fail.delete("work.rules.list");
     let open: () => void = () => {};
     state.gate = new Promise((r) => (open = r));
@@ -173,7 +177,7 @@ describe("a read that failed", () => {
     expect(retry.hasAttribute("disabled")).toBe(true);
     expect(retry.querySelector("[data-busy]")).not.toBeNull();
     // The error stays said while it asks.
-    expect(screen.getByText("The box did not answer")).toBeTruthy();
+    expect(screen.getByText("The box did not answer.")).toBeTruthy();
     state.gate = null;
     await act(async () => open());
     await settle();
@@ -187,7 +191,7 @@ describe("a read that failed", () => {
     const retry = () => screen.getByRole("button", { name: "Retry" });
     fireEvent.click(retry());
     await settle();
-    expect(screen.getByText("The box did not answer")).toBeTruthy();
+    expect(screen.getByText("The box did not answer.")).toBeTruthy();
     expect(retry().hasAttribute("disabled")).toBe(false);
     state.fail.delete("work.rules.voice");
     fireEvent.click(retry());

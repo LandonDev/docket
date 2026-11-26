@@ -39,8 +39,8 @@ describe("Settings → Files", () => {
     render(<FilesPage />);
     const seen = new Map(drawn.sections.map((s) => [`${s.title}|${s.vm}`, s]));
     expect(seen.get("Folders on this Mac|false")).toMatchObject({ editable: true, setting: "files.folders" });
-    expect(seen.get("Folders on PURDUE-LT|false")).toMatchObject({ editable: false, elsewhere: "Changed in Docket on PURDUE-LT" });
-    expect(seen.get("Folders in the Windows VM|true")).toMatchObject({ editable: false, elsewhere: "Changed in Docket on the box", setting: "files.vm" });
+    expect(seen.get("Folders on PURDUE-LT|false")).toMatchObject({ editable: false, elsewhere: "Changed from PURDUE-LT." });
+    expect(seen.get("Folders in the Windows VM|true")).toMatchObject({ editable: false, elsewhere: "Changed from the box.", setting: "files.vm" });
     // The box is no desktop: it draws no folders of its own.
     expect(seen.has("Folders on the box|false")).toBe(false);
   });

@@ -26,9 +26,9 @@ export type SearchResult = {
 /** What pages were called, for a search by an old page name. */
 export const PAGE_WAS: Partial<Record<SettingPage, readonly string[]>> = {
   keybindings: ["Keybindings"],
-  updates: ["General › About"],
+  updates: ["General › About", "Hosts › Release › Code updates"],
   here: ["Hosts › Running threads, Stuck after, Attachment limit", "Providers"],
-  sharing: ["Hosts › Clients, Mac bridge, Remote access", "Environments"],
+  sharing: ["Hosts › Clients, Mac bridge, Remote access", "Hosts › Add host", "Environments"],
   publish: ["Hosts › Release"],
   defaults: ["Thread defaults"],
   orchestration: ["Orchestration"],
@@ -57,10 +57,13 @@ const pathOf = (...parts: (string | undefined)[]): string => parts.filter((part,
 const computersOf = (groups: readonly ListGroup[]): ListRow[] => listPages(groups).flatMap(({ row }) => (row.kind === "computer" ? [row] : []));
 
 /** What this window is, for rows a page draws only in some windows (`SettingEntry.needs`). */
-export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean };
+/** `workHere`: Work is on for this window's own computer (the capture key is that computer's). */
+export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean; workHere?: boolean };
 
 const drawn = (entry: SettingEntry, window: SearchWindow): boolean =>
-  !entry.needs || entry.needs.every((need) => (need === "desktop" ? !window.web : need === "mac" ? window.mac !== false : window.work !== false));
+  !entry.needs || entry.needs.every((need) =>
+    need === "desktop" ? !window.web : need === "mac" ? window.mac !== false : need === "workHere" ? (window.workHere ?? window.work) !== false : window.work !== false,
+  );
 
 function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly SearchExtra[], window: SearchWindow): Indexed[] {
   const out: Indexed[] = [];

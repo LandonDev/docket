@@ -25,10 +25,11 @@ import { push, resetWorld, SETTINGS, type World } from "./world.testkit";
 
 vi.mock("../../components/choice-combobox", async () => await import("../../components/choice-combobox-body"));
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
-vi.mock("../../lib/settings/computerName", async (original) => ({
-  ...(await original<object>()),
-  useComputerNames: () => (id: string) => ({ name: id === "box" ? "The box" : "The Mac", own: false }),
-}));
+vi.mock("../../lib/settings/computerName", async (original) => {
+  const real = await original<typeof import("../../lib/settings/computerName")>();
+  const nameOf = (id: string) => ({ name: id === "box" ? "The box" : "The Mac", own: false });
+  return { ...real, useComputerNames: () => nameOf, useComputerName: nameOf, useReadFailWords: (id: string) => (error: string) => real.readFailWords(error, nameOf(id)) };
+});
 vi.mock("../../lib/native", async (original) => ({ ...(await original<object>()), thisDesktopInLine: () => "this Mac" }));
 
 const w = (): World => world.current as World;
@@ -245,6 +246,18 @@ describe("Settings → Work → Digest", () => {
     expect(screen.getByTestId("sheet").textContent).toBe("open");
   });
 
+  it("keeps what one computer sent when another did not answer, names that one with Retry, and claims no sameness", async () => {
+    w().down.add("mac");
+    resetDigestStore();
+    render(<SettingsSection />);
+    await waitFor(() => expect(timeField()?.textContent).toContain("8:00 AM"));
+    expect(screen.getByRole("alert").textContent).toBe("The Mac did not answer.");
+    expect(screen.queryByText(/^Kept the same on /)).toBeNull();
+    w().down.clear();
+    await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(await screen.findByText(/^Kept the same on /)).toBeTruthy();
+  });
+
   it("with no host answering it is one red line with Retry, never a row that pretends", async () => {
     w().down.add("box");
     w().down.add("mac");
@@ -252,12 +265,12 @@ describe("Settings → Work → Digest", () => {
     resetDigestStore();
     render(<SettingsSection />);
     // In his words, never the link's own error text.
-    expect((await screen.findByRole("alert")).textContent).toBe("The box and The Mac did not answer");
+    await waitFor(() => expect(screen.getAllByRole("alert").map((a) => a.textContent)).toEqual(["The box did not answer.", "The Mac did not answer."]));
     expect(timeField()).toBeNull();
+    // No bones under a read that failed.
+    expect(document.querySelector("[data-slot=page-row-skeleton]")).toBeNull();
     w().down.clear();
-    // Its Retry stands where every other page's does, on the line's edge with no pull past it.
-    expect(screen.getByRole("button", { name: "Retry" }).className).not.toContain("-me-");
-    await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    await act(async () => void fireEvent.click(screen.getAllByRole("button", { name: "Retry" })[0]!));
     await waitFor(() => expect(timeField()).toBeTruthy());
   });
 });

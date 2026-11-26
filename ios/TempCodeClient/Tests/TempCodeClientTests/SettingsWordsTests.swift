@@ -49,3 +49,18 @@ struct SignInWordsTests {
         #expect(SignInWords.refusal(.api(.rateLimited(retryAfterSeconds: 30)), link: true) == "Too many attempts, try again in 30 s.")
     }
 }
+
+@Suite("NotificationWords")
+struct NotificationWordsTests {
+    @Test func `the switch's own On and Off are not said again beside it`() {
+        #expect(NotificationWords.beside("On") == nil)
+        #expect(NotificationWords.beside("Off") == nil)
+    }
+
+    @Test func `a state the switch cannot show is said`() {
+        #expect(NotificationWords.beside("Registering…") == "Registering…")
+        #expect(NotificationWords.beside("No relay") == "No relay")
+        #expect(NotificationWords.beside("Failed") == "Failed")
+        #expect(NotificationWords.beside("Not allowed") == "Not allowed")
+    }
+}

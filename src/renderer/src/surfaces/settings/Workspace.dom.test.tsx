@@ -22,7 +22,15 @@ vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environme
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 vi.mock("./parts/StartSetRow", () => ({ StartSetRow: () => <div data-start-set /> }));
 vi.mock("../../chrome/PreambleDialog", () => ({ PreambleDialog: () => <div role="dialog">Rules read before the first message</div> }));
-vi.mock("../../lib/settings/computerName", () => ({ useComputerName: () => ({ name: "The box", own: false }) }));
+vi.mock("../../lib/settings/computerName", () => ({
+  useComputerName: () => ({ name: "The box", own: false }),
+  useReadFailWords: () => (error: string) => (error === "The computer did not answer" ? "The box did not answer." : error),
+}));
+// The page's accounts read: answered with the store's snapshot below.
+vi.mock("./parts/useAccountsRead", async () => {
+  const { useAccounts } = await import("../../stores/accounts");
+  return { useAccountsRead: (id: string) => ({ snapshot: useAccounts(id).snapshot, error: null, retry: () => {} }) };
+});
 vi.mock("../../chrome/TurnPassFields", () => ({
   TurnPassEditor: () => <h2>After each turn</h2>,
   // The page's one read: answered, refused or out, as each test sets it.
@@ -135,7 +143,7 @@ describe("Workspace page", () => {
     expect(screen.queryByRole("combobox", { name: "Codex account" })).toBeNull();
     const section = screen.getByRole("heading", { name: "Accounts" }).closest("section")!;
     // Who can is said once, at the page's top.
-    expect(screen.getAllByText("Changed from a computer that manages the box")).toHaveLength(1);
+    expect(screen.getAllByText("Changed from a computer that manages the box.")).toHaveLength(1);
     expect(section.textContent).toContain("bob");
     expect(section.textContent).toContain("Auto");
     expect(section.textContent).not.toContain("Auto picks by model");
@@ -259,9 +267,13 @@ describe("Workspace page", () => {
     expect(screen.queryByRole("combobox")).toBeNull();
     cleanup();
     const retry = vi.fn();
-    state.pass = { value: undefined, error: "The box did not answer", retry };
+    state.pass = { value: undefined, error: "The computer did not answer", retry };
     render(<WorkspacePage workspaceId="w1" />);
     expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert").textContent).toBe("The box did not answer.");
+    // Nothing under a failed read: no section, no bones.
+    expect(screen.queryAllByRole("heading")).toEqual([]);
+    expect(document.querySelector("[data-slot=page-row-skeleton]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalled();
     expect(screen.queryByRole("combobox")).toBeNull();

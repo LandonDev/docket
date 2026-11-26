@@ -32,7 +32,11 @@ vi.mock("../../components/choice-select", async () => await import("../../compon
 vi.mock("../../lib/native", () => ({ openUrl: (url: string) => host.openUrl(url), thisDesktopInLine: () => "this Mac" }));
 const bridge = vi.hoisted(() => ({ hosts: [] as unknown[], asked: [] as unknown[][] }));
 vi.mock("../../lib/macBridge", () => ({ useMacBridgeHosts: () => bridge.hosts, refreshMacBridgeHosts: async () => bridge.hosts }));
-vi.mock("../../lib/settings/computerName", () => ({ useComputerNames: () => (id: string, said?: string) => ({ name: said ?? id, own: false }) }));
+vi.mock("../../lib/settings/computerName", async (original) => ({
+  ...(await original<typeof import("../../lib/settings/computerName")>()),
+  useComputerNames: () => (id: string, said?: string) => ({ name: said ?? id, own: false }),
+  useReadFailWords: () => (error: string) => (/[.!?]$/.test(error) ? error : `${error}.`),
+}));
 vi.mock("../../lib/settings/maySheet", () => ({ openMaySheet: (...args: unknown[]) => bridge.asked.push(args) }));
 vi.mock("../../lib/computerSessions", async () => {
   const { useSyncExternalStore } = await import("react");
@@ -111,7 +115,7 @@ describe("Settings › Computer use", () => {
     render(<ComputerPage />);
     await settle();
     // One failed read, one line and one Retry: the apps it also feeds wait for it.
-    expect(screen.getAllByRole("alert").map((line) => line.textContent)).toEqual(["forbidden: computer.settings.get"]);
+    expect(screen.getAllByRole("alert").map((line) => line.textContent)).toEqual(["forbidden: computer.settings.get."]);
     expect(screen.queryByRole("heading", { name: "Apps it has learned" })).toBeNull();
     refuse = false;
     fireEvent.click(within(firstSection()).getByRole("button", { name: "Retry" }));
@@ -234,7 +238,7 @@ describe("Settings › Computer use", () => {
     render(<ComputerPage />);
     await settle();
     const perms = section("macOS permissions");
-    expect(within(perms).getByRole("alert").textContent).toBe("Couldn't read the permissions");
+    expect(within(perms).getByRole("alert").textContent).toBe("Couldn't read the permissions.");
     value = GRANTED;
     fireEvent.click(within(perms).getByRole("button", { name: "Retry" }));
     await settle();

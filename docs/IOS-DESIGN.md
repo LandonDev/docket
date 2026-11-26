@@ -2122,8 +2122,10 @@ Appearance, then Diagnostics with the version as its value.
   Code threads, and Work threads while Work is on there, the host menu's own
   switches over `away.get` and `away.set`, one computer per flip. The row's
   trailing word is On while any is away; the last footer says what Away does.
-- **Notifications** is one row: the switch with the registrar's word beside
-  it ("Off", "On", "Registering…", "No relay", "Failed", "Not allowed"). The
+- **Notifications** is one row: the switch, with the registrar's word beside
+  it only when the switch's position cannot say it ("Registering…", "No
+  relay", "Failed", "Not allowed"; never "On" or "Off",
+  `NotificationWords.beside`). The
   switch moves at once and holds its position while the permission prompt
   and the hosts answer; the word cross-fades 150 ms. When the phone refused
   permission an "Allow in Settings" row opens the system Settings. The footer
@@ -2209,7 +2211,8 @@ nothing of the kind, all in the same inset grouped grammar: system headers,
 no glyphs on rows except the status column (`Layout.markWidth`: a dot, a
 spinner, a check or a cross), footers of at most two lines.
 
-- **Build**: an Updates row saying how the computer stands, once ("Up to
+- **Build** (no heading: its one row names it): an Updates row saying how
+  the computer stands, once ("Up to
   date", "3 behind"), against the newest release, read by the phone itself
   from GitHub (`MasterReleaseWatcher`: every ten minutes while a drift mark
   or a detail shows, and on foreground after fifteen; a failure keeps the
@@ -2244,14 +2247,17 @@ spinner, a check or a cross), footers of at most two lines.
 - **Devices** (one section per Mac this host can show: "Devices" on the Mac
   itself, "Devices on <Mac>" on a box): simulators then iPhones, a dot in
   success, warning or tertiary that cross-fades in place, the state line
-  with a booted simulator's CPU rolling (`.numeric`), the holder trailing in
-  the footnote's tertiary, pushing its thread when that host is paired here.
-  At accessibility sizes the state, the platform and the holder each take
-  their own lines and wrap, never cut.
+  with a booted simulator's CPU rolling (`.numeric`), the platform and the
+  holder in `secondary`, pushing its thread when that host is paired here.
+  The holder trails on the row's line while the row fits whole; when it
+  would be cut (a long thread title, large text) it goes under the state and
+  wraps (`ViewThatFits`), never cut mid-word. At accessibility sizes the state
+  and the platform take a line each.
   Shut Down and Delete on a swipe and in the context menu (Delete confirmed
   by an alert naming the holder), Open in Xcode on a phone's; a spinner
-  replaces the dot while one is out. The footer is the summary, then the
-  Xcode in use, then any tool that did not answer.
+  replaces the dot while one is out. The footer says only what the rows do
+  not: a tool that did not answer, and why a key cannot act (no count of
+  the rows, no load, no Xcode version).
 - **Sync** (admin): per peer its name, the harness config and memory lines
   (cross-fading, up to three lines so "synced 2m ago" survives), and a Sync
   Now pill; the conflict copies behind a disclosure. The footer is the rule

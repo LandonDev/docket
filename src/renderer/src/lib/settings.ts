@@ -114,7 +114,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     id: "away",
     group: "every",
     label: "Away",
-    description: "While on, a thread that would wait for you decides for itself. Sends, posts and payments still wait. For every computer.",
+    // Which computers it holds for is the page's own line, by their names (Away.tsx `AwayScope`).
+    description: "While on, a thread that would wait for you decides for itself. Sends, posts and payments still wait.",
   },
   { id: "addons", group: "every", label: "Add-ons", description: "" },
   { id: "skills", group: "every", label: "Skills", description: "" },
@@ -125,7 +126,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   // Its row is not "Work" under the heading "Work", nor a second "General": Setup is what the page is (where Work is
   // on, what its threads may do, where new jobs go), and its title says Work.
   { id: "work", group: "work", label: "Setup", title: "Work", description: "Threads for your jobs." },
-  { id: "digest", group: "work", label: "Digest", description: "What Work tells you, and when. One set for every computer with Work on.", workOnly: true },
+  { id: "digest", group: "work", label: "Digest", description: "What Work tells you, and when.", workOnly: true },
   { id: "mail", group: "work", label: "Mail", description: "Kept in LifeOS, the same on every computer and your phone.", workOnly: true },
   { id: "files", group: "work", label: "Files", description: "", workOnly: true },
   // docs/agents/work-connections.md: every sign-in and helper Work leans on, per computer.
@@ -267,7 +268,7 @@ export const KEYBINDING_GROUPS: KeybindingGroup[] = [
       { name: "Panel", keys: [[CMD, SHF, "R"]] },
       { name: "Switch Model", keys: [[CMD, "."]] },
       { name: "Settings", keys: [[CMD, ","]] },
-      { name: "Find a Setting", keys: [[CMD, "F"]], scope: "settings" },
+      { name: "Find a setting", keys: [[CMD, "F"]], scope: "settings" },
     ],
   },
   {

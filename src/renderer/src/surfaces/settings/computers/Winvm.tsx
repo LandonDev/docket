@@ -5,6 +5,7 @@ import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { ChoiceSelect } from "../../../components/choice-select";
 import { SettingSwitch } from "../../../components/setting-switch";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../../components/page";
+import { ReadFailure } from "../parts/ReadFailure";
 import { BusyLabel, Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Skeleton } from "../../../components/ui/skeleton";
@@ -148,10 +149,10 @@ export function WinvmHost({ env }: { env: string }) {
   const [pointsError, setPointsError] = useState<string | null>(null);
   const [settings, setSettings] = useState<{ screen: WinvmScreen; detail: WinvmDetail | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The machine's read's own reason, for the page's one failure line. */
+  const [readError, setReadError] = useState<string | null>(null);
   const [pressing, setPressing] = useState(false);
   const [showPoints, setShowPoints] = useState(false);
-  /** his Retry of the machine's read is out */
-  const [retrying, setRetrying] = useState(false);
   const link = useMemo(() => registry.linkOf(env), [env]);
   const admin = useLinkMay(env, "work.winvm.settings");
   const operate = useLinkMay(env, "work.winvm.wake");
@@ -174,7 +175,10 @@ export function WinvmHost({ env }: { env: string }) {
         setState(s);
         setError(null);
       },
-      (err: unknown) => setError(hostFailure(env, err, "could not read the Windows VM")),
+      (err: unknown) => {
+        setError(hostFailure(env, err, "could not read the Windows VM"));
+        setReadError(err instanceof Error ? err.message : String(err));
+      },
     );
     void loadPoints();
     // The screen is read with the settings, the admin rule: a key that may not change it never asks.
@@ -211,23 +215,8 @@ export function WinvmHost({ env }: { env: string }) {
     return (
       <PageSection>
         {error ? (
-          <PageError
-            action={
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={retrying}
-                onClick={() => {
-                  setRetrying(true);
-                  void load().finally(() => setRetrying(false));
-                }}
-              >
-                <BusyLabel busy={retrying} label="Retry" />
-              </Button>
-            }
-          >
-            {error}
-          </PageError>
+          // The machine's own read failed: one line naming the computer, as every page says it.
+          <ReadFailure computer={env} error={readError ?? ""} retry={load} />
         ) : (
           // As many rows as will land: a key that may change it gets its screen size and picture quality too.
           <PageRowsSkeleton

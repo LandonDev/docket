@@ -46,7 +46,7 @@ export function Advanced({ host, rows, children, saysWhoCan = true, open = false
     <Fold label="Advanced" defaultOpen={open}>
       <PageSection>
         {manage ? (
-          <SectionRead read={status} rows={[{ control: "switch" }, { control: "number" }, { description: true, control: "field", wide: true }]}>
+          <SectionRead read={status} computer={host.environmentId} rows={[{ control: "switch" }, { control: "number" }, { description: true, control: "field", wide: true }]}>
             {(value) => <ListenerRows host={host} rows={rows} status={value} onStatus={status.set} computer={computer} />}
           </SectionRead>
         ) : null}

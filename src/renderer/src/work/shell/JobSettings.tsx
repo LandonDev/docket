@@ -6,7 +6,7 @@ import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
-import { BusyLabel, Button } from "../../components/ui/button";
+import { Button } from "../../components/ui/button";
 import { LOCAL_ENVIRONMENT_ID, registry, useEnvironments } from "../../lib/connection";
 import { nameInLine } from "../../lib/hostWords";
 import { linkMay, useLinkMay } from "../../lib/linkMay";
@@ -15,6 +15,7 @@ import { requestSettings } from "../../lib/monaco/debugTab";
 import { openMaySheet } from "../../lib/settings/maySheet";
 import { isWebMode } from "../../lib/nativeWeb";
 import { computerInLine, useComputerNames, useOwnComputerNamed, type ComputerName as Name } from "../../lib/settings/computerName";
+import { NO_ANSWER } from "../../lib/connection/openRead";
 import { jobDesktopName, refusalWords, refusesJob, type BridgePolicy, type JobDesktop } from "../../lib/settings/jobComputers";
 import { settingTitle } from "../../lib/settings/map";
 import { inWords } from "../../lib/settings/workWords";
@@ -27,6 +28,7 @@ import { ManagedLine } from "../../surfaces/settings/parts/ManagedLine";
 import { SaveMark } from "../../surfaces/settings/parts/SaveMark";
 import { SettingRow, SettingSection } from "../../surfaces/settings/parts/SettingRow";
 import { StartSetRow } from "../../surfaces/settings/parts/StartSetRow";
+import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
 import { useSaved } from "../../surfaces/settings/parts/useSaved";
 import { WaitingRows } from "../mail/WaitingSection";
 import { TeamsCopyRow } from "../office/TeamsCopyRow";
@@ -42,11 +44,16 @@ import { useLifeosQuery, useLifeosSession, useLifeosStatus } from "./lifeos";
  * draws them from Work's chunk (`workShellChunk`), so nothing of Work loads until a page needs it.
  */
 
-/** A failure in his words, the computer named: `workErrorWords` for a known fault, else the page's own line. */
-function failureWords(err: unknown, host: string | undefined, act: string, write = false): string {
+/**
+ * Why the page's read failed, before `readFailWords` names the computer: its silence as `NO_ANSWER` ("The box did not
+ * answer."), a known Work fault in Work's words, else the reason as the computer gave it. Never the link's own text.
+ */
+function readReason(err: unknown, host: string | undefined): string {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (message === NO_ANSWER || (err instanceof Error && (err.name === "TimeoutError" || err.name === "ConnectionLostError"))) return NO_ANSWER;
   const name = host ? nameInLine(host) : undefined;
-  const Name = name ? name.charAt(0).toUpperCase() + name.slice(1) : "The computer";
-  return workErrorWords(err, { host: name, write }) || `${Name} ${act}.`;
+  // An unknown fault is said in the page's own words, the computer named: never a method, a path or the link's text.
+  return workErrorWords(err, { host: name }) || `${name ? name.charAt(0).toUpperCase() + name.slice(1) : "The computer"} did not send this job's settings.`;
 }
 
 /** A workspace's key, as the status lists it, in one line, `host` (the workspace's computer, "The box") named; null when it is ready. */
@@ -99,7 +106,7 @@ function useJobRead(workspace: WorkspaceMeta) {
       },
       (err: unknown) => {
         if (!live) return;
-        setError(failureWords(err, registry.environment(env)?.name, "did not send this job's settings"));
+        setError(readReason(err, registry.environment(env)?.name));
         setRetrying(false);
       },
     );
@@ -133,8 +140,15 @@ export function JobPage({ workspace }: { workspace: WorkspaceMeta }) {
           <PageError>{key.line}</PageError>
         </PageSection>
       ) : null}
-      <ComputersSection workspace={workspace} mayWrite={mayWrite} job={job} ready={ready} />
-      {ready ? (
+      {job.error ? (
+        // The computer did not send the job: one line, named, with one Retry; nothing under it stands for an answer.
+        <PageSection>
+          <ReadFailure computer={env} error={job.error} retry={job.retry} />
+        </PageSection>
+      ) : (
+        <ComputersSection workspace={workspace} mayWrite={mayWrite} job={job} ready={ready} />
+      )}
+      {job.error ? null : ready ? (
         <>
           <SettingSection of="job.threads">
             <StartSetRow id="job.threads" workspace={workspace} whose="job" may={mayDefaults} />
@@ -149,7 +163,7 @@ export function JobPage({ workspace }: { workspace: WorkspaceMeta }) {
   );
 }
 
-/** The sections after the first while the page's read is out or refused: each heading, its rows in their shape. */
+/** The sections after the first while the page's read is out: each heading, its rows in their shape. */
 function JobShapes({ workspace, mayDefaults }: { workspace: WorkspaceMeta; mayDefaults: boolean }) {
   const mayWaiting = useLinkMay(workspace.environmentId, "work.mail.setWaiting");
   const mayVoice = useLinkMay(workspace.environmentId, "work.workspace.set");
@@ -241,17 +255,6 @@ function ComputersSection({ workspace, mayWrite, job, ready }: { workspace: Work
         />
       ) : null}
       {settings && mayWrite && others.length ? <TeamsCopyRow workspace={workspace} computer={computerInLine(jobComputer)} /> : null}
-      {error ? (
-        <PageError
-          action={
-            <Button variant="ghost" size="sm" disabled={job.retrying} onClick={job.retry}>
-              <BusyLabel busy={job.retrying} label="Retry" />
-            </Button>
-          }
-        >
-          {error}
-        </PageError>
-      ) : null}
       {mayWrite ? null : <ManagedLine computer={jobComputer.name} />}
     </SettingSection>
   );

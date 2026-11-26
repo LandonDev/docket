@@ -31,7 +31,7 @@ const job = vi.hoisted(() => ({ may: ["env_mac", "env_pc"] as string[], writes: 
 vi.mock("./actions", async (original) => ({
   ...(await original<object>()),
   workspaceSettings: async () => {
-    if (job.fail) throw new Error("The host did not answer");
+    if (job.fail) throw new Error("The computer did not answer");
     return { mayUseDesktop: job.may, model: null, reasoning: null, voice: false };
   },
   setWorkspaceSettings: async (_ws: unknown, patch: { mayUseDesktop?: string[] }) => {
@@ -140,15 +140,16 @@ describe("a job's computers", () => {
 });
 
 describe("a job's page when its computer does not answer", () => {
-  it("says it once with one Retry, and every other section keeps its heading and its rows' shape", async () => {
+  it("says it once, naming the computer, with one Retry, and draws nothing under it", async () => {
     job.fail = true;
     render(<WorkWorkspacePage workspaceId="ws" />);
     await settle();
     expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert").textContent).toBe("The box did not answer.");
     expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
-    const headings = [...document.querySelectorAll("section h2, section [data-slot=page-section-title]")].map((h) => h.textContent);
-    expect(headings).toEqual(expect.arrayContaining(["Computers its threads may use", "New threads", "Rules", "Writing and mail"]));
-    expect(document.querySelector('[data-setting="job.rules"] [data-slot=page-row-skeleton]')).toBeTruthy();
+    // No bones and no headings under a failed read: bones say "waiting".
+    expect(document.querySelector("[data-slot=page-row-skeleton]")).toBeNull();
+    expect(screen.queryByText("New threads")).toBeNull();
     expect(screen.queryByRole("switch")).toBeNull();
     job.fail = false;
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));

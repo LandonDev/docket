@@ -330,7 +330,7 @@ describe('ProjectSettingsDialog: each field waits for its value', () => {
     pendingOn = new Set(['turnpass.get', 'build.get'])
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
     await act(async () => {})
-    expect(section('After each turn').querySelectorAll('[data-slot=page-row-skeleton]')).toHaveLength(3)
+    expect(section('After each turn').querySelectorAll('[data-slot=field-bone]')).toHaveLength(3)
     expect(section('After each turn').querySelector('[role=switch]')).toBeNull()
     expect(section('Build').querySelector('input')).toBeNull()
   })
@@ -338,8 +338,10 @@ describe('ProjectSettingsDialog: each field waits for its value', () => {
   it('says a failed read with Retry, which asks again', async () => {
     readFailOn = new Set(['turnpass.get', 'build.get'])
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
-    await waitFor(() => expect(section('After each turn').textContent).toContain('The computer did not answer'))
-    expect(section('Build').textContent).toContain('The computer did not answer')
+    // Two groups one computer did not answer: one line, naming it, under the first; the second says nothing more.
+    await waitFor(() => expect(section('After each turn').textContent).toContain('This Mac did not answer.'))
+    expect(section('Build').textContent).not.toContain('did not answer')
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
     readFailOn = new Set()
     await act(async () => fireEvent.click(section('After each turn').querySelector('button')!))
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Run the checks' })).toBeTruthy())
@@ -403,7 +405,9 @@ describe('ProjectSettingsDialog while the plans load', () => {
   it('holds the Plans section in the shape of its five rows', () => {
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
     const plans = [...screen.getByRole('dialog').querySelectorAll('h3')].find((h) => h.textContent === 'Plans')!.closest('section')!
-    expect(plans.querySelectorAll('[data-slot=page-row-skeleton]')).toHaveLength(5)
+    expect(plans.querySelectorAll('[data-slot=field-bone]')).toHaveLength(5)
+    // Drawn as the loaded rows are: no hairline between the bones.
+    expect(plans.querySelector('[data-slot=field-bone]')?.className).not.toContain('border')
   })
 })
 
@@ -411,7 +415,7 @@ describe('ProjectSettingsDialog when the project\'s plans fail to load', () => {
   it('says why with Retry instead of fields from the global set that would never save', async () => {
     projectPlansFail = true
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
-    await waitFor(() => expect(screen.getByText('not connected')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Not connected.')).toBeTruthy())
     expect(screen.queryByRole('switch', { name: 'Start the build when a plan is done' })).toBeNull()
     projectPlansFail = false
     await act(async () => {
@@ -425,7 +429,7 @@ describe('ProjectSettingsDialog when the project\'s review set fails to load', (
   it('says why with Retry instead of fields that would never save', async () => {
     projectReviewFail = true
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
-    await waitFor(() => expect(screen.getByText('unknown method')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Unknown method.')).toBeTruthy())
     expect(screen.queryByRole('switch', { name: 'Review before merge' })).toBeNull()
     projectReviewFail = false
     await act(async () => {
@@ -587,6 +591,14 @@ describe('AccountPinFields', () => {
   }
   afterEach(() => accountsStore.reset())
 
+  it('says an agent app with no account to pick as words, never a select that cannot open', async () => {
+    await mount([])
+    // Codex has no account and no pin: its value as words; Claude has one to pick: a select.
+    expect(screen.queryByRole('combobox', { name: 'Codex' })).toBeNull()
+    expect(document.querySelector('[data-account-value]')?.textContent).toBe('Inherit (auto)')
+    expect(screen.getByRole('combobox', { name: 'Claude' })).toBeTruthy()
+  })
+
   it('has a Meta row only once the host holds a key, named Meta with the keys as its choices', async () => {
     await mount([])
     expect(screen.queryByRole('combobox', { name: 'Meta' })).toBeNull()
@@ -626,5 +638,28 @@ describe('ProjectSettingsDialog: Save and the groups that did not load', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Run the checks' }))
     const button = await screen.findByRole('button', { name: 'Use workspace setting' })
     expect(button.parentElement?.querySelector('h3')?.textContent).toBe('After each turn')
+  })
+})
+
+describe('ProjectSettingsDialog when every group fails for one computer', () => {
+  it('says it once at the head of the sheet, with one Retry that asks every group again, and draws no group under it', async () => {
+    readFailOn = new Set(['turnpass.get', 'build.get', 'review.get', 'plans.get', 'accounts.list'])
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(1))
+    expect(screen.getByRole('alert').textContent).toBe('This Mac did not answer.')
+    expect([...screen.getByRole('dialog').querySelectorAll('h3')].map((h) => h.textContent)).toEqual([])
+    readFailOn = new Set()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry' })))
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Run the checks' })).toBeTruthy())
+  })
+})
+
+describe('ProjectSettingsDialog: Accounts read their own state', () => {
+  it('holds their shape until the accounts answer, never Same as the workspace before', async () => {
+    pendingOn = new Set(['accounts.list'])
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    await act(async () => {})
+    expect(section('Accounts').querySelectorAll('[data-slot=field-bone]')).toHaveLength(2)
+    expect(section('Accounts').textContent).not.toContain('Same as the workspace')
   })
 })

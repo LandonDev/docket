@@ -85,12 +85,15 @@ export function scopeName(workspaceId: string | null, names: ReadonlyMap<string,
   return names.get(workspaceId) ?? "A removed workspace";
 }
 
-/** The row's third line: the workspace it is for (every workspace is the list's rule, said on no row), the computers it
- *  runs on (unless line two says so), and its grant. */
+/** The row's third line: its grant, the computers it runs on (unless line two says so), and the workspace it is for
+ *  (every workspace is the list's rule, said on no row). */
 export function addonFacts(row: AddonRow, mark: AddonMark, grant: GrantKnown, workspaceName: string | null): string[] {
   const platform = onlyOn(row.spec.platforms, { darwin: "Macs only", linux: "Linux computers only" });
   const saysPlatform = mark.word === "Mac only" || mark.word === "Linux only";
-  return [...(workspaceName ? [workspaceName] : []), ...(platform && !saysPlatform ? [platform] : []), ...grantFact(row.spec, grant)];
+  // The house's own words first, so the line starts with a capital; a workspace keeps its name as written, last.
+  const words = [...grantFact(row.spec, grant), ...(platform && !saysPlatform ? [platform] : [])];
+  if (words[0]) words[0] = words[0].charAt(0).toUpperCase() + words[0].slice(1);
+  return [...words, ...(workspaceName ? [workspaceName] : [])];
 }
 
 export type AddonMenuPick = "edit" | "key" | "signin" | "cancel-signin" | "signout" | "remove";

@@ -38,6 +38,8 @@ import {
   type RulesCatalog,
 } from "../lib/tcserver/rules";
 import { usePublishHome } from "../lib/settings/pageHome";
+import { resolveModel } from "../lib/models";
+import { ReadFailure } from "../surfaces/settings/parts/ReadFailure";
 import { homeNote } from "../lib/settingsHome";
 import { HARNESS_TITLE, type HarnessId } from "../lib/session";
 import type { ModelInfo, ProviderId, Reasoning as Effort } from "../lib/tcserver/types";
@@ -78,6 +80,13 @@ const APPROVAL_OPTIONS: Choice<Approval>[] = [
 /** An agent app's name, as every other page says it ("Claude Code"), else the catalog's own word for it. */
 const appName = (catalog: RulesCatalog | null, provider: ProviderId): string => (HARNESS_TITLE as Record<string, string>)[provider] ?? catalog?.[provider]?.label ?? provider;
 
+/** A model's one name, the one every page says ("Claude Opus 5.5"): the app's full name for it where this window knows
+ *  the model, else the catalog's own word. */
+const modelName = (provider: ProviderId, id: string, label: string): string => {
+  const model = resolveModel(provider as HarnessId, id);
+  return model.harness === provider && (model.id === id || model.nativeId === id) ? model.name : label;
+};
+
 /** Every agent app the computer's catalog lists, in its order. */
 const providersOf = (catalog: RulesCatalog | null): ProviderId[] => Object.keys(catalog ?? {}) as ProviderId[];
 
@@ -104,27 +113,15 @@ const LIMITS_SKELETON = [{}, {}] as const;
 const MODELS_SKELETON = [{ description: true, control: "none" }] as const;
 const RULES_SKELETON = [{ description: true, media: true, control: "none" }, { description: true, media: true, control: "none" }] as const;
 
-/** The page while the set loads, every section under its real heading in its rows' shape; once the computer failed
- *  to answer, one error with Retry in the first section's place, the others held in their shape. */
-export function RulesSkeleton({ error, onRetry }: { workspaceId?: string | null; error?: string | null; onRetry?: () => void }) {
+/** The page while the set loads, every section under its real heading in its rows' shape. Once its computer has
+ *  failed to answer, only the one line with Retry (`ReadFailure`): no headings and no bones, which would say it still
+ *  waits. */
+export function RulesSkeleton({ environmentId, error, onRetry }: { workspaceId?: string | null; environmentId?: string; error?: string | null; onRetry?: () => void }) {
+  if (error && environmentId) return <ReadFailure computer={environmentId} error={error} retry={onRetry ?? (() => {})} />;
   return (
     <div data-testid="rules-skeleton" className="contents">
       <SettingSection of="sub.gives">
-        {error ? (
-          <PageError
-            action={
-              onRetry ? (
-                <Button variant="ghost" size="sm" onClick={onRetry}>
-                  Retry
-                </Button>
-              ) : null
-            }
-          >
-            {error}
-          </PageError>
-        ) : (
-          <PageRowsSkeleton rows={LEAD_SKELETON} />
-        )}
+        <PageRowsSkeleton rows={LEAD_SKELETON} />
       </SettingSection>
       <SettingSection of="sub.atOnce" description={LIMITS_LINE}>
         <PageRowsSkeleton rows={LIMITS_SKELETON} />
@@ -174,7 +171,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
     void rulesStore.load(environmentId, workspaceId, true).catch(() => undefined);
   }, [environmentId, workspaceId, linkStates]);
 
-  if (!scope) return <RulesSkeleton error={error} onRetry={retry} />;
+  if (!scope) return <RulesSkeleton environmentId={environmentId} error={error} onRetry={retry} />;
   const { rules, overridden } = scope;
   const { blocked } = homeNote(scope.home);
 
@@ -192,7 +189,8 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
   const move = (from: number, to: number) => void moved.run(() => write(moveRoutingRule(rules, from, to)));
 
   const models = providersOf(catalog).flatMap((p) => (catalog?.[p]?.models ?? []).map((m) => ({ provider: p, id: m.id })));
-  const allowed = models.filter((m) => modelApproved(rules, m.provider, m.id, "orchestrator")).length;
+  // The models an agent may run: "Lead threads only" is not one, so it is not counted.
+  const allowed = models.filter((m) => modelApproved(rules, m.provider, m.id)).length;
 
   return (
     <>
@@ -320,7 +318,7 @@ function ModelsSheet({
   const { root } = useClosingDialog(onClose, false);
   const stale = catalog ? staleModels(rules, catalog) : [];
   const rows = providersOf(catalog).flatMap((p) => [
-    ...(catalog?.[p]?.models ?? []).map((m) => ({ provider: p, id: m.id, model: m as ModelInfo | undefined, name: m.label })),
+    ...(catalog?.[p]?.models ?? []).map((m) => ({ provider: p, id: m.id, model: m as ModelInfo | undefined, name: modelName(p, m.id, m.label) })),
     ...stale.filter((m) => m.provider === p).map((m) => ({ provider: p, id: m.id, model: undefined, name: m.id })),
   ]);
   const filter = useListFilter(rows, (row) => `${row.name} ${appName(catalog, row.provider)}`);
@@ -410,7 +408,7 @@ function ModelRow({
   // list reads Off.
   const policy = rules.models[modelKey(provider, id)]?.approved ?? false;
   const approved = policy !== false;
-  const name = model?.label ?? id;
+  const name = model ? modelName(provider, model.id, model.label) : id;
   const range = ladderOf(rules, provider, model);
   const ladder = model?.reasoning ?? [];
   const min = range[0];
@@ -510,7 +508,7 @@ function RuleRow({
         <Facts
           parts={[
             rule.enabled ? null : "Off",
-            model?.label ?? modelId,
+            model ? modelName(rule.provider, model.id, model.label) : modelId,
             model?.reasoning.length ? EFFORT_LABELS[rule.reasoning] : null,
             leadOnly ? "Lead threads only" : !approved ? <span className="text-warning">Not allowed</span> : null,
           ]}
@@ -623,7 +621,7 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
             />
           </FieldRow>
           <FieldRow label="Model">
-            <ChoiceCombobox label="Model" size="sm" value={model} onChange={setModel} options={[{ value: "", label: "Default" }, ...models.map((m) => ({ value: m.id, label: m.label }))]} />
+            <ChoiceCombobox label="Model" size="sm" value={model} onChange={setModel} options={[{ value: "", label: "Default" }, ...models.map((m) => ({ value: m.id, label: modelName(provider, m.id, m.label) }))]} />
           </FieldRow>
           {ladder.length > 1 ? (
             <FieldRow label="Effort">

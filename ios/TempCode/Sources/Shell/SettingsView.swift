@@ -91,14 +91,16 @@ struct SettingsView: View {
             }
 
             Section {
-                // One row: the switch, with the registration's state beside it.
+                // One row: the switch, with the registration's state beside it only when the switch cannot say it.
                 Toggle(isOn: pushBinding) {
                     HStack(spacing: Layout.rowGap) {
                         Text("Notifications")
                         Spacer(minLength: Layout.rowGap)
-                        Text(pushWord(push))
-                            .foregroundStyle(.secondary)
-                            .contentTransition(.opacity)
+                        if let word = pushWord(push) {
+                            Text(word)
+                                .foregroundStyle(.secondary)
+                                .contentTransition(.opacity)
+                        }
                     }
                     .animation(Motion.crossFade, value: pushWord(push))
                 }
@@ -171,9 +173,9 @@ struct SettingsView: View {
         )
     }
 
-    private func pushWord(_ push: PushRegistrar) -> String {
+    private func pushWord(_ push: PushRegistrar) -> String? {
         if let pending = pushPending { return pending ? "Turning on…" : "Turning off…" }
-        return push.summary
+        return NotificationWords.beside(push.summary)
     }
 
     /// One sentence under the row: what the switch does, or what stands in its way.

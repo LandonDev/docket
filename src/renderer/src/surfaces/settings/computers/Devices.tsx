@@ -225,19 +225,19 @@ function DeviceRow({
           </span>
           {holder ? (
             onOpenSession ? (
-              // The 16px link reaches 24px; its words truncate inside it, so nothing clips the hit area.
+              // The 16px link reaches 24px; its words wrap inside it (two thread titles can differ at their end).
               <span data-holder className="flex min-w-0">
                 <Button
                   variant="link"
                   size="xs"
-                  className="h-auto max-w-full min-w-0 shrink px-0 text-xs font-normal text-muted-foreground hover:text-foreground after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']"
+                  className="h-auto max-w-full min-w-0 shrink whitespace-normal px-0 text-left text-xs font-normal text-muted-foreground hover:text-foreground after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']"
                   onClick={() => onOpenSession(holder.sessionId)}
                 >
-                  <span className="min-w-0 truncate">{holderWords(holder)}</span>
+                  <span className="min-w-0 break-words">{holderWords(holder)}</span>
                 </Button>
               </span>
             ) : (
-              <span data-holder className="block truncate">
+              <span data-holder className="block break-words">
                 {holderWords(holder)}
               </span>
             )

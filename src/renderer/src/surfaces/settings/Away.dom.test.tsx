@@ -6,6 +6,9 @@ import { awayStateOf } from "@server/shared/away";
 const host = vi.hoisted(() => ({
   set: vi.fn(async (_params: unknown): Promise<unknown> => ({})),
   workOn: true,
+  may: true,
+  read: { value: undefined as unknown, error: null as string | null, retry: vi.fn() },
+  environments: [{ id: "local", name: "MacBook Pro" }, { id: "env_box", name: "The box" }],
 }));
 
 vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
@@ -29,7 +32,22 @@ vi.mock("../../lib/connection/registry", () => ({
     linkOf: () => ({ request: (method: string, params: unknown) => (method === "away.set" ? host.set(params) : Promise.resolve({})) }),
   },
 }));
-vi.mock("../../lib/connection", () => ({ registry: { primaryEnvironmentId: "local" } }));
+vi.mock("../../lib/connection", () => ({
+  registry: { primaryEnvironmentId: "local", linkOf: () => ({ environmentId: "local", request: () => Promise.resolve({}) }) },
+  useEnvironments: () => host.environments,
+}));
+vi.mock("../../lib/connection/hostRead", () => ({ useHostRead: () => host.read }));
+vi.mock("../../lib/linkMay", async (original) => ({ ...(await original<typeof import("../../lib/linkMay")>()), useLinkMay: () => host.may }));
+vi.mock("../../lib/settings/computerName", async (original) => {
+  const real = await original<typeof import("../../lib/settings/computerName")>();
+  const own = { name: "MacBook Pro", own: true };
+  return {
+    ...real,
+    useComputerName: () => own,
+    useComputerNames: () => (id: string) => (id === "local" ? own : { name: "The box", own: false }),
+    useReadFailWords: () => (error: string) => real.readFailWords(error, own),
+  };
+});
 
 const { AwayPage } = await import("./Away");
 const { awayStore, resetAwayForTest, useAway } = await import("../../lib/away");
@@ -39,6 +57,8 @@ const off = (at: number) => awayStateOf({ code: false, work: false }, at, "mac")
 beforeEach(() => {
   host.set.mockReset();
   host.workOn = true;
+  host.may = true;
+  host.read = { value: undefined, error: null, retry: vi.fn() };
   resetAwayForTest({ hosts: { local: { state: off(1), decided: { since: 0, threads: [] } } } });
 });
 afterEach(cleanup);
@@ -118,5 +138,44 @@ describe("Last time away", () => {
     const row = document.querySelector("[data-setting='away.last']") as HTMLElement;
     expect(row.textContent).toContain("no decisions made for you");
     expect(within(row).queryByRole("button")).toBeNull();
+  });
+});
+
+describe("Away before and without an answer", () => {
+  it("shows the rows' bones, never Off, before this window's computer has said", () => {
+    resetAwayForTest({ hosts: {} });
+    render(<AwayPage />);
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(document.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(2);
+  });
+
+  it("says a failed read once, naming the computer, with Retry, and no rows", async () => {
+    resetAwayForTest({ hosts: {} });
+    const { NO_ANSWER } = await import("../../lib/connection/openRead");
+    host.read = { value: undefined, error: NO_ANSWER, retry: vi.fn() };
+    render(<AwayPage />);
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(document.querySelector("[data-slot=page-row-skeleton]")).toBeNull();
+  });
+
+  it("draws the page's own read while the store has not heard", () => {
+    resetAwayForTest({ hosts: {} });
+    host.read = { value: { state: awayStateOf({ code: true, work: false }, 5, "mac"), decided: { since: 5, threads: [] } }, error: null, retry: vi.fn() };
+    render(<AwayPage />);
+    expect(screen.getByRole("switch", { name: "Code threads" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("shows a key that may not approve the state as words and who can change it", () => {
+    host.may = false;
+    render(<AwayPage />);
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect((document.querySelector("[data-setting='away.code']") as HTMLElement).textContent).toContain("Off");
+    expect(document.querySelector("[data-managed]")).toBeTruthy();
+  });
+
+  it("names the computers it holds for", () => {
+    render(<AwayPage />);
+    expect(document.body.textContent).toContain("The same on this Mac and the box. One out of reach takes a change when it is back.");
   });
 });

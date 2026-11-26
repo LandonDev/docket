@@ -49,7 +49,7 @@ export function SignIns({ host, rows, saysWhoCan = true }: { host: Host; rows: "
   return (
     <SettingSection of={`${rows}.signIns`} vars={{ computer }} action={add}>
       {manage ? (
-        <SectionRead read={all} rows={2}>
+        <SectionRead read={all} computer={host.environmentId} rows={2}>
           {(lists) => <SignInRows host={host} rows={signInsOf(lists, computer)} computer={computer} onChanged={all.retry} />}
         </SectionRead>
       ) : saysWhoCan ? (

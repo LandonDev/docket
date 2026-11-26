@@ -7,7 +7,8 @@ import { Face } from "../mail/face";
 import { confirmReplace, confirmRevoke, MadeLinkDialog } from "./Share";
 import { guestsCall, isLive, linkFacts, shortDay, type GuestLinkRow } from "./api";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
-import { StatusMark } from "../../components/ui/status";
+import { NO_ANSWER } from "../../lib/connection/openRead";
+import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
 import { MoreHorizontal } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { ListFilter, useListFilter } from "../../surfaces/settings/parts/ListFilter";
@@ -32,17 +33,14 @@ export function GuestLinksRow({ hosts, open: startOpen = false }: { hosts: reado
       <SettingRow
         id="files.guests"
         description={guests.rows && guests.failed.length === 0 ? guestsWords(guests.rows.map((r) => r.link)) : undefined}
-        error={guests.failed[0]}
-        onOpen={() => setOpen(true)}
+        // Nothing read: the row holds its name, with no way into a sheet that could show nothing.
+        onOpen={guests.rows?.length || !guests.failedOn.length ? () => setOpen(true) : undefined}
         openLabel="Shared with guests"
-      >
-        {/* A failed read is recovered where it is said: Retry on the row, as in the sheet. */}
-        {guests.failed.length ? (
-          <Button variant="ghost" size="sm" disabled={guests.retrying} onClick={guests.retry}>
-            <BusyLabel busy={guests.retrying} label="Retry" />
-          </Button>
-        ) : null}
-      </SettingRow>
+      />
+      {/* Each computer that did not give its links, named once on the page, its Retry asking again. */}
+      {guests.failedOn.map((f) => (
+        <ReadFailure key={f.env} computer={f.env} error={f.error} retry={guests.load} />
+      ))}
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" data-guests-sheet="">
           <SheetHeader>
@@ -82,6 +80,8 @@ function useGuestLinks(computers: readonly string[]) {
   const [rows, setRows] = useState<{ env: string; link: GuestLinkRow }[] | null>(null);
   // A host's read that failed, and a press that failed: each said once, apart from the rows that did come.
   const [failed, setFailed] = useState<string[]>([]);
+  // The same failures by computer, for the page's own line (`ReadFailure`): a silence as the read's own words.
+  const [failedOn, setFailedOn] = useState<{ env: string; error: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<{ url: string; link: GuestLinkRow } | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -97,6 +97,13 @@ function useGuestLinks(computers: readonly string[]) {
       const byId = new Map(all.flatMap((r) => (r.status === "fulfilled" ? r.value : [])).map((row) => [row.link.id, row]));
       setRows([...byId.values()].sort((a, b) => Number(isLive(b.link, now)) - Number(isLive(a.link, now)) || b.link.createdAt - a.link.createdAt));
       setFailed([...new Set(all.flatMap((r, i) => (r.status === "rejected" ? [hostFailure(envs[i], r.reason, "could not list its guest links")] : [])))]);
+      setFailedOn(
+        all.flatMap((r, i) => {
+          if (r.status !== "rejected") return [];
+          const words = hostFailure(envs[i]!, r.reason, "could not list its guest links");
+          return [{ env: envs[i]!, error: /did not answer/.test(words) ? NO_ANSWER : words }];
+        }),
+      );
       setError(null);
     });
   }, [key]);
@@ -117,7 +124,7 @@ function useGuestLinks(computers: readonly string[]) {
     return () => offs.forEach((off) => off());
   }, [key, load]);
 
-  return { rows, failed, error, setError, retrying, retry, load, made, setMade, revoking, setRevoking };
+  return { rows, failed, failedOn, error, setError, retrying, retry, load, made, setMade, revoking, setRevoking };
 }
 
 const linkWords = (row: { link: GuestLinkRow }): string => `${row.link.name} ${row.link.title}`;
@@ -192,10 +199,7 @@ function GuestLinksList({ guests }: { guests: GuestLinks }) {
                 onPick={(id) => void (id === "replace" ? replace(env, link) : revoke(env, link))}
                 align="end"
               />
-            ) : (
-              // A link that no longer opens says so in a word, at the row's end.
-              <StatusMark state="idle" glyph={false} word={link.revokedAt ? "Revoked" : "Ended"} className="text-xs" />
-            )}
+            ) : null}
           </PageRow>
         );
       })}

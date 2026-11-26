@@ -44,7 +44,7 @@ describe("Folders in Settings", () => {
   it("says on each library's row where its Office files open, and changes it in the row's dialog", async () => {
     const { link, calls, host } = fakeHost();
     host.opensIn = "live";
-    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable explain />));
     // The way every library opens is said once, in the heading's line; no row repeats it.
     expect(await screen.findByText(/Office files open in Office for the web\./)).toBeTruthy();
     expect(screen.getByText(/On means listed in Files\./)).toBeTruthy();
@@ -59,11 +59,11 @@ describe("Folders in Settings", () => {
 
   it("offers no choice where this window cannot edit the computer's list, and says where it is changed", async () => {
     const { link } = fakeHost();
-    await act(async () => void render(<TeamsFilesRow link={link} title="Folders on PURDUE-LT" editable={false} elsewhere="Changed in Docket on PURDUE-LT" />));
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders on PURDUE-LT" editable={false} elsewhere="Changed from PURDUE-LT." />));
     await screen.findByText("Purdue Esports");
     expect(screen.queryByRole("button", { name: "Purdue Esports: where its files open" })).toBeNull();
     expect(screen.queryByRole("switch")).toBeNull();
-    expect(screen.getByText("Changed in Docket on PURDUE-LT")).toBeTruthy();
+    expect(screen.getByText("Changed from PURDUE-LT.")).toBeTruthy();
   });
 
   it("lists the Windows VM's libraries apart from the computer's own", async () => {

@@ -53,9 +53,10 @@ struct MacDevicesSection: View {
         }
     }
 
+    /// What the rows do not already say: a tool that did not answer, and why a key cannot act. The count of
+    /// simulators, the load and the Xcode version were the rows again or a builder's numbers (the council's round 2).
     private func footer(_ report: HostDevicesReport) -> [String] {
-        var lines = [DeviceWords.summary(report), DeviceWords.xcodeLine(report.xcode)]
-        lines += report.problems
+        var lines = report.problems
         if !HostExtrasAccess.deviceActions.allowed(client.environment) { lines.append(HostExtrasAccess.deviceActions.reason) }
         return lines
     }
@@ -158,47 +159,62 @@ struct DeviceRow: View {
                     DeviceDot(tone: state.tone)
                 }
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
-                // At accessibility sizes each fact takes its own lines and wraps, never cut (the council's round 1);
-                // at the standard sizes the state and the platform share a line.
-                if typeSize.isAccessibilitySize {
-                    Text(state.status)
-                        .textStep(.meta)
-                        .numeric(state.status)
-                    Text(state.platform)
-                        .font(TextStep.meta.font)
-                        .foregroundStyle(.tertiary)
+            // The holder trails on the row's one line while everything fits whole; when it would be cut (a long
+            // thread title, a narrow phone, large text) it goes under the state and wraps. Nothing is cut mid-word
+            // (the council's round 2).
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Layout.rowGap) {
+                    facts(stacked: false)
+                    Spacer(minLength: Layout.rowGap)
                     holderText
-                } else {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(state.status)
-                            .textStep(.meta)
-                            .numeric(state.status)
-                            .layoutPriority(1)
-                        Text(state.platform)
-                            .font(TextStep.meta.font)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .lineLimit(1)
                 }
+                facts(stacked: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .fixedSize(horizontal: false, vertical: typeSize.isAccessibilitySize)
-            .layoutPriority(1)
-            Spacer(minLength: Layout.rowGap)
-            if !typeSize.isAccessibilitySize { holderText }
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
         .accessibilityValue(state.spoken)
     }
 
+    /// The name and the state with its platform; stacked, the holder under them, every line free to wrap. At
+    /// accessibility sizes the state and the platform take a line each.
+    private func facts(stacked: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(name)
+                .lineLimit(stacked ? nil : 1)
+            if typeSize.isAccessibilitySize {
+                statusText
+                platformText
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    statusText
+                    platformText
+                }
+                .lineLimit(stacked ? nil : 1)
+            }
+            if stacked, holder != nil { holderText }
+        }
+        .fixedSize(horizontal: !stacked, vertical: stacked)
+    }
+
+    private var statusText: some View {
+        Text(state.status)
+            .textStep(.meta)
+            .numeric(state.status)
+    }
+
+    /// Secondary, not tertiary: the platform and the holder are facts he reads, in both themes.
+    private var platformText: some View {
+        Text(state.platform)
+            .font(TextStep.meta.font)
+            .foregroundStyle(.secondary)
+    }
+
     private var holderText: some View {
         Text(holder.map(DeviceWords.holder) ?? "—")
             .font(.footnote)
-            .foregroundStyle(.tertiary)
-            .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
-            .truncationMode(.tail)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }

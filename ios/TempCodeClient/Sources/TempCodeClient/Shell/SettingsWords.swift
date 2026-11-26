@@ -63,3 +63,13 @@ public enum SignInWords {
         }
     }
 }
+
+/// The word beside Settings' Notifications switch: only what the switch's
+/// own position does not say ("Registering…", "No relay", "Failed", "Not
+/// allowed"); nothing for On and Off, which the switch already shows (the
+/// council's round 2).
+public enum NotificationWords {
+    public static func beside(_ summary: String) -> String? {
+        summary == "On" || summary == "Off" ? nil : summary
+    }
+}

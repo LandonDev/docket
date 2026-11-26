@@ -66,8 +66,13 @@ describe("ComputerName", () => {
 describe("ManagedLine", () => {
   it("says who can, with no control", () => {
     render(<ManagedLine computer="The box" />);
-    expect(screen.getByText("Changed from a computer that manages the box")).toBeTruthy();
+    expect(screen.getByText("Changed from a computer that manages the box.")).toBeTruthy();
     expect(document.querySelector("button, input, [role=switch]")).toBeNull();
+  });
+
+  it("names the computer that manages it where the caller knows it, always as a sentence", () => {
+    render(<ManagedLine computer="PURDUE-LT" by="The box" />);
+    expect(screen.getByText("Changed from the box.")).toBeTruthy();
   });
 });
 

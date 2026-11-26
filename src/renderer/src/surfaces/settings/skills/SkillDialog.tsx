@@ -6,7 +6,6 @@ import { CheckRow, Field, FieldRow } from "../../../chrome/DialogField";
 import { JumpList } from "../../../chrome/JumpList";
 import { ModalBody, ModalPanel } from "../../../chrome/Modal";
 import { ChoiceSelect } from "../../../components/choice-select";
-import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
 import { Skeleton } from "../../../components/ui/skeleton";
@@ -14,6 +13,7 @@ import type { Link } from "../../../lib/connection";
 import { useHostRead } from "../../../lib/connection/hostRead";
 import { refusalWords } from "../../../lib/settingsHome";
 import { editorChunk } from "../../chunks";
+import { ReadFailure } from "../parts/ReadFailure";
 import { everyWorkspace } from "../addons/addonWords";
 import { CLI_LABELS, bytesOf, canUntick, choiceOf, fileBytes, filesToSave, harnessesOf, isBinary, isDirty, newSkillFiles, orderFiles, skillTemplate, type CliChoice, type SkillDraft } from "./skillForm";
 
@@ -173,14 +173,7 @@ export function SkillDialog({ link, skill, workspaces, home, onClose, onSaved }:
             {/* The files beside the editor from 40rem of the dialog, stacked under it. */}
             <div className="@container/skill flex min-h-0 flex-1 flex-col">
               {read.error && !loaded ? (
-                <div className="flex items-start gap-3">
-                  <p role="alert" className="min-w-0 flex-1 text-xs text-destructive">
-                    {refusalWords(read.error) || "The skill did not load."}
-                  </p>
-                  <Button type="button" variant="ghost" size="sm" className="-my-1.5" onClick={read.retry}>
-                    Retry
-                  </Button>
-                </div>
+                <ReadFailure computer={link.environmentId} error={read.error} retry={read.retry} />
               ) : (
                 <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-3 @[40rem]/skill:grid-cols-[12rem_minmax(0,1fr)] @[40rem]/skill:grid-rows-1">
                   {files ? (

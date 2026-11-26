@@ -9,6 +9,8 @@ import { settingsSearch, useSettingsSearch } from "../../lib/settings/searchStor
 import { settingsList } from "../../lib/settings/list";
 import { useListWindow } from "../../lib/settings/useListWindow";
 import { thisDesktopInLine } from "../../lib/native";
+import { LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
+import { useWorkHosts } from "../../lib/workSwitch";
 import { ItemButton } from "../../components/ui/item";
 import { addonNames } from "./addons/useAddons";
 import { skillNames } from "./skills/useSkills";
@@ -35,7 +37,8 @@ export function useSearchResults(): SearchResult[] {
   // Add-ons and skills by name: asked once, here, inside Settings.
   const addons = addonNames.useExtras();
   const skills = skillNames.useExtras();
-  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills], { web: window.web, mac: window.platform === "darwin", work: window.work });
+  const workHere = useWorkHosts().has(LOCAL_ENVIRONMENT_ID);
+  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills], { web: window.web, mac: window.platform === "darwin", work: window.work, workHere });
 }
 
 /**

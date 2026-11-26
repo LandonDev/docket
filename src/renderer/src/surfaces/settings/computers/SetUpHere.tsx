@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ComputerRow, ComputersAnswer } from "@server/shared/contract-devices";
+import { PageRowsSkeleton } from "../../../components/page";
 import { BusyLabel, Button } from "../../../components/ui/button";
+import { LOCAL_ENVIRONMENT_ID, registry } from "../../../lib/connection";
+import { useHostRead, type HostRead } from "../../../lib/connection/hostRead";
+import { ReadFailure } from "../parts/ReadFailure";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { actOnComputer, onDevicesPush, readComputers } from "../../../lib/devicesClient";
 import { thisDesktopInLine } from "../../../lib/native";
@@ -10,21 +14,18 @@ import { SettingRow, SettingSection } from "../parts/SettingRow";
 
 export type ComputerAction = "stop" | "start" | "remove";
 
-/** The computers set up from a link, read on mount and again on each push about one (docs/agents/pc-setup.md). */
-export function useComputers(): { answer: ComputersAnswer | null; refresh: () => Promise<void> } {
-  const [answer, setAnswer] = useState<ComputersAnswer | null>(null);
-  const refresh = useCallback(async () => {
-    try {
-      setAnswer(await readComputers());
-    } catch {
-      // A box out of reach leaves the section away: the page's line already says the computer is offline.
-    }
-  }, []);
-  useEffect(() => {
-    void refresh();
-    return onDevicesPush({ computers: () => void refresh() });
-  }, [refresh]);
-  return { answer, refresh };
+/** The last answer this window had, so a page opened again knows at once whether its computer was set up here. */
+let lastAnswer: ComputersAnswer | null = null;
+
+/** The computers set up from a link, read on mount and again on each push about one (docs/agents/pc-setup.md): this
+ *  Mac's own record, through `useHostRead` (bones while out, a failure with its reason). */
+export function useComputers(): HostRead<ComputersAnswer> & { refresh: () => Promise<void> } {
+  const link = registry.primary();
+  const read = useHostRead<ComputersAnswer>(link, () => readComputers());
+  const { retry } = read;
+  useEffect(() => onDevicesPush({ computers: () => void retry() }), [retry]);
+  if (read.value) lastAnswer = read.value;
+  return { ...read, value: read.value ?? lastAnswer ?? undefined, refresh: retry };
 }
 
 /** Runs one act on the box and reads the list again; `ok: false` is the box out of reach. */
@@ -44,9 +45,18 @@ const CONFIRM: Record<"stop" | "remove", (name: string) => { title: string; body
  * with Stop… or Start and Remove…. Absent for any other computer.
  */
 export function SetUpHere({ environmentId }: { environmentId: string }) {
-  const { answer, refresh } = useComputers();
-  const row = answer?.computers.find((c) => c.envId === environmentId);
-  return row ? <SetUpView row={row} onAct={(action) => runComputerAction(row.envId, action, refresh)} /> : null;
+  const computers = useComputers();
+  const answer = computers.value;
+  const mac = thisDesktopInLine();
+  // Not yet known: the section holds its shape. Known not to be one: absent.
+  if (!answer)
+    return (
+      <SettingSection of="pc.setup" vars={{ mac }}>
+        {computers.error ? <ReadFailure computer={LOCAL_ENVIRONMENT_ID} error={computers.error} retry={computers.refresh} /> : <PageRowsSkeleton rows={[{ description: true, control: "button" }, { control: "button" }]} />}
+      </SettingSection>
+    );
+  const row = answer.computers.find((c) => c.envId === environmentId);
+  return row ? <SetUpView row={row} onAct={(action) => runComputerAction(row.envId, action, computers.refresh)} /> : null;
 }
 
 /** The section with its row passed in (the dom test and the preview draw this). */
@@ -67,7 +77,7 @@ export function SetUpView({ row, onAct, now = Date.now() }: { row: ComputerRow; 
   };
   const stopped = row.state === "stopped";
   return (
-    <SettingSection of="pc.setup" vars={{ mac: thisDesktopInLine() }}>
+    <SettingSection of="pc.setup" vars={{ mac: thisDesktopInLine() }} description={`Stop and Remove are done from ${thisDesktopInLine()}.`}>
       {/* One act a row; Remove…, which takes everything back, sits last. */}
       <SettingRow id="pc.setup" description={computerParts(row, now).join(", ")} error={error ?? row.lastError ?? undefined}>
         {row.waitingForContact ? null : (

@@ -41,21 +41,23 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
   }, [text, open]);
 
   if (!card || !card.visible) return null;
+  // One spelling of a version on a page: the rows say "1.0.400", so the log's line does too.
+  const title = card.title.replace(/\bv(?=\d)/g, "");
   const running = card.phase === "pending" || card.phase === "running";
   const ending = card.ending;
   return (
     <Collapsible open={open} onOpenChange={setOpen} data-job-log={job} data-job-phase={card.phase}>
       <div className="flex min-h-7 items-center gap-2">
         <CollapsibleTrigger
-          aria-label={card.title}
+          aria-label={title}
           className="group/fold flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-xs"
         >
           <ChevronRight className={cn("size-3 shrink-0 text-muted-foreground group-data-[panel-open]/fold:rotate-90", DISCLOSURE_CHEVRON)} />
           {running ? <Spinner className="size-3.5 text-muted-foreground" /> : null}
-          <span className="shrink-0 font-medium text-foreground">{card.title}</span>
-          {running && card.note ? <span className="min-w-0 truncate text-muted-foreground">{card.note}</span> : null}
+          <span className="shrink-0 font-medium text-foreground">{title}</span>
+          {running && card.note ? <span className="min-w-0 text-muted-foreground">{card.note}</span> : null}
           {ending ? (
-            <span data-job-ending className={`min-w-0 truncate ${ending.failed ? "text-destructive" : "text-muted-foreground"}`}>
+            <span data-job-ending className={`min-w-0 ${ending.failed ? "text-destructive" : "text-muted-foreground"}`}>
               {ending.text}
             </span>
           ) : null}
@@ -76,7 +78,7 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
           tabIndex={0}
           className={cn(CONSOLE, "mt-1 mb-2 max-h-72 overflow-auto whitespace-pre-wrap break-words")}
         >
-          {card.lines.length ? card.lines.join("\n") : running ? "Waiting for output…" : ""}
+          {card.lines.length ? card.lines.join("\n") : running ? "Starting…" : ""}
         </pre>
       </CollapsibleContent>
     </Collapsible>

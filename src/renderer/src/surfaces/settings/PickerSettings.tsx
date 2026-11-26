@@ -1,7 +1,7 @@
 import { useState } from "react";
+import { ReadFailure } from "./parts/ReadFailure";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
-import { Button } from "../../components/ui/button";
-import { PageError, PageRowsSkeleton } from "../../components/page";
+import { PageRowsSkeleton } from "../../components/page";
 import { registry } from "../../lib/connection";
 import { useHostRead, type HostRead } from "../../lib/connection/hostRead";
 import { readHarnessAvailability, type HarnessAvailability } from "../../lib/harness/availability";
@@ -35,15 +35,7 @@ export function PickerRow() {
   // Until the computer says which apps it has, the row is its shape; a refusal is its one line with Retry.
   if (apps.installed === undefined)
     return apps.error ? (
-      <PageError
-        action={
-          <Button variant="ghost" size="sm" onClick={() => void apps.retry()}>
-            Retry
-          </Button>
-        }
-      >
-        {apps.error}
-      </PageError>
+      <ReadFailure computer={registry.primary().environmentId} error={apps.error} retry={apps.retry} />
     ) : (
       <PageRowsSkeleton rows={1} description control="none" />
     );

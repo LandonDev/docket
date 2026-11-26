@@ -34,16 +34,16 @@ export function ThreadsRows({ host, rows, saysWhoCan = true }: { host: Host; row
   const attachments = useComputerRead<AttachmentSettings>(host, "attachment.settings");
   const vars = { computer: computerInLine(host.name) };
   const body = (
-    <SectionRead read={admission} rows={[{ description: true, control: "number" }, { control: "number" }, { control: "number" }]}>
+    <SectionRead read={admission} computer={host.environmentId} rows={[{ description: true, control: "number" }, { control: "number" }, { control: "number" }]}>
       {(state) => (
         <>
           <AtOnceRow host={host} id={`${rows}.atOnce`} state={state} onState={admission.set} manage={manage} />
           {manage ? (
-            <SectionRead read={status} rows={1}>
+            <SectionRead read={status} computer={host.environmentId} rows={1}>
               {(value) => <StuckRow host={host} id={`${rows}.stuck`} status={value} onStatus={status.set} />}
             </SectionRead>
           ) : null}
-          <SectionRead read={attachments} rows={1}>
+          <SectionRead read={attachments} computer={host.environmentId} rows={1}>
             {(value) => <AttachmentRow host={host} id={`${rows}.attachment`} settings={value} onSettings={attachments.set} manage={manage} />}
           </SectionRead>
           {manage || !saysWhoCan ? null : <ManagedLine computer={host.name.name} />}
@@ -65,7 +65,9 @@ function AtOnceRow({ host, id, state, onState, manage }: { host: Host; id: strin
       description={
         // What the default is sized from is a hover away, not a line.
         <Tooltip>
-          <TooltipTrigger render={<span tabIndex={0} className="cursor-default rounded-sm tabular-nums focus-ring" />}>{runningWords(state)}</TooltipTrigger>
+          <TooltipTrigger render={<span tabIndex={0} className="cursor-default rounded-sm tabular-nums focus-ring" />}>
+            {`${runningWords(state)}${state.pinned === null ? ", the default" : ""}`}
+          </TooltipTrigger>
           <TooltipContent>{budgetWords(state)}</TooltipContent>
         </Tooltip>
       }
@@ -80,10 +82,10 @@ function AtOnceRow({ host, id, state, onState, manage }: { host: Host; id: strin
           <CommitField
             kind="int"
             aria-label="Threads at once"
-            value={state.pinned}
+            // The cap in force, in ink: the line says when it is the default.
+            value={state.pinned ?? state.default}
             min={1}
             max={10_000}
-            placeholder={String(state.default)}
             onCommit={(cap) => (cap === null ? undefined : pin(cap))}
           />
         </>

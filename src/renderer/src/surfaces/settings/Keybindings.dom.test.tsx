@@ -45,7 +45,7 @@ describe("Shortcuts", () => {
 
   it("lists Find a setting under App, held in Settings", () => {
     render(<KeybindingsPage />);
-    expect(row("Find a Setting")?.textContent).toContain("In Settings");
+    expect(row("Find a setting")?.textContent).toContain("In Settings");
   });
 
   it("says the Appshot's double ⌘ is turned on in Appshots, on a Mac only", () => {

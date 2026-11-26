@@ -2,7 +2,7 @@ import { useState } from "react";
 import { grantFieldNames } from "@shared/addons";
 import type { AddonRow } from "@shared/contract-addons";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
-import { PageActions, PageEmpty, PageError, PageRowsSkeleton } from "../../../components/page";
+import { PageActions, PageEmpty, PageRowsSkeleton } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { registry, type Link } from "../../../lib/connection";
 import { isWebMode } from "../../../lib/nativeWeb";
@@ -17,6 +17,7 @@ import { usePublishHome } from "../../../lib/settings/pageHome";
 import { useHost } from "../parts/hostRpc";
 import { ListFilter, useListFilter } from "../parts/ListFilter";
 import { ManagedLine } from "../parts/ManagedLine";
+import { ReadFailure } from "../parts/ReadFailure";
 import { SettingSection } from "../parts/SettingRow";
 
 const NONE: readonly AddonRow[] = [];
@@ -126,15 +127,7 @@ export function AddonsBody({ link }: { link: Link }) {
         {data ? <ListFilter filter={filter} label="Find an add-on" /> : null}
         {!data ? (
           error ? (
-            <PageError
-              action={
-                <Button variant="ghost" size="sm" onClick={retry}>
-                  Retry
-                </Button>
-              }
-            >
-              {error}
-            </PageError>
+            <ReadFailure computer={link.environmentId} error={error} retry={retry} />
           ) : (
             <PageRowsSkeleton rows={3} description={2} control="switch" />
           )
@@ -154,7 +147,8 @@ export function AddonsBody({ link }: { link: Link }) {
                 workspaceName={scopeName(row.workspaceId, names)}
                 web={web}
                 blocked={blocked}
-                readOnly={readOnly}
+                // While the box is out of reach a row is words too: no switch to hold, nothing to press.
+                readOnly={readOnly || blocked}
                 error={rowErrors[row.id] ?? signInError}
                 onToggle={(on) => toggle(row, on)}
                 onPick={(id) => pick(row, id)}
@@ -163,15 +157,7 @@ export function AddonsBody({ link }: { link: Link }) {
           })
         )}
         {data && grantsError ? (
-          <PageError
-            action={
-              <Button variant="ghost" size="sm" onClick={retryGrants}>
-                Retry
-              </Button>
-            }
-          >
-            {grantsError}
-          </PageError>
+          <ReadFailure computer={link.environmentId} error={grantsError} retry={retryGrants} />
         ) : null}
         {data && readOnly ? <ManagedLine computer={host.name.name} /> : null}
       </SettingSection>

@@ -169,18 +169,42 @@ describe("a computer that did not answer", () => {
   });
 });
 
+describe("while the box has not answered", () => {
+  it("holds its version and its title line as bones, claiming nothing", async () => {
+    const was = ANSWERS.env_box["admission.get"];
+    ANSWERS.env_box["admission.get"] = new Promise(() => {}) as never;
+    hello = { caps: ["read", "operate", "approve", "admin"], build: { version: "1.0.397", release: 397 } } as never;
+    try {
+      const { container } = render(
+        <>
+          <ComputerLine environmentId="env_box" />
+          <OtherComputerPage environmentId="env_box" />
+        </>,
+      );
+      await flush();
+      expect(container.textContent).not.toContain("Connected");
+      expect(container.textContent).not.toContain("1.0.397");
+      expect(container.querySelector("[data-setting='pc.version'] [data-slot=skeleton]")).not.toBeNull();
+      expect(container.querySelector("[data-setting='pc.work'] [data-slot=skeleton]")).not.toBeNull();
+    } finally {
+      ANSWERS.env_box["admission.get"] = was;
+    }
+  });
+});
+
 describe("On this Mac's record", () => {
-  it("says a failed read of this Mac's record once with Retry, keeping What it may do and Forget…", async () => {
+  it("says a failed read of this Mac's record once, naming this Mac, with Retry and nothing under it", async () => {
     const was = ANSWERS.local["remote.environments.list"];
     delete ANSWERS.local["remote.environments.list"];
     try {
       const { container } = render(<OtherComputerPage environmentId="env_box" />);
       await flush();
-      const section = container.querySelector("[data-setting='pc.may']")!.closest("section")!;
+      const section = [...container.querySelectorAll("section")].find((s) => s.textContent?.startsWith("On this Mac"))!;
+      expect(section.querySelectorAll("[data-read-failure]")).toHaveLength(1);
+      expect(section.querySelectorAll("button")).toHaveLength(1);
+      // Rows that hang on the read are not drawn: no name, no addresses, no Forget… that could not work.
       expect(section.querySelector("[data-setting='pc.name']")).toBeNull();
-      expect(section.querySelectorAll("button")).not.toHaveLength(0);
-      expect(section.textContent).toContain("Retry");
-      expect(section.querySelector("[data-setting='pc.forget']")).not.toBeNull();
+      expect(section.querySelector("[data-setting='pc.forget']")).toBeNull();
     } finally {
       ANSWERS.local["remote.environments.list"] = was;
     }
@@ -221,8 +245,8 @@ describe("its words", () => {
   });
 
   it("says how far behind it is", () => {
-    expect(behindWords(2)).toBe("Two releases behind");
-    expect(behindWords(1)).toBe("One release behind");
+    expect(behindWords(2)).toBe("2 releases behind");
+    expect(behindWords(1)).toBe("1 release behind");
     expect(behindWords(0)).toBe("Up to date");
     expect(behindWords(null)).toBeUndefined();
   });

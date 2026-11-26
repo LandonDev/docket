@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../native", () => ({ thisDesktopName: () => "This Mac", thisDesktopInLine: () => "this Mac", nativePlatform: () => "darwin" }));
 vi.mock("../nativeWeb", () => ({ isWebMode: () => false }));
 
-import { computerInLine, computerNameOf, type ComputerNames } from "./computerName";
+import { NO_ANSWER } from "../connection/openRead";
+import { computerInLine, computerNameOf, readFailWords, type ComputerNames } from "./computerName";
 
 const MAC = "env_mac";
 const BOX = "env_box";
@@ -72,5 +73,18 @@ describe("a job's row for one computer", () => {
     expect(refusesJob(null, BOX)).toBe(false);
     expect(refusalWords({ name: "MacBook-Pro", own: true }, "the box")).toBe("This Mac gives the box no access.");
     expect(refusalWords({ name: "PURDUE-LT", own: false }, "the box")).toBe("PURDUE-LT gives the box no access. Change it on PURDUE-LT, under Sharing.");
+  });
+});
+
+describe("a failed read's line", () => {
+  it("names the computer that did not answer, and keeps any other reason with its stop", () => {
+    expect(readFailWords(NO_ANSWER, { name: "MacBook Pro", own: true })).toBe("This Mac did not answer.");
+    expect(readFailWords(NO_ANSWER, { name: "The box", own: false })).toBe("The box did not answer.");
+    expect(readFailWords("", { name: "PURDUE-LT", own: false })).toBe("PURDUE-LT did not answer.");
+    expect(readFailWords(NO_ANSWER, { name: "Another computer", own: false })).toBe("Another computer did not answer.");
+    expect(computerInLine({ name: "Another computer", own: false })).toBe("another computer");
+    expect(readFailWords("Work is off on this Mac", { name: "MacBook Pro", own: true })).toBe("Work is off on this Mac.");
+    expect(readFailWords("Not allowed.", { name: "The box", own: false })).toBe("Not allowed.");
+    expect(readFailWords("not connected", { name: "The box", own: false })).toBe("Not connected.");
   });
 });

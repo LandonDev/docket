@@ -8,6 +8,16 @@ const plans = vi.hoisted(() => ({
   failure: null as null | { error: string; retry: () => void },
   save: vi.fn(async (..._args: unknown[]) => {}),
 }));
+vi.mock("../lib/settings/computerName", async (original) => {
+  const real = await original<typeof import("../lib/settings/computerName")>();
+  const own = { name: "MacBook Pro", own: true };
+  return {
+    ...real,
+    useComputerName: () => own,
+    useComputerNames: () => (id: string) => (id === "local" ? own : { name: "The box", own: false }),
+    useReadFailWords: () => (error: string) => real.readFailWords(error, own),
+  };
+});
 vi.mock("../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
 vi.mock("../lib/tcserver/plans", () => ({
   usePlanSettings: () => plans.scope,
@@ -37,7 +47,7 @@ describe("Builds from plans", () => {
     render(<PlanSettingsEditor />);
     const section = screen.getByRole("region", { name: "Builds from plans" });
     expect(section.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(0);
-    expect(screen.getByText("not connected").className).toContain("text-destructive");
+    expect(screen.getByText("Not connected.").className).toContain("text-destructive");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalled();
     plans.failure = null;

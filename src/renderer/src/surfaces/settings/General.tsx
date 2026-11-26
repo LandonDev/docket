@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
+import { ReadFailure } from "./parts/ReadFailure";
 import type { KeepAwakeStatusWire } from "@server/shared/contract-power";
 import { InboxProviderMark } from "../../chrome/InboxProviderMark";
 import { DialogFooter, confirmAction } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageError, PageRowsSkeleton } from "../../components/page";
+import { PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
@@ -137,15 +138,7 @@ function KeepAwakeRow() {
   if (status && !status.supported) return null;
   if (!status)
     return read.error ? (
-      <PageError
-        action={
-          <Button variant="ghost" size="sm" onClick={() => void read.retry()}>
-            Retry
-          </Button>
-        }
-      >
-        {read.error}
-      </PageError>
+      <ReadFailure computer={link.environmentId} error={read.error} retry={read.retry} />
     ) : (
       <PageRowsSkeleton rows={1} control="select" />
     );
@@ -222,15 +215,7 @@ function LinearSection() {
     <SettingSection of="general.linear">
       {connected === undefined ? (
         status.error ? (
-          <PageError
-            action={
-              <Button variant="ghost" size="sm" onClick={() => void status.retry()}>
-                Retry
-              </Button>
-            }
-          >
-            {status.error}
-          </PageError>
+          <ReadFailure computer={link.environmentId} error={status.error} retry={status.retry} />
         ) : (
           <PageRowsSkeleton rows={1} media control="button" />
         )
@@ -254,15 +239,7 @@ function LinearSection() {
       )}
       {!connected ? null : teamsRead.value === undefined ? (
         teamsRead.error ? (
-          <PageError
-            action={
-              <Button variant="ghost" size="sm" onClick={() => void teamsRead.retry()}>
-                Retry
-              </Button>
-            }
-          >
-            {teamsRead.error}
-          </PageError>
+          <ReadFailure computer={link.environmentId} error={teamsRead.error} retry={teamsRead.retry} />
         ) : (
           <PageRowsSkeleton rows={1} description control="none" />
         )

@@ -1,7 +1,9 @@
 import { useState } from "react";
 import type { CodeSettings } from "@server/shared/contract-code";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageError, PageRow, PageRowsSkeleton } from "../../components/page";
+import { PageRow, PageRowsSkeleton } from "../../components/page";
+import { ReadFailure } from "./parts/ReadFailure";
+import { useComputerUpdate } from "./computers/update";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
 import { BUNDLED_RELEASE } from "../../lib/bundledRelease";
@@ -156,15 +158,7 @@ function QuickUpdatesRow() {
   // Its shape while asked and one line with Retry if refused: a failed read never looks like a build that cannot.
   if (!settings)
     return read.error ? (
-      <PageError
-        action={
-          <Button variant="ghost" size="sm" onClick={() => void read.retry()}>
-            Retry
-          </Button>
-        }
-      >
-        {read.error}
-      </PageError>
+      <ReadFailure computer={LOCAL_ENVIRONMENT_ID} error={read.error} retry={read.retry} />
     ) : (
       <PageRowsSkeleton rows={[{ description: true, control: "select" }]} />
     );
@@ -192,7 +186,7 @@ export function versionWords(version: string | null, behind: number | null, onli
   if (!online && !version) return "Offline";
   const parts = [version ?? "Version not known yet"];
   if (behind === 0) parts.push("up to date");
-  else if (behind !== null && behind > 0) parts.push(behind === 1 ? "one release behind" : `${behind} releases behind`);
+  else if (behind !== null && behind > 0) parts.push(`${behind} ${behind === 1 ? "release" : "releases"} behind`);
   if (!online) parts.push("offline");
   return parts.join(", ");
 }
@@ -214,15 +208,26 @@ function OtherComputers() {
 function OtherComputerRow({ id, name }: { id: string; name: string }) {
   const drift = useDeployDrift(id);
   const online = useEnvironmentStatus(id).transport === "open";
+  const up = useComputerUpdate(id);
+  // A computer that is behind is updated from its row, with the same confirm as its page's Update…; any other row
+  // opens its page.
+  const behind = online && up.offered && (up.behind ?? 0) > 0;
   return (
     <PageRow
       title={name}
       data-computer={id}
       description={versionWords(drift.deployedVersion, drift.behind, online)}
+      error={up.error ?? undefined}
       onOpen={() => requestSettings(computerSettingsSection(id), "pc.version")}
       openLabel={name}
     >
-      <OpenCue />
+      {behind ? (
+        <Button variant="secondary" size="sm" disabled={up.busy} onClick={() => void up.update()}>
+          <BusyLabel busy={up.busy} label="Update…" />
+        </Button>
+      ) : (
+        <OpenCue />
+      )}
     </PageRow>
   );
 }

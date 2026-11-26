@@ -4,9 +4,10 @@ import { registry } from "../lib/connection";
 import { useEnvironments } from "../lib/connection/status";
 import { ACCESS_LABEL, ACCESS_LINE, ACCESS_ORDER, FULL_ACCESS_CONFIRM } from "../lib/settings/access";
 import { settingTitle } from "../lib/settings/map";
+import { useLinkMay } from "../lib/linkMay";
 import { usePublishHome } from "../lib/settings/pageHome";
 import { homeNote } from "../lib/settingsHome";
-import { EFFORT_LABELS, effortLadder, modelForDefaults, modelOptions, normalizeDefaults, providerOptions, storedModelId } from "../lib/tcserver/defaults";
+import { BUILT_IN_SCOPE, EFFORT_LABELS, effortLadder, modelForDefaults, modelOptions, normalizeDefaults, providerOptions, storedModelId } from "../lib/tcserver/defaults";
 import { scopeKey, useThreadDefaults, useThreadDefaultsError, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
 import type { ThreadDefaults, WorkspaceMeta } from "../lib/tcserver/types";
 import { ChoiceSelect } from "../components/choice-select";
@@ -14,6 +15,7 @@ import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components
 import { Button } from "../components/ui/button";
 import { SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
 import { SaveMark } from "../surfaces/settings/parts/SaveMark";
+import { ReadFailure } from "../surfaces/settings/parts/ReadFailure";
 import { useDraft } from "../surfaces/settings/parts/useDraft";
 import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
 import { confirmAction, DialogFooter } from "./ConfirmDialog";
@@ -160,12 +162,12 @@ const DEFAULTS_SKELETON = [{}, {}, {}, { description: true }];
  * A scope's set on a page: `null` is New threads' "Start with" section; a workspace id is that workspace's own set
  * (its page's "New threads" section, until the job and workspace pages open `ThreadDefaultsDialog` instead).
  */
-export function ThreadDefaultsEditor({ workspaceId, alsoRetry }: { workspaceId: string | null; alsoRetry?: () => void }) {
+export function ThreadDefaultsEditor({ workspaceId }: { workspaceId: string | null }) {
   const workspace = useWorkspaceCatalog().workspaces.find((w) => w.id === workspaceId);
   // The one set is asked of this window's own computer, which forwards it to the box.
   const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
   if (!environmentId) return <PageRowsSkeleton rows={DEFAULTS_SKELETON} />;
-  return workspaceId === null ? <StartWith key={environmentId} environmentId={environmentId} alsoRetry={alsoRetry} /> : <WorkspaceSet key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
+  return workspaceId === null ? <StartWith key={environmentId} environmentId={environmentId} /> : <WorkspaceSet key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
 }
 
 /** Docket's own start set, said as its row says it. */
@@ -175,7 +177,7 @@ const DOCKETS = "Claude Code, its default model, Medium effort, Auto-accept edit
  * "Start with": the one set. `alsoRetry` is the page's other read (Builds from plans) when it failed too: the page
  * then says the failure once, here, and its Retry asks both.
  */
-function StartWith({ environmentId, alsoRetry }: { environmentId: string; alsoRetry?: () => void }) {
+function StartWith({ environmentId }: { environmentId: string }) {
   const set = useDefaultsSet(environmentId, null);
   usePublishHome("defaults", set.scope ? (set.scope.home ?? null) : undefined);
   // Which copy of a linked project a thread starts on is a question only with two computers.
@@ -188,9 +190,10 @@ function StartWith({ environmentId, alsoRetry }: { environmentId: string; alsoRe
     });
     if (ok) void set.clear();
   };
+  // A failed read is the page's one line, alone at its head: no heading over it, nothing under it.
+  if (!set.value && set.failure) return <ReadFailure computer={environmentId} error={set.failure.error} retry={set.failure.retry} />;
   return (
-    // The set is the default for every place that keeps none of its own: said once, under the heading.
-    <SettingSection of="defaults.app" description="For every job and workspace without a set of its own.">
+    <SettingSection of="defaults.app">
       {set.value ? (
         <>
           <DefaultsRows set={set} environmentId={environmentId} startOn={startOn} layout="setting" />
@@ -205,22 +208,8 @@ function StartWith({ environmentId, alsoRetry }: { environmentId: string; alsoRe
           ) : null}
         </>
       ) : set.failure ? (
-        <PageError
-          action={
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                set.failure?.retry();
-                alsoRetry?.();
-              }}
-            >
-              Retry
-            </Button>
-          }
-        >
-          {set.failure.error}
-        </PageError>
+        // Said once a page: Builds from plans' failure, the same computer's, draws nothing and this Retry asks it too.
+        <ReadFailure computer={environmentId} error={set.failure.error} retry={set.failure.retry} />
       ) : (
         <PageRowsSkeleton rows={startOn ? [...DEFAULTS_SKELETON, {}] : DEFAULTS_SKELETON} />
       )}
@@ -232,17 +221,15 @@ function StartWith({ environmentId, alsoRetry }: { environmentId: string; alsoRe
  *  New threads while it keeps one. */
 function WorkspaceSet({ environmentId, workspaceId }: { environmentId: string; workspaceId: string }) {
   const set = useDefaultsSet(environmentId, workspaceId);
+  const workspace = useWorkspaceCatalog().workspaces.find((w) => w.id === workspaceId && w.environmentId === environmentId);
+  const reset = useUseNewThreads({ id: workspaceId, environmentId, name: workspace?.name ?? "This workspace" });
   return (
     <PageSection
       title="New threads"
       action={
-        set.scope?.overridden ? (
-          <Button variant="ghost" size="sm" disabled={set.blocked} onClick={() => void set.clear()}>
+        set.scope?.overridden && reset.may ? (
+          <Button variant="ghost" size="sm" disabled={set.blocked} onClick={() => void reset.run(set.cleared)}>
             Use New threads
-          </Button>
-        ) : !set.scope && set.failure ? (
-          <Button variant="ghost" size="sm" onClick={set.failure.retry}>
-            Retry
           </Button>
         ) : null
       }
@@ -250,7 +237,7 @@ function WorkspaceSet({ environmentId, workspaceId }: { environmentId: string; w
       {set.value ? (
         <DefaultsRows set={set} environmentId={environmentId} startOn={false} layout="page" />
       ) : set.failure ? (
-        <PageError>{set.failure.error}</PageError>
+        <ReadFailure computer={environmentId} error={set.failure.error} retry={set.failure.retry} />
       ) : (
         <PageRowsSkeleton rows={DEFAULTS_SKELETON} />
       )}
@@ -303,16 +290,40 @@ function OwnSetRow({ place }: { place: WorkspaceMeta }) {
   const saved = useSaved();
   const { blocked } = homeNote(scope?.home);
   const own = scope?.overridden === true;
+  const reset = useUseNewThreads(place);
   return (
-    <FieldRow label={place.name} description={scope ? (own ? summary(scope.defaults, place.environmentId) : "Same as New threads") : undefined} error={saved.error}>
-      <span className="flex items-center gap-2">
-        <SaveMark state={saved.state} />
-        {own ? <Button variant="outline" size="sm" disabled={blocked || saved.state === "saving" || saved.state === "slow"} onClick={() => void saved.run(() => workspaceStore.saveDefaults(place.environmentId, place.id, null))}>
+    // A page row, so the set's words wrap whole at any width ("Full access" is never cut), and the press sits beside.
+    <PageRow title={place.name} description={scope ? (own ? summary(scope.defaults, place.environmentId) : "Same as New threads") : undefined} error={saved.error ?? undefined}>
+      <SaveMark state={saved.state} />
+      {own && reset.may ? (
+        <Button variant="outline" size="sm" disabled={blocked || saved.state === "saving" || saved.state === "slow"} onClick={() => void reset.run(saved)}>
           Use New threads
-        </Button> : null}
-      </span>
-    </FieldRow>
+        </Button>
+      ) : null}
+    </PageRow>
   );
+}
+
+/**
+ * Use New threads for one place: offered only to a key that may write that place's set (`defaults.set`), and asking
+ * first when the place would start its threads with Full access it does not have now, naming the Access it inherits.
+ */
+export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentId" | "name">) {
+  const may = useLinkMay(place.environmentId, "defaults.set", { workspaceId: place.id, defaults: null });
+  const run = async (saved: Saved): Promise<boolean> => {
+    const own = workspaceStore.defaultsAt(place.environmentId, place.id);
+    const inherited = workspaceStore.defaultsAt(place.environmentId, null)?.defaults ?? BUILT_IN_SCOPE.defaults;
+    if (own?.overridden && own.defaults.permission !== "auto" && inherited.permission === "auto") {
+      const ok = await confirmAction({
+        title: `Give ${place.name} Full access`,
+        body: `Its new threads then start with Full access, as New threads do, and ask before nothing. Sends, posts and payments still wait. Today they start with ${ACCESS_LABEL[own.defaults.permission]}.`,
+        action: "Use New threads",
+      });
+      if (!ok) return false;
+    }
+    return saved.run(() => workspaceStore.saveDefaults(place.environmentId, place.id, null));
+  };
+  return { may, run };
 }
 
 /**
@@ -322,13 +333,14 @@ function OwnSetRow({ place }: { place: WorkspaceMeta }) {
  */
 export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: WorkspaceMeta; onClose: () => void }) {
   const set = useDefaultsSet(workspace.environmentId, workspace.id);
+  const reset = useUseNewThreads(workspace);
   return (
     <Modal title="New threads" description={workspace.name} size="sm" onClose={onClose}>
       <ModalBody className="gap-0">
         {set.value ? (
           <DefaultsRows set={set} environmentId={workspace.environmentId} startOn={false} layout="dialog" />
         ) : set.failure ? (
-          <PageError>{set.failure.error}</PageError>
+          <ReadFailure computer={workspace.environmentId} error={set.failure.error} retry={set.failure.retry} />
         ) : (
           <PageRowsSkeleton rows={DEFAULTS_SKELETON} />
         )}
@@ -336,13 +348,9 @@ export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: Worksp
       </ModalBody>
       <DialogFooter
         start={
-          set.scope?.overridden ? (
-            <Button variant="ghost" disabled={set.blocked} onClick={() => void set.clear()}>
+          set.scope?.overridden && reset.may ? (
+            <Button variant="ghost" disabled={set.blocked} onClick={() => void reset.run(set.cleared)}>
               Use New threads
-            </Button>
-          ) : !set.value && set.failure ? (
-            <Button variant="ghost" onClick={set.failure.retry}>
-              Retry
             </Button>
           ) : null
         }

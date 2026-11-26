@@ -16,9 +16,22 @@ const state = vi.hoisted(() => ({
   startOn: undefined as "box" | "mac" | undefined,
   permission: "edits" as "safe" | "edits" | "auto",
   confirm: vi.fn(async (_request: unknown) => true),
+  may: true,
+  globalPermission: "edits" as "safe" | "edits" | "auto",
   plansFailed: false,
   plansRetry: vi.fn(),
 }));
+vi.mock("../../lib/settings/computerName", async (original) => {
+  const real = await original<typeof import("../../lib/settings/computerName")>();
+  const own = { name: "MacBook Pro", own: true };
+  return {
+    ...real,
+    useComputerName: () => own,
+    useComputerNames: () => (id: string) => (id === "local" ? own : { name: "The box", own: false }),
+    useReadFailWords: () => (error: string) => real.readFailWords(error, own),
+  };
+});
+vi.mock("../../lib/linkMay", () => ({ useLinkMay: () => state.may }));
 vi.mock("../../lib/tcserver/plans", () => ({
   usePlanSettingsError: () => (state.plansFailed ? { error: "The computer did not answer", retry: state.plansRetry } : null),
 }));
@@ -57,7 +70,13 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
     workspaces: state.workspaces,
     defaults: new Map([...state.overriding].map((id) => [`local:${id}`, { overridden: true }])),
   }),
-  workspaceStore: { saveDefaults: (...args: unknown[]) => state.save(...args) },
+  workspaceStore: {
+    saveDefaults: (...args: unknown[]) => state.save(...args),
+    defaultsAt: (_env: string, id: string | null) => ({
+      defaults: id === null ? { ...defaultsOf(), permission: state.globalPermission } : defaultsOf(),
+      overridden: id === null ? state.overridden : state.overriding.has(id),
+    }),
+  },
 }));
 
 const { ThreadDefaultsPage } = await import("./ThreadDefaults");
@@ -94,6 +113,8 @@ beforeEach(() => {
   state.confirm.mockImplementation(async () => true);
   resetPageHomesForTests();
   state.plansFailed = false;
+  state.may = true;
+  state.globalPermission = "edits";
   state.plansRetry.mockClear();
 });
 afterEach(cleanup);
@@ -207,24 +228,18 @@ describe("New threads: Start with", () => {
     state.failed = true;
     render(<ThreadDefaultsPage />);
     expect(screen.queryByRole("combobox", { name: "Agent app" })).toBeNull();
-    expect(screen.getByRole("alert").textContent).toBe("The computer did not answer");
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(state.retry).toHaveBeenCalledOnce();
   });
 
-  it("says once, with one Retry that asks both, when both of the page's reads fail", () => {
+  it("says a failure once, naming the computer, and draws no line under Start with", () => {
     state.failed = true;
     state.plansFailed = true;
     render(<ThreadDefaultsPage />);
     expect(screen.getAllByRole("alert")).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(state.retry).toHaveBeenCalledOnce();
-    expect(state.plansRetry).toHaveBeenCalledOnce();
-  });
-
-  it("says the set is the default for places without their own", () => {
-    render(<ThreadDefaultsPage />);
-    expect(screen.getByRole("region", { name: "Start with" }).textContent).toContain("For every job and workspace without a set of its own.");
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
+    expect(screen.queryByText(/without a set of its own/)).toBeNull();
   });
 
   it("has no settings.json hooks switch any more", () => {
@@ -264,6 +279,40 @@ describe("Different in N places", () => {
   });
 });
 
+describe("Use New threads", () => {
+  it("is offered only to a key that may write the place's set", async () => {
+    state.overriding = new Set(["w1"]);
+    state.may = false;
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("button", { name: "Use New threads" })).toBeNull();
+  });
+
+  it("asks first when it would give the place Full access, naming what it has today", async () => {
+    state.overriding = new Set(["w1"]);
+    state.globalPermission = "auto";
+    state.confirm.mockImplementation(async () => false);
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Give Alpha Full access", body: expect.stringContaining("Today they start with Auto-accept edits") }));
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it("acts at once when the place keeps its Access or narrows it", async () => {
+    state.overriding = new Set(["w1"]);
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    expect(state.confirm).not.toHaveBeenCalled();
+    expect(state.save).toHaveBeenCalledWith("local", "w1", null);
+  });
+});
+
 describe("A place's own set: the dialog", () => {
   it("is New threads for the place: its rows save as they change, Done closes", async () => {
     const onClose = vi.fn();
@@ -290,13 +339,14 @@ describe("A place's own set: the dialog", () => {
     expect(state.save).toHaveBeenCalledWith("local", "w1", null);
   });
 
-  it("says so in the rows' place when the computer never answers, Retry at the footer's start", async () => {
+  it("says so in the rows' place when the computer never answers, naming it, with its Retry", async () => {
     state.failed = true;
     render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("alert").textContent).toBe("The computer did not answer");
-    const start = dialog.querySelector('[data-slot="dialog-footer"] [data-footer-start]') as HTMLElement;
-    fireEvent.click(within(start).getByRole("button", { name: "Retry" }));
+    expect(within(dialog).getByRole("alert").textContent).toBe("This Mac did not answer.");
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    });
     expect(state.retry).toHaveBeenCalledOnce();
   });
 

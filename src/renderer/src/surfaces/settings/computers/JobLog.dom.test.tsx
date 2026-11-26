@@ -91,7 +91,10 @@ describe("JobLog", () => {
   it("leaves a publish's Stop… to its row: the log offers none", () => {
     entry = { status: status({ job: "publish", phase: "running", target: "1.0.306", stoppable: true }), text: "" };
     render(<JobLog environmentId="local" job="publish" hostName="This Mac" />);
-    expect(screen.getByText("Waiting for output…")).toBeTruthy();
+    expect(screen.getByText("Starting…")).toBeTruthy();
+    // One spelling of a version on a page: no "v" before it.
+    expect(document.body.textContent).toContain("1.0.306");
+    expect(document.body.textContent).not.toMatch(/v1\.0\.306/);
     expect(screen.queryByText("Stop…")).toBeNull();
   });
 

@@ -3,17 +3,17 @@ import { registry } from "../lib/connection";
 import { HARNESS_LABEL } from "../lib/session";
 import { allModels, findModel, nativeModelId } from "../lib/models";
 import { settingEntry } from "../lib/settings/map";
+import { ReadFailure } from "../surfaces/settings/parts/ReadFailure";
 import { homeNote } from "../lib/settingsHome";
 import { EFFORT_LABELS, REASONING_LEVELS, effortLadder } from "../lib/tcserver/defaults";
 import { savePlanSettings, usePlanSettings, usePlanSettingsError } from "../lib/tcserver/plans";
 import { ChoiceCombobox } from "../components/choice-combobox";
 import { ChoiceSelect } from "../components/choice-select";
-import { PageError, PageRow, PageRowsSkeleton } from "../components/page";
+import { PageRow, PageRowsSkeleton } from "../components/page";
 import { FieldRow } from "./DialogField";
 
 type FieldControl = Parameters<typeof FieldRow>[0]["children"];
 import { SettingSwitch } from "../components/setting-switch";
-import { Button } from "../components/ui/button";
 import { SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
 import { useDraft } from "../surfaces/settings/parts/useDraft";
 import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
@@ -123,7 +123,8 @@ export function PlanSettingsFields({
 const PLANS_SKELETON = [{ control: "switch" as const }, { control: "switch" as const }, {}, {}, {}];
 
 /** New threads' "Builds from plans": the one set, saving on every change, each row with its mark. `quiet`: the page
- *  already says this read failed (with the other's), so the section holds its rows' shape and no second red line. */
+ *  already says this read failed (with the other's, the same computer's), so the section draws nothing: no second red
+ *  line, and no bones, which would say it is still waiting. */
 export function PlanSettingsEditor({ quiet = false }: { quiet?: boolean }) {
   const environmentId = registry.primary().environmentId;
   const scope = usePlanSettings(environmentId, null);
@@ -132,20 +133,14 @@ export function PlanSettingsEditor({ quiet = false }: { quiet?: boolean }) {
   const saved: Record<Row, Saved> = { start: useSaved(), archive: useSaved(), model: useSaved(), effort: useSaved(), context: useSaved() };
   const { blocked } = homeNote(scope?.home);
   const change = (next: PlanSettings, row: Row) => draft.change(saved[row], next, (set) => savePlanSettings(environmentId, null, set));
+  // Quiet: only the failure, which draws nothing beside the page's same line but lends that line's Retry this read.
+  if (quiet && !draft.value && failure) return <ReadFailure computer={environmentId} error={failure.error} retry={failure.retry} />;
   return (
     <SettingSection of="plans.start">
       {draft.value ? (
         <PlanSettingsFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked} />
-      ) : failure && !quiet ? (
-        <PageError
-          action={
-            <Button variant="ghost" size="sm" onClick={failure.retry}>
-              Retry
-            </Button>
-          }
-        >
-          {failure.error}
-        </PageError>
+      ) : failure ? (
+        <ReadFailure computer={environmentId} error={failure.error} retry={failure.retry} />
       ) : (
         <PageRowsSkeleton rows={PLANS_SKELETON} />
       )}

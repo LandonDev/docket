@@ -26,6 +26,7 @@ const { ThreadsRows } = await import("./ThreadsRows");
 const { AgentApps, versionWords } = await import("./AgentApps");
 const { SignIns } = await import("./SignIns");
 const { Advanced } = await import("./Advanced");
+const { ComputerGate } = await import("./read");
 import type { Host } from "../parts/hostRpc";
 
 const admission = (over: Partial<AdmissionState> = {}): AdmissionState => ({
@@ -110,7 +111,7 @@ describe("Threads on a computer", () => {
     render(<ThreadsRows host={hostOf("env_box", "The box")} rows="pc" />);
     await flush();
     expect(screen.getByText("Threads on the box")).toBeTruthy();
-    expect(screen.getByText("118 of 120 running, 7 waiting")).toBeTruthy();
+    expect(screen.getByText("118 of 120 running, 7 waiting, the default")).toBeTruthy();
     expect((screen.getByLabelText("Minutes before a thread is stuck") as HTMLInputElement).value).toBe("10");
     expect((screen.getByLabelText("Largest attachment in MB") as HTMLInputElement).value).toBe("200");
     const field = screen.getByLabelText("Threads at once") as HTMLInputElement;
@@ -148,8 +149,8 @@ describe("Threads on a computer", () => {
     const { container } = render(<ThreadsRows host={hostOf("env_pc", "PURDUE-LT", false)} rows="pc" />);
     await flush();
     expect(container.querySelector("input")).toBeNull();
-    expect(screen.getByText("2 of 6 running")).toBeTruthy();
-    expect(screen.getByText("Changed from a computer that manages PURDUE-LT")).toBeTruthy();
+    expect(screen.getByText("2 of 6 running, the default")).toBeTruthy();
+    expect(screen.getByText("Changed from a computer that manages PURDUE-LT.")).toBeTruthy();
     expect(requests.some((r) => r.method === "remote.status")).toBe(false);
     expect(container.querySelector("[data-setting='pc.stuck']")).toBeNull();
     expect(container.textContent).not.toContain("Hidden");
@@ -161,6 +162,32 @@ describe("Threads on a computer", () => {
     await flush();
     expect(container.querySelector("[data-setting='here.atOnce']")).not.toBeNull();
     expect(screen.queryByText(/Threads on/)).toBeNull();
+  });
+});
+
+describe("a page about one computer", () => {
+  it("says once that the computer did not answer, with one Retry, and draws no section under it", async () => {
+    answers = {};
+    const { container } = render(
+      <ComputerGate host={hostOf("env_box", "The box")}>
+        <div data-section="" />
+      </ComputerGate>,
+    );
+    await flush();
+    expect(container.querySelectorAll("[data-read-failure]")).toHaveLength(1);
+    expect(container.querySelector("[data-section]")).toBeNull();
+  });
+
+  it("draws its sections while its read is out and once it answers", async () => {
+    answers = { "admission.get": admission() };
+    const { container } = render(
+      <ComputerGate host={hostOf("env_box", "The box")}>
+        <div data-section="" />
+      </ComputerGate>,
+    );
+    expect(container.querySelector("[data-section]")).not.toBeNull();
+    await flush();
+    expect(container.querySelector("[data-section]")).not.toBeNull();
   });
 });
 
@@ -233,7 +260,7 @@ describe("Who can sign in", () => {
   it("tells a key that may not manage the computer who can, and asks for no list", async () => {
     render(<SignIns host={hostOf("env_box", "The box", false)} rows="pc" />);
     await flush();
-    expect(screen.getByText("Changed from a computer that manages the box")).toBeTruthy();
+    expect(screen.getByText("Changed from a computer that manages the box.")).toBeTruthy();
     expect(screen.queryByText("Add…")).toBeNull();
     expect(requests).toEqual([]);
   });

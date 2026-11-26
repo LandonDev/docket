@@ -15,6 +15,16 @@ const state = vi.hoisted(() => ({
   retry: vi.fn(),
 }));
 
+vi.mock("../../lib/settings/computerName", async (original) => {
+  const real = await original<typeof import("../../lib/settings/computerName")>();
+  const own = { name: "MacBook Pro", own: true };
+  return {
+    ...real,
+    useComputerName: () => own,
+    useComputerNames: () => (id: string) => (id === "local" ? own : { name: "The box", own: false }),
+    useReadFailWords: () => (error: string) => real.readFailWords(error, own),
+  };
+});
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../components/choice-combobox", async () => await import("../../components/choice-combobox-body"));
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }), primaryEnvironmentId: "local" } }));
@@ -38,6 +48,7 @@ const { OrchestrationRulesEditor } = await import("../../chrome/OrchestrationRul
 const { ConfirmHost } = await import("../../chrome/ConfirmDialog");
 const { openOrchestrationSettings, takeRequestedRulesFocus } = await import("../../lib/tcserver/rules");
 const { OPEN_SETTINGS_EVENT } = await import("../../lib/monaco/debugTab");
+const { NO_ANSWER } = await import("../../lib/connection/openRead");
 
 const CATALOG: RulesCatalog = {
   claude: {
@@ -141,17 +152,17 @@ describe("Subagents", () => {
     expect([...lead.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")].map((r) => r.dataset.control)).toEqual(["select", "switch", "switch", "switch", "switch", "switch"]);
   });
 
-  it("ends the skeleton when rules.get does not answer: the computer's words and Retry", () => {
+  it("ends the skeleton when rules.get does not answer: one line naming the computer, one Retry, no headings or bones", async () => {
     state.scope = undefined;
-    state.error = "The computer did not answer";
+    state.error = NO_ANSWER;
     render(<OrchestrationPage />);
-    const lead = screen.getByRole("region", { name: "The lead thread" });
-    // One line and one Retry for the one read; the other sections hold their shape.
     expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
-    expect(screen.getByRole("region", { name: "Limits" })).toBeTruthy();
-    expect(within(lead).getByRole("alert").textContent).toBe("The computer did not answer");
-    fireEvent.click(within(lead).getByRole("button", { name: "Retry" }));
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
+    expect(screen.queryByRole("region", { name: "Limits" })).toBeNull();
+    expect(document.querySelector("[data-slot=page-row-skeleton]")).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    });
     expect(state.retry).toHaveBeenCalledOnce();
   });
 
@@ -245,7 +256,8 @@ describe("Subagents", () => {
 describe("Models agents may run on", () => {
   it("says how many are allowed on its row, and opens a sheet of one table, a group row per agent app", async () => {
     render(<OrchestrationPage />);
-    expect((document.querySelector("[data-setting='sub.models']") as HTMLElement).textContent).toContain("2 of 3 allowed");
+    // Opus for everyone; Haiku for lead threads only is not a model an agent may run.
+    expect((document.querySelector("[data-setting='sub.models']") as HTMLElement).textContent).toContain("1 of 3 allowed");
     const sheet = await openModels();
     const table = within(sheet).getByRole("table");
     expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Model", "Who may start it", "Effort"]);

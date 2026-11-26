@@ -129,14 +129,9 @@ export function MayBody({ host, name, mac }: { host: MacBridgeHostPolicy; name: 
   const policy = chosen ?? host.policy;
   const now = useRunningNow(host.environmentId);
   const choose = async (next: MacBridgePolicy): Promise<void> => {
-    const ending = now.commands + now.waiting;
-    if (rank(next) < rank(host.policy) && ending > 0) {
-      const ok = await confirmAction({
-        title: `Lower what ${name} may do on ${mac}?`,
-        body: `${plural(ending, "command it runs here ends", "commands it runs here end")}.`,
-        action: "Lower",
-        danger: true,
-      });
+    const ends = whatEnds(next, now);
+    if (rank(next) < rank(host.policy) && ends) {
+      const ok = await confirmAction({ title: `Lower what ${name} may do on ${mac}?`, body: ends, action: "Lower", danger: true });
       if (!ok) return;
     }
     setChosen(next);
@@ -177,8 +172,22 @@ function useRunningNow(environmentId: string): { commands: number; waiting: numb
   };
 }
 
+/**
+ * What a new level ends, as this Mac's server ends it (`setPolicy`, src/main/server/remote/macBridge.ts): Off and Read
+ * end its commands, running and waiting; Off also ends its live app sessions. Null when nothing it runs would end.
+ */
+export function whatEnds(next: MacBridgePolicy, now: { commands: number; waiting: number; apps: number }): string | null {
+  const commands = next === "off" || next === "read" ? now.commands + now.waiting : 0;
+  const apps = next === "off" ? now.apps : 0;
+  const parts = [
+    commands ? plural(commands, "command it runs here ends", "commands it runs here end") : null,
+    apps ? plural(apps, "live app session ends", "live app sessions end") : null,
+  ].filter(Boolean);
+  return parts.length ? `${parts.join(", and ")}.` : null;
+}
+
 /** One form for every count of what Running now lists: "None running now", "2 running now", "2 running now, 1 waiting".
- *  Its threads are not in that list, so their count says "here now". */
+ *  Its threads take the same form. */
 export const nowWords = (running: number, waiting = 0): string =>
   `${running === 0 ? "None running now" : `${running} running now`}${waiting > 0 ? `, ${waiting} waiting` : ""}`;
 
@@ -250,7 +259,7 @@ function LimitRows({ host, name, mac, policy, now }: { host: MacBridgeHostPolicy
           <CommitField kind="int" aria-label={`Commands ${name} runs here at once`} value={host.maxRunning} min={1} max={MAC_BRIDGE_MAX_RUNNING_CAP} onCommit={limit(commands, "maxRunning")} />
         </SettingRow>
       ) : null}
-      <SettingRow id="sharing.threads" saved={threads} description={host.threads === 0 ? "None here now" : `${host.threads} here now`}>
+      <SettingRow id="sharing.threads" saved={threads} description={nowWords(host.threads)}>
         <CommitField kind="int" aria-label={`Threads ${name} starts here at once`} value={host.maxThreads} min={0} max={MAC_BRIDGE_MAX_THREADS_CAP} onCommit={limit(threads, "maxThreads")} />
       </SettingRow>
       {host.computer ? (
