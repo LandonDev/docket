@@ -139,14 +139,16 @@ export interface LongResult {
 }
 
 /** Every step against LONG_RULE; a step that never finished fails at Infinity. */
-export function judgeLong(r: LongResult, rule = LONG_RULE): { ok: boolean; verdicts: Verdict[] } {
+/** The long scene against its rule. The gate's form (`gate`, budgets D04, D05 and D11) leaves the jump
+ *  (D12) out of the verdict: it is reported, and the climb to the top is a hand run's. */
+export function judgeLong(r: LongResult, rule = LONG_RULE, gate = false): { ok: boolean; verdicts: Verdict[] } {
   const inf = (n: number | null): number => (n === null ? Number.POSITIVE_INFINITY : Math.round(n))
   const verdicts: Verdict[] = [
     { what: 'open: click to rows readable, ms', got: inf(r.open.readableMs), limit: rule.readableMs, ok: inf(r.open.readableMs) <= rule.readableMs },
     { what: 'open: longest task in the 15 s after, ms', got: r.open.tasks.maxMs, limit: rule.afterOpenTaskMs, ok: r.open.tasks.maxMs <= rule.afterOpenTaskMs },
     { what: 'stream: longest task, ms', got: r.stream.tasks.maxMs, limit: rule.streamTaskMs, ok: r.stream.tasks.maxMs <= rule.streamTaskMs },
     { what: 'stream: main thread a frame at p95, ms', got: r.stream.frameMs.p95 ?? Number.POSITIVE_INFINITY, limit: rule.frameMainP95Ms, ok: (r.stream.frameMs.p95 ?? Number.POSITIVE_INFINITY) <= rule.frameMainP95Ms },
-    { what: 'jump: an old hit lands, ms', got: inf(r.jump.landedMs), limit: rule.jumpLandsMs, ok: inf(r.jump.landedMs) <= rule.jumpLandsMs }
+    ...(gate ? [] : [{ what: 'jump: an old hit lands, ms', got: inf(r.jump.landedMs), limit: rule.jumpLandsMs, ok: inf(r.jump.landedMs) <= rule.jumpLandsMs }])
   ]
   return { ok: verdicts.every((v) => v.ok), verdicts }
 }

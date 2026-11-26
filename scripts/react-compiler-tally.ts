@@ -15,17 +15,25 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { relative, resolve } from 'path'
 
 const ROOT = resolve(import.meta.dir, '..')
-/** `--only <dir>` tallies one folder of the renderer (`--only work`); `--check` compares its errors with the ratchet. */
+/** `--only <dir>` tallies one folder of the renderer (`--only work`), `--only renderer` everything outside
+ *  work/; `--check` compares its errors with that key of the ratchet. */
 const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : null
 const check = process.argv.includes('--check')
-const SRC = resolve(ROOT, 'src/renderer/src', only ?? '')
+/** `renderer`: the renderer less work/, which has its own key. */
+const outsideWork = only === 'renderer'
+const SRC = resolve(ROOT, 'src/renderer/src', outsideWork ? '' : (only ?? ''))
+const WORK_DIR = resolve(ROOT, 'src/renderer/src/work') + '/'
 const OUT = resolve(ROOT, 'scripts/.out/react-compiler/tally.md')
 /**
  * The ratchet (the Work performance pass, M12): functions under src/renderer/src/work the compiler refuses, at most
  * this many. A function it refuses is not memoised, so it renders whenever its parent does. Fix one and lower the
  * number; never raise it.
  */
-export const WORK_COMPILE_ERRORS_AT_MOST = Number(JSON.parse(readFileSync(resolve(ROOT, 'scripts/react-compiler-ratchet.json'), 'utf8')).work)
+const RATCHET = JSON.parse(readFileSync(resolve(ROOT, 'scripts/react-compiler-ratchet.json'), 'utf8')) as Record<string, number>
+export const WORK_COMPILE_ERRORS_AT_MOST = Number(RATCHET.work)
+/** The same ratchet for the renderer outside work/ (the idle pass, M8): the count it held when the key was made. */
+export const RENDERER_COMPILE_ERRORS_AT_MOST = Number(RATCHET.renderer)
+const AT_MOST = outsideWork ? RENDERER_COMPILE_ERRORS_AT_MOST : WORK_COMPILE_ERRORS_AT_MOST
 
 type Fn = { file: string; name: string; line: number }
 type Skip = Fn & { reason: string }
@@ -48,6 +56,7 @@ function fnLine(ev: Record<string, unknown>): number {
 const files: string[] = []
 for await (const p of new Bun.Glob('**/*.{ts,tsx}').scan({ cwd: SRC, absolute: true })) {
   if (/\.test\.tsx?$/.test(p) || /\.dom\.test\.tsx$/.test(p) || p.includes('/test/stubs/') || /\.preview\.tsx?$/.test(p)) continue
+  if (outsideWork && p.startsWith(WORK_DIR)) continue
   files.push(p)
 }
 files.sort()
@@ -190,10 +199,10 @@ console.log(`wrote ${relative(ROOT, OUT)}`)
 
 if (check) {
   const errors = failed.length
-  if (errors > WORK_COMPILE_ERRORS_AT_MOST) {
-    console.error(`react-compiler: ${errors} functions under ${only} are refused, more than the ratchet's ${WORK_COMPILE_ERRORS_AT_MOST}. See ${relative(ROOT, OUT)}.`)
+  if (errors > AT_MOST) {
+    console.error(`react-compiler: ${errors} functions under ${only} are refused, more than the ratchet's ${AT_MOST}. See ${relative(ROOT, OUT)}.`)
     process.exit(1)
   }
-  if (errors < WORK_COMPILE_ERRORS_AT_MOST) console.log(`react-compiler: ${errors} refused under ${only}; lower scripts/react-compiler-ratchet.json to ${errors}.`)
+  if (errors < AT_MOST) console.log(`react-compiler: ${errors} refused under ${only}; lower scripts/react-compiler-ratchet.json to ${errors}.`)
 }
 

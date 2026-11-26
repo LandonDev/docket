@@ -92,6 +92,16 @@ export interface SoakArgs {
 /** The gate's run: 20 s to launch, pair and open, 10 s to warm up, a 50 s window, then teardown, inside 90 s. */
 export const GATE_TIMING = { budgetMs: 90_000, warmMs: 10_000, windowMs: 50_000, everyS: 10 }
 
+/** The quiet scenes the gate runs, and each one's own clock: idle's three phases of 30 s each, long's open,
+ *  stream and jump (its climb to the top is a hand run's), each after the launch and the host's seed. */
+export const QUIET_GATE_SCENES: readonly SoakScene[] = ['idle', 'long']
+export const QUIET_GATE_BUDGET_MS: Partial<Record<SoakScene, number>> = { idle: 180_000, long: 150_000 }
+
+/** The gate's budget for a scene: a quiet scene's own, else the window scenes' 90 s. */
+export function gateBudgetMs(scene: SoakScene): number {
+  return QUIET_GATE_BUDGET_MS[scene] ?? GATE_TIMING.budgetMs
+}
+
 export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const flag = (name: string): string | undefined => {
     const i = argv.indexOf(name)
@@ -107,8 +117,9 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   if (!['board', 'chat', 'typing', 'switch', 'send', 'scroll', 'scenarios', 'reconnect', 'idle', 'long', 'day'].includes(scene)) throw new Error('--scene is board, chat, typing, switch, send, scroll, scenarios, reconnect, idle, long or day')
   if (isQuietScene(scene)) {
     if (host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
-    // Judged by judgeIdle, judgeLong and judgeDay; scripts/gate.ts has no row for them yet.
-    if (gate) throw new Error(`--scene ${scene} has no gate row yet: run it by hand`)
+    // Judged by judgeIdle, judgeLong and judgeDay; idle and long are gate rows (scripts/gate.ts
+    // renderer-soak-idle, renderer-soak-long), the day is run by hand.
+    if (gate && !QUIET_GATE_SCENES.includes(scene)) throw new Error(`--scene ${scene} has no gate row yet: run it by hand`)
     if (['--view', '--minutes', '--every', '--cpu-report-only'].some((arg) => argv.includes(arg))) throw new Error(`--scene ${scene} shows its quiet chat and runs its own steps: drop --view, --minutes, --every and --cpu-report-only`)
   }
   // The send scene sends: never into the box's own threads.

@@ -371,6 +371,30 @@ export const STEPS: Step[] = [
     paths: SOAK_PATHS
   },
   {
+    name: 'renderer-soak-idle',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['scripts/measure-renderer-soak.ts', '--gate', '--scene', 'idle'],
+    capMs: SOAK_CAP_MS,
+    // The same lane, after the reconnect scene: one instance at a time.
+    lane: 'build',
+    why: "a settled chat on screen while 40 threads run behind it, focused, behind a second window and hidden (D17, D20): no more running animations than working rows on screen, a meta flush within 2 ms at p95, one meta push of a thread no screen shows rendering 3 components at most, and the renderer's CPU a phase against D17's bounds (scripts/measure-renderer-soak.ts --gate --scene idle, 3 min at most)",
+    mac: true,
+    paths: SOAK_PATHS
+  },
+  {
+    name: 'renderer-soak-long',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['scripts/measure-renderer-soak.ts', '--gate', '--scene', 'long'],
+    capMs: SOAK_CAP_MS,
+    // The same lane, after the idle scene: one instance at a time.
+    lane: 'build',
+    why: "a 30,000-row agent thread opened beside 40 running threads, then streamed into (D04, D05, D11): rows readable within 1.2 s, no task over 100 ms in the 15 s after, none over 50 ms while it streams and 4 ms of main thread a frame at p95; the jump to an old row is reported (scripts/measure-renderer-soak.ts --gate --scene long, 2 min 30 s at most)",
+    mac: true,
+    paths: SOAK_PATHS
+  },
+  {
     name: 'e2e-remote-fence',
     tier: 'publish',
     cmd: 'bun',

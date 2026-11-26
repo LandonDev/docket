@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { perfThread } from './lib/ios-perf-seeds'
 import { DAY_PROFILE, declaredRates, IDLE_PROFILE, liveTail, LONG_INDEX, LONG_PROFILE, LONG_STREAM_PROFILE, owedAt, profileOf, RUNNING_THREADS } from './lib/soakLoad'
-import { parseSoakArgs } from './lib/soakJudge'
+import { gateBudgetMs, parseSoakArgs } from './lib/soakJudge'
 import { flushesBetween, IDLE_PHASES, IDLE_RULE, judgeIdle, summarizeIdlePhase, type Census, type FlushRecord, type IdlePhase } from './lib/soakIdle'
 import { frameMainMs, judgeLong, LONG_RULE, taskList, type LongResult } from './lib/soakLong'
 import { DAY_RULE, DAY_TIMING, judgeDay, rawRows, type DayResult, type StoreCensus } from './lib/soakDay'
@@ -60,7 +60,10 @@ describe('the idle, long and day scenes: their load', () => {
     expect(parseSoakArgs(['--scene', 'idle'])).toMatchObject({ scene: 'idle', view: 'stream', host: 'synthetic', label: 'synthetic-prod-idle' })
     for (const scene of ['long', 'day']) expect(parseSoakArgs(['--scene', scene])).toMatchObject({ scene, view: 'stream' })
     expect(() => parseSoakArgs(['--scene', 'idle', '--host', 'box'])).toThrow('synthetic host')
-    expect(() => parseSoakArgs(['--scene', 'long', '--gate'])).toThrow('no gate row yet')
+    expect(parseSoakArgs(['--scene', 'long', '--gate'])).toMatchObject({ scene: 'long', gate: true, label: 'gate-long' })
+    expect(parseSoakArgs(['--scene', 'idle', '--gate'])).toMatchObject({ scene: 'idle', gate: true })
+    expect(() => parseSoakArgs(['--scene', 'day', '--gate'])).toThrow('no gate row yet')
+    expect(gateBudgetMs('idle')).toBeGreaterThan(gateBudgetMs('board'))
     expect(() => parseSoakArgs(['--scene', 'day', '--minutes', '2'])).toThrow('runs its own steps')
     expect(() => parseSoakArgs(['--scene', 'idle', '--view', 'board'])).toThrow('runs its own steps')
   })
@@ -150,6 +153,13 @@ describe('the long scene', () => {
     expect(failed(result({ readable: null, landed: null }))).toEqual(['open: click to rows readable, ms', 'jump: an old hit lands, ms'])
     expect(judgeLong(result({ landed: null })).verdicts.at(-1)!.got).toBe(Number.POSITIVE_INFINITY)
     expect(LONG_RULE).toMatchObject({ afterOpenTaskMs: 100, streamTaskMs: 50 })
+  })
+
+  it("the gate's form judges D04, D05 and D11 and leaves the jump reported", () => {
+    const gated = judgeLong(result({ landed: null }), LONG_RULE, true)
+    expect(gated.ok).toBe(true)
+    expect(gated.verdicts.map((v) => v.what)).not.toContain('jump: an old hit lands, ms')
+    expect(judgeLong(result({ p95: 9 }), LONG_RULE, true).ok).toBe(false)
   })
 })
 

@@ -18,6 +18,8 @@ import { DAY_RULE, DAY_TIMING, judgeDay, rawRows, STORE_CENSUS, type DayResult, 
 
 export interface QuietCtx {
   c: Cdp
+  /** the gate's form (renderer-soak-idle, renderer-soak-long): long climbs to no top and leaves the jump unjudged */
+  gate?: boolean
   label: string
   root: string
   host: ChildProcess
@@ -265,7 +267,7 @@ export async function recordLong(ctx: QuietCtx): Promise<boolean> {
   const topStart = Date.now()
   const stepMs: number[] = []
   let reached = false
-  while (Date.now() - topStart < LONG_TIMING.topBudgetMs && stepMs.length < LONG_TIMING.topMaxSteps) {
+  while (!ctx.gate && Date.now() - topStart < LONG_TIMING.topBudgetMs && stepMs.length < LONG_TIMING.topMaxSteps) {
     await c.eval(toTop)
     let pressed = false
     for (let i = 0; i < 20 && !pressed; i++) {
@@ -284,7 +286,7 @@ export async function recordLong(ctx: QuietCtx): Promise<boolean> {
       break
     }
   }
-  if (!stepMs.length) await explain(ctx, id, 'top')
+  if (!stepMs.length && !ctx.gate) await explain(ctx, id, 'top')
   const top1 = await now()
   const heldTop = await held()
   const top: LongResult['top'] = { steps: stepMs.length, reached, ms: Date.now() - topStart, stepMs: spread(stepMs), tasks: taskList((await c.eval<{ tasks: { start: number; duration: number }[] }>(`window.__long.between(${top0}, ${top1})`)).tasks, top0), heldAfter: { blocks: heldTop.blocks, rows: heldTop.rows, oldest: heldTop.oldest } }
@@ -292,7 +294,7 @@ export async function recordLong(ctx: QuietCtx): Promise<boolean> {
   host.close()
 
   const result: LongResult = { rows: ctx.longRows ?? 0, open, stream, jump, top }
-  const verdict = judgeLong(result)
+  const verdict = judgeLong(result, LONG_RULE, ctx.gate)
   const md = [
     `# ${ctx.label}: long scene, one agent-shaped thread beside ${ctx.children.length - 1} running threads (${process.platform})`,
     '',
@@ -301,7 +303,7 @@ export async function recordLong(ctx: QuietCtx): Promise<boolean> {
     `| open from the ${open.by === 'rail' ? 'rail' : 'opener'} | readable ${open.readableMs ?? 'never'} ms | ${open.tasks.count} in 15 s | ${open.tasks.maxMs} | ${open.held.blocks} blocks, ${open.held.rows ?? '–'} raw rows |`,
     `| stream ${LONG_TIMING.streamMs / 1000} s | a frame p50 ${stream.frameMs.p50} / p95 ${stream.frameMs.p95} / max ${stream.frameMs.max} ms | ${stream.tasks.count} | ${stream.tasks.maxMs} | ${frames.length} frames, ${sent.delta ?? 0} deltas |`,
     `| jump to seq ${LONG_JUMP_SEQ} | ${jump.landedMs === null ? 'did not land' : `${jump.landedMs} ms`} | ${jump.tasks.count} | ${jump.tasks.maxMs} | oldest loaded ${jump.oldestLoaded} |`,
-    `| to the top | ${top.steps} presses, ${(top.ms / 1000).toFixed(1)} s, a press p50 ${top.stepMs.p50} / max ${top.stepMs.max} ms | ${top.tasks.count} | ${top.tasks.maxMs} | ${top.reached ? 'reached' : 'stopped at the budget'}, oldest ${top.heldAfter.oldest} |`,
+    `| to the top | ${top.steps} presses, ${(top.ms / 1000).toFixed(1)} s, a press p50 ${top.stepMs.p50} / max ${top.stepMs.max} ms | ${top.tasks.count} | ${top.tasks.maxMs} | ${ctx.gate ? 'not climbed (the gate runs no climb)' : top.reached ? 'reached' : 'stopped at the budget'}, oldest ${top.heldAfter.oldest} |`,
     '',
     `Long tasks after the open (ms from the click: length): ${open.tasks.list.map((t) => `${t.at}: ${t.ms}`).join(', ') || 'none'}.`,
     '',

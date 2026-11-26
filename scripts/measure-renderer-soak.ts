@@ -97,7 +97,7 @@ import { SETUP_OFFERED_KEY } from '../src/renderer/src/surfaces/setup/setupFlow'
 import { readBuildStamp, waitForGateBuild } from './lib/gateBuild'
 import { slowLink, startSlowLink } from './lib/slowLink'
 import { parseSoakLink } from './lib/soakLink'
-import { isQuietScene } from './lib/soakJudge'
+import { gateBudgetMs, isQuietScene } from './lib/soakJudge'
 import { recordDay, recordIdle, recordLong, type QuietCtx } from './lib/soakQuietRun'
 import { REACT_HOOK } from './lib/soakIdle'
 import { recordReconnect, type ReconnectSeed } from './lib/soakReconnectRun'
@@ -675,9 +675,9 @@ async function main(): Promise<void> {
   if (args.gate) {
     // The step's own clock: past 90 s the run is a failure, whatever it measured.
     setTimeout(() => {
-      console.error(`✗ the gate soak passed its ${GATE_TIMING.budgetMs / 1000} s budget`)
+      console.error(`✗ the gate soak passed its ${gateBudgetMs(args.scene) / 1000} s budget`)
       void cleanup().finally(() => process.exit(1))
-    }, GATE_TIMING.budgetMs).unref()
+    }, gateBudgetMs(args.scene)).unref()
   }
   await launch()
   log(`launched ${args.build} from ${tree}`)
@@ -751,7 +751,7 @@ async function main(): Promise<void> {
   }
   if (isQuietScene(args.scene)) {
     if (!soakHost || !shown.children) throw new Error(`the ${args.scene} scene needs the synthetic host`)
-    const ctx: QuietCtx = { c, label: args.label, root: ROOT, host: soakHost, rendererPid: renderer.pid, quietId: shown.threadId, children: shown.children, longRows: shown.history?.['soak-long']?.rows, cpuSeconds, log, waitFor }
+    const ctx: QuietCtx = { c, gate: args.gate, label: args.label, root: ROOT, host: soakHost, rendererPid: renderer.pid, quietId: shown.threadId, children: shown.children, longRows: shown.history?.['soak-long']?.rows, cpuSeconds, log, waitFor }
     const ok = await (args.scene === 'idle' ? recordIdle(ctx) : args.scene === 'long' ? recordLong(ctx) : recordDay(ctx))
     process.exitCode = ok ? 0 : 1
     return
