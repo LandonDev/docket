@@ -880,7 +880,9 @@ keep coming during it, three looks at most, `SAVE_LOOKS`), then Saved when
 the file holds his write, else that the file changed; a look that fails,
 or a save whose looks ran out, says no Saved time (`unconfirmed`), and its
 line's timer is disarmed; a later write still meets the host's version
-check.
+check. A look that finds another writer's newer file ends the save there:
+the reload runs on its own, and the line names no save until it has put
+the file as it is in place.
 Before, a read whose answer crossed in parts was
 installed as Saved after the folder's push for a newer file had already
 passed it. Before, a plain file renamed from its open

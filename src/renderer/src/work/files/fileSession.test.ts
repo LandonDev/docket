@@ -478,6 +478,61 @@ describe("a text file open", () => {
     expect(h.lines.at(-1)?.state ?? null).not.toBe("saved");
   });
 
+  /** A save whose look finds another writer's newer file; the reload's whole-file read waits on `hold` while set. */
+  function newerDuringSave() {
+    const h = standIn("first\n");
+    const host = (h.session as unknown as { host: FileSessionHost }).host;
+    const real = host.request.bind(host);
+    const reloads: (() => void)[] = [];
+    let hold = false;
+    host.request = async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+      if (method === "work.files.read" && params.length !== 1 && hold) await new Promise<void>((r) => reloads.push(r));
+      const got = await real<T>(method, params);
+      if (method === "work.files.write") {
+        h.theirs("theirs\n");
+        void h.session.check();
+      }
+      return got;
+    };
+    return { h, reloads, hold: (on: boolean) => void (hold = on) };
+  }
+
+  it("a look that finds a newer file keeps the line unconfirmed until the reload installs it (Sol S11)", async () => {
+    const { h, reloads, hold } = newerDuringSave();
+    await h.session.load();
+    hold(true);
+    h.session.edit("mine\n");
+    await h.fire();
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    expect(reloads).toHaveLength(1);
+    h.tick(60_000);
+    expect(h.lines.at(-1)?.state ?? null).not.toBe("saved");
+    hold(false);
+    reloads.shift()!();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(h.session.getSnapshot()).toMatchObject({ text: "theirs\n" });
+    expect(h.lines.at(-1)).toMatchObject({ state: "saved", at: h.file.changed });
+  });
+
+  it("the save ends once a newer file is known, whatever the reload meets (Sol S26)", async () => {
+    const { h, reloads, hold } = newerDuringSave();
+    await h.session.load();
+    hold(true);
+    h.session.edit("mine\n");
+    let ended = false;
+    const save = h.fire().then(() => void (ended = true));
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    // The reload's read is out and folder notices keep coming: the save (and a close waiting on it) has ended anyway.
+    void h.session.check();
+    void h.session.check();
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+    expect(reloads.length).toBeGreaterThan(0);
+    expect(ended).toBe(true);
+    hold(false);
+    for (const go of reloads.splice(0)) go();
+    await save;
+  });
+
   it("keeps an unlisted open copy writable after a scoped look and a failed look", async () => {
     const h = standIn("first\n", { unlisted: true });
     await h.session.load();

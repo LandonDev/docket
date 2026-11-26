@@ -257,13 +257,14 @@ export class FileSession {
       this.failure = null;
       this.conflicted = false;
       this.gone = false;
-      this.unconfirmed = false;
       await this.lookForDrafts(text.text);
       if (this.disposed) return;
       // Checked again just before the text and its line go in: a change noted meanwhile reads again.
       if (this.noted !== noted || this.of.source !== source) return await this.load();
       const rev = this.view.is === "text" ? this.view.rev + 1 : 0;
       const offer = this.offers.length > 0 && !got.locked;
+      // Only now, the file as it is in place, does the line name a save of it.
+      this.unconfirmed = false;
       this.set({ is: "text", text: text.text, rev, locked: got.locked ?? null, ...(offer ? { offer: true as const } : {}) });
       this.line();
     } catch (err) {
@@ -450,9 +451,17 @@ export class FileSession {
             this.later(null);
             return this.host.saved(null);
           }
+          if (now?.version === this.version) {
+            this.unconfirmed = false;
+            return this.line();
+          }
+          // A newer file: the save ends here, and the reload runs on its own with the line unconfirmed until it
+          // installs the file as it is (a close waiting on the save never waits on a reload notices can restart).
+          if (now && !this.dirty) {
+            void this.load();
+            return this.line();
+          }
           this.unconfirmed = false;
-          if (now?.version === this.version) return this.line();
-          if (now && !this.dirty) return void (await this.load());
           this.conflicted = true;
           this.gone = now === null;
           if (now) this.changed = now.changed;
