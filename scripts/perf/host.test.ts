@@ -1,3 +1,7 @@
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { seedFakeAccount } from '../journeys/lib/fakeProvider'
 import { describe, expect, it } from 'vitest'
 import { bootLayout, bootRows, copyIndexRows, hostFlags, HOST_SCENES, lastAllowedCores, onceInOrder, over, percentile, stallSlices } from './host'
 import { loadStream } from './lib/load'
@@ -94,6 +98,20 @@ describe('timing and row counts', () => {
     expect(copyIndexRows('[boot] 100 turn-index done 0 rows')).toBe(0)
     expect(copyIndexRows('[boot] 100 turn-index start\n[boot] 200 turn-index done 42 rows')).toBe(42)
     expect(copyIndexRows('[boot] 100 turn-index done 42 rows with unrelated text')).toBeNull()
+  })
+
+  it('seeds a second dummy account in its own vault entry', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'host-bench-accounts-'))
+    try {
+      seedFakeAccount(dir)
+      expect(readdirSync(join(dir, 'secrets'))).toHaveLength(1)
+      seedFakeAccount(dir, true)
+      const profiles = JSON.parse(readFileSync(join(dir, 'profiles.json'), 'utf8'))['claude-code']
+      expect(new Set(profiles.map((profile: { accountId: string }) => profile.accountId)).size).toBe(2)
+      expect(readdirSync(join(dir, 'secrets'))).toHaveLength(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('ends every loopback stream on the same signal with one stop frame each', async () => {

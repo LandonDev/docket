@@ -12,7 +12,7 @@ import { openDb, Store } from '../../src/main/server/db'
 import { CheckpointStore } from '../../src/main/server/checkpoint'
 import { attach, freePort, proofRpc } from '../e2e-work-lib'
 import { mainCheckout } from '../journeys/lib/record'
-import { seedFakeAccount } from '../journeys/lib/fakeProvider'
+import { PRACTICE_ACCOUNTS, seedFakeAccount } from '../journeys/lib/fakeProvider'
 import { instancePids, isolatedEnvironment, KEY_CAPS, words } from '../journeys/lib/shape'
 import { toolCall } from '../journeys/lib/thread'
 import { connectProbes, openClient, remoteSocketUrl, type ProbeClient, type ProbeSeed, type Timed } from '../lib/connectProbe'
@@ -265,7 +265,7 @@ class Rig {
     this.env.TEMP_CODE_FAKE_PROVIDERS = provider.url.origin
     this.env.TEMP_CODE_DEBUG_PORT = String(await freePort())
     this.env.TEMP_CODE_WORK_PORT = String(await freePort())
-    if (!this.options.copy) seedFakeAccount(this.env.TEMP_CODE_ALIAX_DATA_DIR!)
+    if (!this.options.copy) seedFakeAccount(this.env.TEMP_CODE_ALIAX_DATA_DIR!, true)
     const electron = join(REPO, 'node_modules', 'electron', 'dist', 'electron')
     this.started = performance.now()
     const args = sampleLoop ? [`--inspect=127.0.0.1:${this.inspectPort}`, '.'] : ['.']
@@ -477,6 +477,7 @@ function scratchRepo(rig: Rig): void {
 }
 
 const WORKSPACE = 'host-bench-workspace'
+const SECOND_WORKSPACE = 'host-bench-workspace-two'
 const PROJECT = 'host-bench-project'
 const FOCUSED = 'host-bench-focused'
 const READ_ROWS = 600
@@ -500,6 +501,11 @@ function database(rig: Rig) {
 function seedProject(rig: Rig, store: Store): void {
   const createdAt = Date.now()
   store.insertWorkspace({ id: WORKSPACE, name: 'Host bench', path: rig.repo, git: true, createdAt })
+  const other = join(rig.repo, 'second-account')
+  mkdirSync(other, { recursive: true })
+  store.insertWorkspace({ id: SECOND_WORKSPACE, name: 'Host bench two', path: other, git: false, createdAt })
+  store.setWorkspaceAccounts(WORKSPACE, { claude: PRACTICE_ACCOUNTS[0] })
+  store.setWorkspaceAccounts(SECOND_WORKSPACE, { claude: PRACTICE_ACCOUNTS[1] })
   store.insertProject({ id: PROJECT, name: 'Host bench', workspaceId: WORKSPACE, mode: 'local', branch: null, cwd: rig.repo, createdAt })
 }
 
@@ -587,7 +593,8 @@ async function seedBoot(rig: Rig): Promise<Record<string, number>> {
       const id = BOOT_PREFIX + i
       const resume = i < THREADS
       const count = bootRows(layout, i)
-      store.insertSession(meta(id, rig.repo, { status: resume ? 'stopped' : 'idle' }))
+      const workspaceId = i < THREADS / 2 ? WORKSPACE : SECOND_WORKSPACE
+      store.insertSession(meta(id, rig.repo, { workspaceId, status: resume ? 'stopped' : 'idle' }))
       const events = perfThread(id, { rows: count, turns: i === 0 ? 2 : 3, seed: i + 1 })
       if (resume) {
         events.splice(-3, 3, { type: 'user-text', text: 'Count the practice cones.' }, { type: 'status', status: 'running' }, { type: 'status', status: 'stopped' })
@@ -913,13 +920,25 @@ async function runScene(rig: Rig, result: Result): Promise<void> {
   const seed = await seedScene(rig)
   await rig.boot()
   rig.remoteKey = await rig.mint('Host bench reader')
-  let workspace = WORKSPACE
-  if (rig.options.browser) {
+  const scope = rig.options.browser ? 'work' : 'code'
+  let workspaces = [WORKSPACE, SECOND_WORKSPACE]
+  if (scope === 'work') {
     await rig.rpc(rig.box, 'work.set', { enabled: true })
-    workspace = (await rig.rpc<{ id: string }>(rig.box, 'workspace.create', { kind: 'work', sector: 'host-bench', name: 'Host bench browser' })).id
+    workspaces = []
+    for (const [index, account] of PRACTICE_ACCOUNTS.entries()) {
+      const { id } = await rig.rpc<{ id: string }>(rig.box, 'workspace.create', { kind: 'work', sector: `host-bench-${index}`, name: `Host bench browser ${index}` })
+      await rig.rpc(rig.box, 'workspace.setAccounts', { workspaceId: id, pins: { claude: account } })
+      workspaces.push(id)
+    }
   }
   console.log('Starting 40 loopback streams')
-  const ids = await startLoad(rig, workspace, THREADS, { scope: rig.options.browser ? 'work' : 'code', signal: rig.signal, room: 0 })
+  // Two dummy accounts use independent upstream pools. Loopback speaks
+  // HTTP/1, where one account's 32 sockets cannot stream all 40 at once.
+  const group = { scope, signal: rig.signal } as const
+  const half = THREADS / 2
+  const first = await startLoad(rig, workspaces[0]!, half, { ...group, room: half })
+  const second = await startLoad(rig, workspaces[1]!, half, group)
+  const ids = [...first, ...second]
   await waitForStreams(rig, ids)
   if (rig.options.browser) await openBrowser(rig, ids[0]!)
   console.log(`Measuring ${rig.options.scene} with 40 running threads`)

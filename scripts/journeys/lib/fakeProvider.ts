@@ -3,20 +3,27 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromiumEncrypt, deriveChromiumKey } from 'aliax-core/vault'
 
-const ACCOUNT = 'practice@example.test'
+export const PRACTICE_ACCOUNTS = ['practice@example.test', 'practice-two@example.test'] as const
+const ACCOUNT = PRACTICE_ACCOUNTS[0]
 const ACCOUNT_ID = 'journey-practice'
 
-/** Give only this run's box an account that the loopback gateway can route. */
-export function seedFakeAccount(dir: string): void {
+/** Give only this run's box accounts that the loopback gateway can route. */
+export function seedFakeAccount(dir: string, twoAccounts = false): void {
   const secrets = join(dir, 'secrets')
   mkdirSync(secrets, { recursive: true, mode: 0o700 })
   const password = randomBytes(32).toString('hex')
-  const profile = { name: ACCOUNT, email: ACCOUNT, accountId: ACCOUNT_ID, createdAt: Date.now() }
+  const profiles = PRACTICE_ACCOUNTS.slice(0, twoAccounts ? 2 : 1).map((name, i) => ({
+    name, email: name, accountId: i === 0 ? ACCOUNT_ID : ACCOUNT_ID + '-two', createdAt: Date.now()
+  }))
   writeFileSync(join(dir, 'vault.key'), password + '\n', { mode: 0o600 })
-  writeFileSync(join(dir, 'profiles.json'), JSON.stringify({ 'claude-code': [profile] }))
-  const keychain = JSON.stringify({ claudeAiOauth: { accessToken: 'JOURNEY-LOOPBACK', expiresAt: Date.now() + 86_400_000, scopes: ['user:inference', 'user:profile'] } })
-  const blob = JSON.stringify({ keychain, oauthAccount: { accountUuid: ACCOUNT_ID, emailAddress: ACCOUNT } })
-  writeFileSync(join(secrets, 'claude-code__' + encodeURIComponent(ACCOUNT) + '.bin'), chromiumEncrypt(deriveChromiumKey(password), blob), { mode: 0o600 })
+  writeFileSync(join(dir, 'profiles.json'), JSON.stringify({ 'claude-code': profiles }))
+  const key = deriveChromiumKey(password)
+  for (const [i, { name, accountId }] of profiles.entries()) {
+    const accessToken = i === 0 ? 'JOURNEY-LOOPBACK' : 'JOURNEY-LOOPBACK-TWO'
+    const keychain = JSON.stringify({ claudeAiOauth: { accessToken, expiresAt: Date.now() + 86_400_000, scopes: ['user:inference', 'user:profile'] } })
+    const blob = JSON.stringify({ keychain, oauthAccount: { accountUuid: accountId, emailAddress: name } })
+    writeFileSync(join(secrets, 'claude-code__' + encodeURIComponent(name) + '.bin'), chromiumEncrypt(key, blob), { mode: 0o600 })
+  }
 }
 
 export const BROWSER_PROMPT = 'Keep this practice chat open while I count cones.'
