@@ -266,7 +266,7 @@ private struct PickRow: View {
             }
             Text(pick.name).lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 8)
-            Text(Int64(pick.size), format: .byteCount(style: .file)).textStep(.stamp)
+            Text(FilesRules.size(Int64(pick.size))).textStep(.stamp)
         }
         .accessibilityElement(children: .combine)
     }

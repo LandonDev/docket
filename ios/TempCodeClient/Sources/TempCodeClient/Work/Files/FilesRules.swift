@@ -292,12 +292,17 @@ public enum FilesRules {
         return changedWords(Int(changed), now: now, calendar: calendar)
     }
 
+    /// A size in one spelling everywhere on the phone ("15 KB", "2.1 MB"): Files, Messages, Save to Docket, Capture.
+    public static func size(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
     /// What follows a file's kind on its facts line: its size and when it changed, as prose ("52 bytes, 9:41 AM"),
     /// never joined with a dot (docs/IOS-DESIGN.md "Text hierarchy, not dotted joins"). The view draws the kind
     /// first in its own weight. Nil when there is neither.
     public static func factDetail(size: Double?, changed: Double?, now: Date = .now, calendar: Calendar = .current) -> String? {
         var parts: [String] = []
-        if let size { parts.append(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)) }
+        if let size { parts.append(Self.size(Int64(size))) }
         if let changed, changed > 0 { parts.append(changedWords(Int(changed), now: now, calendar: calendar)) }
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }

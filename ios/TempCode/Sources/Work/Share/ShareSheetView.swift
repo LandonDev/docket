@@ -122,7 +122,7 @@ struct ShareSheetView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .accessibilityIdentifier("share-name")
-                    Text(Int64(pick.size), format: .byteCount(style: .file)).textStep(.meta).monospacedDigit()
+                    Text(FilesRules.size(Int64(pick.size))).textStep(.meta).monospacedDigit()
                 }
             }
         } else {

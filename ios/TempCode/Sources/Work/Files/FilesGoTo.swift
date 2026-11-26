@@ -33,7 +33,7 @@ struct FilesGoTo: View {
                 }
                 ForEach(rows) { row in
                     Button { open(row) } label: {
-                        FilesRowLabel(symbol: FilesGlyph.of(row.entry.kind), title: row.entry.name, fact: row.entry.where?.name ?? "", sector: jobs.count > 1 ? row.job.sector : nil)
+                        FilesRowLabel(symbol: FilesGlyph.of(row.entry.kind), title: ReaderVerbs.title(row.entry.name), fact: row.entry.where?.name ?? "", sector: jobs.count > 1 ? row.job.sector : nil)
                     }
                     .buttonStyle(.pressable)
                     .listRowInsets(Layout.rowInsets)

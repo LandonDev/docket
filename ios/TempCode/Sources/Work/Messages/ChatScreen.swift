@@ -161,8 +161,9 @@ private struct ChatConversation: View {
             Text(chat.name)
                 .textStep(.title, weight: .semibold)
                 .lineLimit(1)
+            // The stamp's size in the secondary ink: the tertiary step measures 1.7:1 in light (IOS-DESIGN "Inks").
             Text(MessagesRules.chatFact(chat))
-                .textStep(.stamp)
+                .textStep(.stamp, tint: Color(.secondaryLabel))
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
@@ -547,7 +548,7 @@ private struct ChatFileRow: View {
         return switch file.status {
         case .failed: file.error?.isEmpty == false ? file.error : "Couldn’t get this file"
         case .listed, .wanted: "Coming from LifeOS"
-        case .stored: file.size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) }
+        case .stored: file.size.map { FilesRules.size(Int64($0)) }
         }
     }
 }

@@ -235,16 +235,22 @@ private struct BandSection: View {
 struct JobHeader: View {
     let job: FilesRoot.Job
 
+    // Built as the Outbox's band: the dot at the text edge with the name after it, never hung in the margin.
     var body: some View {
-        SectionHeader(job.name) { EmptyView() }
-            .overlay(alignment: .leading) {
-                Circle()
-                    .fill(Tint.sector(job.sector))
-                    .frame(width: Layout.dotSize, height: Layout.dotSize)
-                    .padding(.leading, (Layout.textEdge - Layout.dotSize) / 2)
-                    .accessibilityHidden(true)
-            }
-            .listRowInsets(EdgeInsets())
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            SectorDot(sector: job.sector, size: 7)
+            Text(job.name)
+                .textStep(.meta, weight: .semibold, tint: Color(.label))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Layout.textEdge)
+        .padding(.vertical, Layout.rowVertical)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Surface.chrome)
+        .textCase(nil)
+        .accessibilityAddTraits(.isHeader)
+        .listRowInsets(EdgeInsets())
     }
 }
 
@@ -368,7 +374,7 @@ struct FileRow: View {
         let route = route
         let opening = client.work.files.opening[FilesRules.openingTag(entry.key)]
         Button { if let route { navigator.open(route) } } label: {
-            FilesRowLabel(symbol: FilesGlyph.of(entry.kind), title: entry.name, fact: FilesRules.fact(entry, inLens: inLens), bold: entry.fresh == true, sector: sector, progress: opening)
+            FilesRowLabel(symbol: FilesGlyph.of(entry.kind), title: ReaderVerbs.title(entry.name), fact: FilesRules.fact(entry, inLens: inLens), bold: entry.fresh == true, sector: sector, progress: opening)
         }
         .buttonStyle(.pressable)
         .disabled(route == nil)

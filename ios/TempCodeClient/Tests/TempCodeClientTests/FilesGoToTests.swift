@@ -33,4 +33,19 @@ struct FilesGoToTests {
         #expect(FilesGoToRules.empty(text: "budget", rows: 0, failed: [], asking: true) == nil)
         #expect(FilesGoToRules.empty(text: "budget", rows: 2, failed: [], asking: false) == nil)
     }
+
+    /// One spelling of a size on every phone screen (round 1, R1-F15): "KB", never "kB" beside it.
+    @Test func aSizeHasOneSpelling() {
+        #expect(FilesRules.size(15_389) == ByteCountFormatter.string(fromByteCount: 15_389, countStyle: .file))
+        #expect(FilesRules.size(15_389).contains("KB"))
+        #expect(!FilesRules.size(15_389).contains("kB"))
+        #expect(FilesRules.factDetail(size: 2_048, changed: nil)?.contains("KB") == true)
+    }
+
+    /// Files names a file as the reader's bar does: our own two endings dropped, any other kept (round 1, R1-F12).
+    @Test func filesDropOurOwnEndings() {
+        #expect(ReaderVerbs.title("Travel memo.tcdoc") == "Travel memo")
+        #expect(ReaderVerbs.title("Travel budget.tcsheet") == "Travel budget")
+        #expect(ReaderVerbs.title("Spring budget.pdf") == "Spring budget.pdf")
+    }
 }

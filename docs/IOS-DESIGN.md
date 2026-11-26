@@ -3040,25 +3040,23 @@ The receipt (Money, docs/agents/work-money.md):
   nowhere else, and while it does not answer the draft stays
   ("Unify's host did not answer. The receipt is kept on this phone."), since
   a second host keeps no record of the key and would file it again. A scan
-  the phone cannot write is held in memory: the sheet opens on Try Again
-  and Discard Scan with the reason as their footer in destructive text, and Home's press
-  opens that row again until the scan is kept.
-  camera closes, so Cancel, a failed Save and a quit keep it. A retry keeps
-  the key and goes back to the host that took the last try while it keeps
-  the job, so nothing is filed twice.
-Files (the files pillar's F9, docs/agents/work-files.md "The phone"):,
   the phone cannot write is held in memory: the sheet shows only Try Again
   and Discard Scan, with the reason as their footer in destructive text (no
   other draft, no Scan Another, no Save), `Receipt` refuses a second scan
   while one is held, and Home's press opens that section again until the
   scan is kept or let go.
 
+Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
+
 - **The way in** is Files on the Work list, a place for every job at once
   (`FilesPlaceScreen`, the sidebar column). A job's page has a Files row
   too, after Projects and before Routines (`folder`): the same place
   narrowed to that job.
-- **Files** is a plain list, one band a job, the job's name and its
-  sector's dot over its band while more than one job shows; the bar's job
+- **Files** is a plain list, one band a job, its sector's dot then the job's
+  name at the text edge (the Outbox's band) while more than one job shows; a
+  name drops our own two endings (`.tcdoc`, `.tcsheet`) everywhere in Files, as
+  the reader's bar does; a size reads one way on every screen
+  (`FilesRules.size`, "15 KB"); the bar's job
   filter narrows it to one (All Jobs, then each job). A band holds Recent
   and Starred, the job's places, the folders of his other computers the
   job's host reaches for the phone (`desktopcomputer`, the computer's name

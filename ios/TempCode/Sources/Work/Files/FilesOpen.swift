@@ -263,7 +263,7 @@ struct FileQuickLookScreen: View {
             Image(systemName: FilesGlyph.of(entry.kind))
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
-            Text(entry.name)
+            Text(ReaderVerbs.title(entry.name))
                 .font(.title3.weight(.semibold))
                 .multilineTextAlignment(.center)
                 .lineLimit(3)

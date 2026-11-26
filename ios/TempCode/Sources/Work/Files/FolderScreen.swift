@@ -197,7 +197,7 @@ struct FolderScreen: View {
             }
         } else if entry.folder == nil, entry.ref != nil, let spot {
             row.draggable(FileDrag(environmentId: spot.environmentId, workspaceId: workspaceId, placeId: home(of: entry)?.id ?? placeId, folder: at, through: through, entry: entry, chip: through == nil ? chip(of: entry) : nil)) {
-                FilesRowLabel(symbol: FilesGlyph.of(entry.kind), title: entry.name, fact: "")
+                FilesRowLabel(symbol: FilesGlyph.of(entry.kind), title: ReaderVerbs.title(entry.name), fact: "")
             }
         } else {
             row
@@ -327,7 +327,8 @@ struct FilesGrid<Actions: View>: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: tile), spacing: Layout.rowGap)], spacing: Layout.textEdge) {
+            // From the top, so a two-line name never lifts its tile above its neighbours.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: tile), spacing: Layout.rowGap, alignment: .top)], spacing: Layout.textEdge) {
                 ForEach(entries, id: \.key) { entry in
                     Button { open(entry) } label: { FilesTile(client: client, entry: entry, edge: tile) }
                         .buttonStyle(.pressable)
@@ -365,7 +366,8 @@ private struct FilesTile: View {
             }
             .frame(width: edge, height: edge)
             .animation(Motion.base, value: picture != nil)
-            Text(entry.name)
+            // Our own two endings dropped, as the reader's bar names the file (`ReaderVerbs.title`).
+            Text(ReaderVerbs.title(entry.name))
                 .font(.caption)
                 .fontWeight(entry.fresh == true ? .semibold : .regular)
                 .lineLimit(2)
