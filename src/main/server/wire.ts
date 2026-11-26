@@ -806,7 +806,7 @@ export interface AnswerPartsOptions {
   clearTimer?: (handle: unknown) => void
 }
 
-type HeldPush = { text: string; compress: boolean; threads: string[] }
+type HeldPush = { text: string; compress: boolean; threads: string[]; resync?: true }
 
 export class AnswerParts {
   private on = false
@@ -862,8 +862,12 @@ export class AnswerParts {
     }
     const waiting = new Set(this.behind.flatMap((b) => b.threads))
     const threads = [...new Set(named)]
-    if (!threads.some((t) => (this.outstanding.get(t) ?? 0) > 0 || waiting.has(t))) return false
-    this.behind.push({ text, compress, threads })
+    const resync = frame.push === 'resync'
+    // A `resync` held here goes before every transcript push made after it, whatever thread: a row of a thread the
+    // socket shed must not reach the window ahead of the word that its rows were shed.
+    const behindResync = !resync && this.behind.some((b) => b.resync)
+    if (!behindResync && !threads.some((t) => (this.outstanding.get(t) ?? 0) > 0 || waiting.has(t))) return false
+    this.behind.push({ text, compress, threads, ...(resync ? { resync: true as const } : {}) })
     this.held += text.length
     return true
   }
@@ -932,10 +936,12 @@ export class AnswerParts {
     else this.outstanding.delete(thread)
     const blocked = new Set<string>()
     const keep: HeldPush[] = []
+    let resyncWaits = false
     for (const push of this.behind) {
-      if (push.threads.some((t) => (this.outstanding.get(t) ?? 0) > 0 || blocked.has(t))) {
+      if (resyncWaits || push.threads.some((t) => (this.outstanding.get(t) ?? 0) > 0 || blocked.has(t))) {
         keep.push(push)
         for (const t of push.threads) blocked.add(t)
+        if (push.resync) resyncWaits = true
         continue
       }
       this.held -= push.text.length

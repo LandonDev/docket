@@ -277,10 +277,10 @@ describe('AnswerParts keep each thread in order (M6 review, findings 4 and 8)', 
     h.parts.mark('8', 'session.events', 'x')
     h.send({ id: '8', ok: true, result: { rows, moreBefore: false, moreAfter: false, reset: false } })
     expect(h.parts.waiting).toBe(1)
-    // While the page is out: the host sheds and asks for a resync, X gets rows 9 and 10, Y gets its row 1, and a meta for X.
+    // While the page is out: Y gets its row 1, the host sheds and asks for a resync, X gets rows 9 and 10 and a meta.
+    h.send(ev('y', 1))
     h.send({ push: 'resync' })
     h.send(ev('x', 9))
-    h.send(ev('y', 1))
     h.send({ push: 'session', session: { id: 'x', status: 'idle' } })
     h.send(ev('x', 10))
     for (let acked = 0; h.parts.waiting > 0; ) h.parts.ack((acked += PART_CHARS))
@@ -325,6 +325,26 @@ describe('AnswerParts keep each thread in order (M6 review, findings 4 and 8)', 
     const order = h.wire.map((w) => (w.part ? (w.part.last ? 'body-end' : 'part') : (JSON.parse(w.text) as { sessionId: string }).sessionId))
     expect(order.indexOf('x')).toBe(order.indexOf('body-end') + 1)
     expect(order.indexOf('y')).toBeLessThan(order.indexOf('body-end'))
+  })
+})
+
+describe('AnswerParts: a held resync goes before every later transcript push (Sol S2)', () => {
+  const ev = (sessionId: string, seq: number) => ({ push: 'event', row: { sessionId, seq, ts: 1000 + seq, event: { type: 'assistant-text', text: `${sessionId} ${seq}`, delta: false } } })
+
+  it("A's page in parts, B's rows shed, then resync, then B's next row: B's row comes after the resync", () => {
+    const h = host()
+    h.parts.mark('8', 'session.events', 'a')
+    h.send({ id: '8', ok: true, result: { rows: [{ ...ev('a', 5).row, event: { type: 'assistant-text', text: 'x'.repeat(6 * PART_CHARS), delta: false } }], moreBefore: false, moreAfter: false, reset: false } })
+    expect(h.parts.waiting).toBe(1)
+    // B's rows 3 and 4 were shed by the budget (never sent); the host says resync, then B gets row 5.
+    h.send({ push: 'resync' })
+    h.send(ev('b', 5))
+    for (let acked = 0; h.parts.waiting > 0; ) h.parts.ack((acked += PART_CHARS))
+    const order = h.wire.filter((w) => !w.part).map((w) => {
+      const f = JSON.parse(w.text) as { push: string; row?: { sessionId: string; seq: number } }
+      return f.push === 'event' ? `${f.row!.sessionId}${f.row!.seq}` : f.push
+    })
+    expect(order).toEqual(['resync', 'b5'])
   })
 })
 

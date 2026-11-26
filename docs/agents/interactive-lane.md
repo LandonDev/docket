@@ -74,7 +74,9 @@
   ahead of a frame). A thread's own order holds: while its page or row
   body (`THREAD_METHODS`) is in parts, every push naming it (`event`,
   `events`, `session`, `sessions`) and any `resync` waits behind it and
-  goes right after its last part, in the order made; other threads pass.
+  goes right after its last part, in the order made; other threads pass,
+  except after a held `resync`: every transcript push made after it waits
+  behind it, whatever its thread.
   A list never goes in parts: the store keeps the newest meta it heard.
   A part's header is `#part <encoded id> <offset> <last>`; a part never
   ends inside a surrogate pair. A socket's parts hold at most 64 MiB of
