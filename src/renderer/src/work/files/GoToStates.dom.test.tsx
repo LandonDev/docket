@@ -193,4 +193,17 @@ describe("Go to by keyboard", () => {
     fireEvent.keyDown(field(), { key: "Enter" });
     expect(onPick).toHaveBeenCalledWith({ is: "new", what: "sheet", name: "Budget" });
   });
+
+  /** Polish 2 council round 1 (R1-C2): the place kept 45% at full width and cut the folder off its end, while the name was cut. */
+  it("draws where a found file lives as search's Where does: the folder kept, giving way before the name", async () => {
+    host.answer = () => Promise.resolve({ entries: [{ ...entry("Spring LAN budget request.docx"), where: { place: "folder", name: "Dummy Esports", trail: ["Marketing"] } }] });
+    draw();
+    fireEvent.change(field(), { target: { value: "spring" } });
+    await settle();
+    const fact = screen.getByRole("option", { name: /Spring LAN/ }).querySelector<HTMLElement>("[data-files-goto-fact]")!;
+    expect(fact.className.split(" ")).toEqual(expect.arrayContaining(["shrink-[8]", "min-w-[6em]"]));
+    expect(fact.className).not.toContain("shrink-0");
+    const cut = fact.querySelector("[data-middle-cut]")!;
+    expect(cut.querySelector("[data-middle-tail]")!.textContent).toBe("\u00a0› Marketing");
+  });
 });

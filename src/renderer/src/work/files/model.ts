@@ -873,8 +873,9 @@ export function searchingNote(places: readonly string[]): FilesNote | null {
 
 /** Where a lens's row lives, in words: the place and the folders down to it ("Dummy Esports › Events"). */
 export const whereWords = (where: NonNullable<FileEntry["where"]>): string => [where.name, ...where.trail].join(" › ");
-/** Where `whereWords` keeps its end when cut: the folder the file lies in, from its "›", stays; the place and the folders above it give way first. */
-export const whereKeep = (where: NonNullable<FileEntry["where"]>): number | null => (where.trail.length ? whereWords(where).length - where.trail[where.trail.length - 1]!.length - 2 : null);
+/** Where `whereWords` keeps its end when cut: the folder the file lies in, from the space before its "›", stays (so a cut
+ *  start reads "Dummy Es… › Events", never "…› Events"); the place and the folders above it give way first. */
+export const whereKeep = (where: NonNullable<FileEntry["where"]>): number | null => (where.trail.length ? whereWords(where).length - where.trail[where.trail.length - 1]!.length - 3 : null);
 // ── the chat docked beside a file ─────────────────────────────────────
 
 /**

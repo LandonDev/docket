@@ -185,11 +185,12 @@ describe("the states", () => {
 describe("a row being opened", () => {
   /** Council round 6 (Sol P2): the progress beside the name took its whole width in a narrow list and pushed the name out. */
   /** Council round 1 of the files pass (Opus 15): cut beside the name it read "Dow…", while By beside it had 160px. */
+  /** Polish 2 council round 1 (R1-C1): in a 480–640px list it had Changed's 128px alone ("Opening… 8.0 o…"); By's room is its too. */
   it("says its words where who and when stand, whole; under 360px of list only the spinner stays by the name, the words read out", () => {
     const key = "file:env_box:/w/Events/Budget.xlsx";
     draw({ busy: new Map([[key, { word: "Opening… 8.0 of 20 MB" }]]) });
     const busy = row("Budget.xlsx").querySelector<HTMLElement>("[data-files-busy]")!;
-    expect(busy.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "w-32", "@[360px]/files-list:flex", "@[640px]/files-list:w-74"]));
+    expect(busy.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "w-32", "@[360px]/files-list:flex", "@[480px]/files-list:w-66", "@[640px]/files-list:w-74"]));
     expect(busy.querySelector('[data-slot="spinner"]')).not.toBeNull();
     expect(busy.querySelector("[data-row-words]")!.textContent).toBe("Opening… 8.0 of 20 MB");
     // Who and when give it their room while it lasts.
@@ -562,5 +563,17 @@ describe("a folder's pages", () => {
     expect(row("Budget.xlsx")).not.toBeNull();
     // No second word for it at the list's foot.
     expect(document.body.textContent).not.toContain("Loading more");
+  });
+
+  /** Polish 2 council round 1 (R1-C5): "Searched by name only: General a…" had no way to read the rest. */
+  it("gives the line's words their whole text in a tooltip while they are cut", async () => {
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    draw({ results: true, listing: listing({ pending: ["LifeOS", "General and the Windows VM"] }) });
+    await waitFor(() => expect(document.querySelector("[data-files-note] > span.truncate")!.getAttribute("data-slot")).toBe("tooltip-trigger"));
   });
 });

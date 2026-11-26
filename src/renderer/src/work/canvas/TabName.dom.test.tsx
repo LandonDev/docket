@@ -79,4 +79,13 @@ describe("a name cut where it differs", () => {
     expect(end!.getAttribute("dir")).toBe("rtl");
     expect(end!.querySelector("bdi")!.textContent).toBe("› TempCode proof archive 2027");
   });
+
+  /** Polish 2 council round 1 (R1-C3): a cut place lost the space before its "›" ("Dummy Es…› Events"). */
+  it("keeps the space an end starts with, unbreaking, so a cut start never runs into it", async () => {
+    const { MiddleCut } = await import("./TabName");
+    const { container } = render(<MiddleCut text="Dummy Esports › Events" keep={13} startRoom="4em" tail />);
+    const [, start, end] = [...container.querySelector("[data-middle-cut]")!.children] as HTMLElement[];
+    expect(start!.textContent).toBe("Dummy Esports");
+    expect(end!.querySelector("bdi")!.textContent).toBe("\u00a0› Events");
+  });
 });

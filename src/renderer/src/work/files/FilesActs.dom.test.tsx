@@ -369,6 +369,12 @@ async function mount() {
   await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
 }
 const menuItem = (name: string | RegExp): Promise<HTMLElement> => screen.findByRole("menuitem", { name });
+/** A row's words as they are read out: the parts drawn for the eye alone (a cut place's two halves) left out. */
+const read = (el: HTMLElement): string => {
+  const copy = el.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll("[aria-hidden=true]").forEach((part) => part.remove());
+  return copy.textContent ?? "";
+};
 
 describe("New", () => {
   it("offers what the place makes, says where it is kept, makes the thing at once and lets him name it in place", async () => {
@@ -488,7 +494,15 @@ describe("the selection", () => {
     const bar = document.querySelector<HTMLElement>("[data-files-bulk]")!;
     expect(bar.textContent).toContain("3 selected");
     // The bar names its verbs as DESIGN.md does, and the list keeps its last row clear of the bar.
-    expect(within(bar).getAllByRole("button").map((b) => b.textContent)).toEqual(["Ask", "Download", "Move", "Copy", "Delete", "Clear"]);
+    expect(within(bar).getAllByRole("button").map((b) => b.textContent)).toEqual(["Ask", "Download", "Move", "Copy", "Delete", "Actions", "Clear"]);
+    // Polish 2 council round 1 (R1-C4): in a narrow list the verbs ran off the bar, Clear with them. Under 34rem they
+    // are one Actions menu with the same rows; wider, the verbs stand and the menu is gone.
+    expect(bar.className).toContain("@container/files-bulk");
+    expect(bar.querySelector("[data-files-bulk-verbs]")!.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "@[34rem]/files-bulk:flex"]));
+    expect(bar.querySelector("[data-files-bulk-menu]")!.className).toContain("@[34rem]/files-bulk:hidden");
+    fireEvent.click(within(bar).getByRole("button", { name: "Actions" }));
+    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Ask", "Download", "Move", "Copy", "Delete"]);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     expect(list().className).toContain("pb-14");
     // Ask starts a chat of the workspace about the files selected: a chip each, with its place and path in words.
     fireEvent.click(within(bar).getByRole("button", { name: "Ask" }));
@@ -1177,7 +1191,7 @@ describe("Go to", () => {
     expect(screen.queryByRole("navigation", { name: "Folder" })).toBeNull();
     fireEvent.change(field, { target: { value: "post" } });
     const panel = await screen.findByRole("listbox", { name: "Go to" });
-    await waitFor(() => expect(within(panel).getAllByRole("option").map((o) => o.textContent)).toEqual(["Poster.pngDummy Esports › Events"]));
+    await waitFor(() => expect(within(panel).getAllByRole("option").map(read)).toEqual(["Poster.pngDummy Esports › Events"]));
     expect(calls("work.files.names").at(-1)).toEqual({ workspaceId: "w1", text: "post" });
     fireEvent.keyDown(field, { key: "Enter" });
     await waitFor(() => expect(calls("work.files.open")).toEqual([expect.objectContaining({ ref: at("/w/Events/Poster.png") })]));
@@ -1188,7 +1202,7 @@ describe("Go to", () => {
     const field = await goTo();
     expect(field.placeholder).toBe("Go to");
     fireEvent.change(field, { target: { value: "post" } });
-    await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Go to" })).getAllByRole("option").map((o) => o.textContent)).toEqual(["Poster.pngDummy Esports › Events"]));
+    await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Go to" })).getAllByRole("option").map(read)).toEqual(["Poster.pngDummy Esports › Events"]));
     // The names for "plan" are slow to come; Poster.png is still drawn when he presses Return.
     const answer = host.answer;
     let release: () => void = () => undefined;
@@ -1340,7 +1354,7 @@ describe("Search", () => {
     expect(row("Practice handout.txt").textContent).toContain("Esports › Handouts");
     // Where keeps the folder it lies in; the place and the folders above give way first.
     const where = row("Practice handout.txt").querySelector<HTMLElement>("[data-middle-cut]")!;
-    expect(where.lastElementChild!.textContent).toBe("› Handouts");
+    expect(where.lastElementChild!.textContent).toBe("\u00a0› Handouts");
     // The place keeps 4em, so it is named; a folder too long for its room is cut at its start, keeping the end that differs.
     expect((where.children[1] as HTMLElement).style.minWidth).toBe("4em");
     expect(where.lastElementChild!.getAttribute("dir")).toBe("rtl");

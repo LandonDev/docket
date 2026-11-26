@@ -155,8 +155,17 @@ function NoteLine({ note, fixes }: { note: FilesNote; fixes: NoteFixes }) {
   return (
     <div data-files-note role="status" aria-busy={note.busy || undefined} className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
       {note.busy ? <Spinner className="size-3 shrink-0" /> : null}
-      <span className={`min-w-0 truncate ${quiet ? "text-muted-foreground" : "font-medium text-foreground"}`}>{note.title}</span>
-      {line ? <span className="min-w-0 flex-1 truncate text-muted-foreground">{line}</span> : <span className="flex-1" />}
+      {/* Cut in a narrow list (the places searched by name only), each says the whole of itself on hover. */}
+      <TruncateTip text={note.title}>
+        <span className={`min-w-0 truncate ${quiet ? "text-muted-foreground" : "font-medium text-foreground"}`}>{note.title}</span>
+      </TruncateTip>
+      {line ? (
+        <TruncateTip text={line}>
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">{line}</span>
+        </TruncateTip>
+      ) : (
+        <span className="flex-1" />
+      )}
       {note.fix && !elsewhere ? (
         <Button variant="ghost" size="xs" disabled={fixes.busy} onClick={() => fixes.run(note.fix!)}>
           <BusyLabel busy={fixes.busy} label={FIX_LABEL[note.fix.kind]} />
@@ -258,9 +267,9 @@ function Trail({ trail, name, onGo, onEmpty }: { trail: readonly FileCrumb[]; na
 const COL_BY =
   "hidden w-40 shrink-0 @[640px]/files-list:block @[480px]/files-list:in-data-[files-where]:block @max-[640px]/files-list:in-data-[files-where]:w-32";
 const COL_CHANGED = "hidden w-32 shrink-0 text-end @[360px]/files-list:block";
-/** A busy row's words, in By's and Changed's room: Changed's alone where By has gone, none under 360px. */
-const COL_BUSY =
-  "hidden w-32 shrink-0 @[360px]/files-list:flex @[640px]/files-list:w-74 @[480px]/files-list:in-data-[files-where]:w-66 @[640px]/files-list:in-data-[files-where]:w-74";
+/** A busy row's words, in By's and Changed's room: from 480px By's empty room too, so the figures he waits on stand
+ *  whole and the name gives way first; Changed's alone under 480px, none under 360px. */
+const COL_BUSY = "hidden w-32 shrink-0 @[360px]/files-list:flex @[480px]/files-list:w-66 @[640px]/files-list:w-74";
 
 /** A column's head that sorts: a press sorts by it, a second press turns the order round. */
 function SortHead({ by, label, sort, onSort, className }: { by: FileSortBy; label: string; sort: FileSort; onSort(next: FileSort): void; className: string }) {
@@ -385,7 +394,7 @@ const FileRow = memo(function FileRow({
         )}
       </span>
       {busy !== null ? (
-        // His act's words stand where who and when stand (both and the gap between, 296px; Changed's 128px where By has gone), so
+        // His act's words stand where who and when stand (both and the gap between, 296px; 264px from 480px, where By has gone), so
         // "Downloading… 2.1 of 8.4 MB" is read whole beside a name that keeps its own room. The whole of it on hover.
         <span data-files-busy="" className={COL_BUSY}>
           <RowWords busy words={busy.word} />
@@ -773,27 +782,53 @@ const shareInOf = (acts: PageActs, on: readonly FileEntry[]): { shareIn?: { home
 /** The key a row's verb answers to, shown at its row's end (a PC's Delete key alone deletes, so it is not shown there). */
 const ROW_KEYS: Partial<Record<EntryAct, string>> = { "quick-look": "Quick Look", rename: "Rename", delete: "Delete" };
 
-/** With two or more selected, one bar floats at the foot of the list: how many, the verbs for them all, and Clear. */
+/**
+ * With two or more selected, one bar floats at the foot of the list: how many, the verbs for them all, and Clear. Under
+ * 34rem of list the verbs are one Actions menu between the count and Clear, so none is cut off the bar's end.
+ */
 function BulkBar({ count, rows, onAsk, onAct, onClear }: { count: number; rows: readonly ActRow[]; onAsk?(): void; onAct(act: EntryAct): void; onClear(): void }) {
   const shown = rows.filter((row) => row.act === "download" || row.act === "move" || row.act === "copy" || row.act === "keep" || row.act === "delete" || row.act === "restore" || row.act === "purge");
+  const words = (row: ActRow): string => BULK_WORDS[row.act] ?? row.label.replace("…", "");
+  const menu: MenuRow[] = [
+    ...(onAsk ? ([{ kind: "item", id: "ask", label: "Ask" }] satisfies MenuRow[]) : []),
+    ...shown.map((row): MenuRow => ({ kind: "item", id: row.act, label: words(row), ...(row.refused ? { disabled: true, reason: row.refused } : {}), ...(row.danger ? { danger: true } : {}) })),
+  ];
   return (
-    <div data-files-bulk role="toolbar" aria-label={`${count} selected`} className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3">
+    <div data-files-bulk role="toolbar" aria-label={`${count} selected`} className="@container/files-bulk pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3">
       <div className="pointer-events-auto flex h-10 max-w-full items-center gap-1 rounded-xl bg-popover px-2 shadow-overlay ring-1 ring-border">
         <span className="px-2 text-[13px] font-medium whitespace-nowrap text-foreground tabular-nums">{count} selected</span>
-        {onAsk ? (
-          <Button variant="ghost" size="sm" data-files-bulk-ask onClick={onAsk}>
-            Ask
-          </Button>
+        <span data-files-bulk-verbs className="hidden items-center gap-1 @[34rem]/files-bulk:flex">
+          {onAsk ? (
+            <Button variant="ghost" size="sm" data-files-bulk-ask onClick={onAsk}>
+              Ask
+            </Button>
+          ) : null}
+          {shown.map((row) => (
+            <Tip key={row.act} label={row.refused ?? row.label} disabled={!row.refused}>
+              <span className="inline-flex">
+                <Button variant="ghost" size="sm" disabled={!!row.refused} className={row.danger ? "text-destructive" : ""} onClick={() => onAct(row.act)}>
+                  {words(row)}
+                </Button>
+              </span>
+            </Tip>
+          ))}
+        </span>
+        {menu.length ? (
+          <span data-files-bulk-menu className="inline-flex @[34rem]/files-bulk:hidden">
+            <RowsMenu
+              label="Actions"
+              align="center"
+              rows={menu}
+              onPick={(id) => (id === "ask" ? onAsk?.() : onAct(id as EntryAct))}
+              trigger={
+                <Button variant="ghost" size="sm" className="gap-1">
+                  Actions
+                  <ChevronDown aria-hidden className="size-3 text-muted-foreground" />
+                </Button>
+              }
+            />
+          </span>
         ) : null}
-        {shown.map((row) => (
-          <Tip key={row.act} label={row.refused ?? row.label} disabled={!row.refused}>
-            <span className="inline-flex">
-              <Button variant="ghost" size="sm" disabled={!!row.refused} className={row.danger ? "text-destructive" : ""} onClick={() => onAct(row.act)}>
-                {BULK_WORDS[row.act] ?? row.label.replace("…", "")}
-              </Button>
-            </span>
-          </Tip>
-        ))}
         <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={onClear}>
           Clear
         </Button>

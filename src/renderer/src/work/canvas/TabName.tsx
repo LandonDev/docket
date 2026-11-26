@@ -4,7 +4,7 @@ import type { Ref } from "react";
  * A name cut in its middle (decision 13 of the files pass): the start gives way first, down to a letter or two and
  * its ellipsis, and the end from `keep` on stays, so the part that tells it from its neighbours is what he reads
  * ("Purdue Es…Budget.xlsx", "Dummy Esp… › Spring LAN"). Read whole; the two drawn parts are for the eye. A space at
- * the start's end would be dropped at the cut, so it is kept unbreaking. The end never shrinks (an ellipsis shows at
+ * the start's end or the end's start would be dropped at the cut, so it is kept unbreaking. The end never shrinks (an ellipsis shows at
  * any part of a pixel lost, so a small share would still cut it): it takes the room it needs up to all but 1.5em,
  * and the start, down to that 1.5em, its ellipsis and perhaps a letter, takes the rest. Its tip (`useTruncated`)
  * sees either part cut.
@@ -19,7 +19,7 @@ export function MiddleCut({ text, keep, ref, className = "", startClass = "", en
       </span>
       {/* Cut at its start: laid right to left, the words kept left to right inside, so the ellipsis leads. */}
       <span aria-hidden data-middle-tail={tail || undefined} dir={tail ? "rtl" : undefined} className={`max-w-[calc(100%-1.5em)] shrink-0 truncate ${tail ? "text-left" : ""} ${endClass}`} style={startRoom ? { maxWidth: `calc(100% - ${startRoom})` } : undefined}>
-        {tail ? <bdi dir="ltr">{end}</bdi> : end}
+        {tail ? <bdi dir="ltr">{end.replace(/^ /, "\u00a0")}</bdi> : end.replace(/^ /, "\u00a0")}
       </span>
     </span>
   );

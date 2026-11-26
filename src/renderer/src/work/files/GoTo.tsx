@@ -8,7 +8,8 @@ import { Input } from "../../components/ui/input";
 import { Spinner } from "../../components/ui/spinner";
 import { registry } from "../../lib/connection";
 import { KindGlyph } from "./KindGlyph";
-import { shownName, whereWords } from "./model";
+import { shownName } from "./model";
+import { WhereWords } from "./rowParts";
 
 /**
  * Go to (docs/DESIGN.md "The Files place"): the trail turns into a field, and a panel under it lists as he
@@ -122,11 +123,11 @@ export function GoToField({
     if (event.key === "Enter") return void (event.preventDefault(), fresh ? take(rows[on]) : setWaiting(text));
     if (event.key === "Escape") return void (event.preventDefault(), onClose());
   };
-  const line = (row: GoToRow): { glyph: ReactNode; name: string; fact: string } => {
+  const line = (row: GoToRow): { glyph: ReactNode; name: string; fact: ReactNode } => {
     // A name as every row shows it: TempCode's own ending (".tcdoc", ".tcsheet") is no word.
     if (row.is === "tab") return { glyph: <KindGlyph kind={row.tab.kind === "page" ? "folder" : "other"} tinted={row.tab.kind === "page"} />, name: shownName(row.tab.name), fact: "Open tab" };
     if (row.is === "new") return { glyph: <Plus aria-hidden className="size-4 shrink-0 text-muted-foreground" />, name: row.name ? `New ${MAKE_WORDS[row.what].toLowerCase()} called ${row.name}` : `New ${MAKE_WORDS[row.what].toLowerCase()}`, fact: "" };
-    return { glyph: <KindGlyph kind={row.entry.kind} />, name: shownName(row.entry.name), fact: row.entry.where ? whereWords(row.entry.where) : "" };
+    return { glyph: <KindGlyph kind={row.entry.kind} />, name: shownName(row.entry.name), fact: row.entry.where ? <WhereWords where={row.entry.where} /> : "" };
   };
   return (
     // Go to closes when the focus leaves the field and its panel together: Tab from the field to Retry keeps it open.
@@ -184,8 +185,10 @@ export function GoToField({
                   onMouseEnter={() => setAt(index)}
                 >
                   {glyph}
-                  <span className="min-w-0 flex-1 truncate text-foreground">{name}</span>
-                  {fact ? <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground">{fact}</span> : null}
+                  {/* The name is what he picks: it keeps its room, and where the file lives gives way first, down to
+                      6em, the folder it lies in kept and the place cut (`WhereWords`), as search's Where does. */}
+                  <span className="min-w-0 flex-auto truncate text-foreground">{name}</span>
+                  {fact ? <span data-files-goto-fact className="flex max-w-[45%] min-w-[6em] shrink-[8] justify-end text-xs text-muted-foreground">{typeof fact === "string" ? <span className="truncate">{fact}</span> : fact}</span> : null}
                 </div>
               );
             })}

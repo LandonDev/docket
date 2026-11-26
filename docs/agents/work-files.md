@@ -1923,7 +1923,17 @@ dropped), and its library must still be listed. `parseGoTo` reads "new sheet
 called travel" (also doc, document, deck, slides, note, text file, folder;
 "called" and "named" optional) for the window's "New sheet called …" row.
 Return in the window takes a row of the names for the words in the field:
-while an older answer is still drawn, it waits for the newer one.
+while an older answer is still drawn, it waits for the newer one. A row draws
+where the file lives as a search's Where does (`WhereWords`): the folder it
+lies in is kept and the place gives way first, and the whole of it gives way,
+down to 6em, before the name does.
+
+**The list in a narrow window** (Page.tsx). A busy row's words take By's
+room too from 480px of list, so "Opening… 8.0 of 20 MB" reads whole. The
+selection bar keeps its verbs beside the count from 34rem of list; narrower,
+they are one Actions menu with the same rows, between the count and Clear. The
+note over the list ("Searched by name only: …") says the whole of a cut part on
+hover. A cut place keeps the space before its "›" ("Dummy Es… › Events").
 
 **A search** (`search {query, filter?, cursor?, seen?, replaces?}`) looks
 for every word of the query in a name, case-blind, in five sources at once
