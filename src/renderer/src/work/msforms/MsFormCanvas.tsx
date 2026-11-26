@@ -6,6 +6,7 @@ import { Check, Copy, ExternalLink, RefreshCw } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { Tip, TruncateTip } from "../../components/tip";
 import { mayMarkRevealRead, onRevealReadChange } from "../../lib/revealRead";
 import { dayTime } from "../../lib/duration";
@@ -125,6 +126,7 @@ export function Body(props: Props) {
   if (!view) return <FormBone />;
   if (half === "responses") return <Responses view={view} host={host} item={item} shell={shell} />;
   const waiting = view.suggestions[current];
+  const why = waiting?.held ?? waiting?.reason;
   const guest = <LiveBody itemId={item.id} ask={{ forms: { tenant: view.tenant, formId: view.formId, page: "design" } }} app="forms" covered={cover.covered} full={cover.full} />;
   if (!waiting) return guest;
   return (
@@ -132,8 +134,15 @@ export function Body(props: Props) {
       {/* The change the stepper stands on, in words: Forms' own page cannot outline it. */}
       <div data-msform-change className="flex min-h-8 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
         <span className="min-w-0 truncate text-foreground">{waiting.words}</span>
-        {/* Agent writes held it: why, before the agent's own reason */}
-        {waiting.held ?? waiting.reason ? <span className="min-w-0 truncate text-muted-foreground" title={waiting.held ?? waiting.reason}>{waiting.held ?? waiting.reason}</span> : null}
+        {/* Agent writes held it: why, before the agent's own reason; whole on hover when cut */}
+        {why ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="min-w-0 truncate text-muted-foreground">{why}</span>} />
+            <TooltipContent>
+              <span className="min-w-0 break-words">{why}</span>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
       </div>
       {guest}
     </div>
