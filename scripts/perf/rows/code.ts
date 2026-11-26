@@ -58,21 +58,23 @@ export async function shownCode(ctx: PerfCtx, thread: { id: string; title: strin
   await page.until(`${thread.title}'s tab`, 30_000, () => page.eval(`!!${tabOf(thread.id)}`))
 }
 
-/** Clicks a thread's tab, the strip scrolled to it first, as he would. */
+/**
+ * Clicks a thread's tab, the strip scrolled to it first, as he would. The strip scrolls smoothly, so the point is read
+ * until it holds still (the journeys' steadyPoint, which also hovers it): a point read mid-scroll misses the tab.
+ */
 export const pressThread = (ctx: PerfCtx, thread: { id: string; title: string }) => async (): Promise<void> => {
-  const at = await ctx.page.eval<{ x: number; y: number; covered: string | null } | null>(`(() => {
+  const at = await ctx.page.steadyPoint(`${thread.title}'s tab`, () => ctx.page.eval<{ x: number; y: number } | null>(`(() => {
     const tab = ${tabOf(thread.id)};
     if (!tab) return null;
     // To the strip's middle: at its edge the strip's scroll arrows cover a tab.
-    tab.scrollIntoView({ block: 'nearest', inline: 'center' });
+    tab.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'instant' });
     const r = tab.getBoundingClientRect();
     const x = r.left + r.width / 2, y = r.top + r.height / 2;
-    const under = document.elementFromPoint(x, y);
-    return { x, y, covered: tab.contains(under) ? null : (under?.getAttribute('aria-label') ?? under?.tagName ?? 'nothing') };
-  })()`)
-  if (!at) throw new Error(`No tab for "${thread.title}"`)
-  if (at.covered) throw new Error(`The tab for "${thread.title}" is under ${at.covered}`)
+    return tab.contains(document.elementFromPoint(x, y)) ? { x, y } : null;
+  })()`), 10_000)
   await ctx.page.click(at)
+  // A pointer selects on release; a tab not selected after it is a press that missed, not a slow open.
+  await ctx.page.until(`${thread.title}'s tab selected`, 2000, () => ctx.page.eval(`${tabOf(thread.id)}?.getAttribute('aria-selected') === 'true'`))
 }
 
 /** The window's document started again and linked to box: every thread is unseen once more. */
@@ -82,21 +84,39 @@ export async function fresh(ctx: PerfCtx): Promise<void> {
     `window.__docket?.registry.has(${boxHost(ctx)}) && window.__docket.registry.statusOf(${boxHost(ctx)}).transport === 'open'`))
 }
 
-/** D04, D05: a box thread not yet seen, from the rail, and the 15 s after it. */
+/**
+ * What the window held of a thread when a press never drew it: the store's load, its blocks, the shown pane and the
+ * link to box. Read through the dev facade (`window.__docket`), for the report beside the picture.
+ */
+async function diagnose(ctx: PerfCtx, id: string): Promise<string> {
+  return ctx.page.eval<string>(`JSON.stringify((() => {
+    const entry = window.__docket?.sessionStore.get(${JSON.stringify(id)});
+    const shown = [...document.querySelectorAll('[data-session-drop]')].find((p) => p.getClientRects().length && p.checkVisibility())?.getAttribute('data-session-drop') ?? null;
+    const link = window.__docket?.registry.statusOf(${boxHost(ctx)});
+    return { load: entry?.load ?? null, blocks: entry?.blocks?.length ?? null, shown, transport: link?.transport ?? null, lastError: link?.lastError ?? null };
+  })())`).catch((error) => `no reading: ${String(error?.message ?? error)}`)
+}
+
+/** Each press that never drew its thread says what the window held of it. */
+async function withDiagnosis(ctx: PerfCtx, id: string, samples: Sample[]): Promise<Sample[]> {
+  for (const sample of samples) if (sample.usable === null) sample.error = `${sample.error ?? 'never usable'}; the window held ${await diagnose(ctx, id)}`
+  return samples
+}
+
+/** D04, D05: a box thread not yet seen, from its tab, and the 15 s after it. */
 const threadOpenFar: Row = {
   id: 'thread-open-far',
   family: 'code',
-  title: 'Open the 30,000-row box thread from the rail, never seen by this window; then watch 15 s for a freeze',
-  run: (ctx) => thrice(ctx, () => ({
+  title: 'Open the 30,000-row box thread from its tab, never seen by this window; then watch 15 s for a freeze',
+  run: async (ctx) => withDiagnosis(ctx, SEED_THREADS.long.id, await thrice(ctx, () => ({
     region: 'main',
     usable: paneReady(SEED_THREADS.long.id),
     press: pressThread(ctx, SEED_THREADS.long),
     settle: 15_000,
     wait: 60_000
-  }), () => coldLong(ctx))
+  }), () => coldLong(ctx)))
 }
 
-/** D08: back and forth between two threads both seen. */
 /** Whatever thread pane is on screen, drawn: its rows, or a master's board. */
 const shownPaneReady = `(() => {
   const pane = [...document.querySelectorAll('[data-session-drop]')].find((p) => p.getClientRects().length && p.checkVisibility() && !p.closest('[inert], [aria-hidden="true"]'));
@@ -105,6 +125,7 @@ const shownPaneReady = `(() => {
     || pane.querySelectorAll('[data-board-pane] > [data-group]').length > 0;
 })()`
 
+/** D08: back and forth between two threads both seen. */
 const threadSwitch: Row = {
   id: 'thread-switch',
   family: 'code',
@@ -155,6 +176,7 @@ async function showThread(ctx: PerfCtx, thread: { id: string; title: string }): 
   await shownCode(ctx, thread)
   if (!await ctx.page.eval(paneReady(thread.id))) await pressThread(ctx, thread)()
   await ctx.page.until(thread.title + ' drawn', 30_000, () => ctx.page.eval(paneReady(thread.id)))
+    .catch(async (error) => { throw new Error(`${String(error?.message ?? error)}; the window held ${await diagnose(ctx, thread.id)}`) })
 }
 
 /**
@@ -289,7 +311,7 @@ const threadOpenLost: Row = {
         samples.push(dropped ? sample : { ...sample, error: [sample.error, 'no answer was dropped: the open asked no session.events for the thread'].filter(Boolean).join('; ') })
         if (sample.usable === null) break
       }
-      return samples
+      return withDiagnosis(ctx, long.id, samples)
     } finally {
       await ctx.page.send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
     }
@@ -323,7 +345,7 @@ const threadOpenCatchup: Row = {
       samples.push({ ...sample, ...(askAt !== null ? { askAt: Math.round(askAt) } : {}) })
       if (sample.usable === null) break
     }
-    return samples
+    return withDiagnosis(ctx, long.id, samples)
   }
 }
 
