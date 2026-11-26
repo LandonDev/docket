@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { BACKPRESSURE_BYTES, noteRequest } from './stalls'
-import { PART_CHARS, UNACKED_CHARS, partText } from '@shared/answerParts'
+import { PART_CHARS, UNACKED_CHARS, partEnd, partText } from '@shared/answerParts'
 import type { IncomingHttpHeaders } from 'node:http'
 import type { AgentEvent, EventRow, SessionMeta, ToolPreview } from '@shared/events'
 import type { ServerFrame, ServerPush } from '@shared/contract'
@@ -792,7 +792,7 @@ export const PART_METHODS: ReadonlySet<string> = new Set([
 export class AnswerParts {
   private on = false
   private readonly marked = new Set<string>()
-  private queue: { id: string; text: string; next: number; count: number; compress: boolean }[] = []
+  private queue: { id: string; text: string; at: number; compress: boolean }[] = []
   private sent = 0
   private acked = 0
   private closed = false
@@ -818,7 +818,7 @@ export class AnswerParts {
   /** Takes a marked answer longer than a part and sends it in parts; false: send it as it is. */
   take(id: string, text: string, compress: boolean): boolean {
     if (!this.marked.delete(id) || this.closed || text.length <= PART_CHARS) return false
-    this.queue.push({ id, text, next: 0, count: Math.ceil(text.length / PART_CHARS), compress })
+    this.queue.push({ id, text, at: 0, compress })
     this.pump()
     return true
   }
@@ -836,11 +836,14 @@ export class AnswerParts {
   private pump(): void {
     while (!this.closed && this.queue.length > 0 && this.sent - this.acked < UNACKED_CHARS) {
       const answer = this.queue[0]!
-      const at = answer.next * PART_CHARS
-      const body = answer.text.slice(at, at + PART_CHARS)
-      this.send(partText(answer.id, answer.next, answer.count, body), answer.compress)
+      // A running offset: a part that stops short of a surrogate pair's split leaves the pair to the next.
+      const end = partEnd(answer.text, answer.at)
+      const body = answer.text.slice(answer.at, end)
+      const last = end >= answer.text.length
+      this.send(partText(answer.id, answer.at, last, body), answer.compress)
       this.sent += body.length
-      if (++answer.next === answer.count) this.queue.shift()
+      answer.at = end
+      if (last) this.queue.shift()
     }
   }
 

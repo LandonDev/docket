@@ -248,7 +248,7 @@ export class Transport {
     held.push(part.body);
     this.partChars += part.body.length;
     this.ws?.send(ackText(this.partChars));
-    if (part.index < part.count - 1) return void this.parts.set(part.id, held);
+    if (!part.last) return void this.parts.set(part.id, held);
     this.parts.delete(part.id);
     this.onFrame(held.join(""), performance.now());
   }

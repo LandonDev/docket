@@ -43,7 +43,32 @@ describe('AnswerParts', () => {
       expect(h.parts.unacked).toBeLessThanOrEqual(UNACKED_CHARS)
     }
     const parts = h.wire.filter((w) => w.part)
-    expect(parts.map((w) => w.part!.index)).toEqual([...Array(parts[0]!.part!.count).keys()])
+    // Offsets run on with no gap, and only the final part says last.
+    let at = 0
+    for (const [i, w] of parts.entries()) {
+      expect(w.part!.offset).toBe(at)
+      at += w.part!.body.length
+      expect(w.part!.last).toBe(i === parts.length - 1)
+    }
+  })
+
+  it('never splits a surrogate pair: a non-BMP character at every place around a part\'s end comes back exactly, each part sent as UTF-8', async () => {
+    const compass = '\u{1F9ED}'
+    for (const shift of [-3, -2, -1, 0, 1, 2]) {
+      for (const boundary of [PART_CHARS, 2 * PART_CHARS]) {
+        // Placed by the answer's JSON text, where the parts are cut: the high surrogate lands at boundary + shift.
+        const prefix = JSON.stringify({ id: '9', ok: true, result: { content: '' } }).length - 3
+        const before = 'a'.repeat(boundary + shift - prefix)
+        const content = `${before}${compass}${'b'.repeat(PART_CHARS)}${compass}`
+        const h = host()
+        h.parts.mark('9', 'fs.read')
+        h.send({ id: '9', ok: true, result: { content } })
+        for (let acked = 0; h.parts.waiting > 0; ) h.parts.ack((acked += PART_CHARS))
+        // Each message crosses the socket as its own UTF-8 text: a lone surrogate half would come back U+FFFD.
+        const bodies = h.wire.filter((w) => w.part).map((w) => readPart(Buffer.from(w.text, 'utf8').toString('utf8'))!.body)
+        expect(JSON.parse(bodies.join('')).result.content).toBe(content)
+      }
+    }
   })
 
   it('a list, a small page and an unmarked answer go whole; nothing is parted until the window asked', () => {

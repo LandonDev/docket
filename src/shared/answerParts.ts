@@ -8,7 +8,11 @@
  * a message of its own, with no more than UNACKED_CHARS of them out that the window has not said it holds; every
  * other frame (a push, a small answer, a list) goes at once, between parts. A part is not JSON:
  *
- *   `#part <id> <index> <count>\n<the answer's JSON text, chars [index × PART_CHARS, …)>`
+ *   `#part <id> <offset> <last>\n<the answer's JSON text from char <offset>, at most PART_CHARS of it>`
+ *
+ * `last` is 1 on the answer's final part, else 0. A part never ends between the two halves of a surrogate pair
+ * (each message is its own UTF-8 text, and a lone half would arrive as U+FFFD), so it may hold one char less, and
+ * the next part's offset says where it starts.
  *
  * and the window answers each with `#ack <chars of part bodies received on this socket>`. A window asks for parts
  * with `#parts` once its host's hello names `answer.parts`; nothing else (a phone, a peer link) ever sees one.
@@ -20,20 +24,27 @@ export const PARTS_HELLO = '#parts'
 const PART = '#part '
 const ACK = '#ack '
 
-export function partText(id: string, index: number, count: number, body: string): string {
-  return `${PART}${id} ${index} ${count}\n${body}`
+export function partText(id: string, offset: number, last: boolean, body: string): string {
+  return `${PART}${id} ${offset} ${last ? 1 : 0}\n${body}`
+}
+
+/** Where the part of `text` that starts at `at` ends: PART_CHARS on, one less when that would split a surrogate pair. */
+export function partEnd(text: string, at: number): number {
+  const end = Math.min(text.length, at + PART_CHARS)
+  if (end >= text.length) return end
+  const unit = text.charCodeAt(end - 1)
+  return unit >= 0xd800 && unit <= 0xdbff ? end - 1 : end
 }
 
 /** A part's header and body, or null for any other message. */
-export function readPart(text: string): { id: string; index: number; count: number; body: string } | null {
+export function readPart(text: string): { id: string; offset: number; last: boolean; body: string } | null {
   if (!text.startsWith(PART)) return null
   const nl = text.indexOf('\n')
   if (nl < 0) return null
-  const [id, index, count] = text.slice(PART.length, nl).split(' ')
-  const i = Number(index)
-  const n = Number(count)
-  if (!id || !Number.isInteger(i) || !Number.isInteger(n) || i < 0 || i >= n) return null
-  return { id, index: i, count: n, body: text.slice(nl + 1) }
+  const [id, offset, last] = text.slice(PART.length, nl).split(' ')
+  const at = Number(offset)
+  if (!id || !Number.isSafeInteger(at) || at < 0 || (last !== '0' && last !== '1')) return null
+  return { id, offset: at, last: last === '1', body: text.slice(nl + 1) }
 }
 
 export const ackText = (chars: number): string => `${ACK}${chars}`
