@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID, webcrypto } from 'node:crypto'
 import { chmodSync, existsSync, lstatSync, mkdirSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
-import { lstat, open, readFile, realpath } from 'node:fs/promises'
+import { lstat, open, readFile, realpath, stat } from 'node:fs/promises'
 import { homedir, hostname } from 'node:os'
 import { basename, dirname, join, relative, sep } from 'node:path'
 import type { ClientRequest, ServerPush } from '@shared/contract'
@@ -242,13 +242,19 @@ export async function readInRoot(path: string, root: string, home: string): Prom
   if (!link.isFile()) throw new Error('not a regular file')
   const [real, realHome] = await Promise.all([realpath(path), realpath(home)])
   // The root as it lies under the real home, never resolved again: a root swapped for a link fails here.
-  if (!within(real, join(realHome, relative(home, root)))) throw new Error('outside the memory set')
+  const realRoot = join(realHome, relative(home, root))
+  if (!within(real, realRoot)) throw new Error('outside the memory set')
   const handle = await open(path, 'r')
   try {
     const st = await handle.stat()
     if (!st.isFile() || st.dev !== link.dev || st.ino !== link.ino) throw new Error('changed while it was read')
     const data = await readBounded(handle, st)
     if (!data) throw new Error('too large for the memory set, or written while it was read')
+    // After the read the path still resolves inside the root, to the file that was read: a parent swapped at any
+    // moment of the read fails here.
+    const again = await realpath(path)
+    const there = await stat(again)
+    if (!within(again, realRoot) || there.dev !== st.dev || there.ino !== st.ino) throw new Error('changed while it was read')
     return data
   } finally {
     await handle.close().catch(() => {})
