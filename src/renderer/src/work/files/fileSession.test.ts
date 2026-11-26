@@ -282,6 +282,52 @@ describe("a text file open", () => {
     expect(h.session.getSnapshot()).toMatchObject({ text: "theirs\n" });
   });
 
+  it("a change the folder said while the first read was out is read again before the line says Saved (M6 review, finding 5)", async () => {
+    const h = standIn("version A\n");
+    const host = (h.session as unknown as { host: FileSessionHost }).host;
+    const real = host.request.bind(host);
+    let first = true;
+    host.request = async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+      const got = await real<T>(method, params);
+      if (method === "work.files.read" && first && params.length !== 1) {
+        // The answer holds A; before it reaches the window, B is written and the folder's push arrives.
+        first = false;
+        h.theirs("version B\n");
+        void h.session.check();
+      }
+      return got;
+    };
+    await h.session.load();
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(h.session.getSnapshot()).toMatchObject({ is: "text", text: "version B\n" });
+    expect(h.calls.filter((c) => c.method === "work.files.read" && c.params.length !== 1)).toHaveLength(2);
+    // Never Saved for A: every Saved line names B's change.
+    expect(h.lines.filter((l) => l?.state === "saved").every((l) => l?.state === "saved" && l.at === h.file.changed)).toBe(true);
+  });
+
+  it("an edit made while that second read is out stays, and the line says the file changed (finding 5)", async () => {
+    const h = standIn("version A\n");
+    await h.session.load();
+    const host = (h.session as unknown as { host: FileSessionHost }).host;
+    const real = host.request.bind(host);
+    let once = true;
+    host.request = async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+      const got = await real<T>(method, params);
+      if (method === "work.files.read" && params.length !== 1 && once) {
+        once = false;
+        h.theirs("version C\n");
+        void h.session.check();
+        h.session.edit("mine\n");
+      }
+      return got;
+    };
+    h.theirs("version B\n");
+    await h.session.reload();
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(savedWords(h.lines.at(-1)!, null, NOW)).toMatch(/^This file changed at/);
+    expect(h.session.dirty).toBe(true);
+  });
+
   it("keeps an unlisted open copy writable after a scoped look and a failed look", async () => {
     const h = standIn("first\n", { unlisted: true });
     await h.session.load();

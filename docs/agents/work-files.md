@@ -862,7 +862,14 @@ rename or the move (acts.ts `unsavedIn`, the delete's own send), and the
 open text's session follows its item's new `source` (fileSession.ts
 `follow`): his next words go to the new path by the version he read, which
 a rename keeps. A save the old path answered "moved or deleted" in between
-is sent again to the new path. Before, a plain file renamed from its open
+is sent again to the new path. A folder's word that something changed, or a
+move, that comes while a read of the whole file is out (the first open, a
+Reload) is noted, and that read reads again before its text and its save
+line go in (`FileSession.noted`), so the line never says Saved for a file
+the folder has since replaced; his edits made meanwhile stay, and the line
+says the file changed. Before, a read whose answer crossed in parts was
+installed as Saved after the folder's push for a newer file had already
+passed it. Before, a plain file renamed from its open
 tab kept only the words from before the rename, and closing asked to lose
 the rest.
 

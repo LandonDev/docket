@@ -135,6 +135,10 @@ export class FileSession {
   /** the offered draft whose Keep Both the holder could not make: Copy Text takes its place */
   private unkept: Draft | null = null;
   private looked = false;
+  /** Reads of the whole file out now, and the changes noted while one was (a folder's word, a move): a read that
+   *  saw one come is read again before its text and its save line go in, so Saved never names a file gone by. */
+  private reading = 0;
+  private noted = 0;
 
   constructor(
     private readonly host: FileSessionHost,
@@ -215,7 +219,15 @@ export class FileSession {
       // A Drive file that is no Google file has no bytes here to read: it is its facts, with Open in Drive.
       if (this.of.source.at === "google" || !triedAsText(this.of.name, undefined)) return await this.facts();
       const edits = this.edits;
-      const got = await this.host.request<FileBytes>("work.files.read", { ...this.ref(), itemId: this.of.itemId, offset: 0, length: FILE_TEXT_MAX });
+      const noted = this.noted;
+      const source = this.of.source;
+      this.reading += 1;
+      let got: FileBytes;
+      try {
+        got = await this.host.request<FileBytes>("work.files.read", { ...this.ref(), itemId: this.of.itemId, offset: 0, length: FILE_TEXT_MAX });
+      } finally {
+        this.reading -= 1;
+      }
       if (this.disposed) return;
       // He typed while it was read (a change made elsewhere, read again): his words stay, on the version they were
       // made on, and the line says the file changed, with Reload and Keep Both.
@@ -225,6 +237,8 @@ export class FileSession {
         this.changed = got.changed;
         return this.line();
       }
+      // The file changed or moved while it was read: what came may be the old file, so it is read again.
+      if (this.noted !== noted || this.of.source !== source) return await this.load();
       if (!got.end) return await this.facts(`Over ${FILE_TEXT_MAX / 1024 / 1024} MB, too big to edit here.`);
       const text = decodeText(bytesOfBase64(got.data));
       if (!text) return await this.facts();
@@ -239,6 +253,8 @@ export class FileSession {
       this.gone = false;
       await this.lookForDrafts(text.text);
       if (this.disposed) return;
+      // Checked again just before the text and its line go in: a change noted meanwhile reads again.
+      if (this.noted !== noted || this.of.source !== source) return await this.load();
       const rev = this.view.is === "text" ? this.view.rev + 1 : 0;
       const offer = this.offers.length > 0 && !got.locked;
       this.set({ is: "text", text: text.text, rev, locked: got.locked ?? null, ...(offer ? { offer: true as const } : {}) });
@@ -450,6 +466,8 @@ export class FileSession {
    * with nothing waiting here is read again; with text waiting, the line says so and nothing is replaced.
    */
   async check(): Promise<void> {
+    // A read of the whole file is out (the first, or a reload): the change is noted, and that read reads again.
+    if (this.reading > 0 || this.view.is === "loading") return void (this.noted += 1);
     if (this.view.is !== "text" || this.saving || this.conflicted) return;
     const of = this.of;
     const version = this.version;
@@ -477,6 +495,7 @@ export class FileSession {
   follow(source: CanvasSource): void {
     if (JSON.stringify(source) === JSON.stringify(this.of.source)) return;
     this.of = { ...this.of, source };
+    this.noted += 1;
     if (!this.conflicted || !this.gone) return;
     this.conflicted = false;
     this.gone = false;
