@@ -23,8 +23,11 @@ export function barShown(feeds: Feeds, tools: boolean, history: boolean): boolea
   return feeds.presence.length > 0 || feeds.mode !== null || tools || history || (feeds.review !== null && feeds.review.count > 0) || feeds.written !== null;
 }
 
-/** The bar's class while the kind's tools are all it could hold: it is drawn only once they render something. */
-export const BAR_TOOLS_ONLY = "has-[[data-canvas-tools]:empty]:hidden";
+/**
+ * The bar's class while the kind's tools are all it could hold: it is drawn only once they render something. The hold's
+ * mark alone (`BarHold`) is nothing to draw once the hold lets go: a Word file whose import failed leaves no empty row.
+ */
+export const BAR_TOOLS_ONLY = "has-[[data-canvas-tools]:empty]:hidden has-[[data-canvas-tools]>[data-bar-hold]:only-child]:hidden";
 
 /**
  * Whether the bar has been drawn for this item by the kind itself: once its own `Bar` drew something (its bone, its

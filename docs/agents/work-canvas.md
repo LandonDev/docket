@@ -377,7 +377,9 @@ What a kind should know:
   `CanvasPane`'s state), and so does a quiet line that ends with History
   (an item he can only read). The bar is then drawn only for what it still
   holds, and History is not offered; Retry brings the kind's bone, and the
-  hold, back. One rule for the document, the PDF, the deck and the sheet.
+  hold, back. One rule for the document, the PDF, the deck and the sheet;
+  the hold's mark alone (`BarHold`, a Word file becoming a document) counts as
+  nothing once shut, so a failed import leaves no band (`BAR_TOOLS_ONLY`).
   A bar with no hold whose tools are all ones the narrow form hides
   (`data-narrow-hide`: a read-only sheet's Share, which goes to More there)
   draws nothing in the narrow form: a container query on the box around the

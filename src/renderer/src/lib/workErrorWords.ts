@@ -84,6 +84,8 @@ const RULES: Rule[] = [
   [/cannot convert (\S+) to \S+ now(, and no linked host)?/i, (c, m) => `${c.Host} cannot draw ${filesOf(m[1]!)} now${m[2] ? ", and no computer linked to it can" : ""}.`],
   [/^(.+) is (\d+ MB); a job carried to another host takes at most (\d+ MB)/i, (_c, m) => `${m[1]} is ${m[2]}, more than the ${m[3]} another computer is sent to draw.`],
   [/came back is (\d+ MB); a job carried from another host takes at most (\d+ MB)|^a forwarded job takes at most (\d+ MB)/i, () => "What came back from the computer that drew it was too big to bring here."],
+  // An Office file whose bytes are not the zip it must be (fflate on a damaged .docx, .xlsx or .pptx): never the unzipper's words.
+  [/^(invalid zip data|invalid zip file|end of central directory record signature not found)\b/i, () => "This file is damaged, or it is not the kind its name says."],
   // pdf.js on bytes it cannot read (pdf/engine.ts): a file cut short or damaged, never the parser's own words.
   [/^(invalid pdf structure|missing pdf\b|unexpected server response)/i, () => "This PDF is damaged, or only part of it arrived. Open it again from Files."],
   [/not a name a preview is kept under|that item is not open|that preview is gone/i, () => "This preview is gone. Close it and open it again from the file's tab."],

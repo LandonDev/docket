@@ -98,6 +98,9 @@ describe("an error as Work says it to him", () => {
     ["Preview.docx is 120 MB; a job carried to another host takes at most 50 MB", "Preview.docx is 120 MB, more than the 50 MB another computer is sent to draw."],
     ["the pdf that came back is 80 MB; a job carried from another host takes at most 50 MB", "What came back from the computer that drew it was too big to bring here."],
     ["Invalid PDF structure.", "This PDF is damaged, or only part of it arrived. Open it again from Files."],
+    // The live walk (S9): a .docx that is not a zip said the unzipper's "Invalid zip data" under Couldn't open.
+    ["invalid zip data", "This file is damaged, or it is not the kind its name says."],
+    ["End of central directory record signature not found", "This file is damaged, or it is not the kind its name says."],
     ["pymupdf4llm is not installed on tempcode-box", "The box is missing the tools that draw and read this file. Install them under Settings, Connections, Conversion tools."],
   ];
   it.each(CONVERTER)("says the converter's %s", (raw, words) => expect(says(raw)).toBe(words));

@@ -27,7 +27,8 @@ function Tools({ shows }: { shows: "pane" | "bone" | "share" | "hold" | "nothing
 
 const bar = (container: HTMLElement): HTMLElement => container.querySelector<HTMLElement>("[data-canvas-bar]")!;
 /** Drawn: not hidden by the tools-only rule, which hides the bar while its tools slot is empty. */
-const drawn = (el: HTMLElement): boolean => !(el.className.includes(BAR_TOOLS_ONLY) && el.matches(":has([data-canvas-tools]:empty)"));
+const drawn = (el: HTMLElement): boolean =>
+  !(el.className.includes(BAR_TOOLS_ONLY) && el.matches(":has([data-canvas-tools]:empty), :has([data-canvas-tools] > [data-bar-hold]:only-child)"));
 
 describe("the kind's bar keeps its height from the first paint", () => {
   it("drawn with a bone at the first paint, it stays 32px while the tools draw nothing, and through to Share", () => {
@@ -69,6 +70,17 @@ describe("a shut item lets the bar's hold go", () => {
     rerender(<KindBar feeds={NO_FEEDS} tools={<Tools shows="bone" />} />);
     rerender(<KindBar feeds={NO_FEEDS} tools={<Tools shows="nothing" />} />);
     expect(drawn(bar(container))).toBe(true);
+  });
+
+  /** The live walk (S9): a Word file that could not become a document kept the hold's empty 32px row over "Couldn't open". */
+  it("held by the hold alone (a Word file becoming a document), then shut by its failure, the bar goes", () => {
+    const { container, rerender } = render(<KindBar feeds={NO_FEEDS} tools={<Tools shows="hold" />} />);
+    expect(drawn(bar(container))).toBe(true);
+    rerender(<KindBar feeds={NO_FEEDS} tools={<Tools shows="hold" />} shut />);
+    expect(bar(container).hasAttribute("data-bar-held")).toBe(false);
+    // The rule that hides it: the hold's mark is the tools' only child.
+    expect(bar(container).className).toContain("has-[[data-canvas-tools]>[data-bar-hold]:only-child]:hidden");
+    expect(drawn(bar(container))).toBe(false);
   });
 
   it("shut, the bar still draws what it holds", () => {

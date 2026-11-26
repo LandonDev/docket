@@ -468,7 +468,8 @@ function, `workErrorWords(error, { host?, write? })`
   a dropped link, a part of Work not running, a workspace or tab that is
   gone, the disk's errnos, a conversion with no output, the converter's
   refusals (no app for a format, a shared file drawn only where it lies, the
-  Windows VM asleep, a file too big to send), a damaged PDF, LifeOS signed
+  Windows VM asleep, a file too big to send), a damaged PDF, an Office file
+  that is not the zip it must be, LifeOS signed
   out, a guest link elsewhere, a VM file's bytes).
 - A refusal that is already plain passes as the host wrote it.
 - Anything else that still carries a path, a method, an id, a code or a
