@@ -5,6 +5,7 @@
 @source "./";
 @source "../../renderer/src/components/ui";
 @source "../../renderer/src/work/icons.tsx";
+@source "../../renderer/src/work/sheets/bones.tsx";
 
 html,
 body,

@@ -4,7 +4,7 @@ import type { SessionEvent } from "work-kit/sheet/collab";
 import { cutFix, guestCells, typedCells } from "@shared/work/sheetGuest";
 import { GUEST_ROW, isObjectList, type RulesSetParams } from "@shared/work/sheets";
 import { listChanges, listMedia, snapshotMedia } from "@renderer/work/sheets/objects";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { SheetBones } from "@renderer/work/sheets/bones";
 import { StatusMark } from "@renderer/components/ui/status";
 import type { Frame } from "./frame";
 import type { Opened, Session } from "./session";
@@ -240,7 +240,8 @@ export function SheetPage({
     };
   }, [frame, grid, box, edits]);
 
-  if (!book) return <SheetBones />;
+  // The sheet's own shape while it comes, the format row reserved for an Edit link, so nothing jumps when the grid lands.
+  if (!book) return <SheetBones row={edits} />;
   const offlineWords = !edits ? SHEET_OFFLINE_WORDS.reader : onDevice ? SHEET_OFFLINE_WORDS.device : SHEET_OFFLINE_WORDS.tab;
   // One muted line for the state of the line; the sheet taking no more edits says more than its being away.
   const quiet = status.full ? SHEET_FULL_WORDS : status.offline ? offlineWords : null;
@@ -353,12 +354,3 @@ export function plainCells(m: Mutation, formula?: (sheet: string, row: number, c
   return { ...m, params: { ...m.params, cellValue: out } };
 }
 
-function SheetBones() {
-  return (
-    <div className="flex flex-col gap-2 p-4" aria-busy="true">
-      {Array.from({ length: 8 }, (_, i) => (
-        <Skeleton key={i} className="h-7" style={{ width: `${88 - (i % 3) * 14}%` }} />
-      ))}
-    </div>
-  );
-}

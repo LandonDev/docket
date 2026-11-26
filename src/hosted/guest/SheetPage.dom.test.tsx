@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 /** The hosted sheet on work-kit's session: the grid stays editable while the line is down under one line that says where the edits wait, what the sheet refused or could not keep is said once, everyone else's selection is drawn under the service's name, and an Edit link's unsent edits are kept on the device. */
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -96,6 +98,21 @@ async function edit(row: number, cellData?: unknown) {
 }
 
 describe("the hosted sheet", () => {
+  it("waits in the sheet's own shape, a grid with the format row an Edit link will have, never a list of bars", async () => {
+    const { container, unmount } = render(<SheetPage session={session} opened={opened} onGone={() => {}} onDown={() => {}} />);
+    await flush();
+    const bones = container.querySelector<HTMLElement>("[data-sheet-bones]")!;
+    expect(bones.getAttribute("aria-busy")).toBe("true");
+    expect(bones.querySelector("[data-format-row-bone]")).not.toBeNull();
+    unmount();
+    const view = render(<SheetPage session={session} opened={{ role: "view", me: "guest:L1" } as never} onGone={() => {}} onDown={() => {}} />);
+    await flush();
+    expect(view.container.querySelector("[data-sheet-bones]")).not.toBeNull();
+    expect(view.container.querySelector("[data-format-row-bone]")).toBeNull();
+    // The page's own stylesheet reads the bones' file, so its classes are drawn there too.
+    expect(readFileSync(join(__dirname, "guest.css"), "utf8")).toContain('@source "../../renderer/src/work/sheets/bones.tsx";');
+  });
+
   it("says Edit not saved with the reason when the service refuses an edit, takes the sheet as it stands, and keeps the line until an edit is taken", async () => {
     await up();
     expect(screen.queryByRole("alert")).toBeNull();

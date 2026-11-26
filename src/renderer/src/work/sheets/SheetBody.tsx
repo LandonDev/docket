@@ -9,6 +9,7 @@ import { ChartBar, Eye } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
 import { BusyLabel } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
+import { FormatRowBone, SheetBones } from "./bones";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { dayTime } from "../../lib/duration";
@@ -718,80 +719,25 @@ function useWidth(node: HTMLElement | null): number {
 
 // ── loading ──────────────────────────────────────────────────────────
 
-/** Column widths of the loading grid, as an opened budget's first columns. */
-const BONE_COLUMNS = [132, 52, 52, 68, 88, 72];
-/** Each row's bones: the first column's width in percent (0 for an empty row), and whether the figures columns have one. */
-const BONE_ROWS: Array<[number, boolean]> = [
-  [70, false],
-  [0, false],
-  [44, false],
-  [52, true],
-  [60, true],
-  [48, true],
-  [56, true],
-  [66, true],
-  [64, false],
-  [50, true],
-  [58, true],
-  [46, true],
-  [40, true],
-];
-
-/** The format row's place while it comes: work-kit's 36px row (format/FormatRow.tsx) with one bone, as the bar's. */
-export function FormatRowBone() {
-  return (
-    <div data-format-row-bone aria-hidden className="flex h-9 flex-none items-center border-b border-border bg-background px-3">
-      <Skeleton className="h-3 w-40" />
-    </div>
-  );
-}
-
 /**
- * Loading: the sheet's own shape, the format row where the sheet will have one (`row`: the view names its controls before
- * the grid's code and fonts are ready, so nothing drops 36px when the row lands), the formula bar, the lettered grid and
- * the sheet tabs, with bones where the words will be. A book of more than one piece on its way (`loading`) puts a 4px bar
- * with how much has come in the formula bar's bone, as a fetched attachment's first line does.
+ * Loading: the sheet's own shape (`SheetBones`, sheets/bones.tsx, shared with the guest's page), the format row where the
+ * sheet will have one (`row`: the view names its controls before the grid's code and fonts are ready, so nothing drops
+ * 36px when the row lands). A book of more than one piece on its way (`loading`) puts a 4px bar with how much has come
+ * in the formula bar's bone, as a fetched attachment's first line does.
  */
 export function SheetSkeleton({ loading = null, name, row = false }: { loading?: { at: number; size: number } | null; name?: string; row?: boolean } = {}) {
   return (
-    <div aria-busy="true" aria-label="Loading" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {row ? <FormatRowBone /> : null}
-      <div className="flex h-8 flex-none items-center gap-2 border-b border-border pr-3 pl-2">
-        <span className="h-6 w-18 flex-none rounded-md border border-input" />
-        {loading ? (
+    <SheetBones
+      row={row}
+      formula={
+        loading ? (
           <div className="flex h-3 w-1/2 min-w-48 items-center gap-2">
             <Progress aria-label={name ? `Getting ${name}` : "Getting the sheet"} value={loading.at} max={loading.size} className="flex-1" />
             <span className="shrink-0 text-xs leading-none text-muted-foreground tabular-nums">{progressWords(loading.at, loading.size)}</span>
           </div>
-        ) : (
-          <Skeleton className="h-3 w-24" />
-        )}
-      </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="flex h-6 border-b border-border bg-sidebar">
-          <span className="w-10 flex-none border-r border-border" />
-          {BONE_COLUMNS.map((w, c) => (
-            <span key={c} className="flex-none border-r border-border" style={{ width: w }} />
-          ))}
-        </div>
-        {BONE_ROWS.map(([first, figures], r) => (
-          <div key={r} className="flex h-7 border-b border-border">
-            <span className="w-10 flex-none border-r border-border bg-sidebar" />
-            {BONE_COLUMNS.map((w, c) => (
-              <span key={c} className={c === 0 ? "flex flex-none items-center border-r border-border px-2" : "flex flex-none items-center justify-end border-r border-border px-2"} style={{ width: w }}>
-                {c === 0 && first ? <Skeleton className="h-3" style={{ width: `${first}%` }} /> : null}
-                {c >= 3 && c <= 4 && figures && (c === 4 || r < 8) ? <Skeleton className="h-3" style={{ width: `${50 + ((r * 7) % 30)}%` }} /> : null}
-              </span>
-            ))}
-          </div>
-        ))}
-      </div>
-      <div className="flex h-7 flex-none items-center gap-4 border-t border-border bg-sidebar px-4">
-        <Skeleton className="h-3 w-12" />
-        <Skeleton className="h-3 w-12" />
-        <Skeleton className="h-3 w-12" />
-      </div>
-    </div>
+        ) : null
+      }
+    />
   );
 }
 
