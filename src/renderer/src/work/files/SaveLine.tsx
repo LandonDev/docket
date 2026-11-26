@@ -22,9 +22,7 @@ export function SaveLine({ line, where, onShowFolder }: { line: HeaderLine; wher
     text = (
       <>
         {words.slice(0, -place.length)}
-        <Button variant="link" className="h-auto min-w-0 rounded-sm p-0 text-xs leading-4 font-normal text-muted-foreground hover:text-foreground" onClick={onShowFolder}>
-          {place}
-        </Button>
+        <FolderLink place={place} onShow={onShowFolder} />
       </>
     );
   }
@@ -38,7 +36,7 @@ export function SaveLine({ line, where, onShowFolder }: { line: HeaderLine; wher
       data-files-save-line={line.state}
       {...(needs ? { role: "status" } : {})}
       tabIndex={cut && own ? 0 : undefined}
-      className={`focus-ring min-w-0 truncate rounded-sm text-xs leading-4 ${needs ? "text-foreground" : "text-muted-foreground"}`}
+      className={`focus-ring min-w-0 truncate rounded-sm text-xs leading-4 ${own ? "" : LINK_ROOM} ${needs ? "text-foreground" : "text-muted-foreground"}`}
     >
       {text}
     </p>
@@ -51,6 +49,21 @@ export function SaveLine({ line, where, onShowFolder }: { line: HeaderLine; wher
         <span className="min-w-0 break-words">{words}</span>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/** Room inside a line's clip for its folder press's 24px: 2px over the line and 6px under it, taken back so nothing moves. */
+export const LINK_ROOM = "-mt-0.5 pt-0.5 -mb-1.5 pb-1.5";
+
+/**
+ * The folder a file's line names, as a press that shows it ("Saved 1:52 PM in Events", "In Events"): 24px to hit over
+ * its 16px line, reaching 2px up and 6px down, short of the name's own press above it. Its line takes `LINK_ROOM`.
+ */
+export function FolderLink({ place, onShow }: { place: string; onShow(): void }) {
+  return (
+    <Button variant="link" data-files-folder-link className="relative h-auto min-w-0 rounded-sm p-0 text-xs leading-4 font-normal text-muted-foreground after:absolute after:inset-x-0 after:-top-0.5 after:-bottom-1.5 after:content-[''] hover:text-foreground" onClick={onShow}>
+      {place}
+    </Button>
   );
 }
 

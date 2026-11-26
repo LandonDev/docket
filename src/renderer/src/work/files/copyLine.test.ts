@@ -24,6 +24,15 @@ describe("the line of a copy that saves back", () => {
     for (const is of ["ok", "sending", "changed", "gone", "away", "refused"] as const) expect(words({ is, at: AT, detail: "x" })).not.toContain("·");
   });
 
+  /** Polish 2 council round 1 (R1-C9): "Saving to This Mac…" set the window's own computer mid-line with its capital. */
+  it("sets this window's computer mid-line, and lifts its first letter where it heads the line", () => {
+    const on = (back: Parameters<typeof copyLine>[1]) => copyLine({ state: "saved" }, back, "this Mac", NOW).words;
+    expect(on({ is: "sending" })).toBe("Saving to this Mac…");
+    expect(on({ is: "changed", at: AT })).toBe("This file changed on this Mac");
+    expect(on({ is: "away" })).toBe("This Mac is not answering. Changes wait here");
+    expect(on({ is: "refused" })).toBe("This Mac refused the save");
+  });
+
   it("never reads as saved while his window's ask is unanswered, and says the host's refusal of it", () => {
     expect(copyLine({ state: "saved", at: AT }, { is: "ok", at: AT - 60_000 }, "the Windows VM", NOW, { owed: true }).words).toBe("Saving to the Windows VM…");
     expect(copyLine({ state: "saved" }, { is: "ok" }, "MacBook", NOW, { owed: true }).state).toBe("saving");

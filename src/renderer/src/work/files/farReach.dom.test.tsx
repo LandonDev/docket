@@ -130,5 +130,7 @@ describe("a copy's computer, away", () => {
     keepFarName("env_pc", "Purdue laptop");
     expect(copyHostOf(tab, { reads: [] })).toBe("Purdue laptop");
     expect(copyHostOf({ copyOf: { host: "env_gone", path: "x" } }, { reads: [] })).toBe("another computer");
+    // The registry's words for this machine are set as a line sets them mid-sentence (Polish 2 council round 1, R1-C9).
+    expect(copyHostOf({ copyOf: { host: "local", path: "x" } }, { reads: [{ link: "local", name: "This Mac", desktop: true, wire: "files" }] as never })).toBe("this Mac");
   });
 });

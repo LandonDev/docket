@@ -228,8 +228,13 @@ the first paint.
   that the presses, ⋯ and Ask take a second row at the end (`data-files-head-presses`), so neither is cut to a stub.
   The name, where a press renames it, takes 24px over its 20px line; it cuts in its own span, so the heading clips
   no part of the press.
-  A kind's Offline names the computer that is not answering ("The box is not answering. 3 changes wait here",
+  A kind's Offline names the computer that is not answering ("The box is not answering. Changes wait here",
+  with no count: the text kind counts keys, not changes;
   `offlineNamed` in fileText.ts); a download says "Downloading… 2.1 of 8.4 MB" in the header as in the row.
+  The folder the line names ("Saved 1:52 PM in Events", or "In Events" with no save line) is one press,
+  `FolderLink` in SaveLine.tsx, 24px to hit over its 16px line. A copy's line sets the window's own computer
+  mid-line ("Saving to this Mac…", `copyHostOf` through `nameInLine`). ⋯ is tidied (`tidy()`), so no divider
+  leads it. Quick Look's cut name says the whole of itself on hover.
 - An empty place gets its first tab from `tabOpen {first: true}`: the host
   makes it only while there is none, so two windows that open the place
   together make one tab between them.
@@ -2606,7 +2611,7 @@ over a file that changed there.
     Reload and Keep Both (`edits`, a count `load` compares across its read). Keys typed while Keep Both is out are
     not in the copy it made: the editor and the journal keep them, nothing is read over them, and the line still
     offers Reload and Keep Both (`keepMine` lets go only the text it sent). A failed send is said ("The box is not
-    answering. 2 changes wait here", the frame naming the computer; "Not saved. …"; Retry) until a send is answered: his next key never turns the line back to
+    answering. Changes wait here", the frame naming the computer; "Not saved. …"; Retry) until a send is answered: his next key never turns the line back to
     Saved (`failure`, kept on the session as a sheet keeps `sendError`); a send out a while says Saving….
   - A copy's item that goes by any way (its tab's close, the pane's own Close, a stray the start's check drops) is
     kept with its record and sent (`copiesLeft`, from the module's `itemsRemoved`); the office pillar's drop of a

@@ -6,7 +6,7 @@ import { filesPaneOf, type CanvasItem, type CanvasKind, type ContextChip } from 
 import { kindOfEntry } from "@shared/work/files";
 import { templateFormOf } from "@shared/work/templates";
 import { Maximize2, Minimize2, MoreHorizontal, X } from "../../chrome/icons";
-import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
+import { RowsMenu, tidy, type MenuRow } from "../../chrome/menuRows";
 import { Tip, TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
@@ -47,7 +47,7 @@ import { canvasFlushPort } from "../../lib/canvasFlushPort";
 import { saveKeyPort } from "../../lib/saveKey";
 import { NameField, useSideOver } from "./rowParts";
 import { cloudLine, cloudOfBack, copyBackDue, copyLine, isCopyBack, newestBack, offlineNamed, staysLine, type CopyAsk, type HeaderLine } from "./fileText";
-import { HEAD_NARROW, SaveActions, SaveLine, TUCKED, tuckedRows } from "./SaveLine";
+import { FolderLink, HEAD_NARROW, LINK_ROOM, SaveActions, SaveLine, TUCKED, tuckedRows } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
 import { dropsOf, openSaveAs } from "./saveAsPort";
 import { useWorkspaceOf } from "./workspaceOf";
@@ -253,7 +253,10 @@ export function FileHeader({
           ) : line ? (
             <SaveLine line={line} where={where} onShowFolder={onShowFolder} />
           ) : where ? (
-            <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground">In {where}</p>
+            // With no save line the folder is still the way back to it, as in "Saved … in Events".
+            <p className={`min-w-0 truncate text-xs leading-4 text-muted-foreground ${onShowFolder ? LINK_ROOM : ""}`}>
+              In {onShowFolder ? <FolderLink place={where} onShow={onShowFolder} /> : where}
+            </p>
           ) : null}
         </div>
       </div>
@@ -514,13 +517,14 @@ export function FileTabView({
   const mayTemplate = useLinkMay(workspace.environmentId, "work.templates.save");
   const template = meta && item && !copy && item.source.at === "file" && templateFormOf(item.source.path) && mayTemplate && workTemplatePort.get() ? item.source : null;
   const wordAuto = copy && tab.word ? tab.word : null;
-  const rows: MenuRow[] = [
+  // Tidied: the first verb kept may carry its row's rule (Share…, Download or Rename), which must not lead the menu.
+  const rows: MenuRow[] = tidy([
     ...verbs.flatMap((row): MenuRow[] => [
       ...(row.rule ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
       { kind: "item", id: row.act, label: row.label, ...(row.refused ? { disabled: true, reason: row.refused } : {}), ...(row.danger ? { danger: true } : {}) },
     ]),
     ...fileMenuEnd({ download: !!manage?.download, saveAs: wordable, template: !!template, wordAuto: wordAuto ? !!wordAuto.auto : null, full }),
-  ];
+  ]);
   // A shared Office file opens here or in Office for the web (docs/agents/work-office-live.md): the header's control
   // switches it, the line says how far Word has come, and the body is the guest's place (LiveBody).
   const live = liveSourceOf(item);

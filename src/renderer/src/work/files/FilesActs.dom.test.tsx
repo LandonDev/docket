@@ -793,6 +793,9 @@ describe("a file open in its tab", () => {
     fireEvent.click(screen.getByRole("button", { name: "More for Budget.xlsx" }));
     const menu = await screen.findByRole("menu");
     expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent?.replace(/⌘W|Ctrl\+W/, ""))).toEqual(["Rename", "Move to…", "Copy to…", "Star", "Delete", "Download", "Full Window", "Close Tab"]);
+    // Polish 2 council round 1 (R1-C7): the row's rule before Rename led the menu as a stray divider.
+    const parts = [...menu.querySelectorAll('[role="menuitem"], [role="separator"]')].map((el) => el.getAttribute("role"));
+    expect([parts[0], parts.at(-1)]).toEqual(["menuitem", "menuitem"]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Rename" }));
     const field = await screen.findByRole("textbox", { name: "Rename Budget.xlsx" });
     fireEvent.change(field, { target: { value: "Budget 2027.xlsx" } });

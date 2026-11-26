@@ -50,6 +50,7 @@ import { formFolderOf, formKindsFor, twinOf } from "../msforms/newForm";
 import { useFormMaking } from "../msforms/useFormMaking";
 import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, loadTabs, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, reachAnswered, useReach, searchReplaces, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
 import { farName } from "./farLink";
+import { nameInLine } from "../../lib/hostWords";
 import { closeCopyTab } from "./copyClose";
 import { DragLabelLayer, dragging, dropVerb, ROWS_MIME, setDragging, setDragLabel } from "./rowParts";
 import { filesPanelId, TabRow } from "./TabRow";
@@ -1142,7 +1143,8 @@ function SearchTab({
 export const copyHostOf = (tab: Pick<FileTab, "copyOf">, reach: Pick<Reach, "reads">): string => {
   if (tab.copyOf?.vm) return "the Windows VM";
   const host = tab.copyOf?.host;
-  return reach.reads.find((r) => r.answer?.host === host)?.name ?? reach.reads.find((r) => r.link === host)?.name ?? (host ? farName(host) : undefined) ?? "another computer";
+  // Mid-line, as every line it goes in sets it ("Saving to this Mac…"); a line it heads lifts its first letter.
+  return nameInLine(reach.reads.find((r) => r.answer?.host === host)?.name ?? reach.reads.find((r) => r.link === host)?.name ?? (host ? farName(host) : undefined) ?? "another computer");
 };
 
 function OpenFile({

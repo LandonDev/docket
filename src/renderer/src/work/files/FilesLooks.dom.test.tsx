@@ -727,6 +727,22 @@ describe("after the council's first round", () => {
     expect(where.querySelector(".sr-only")!.textContent).toBe("Esports Staff, General");
   });
 
+  /** Polish 2 council round 1 (R1-C13): "Ballroom contrac…" had no way to read the rest before opening it. */
+  it("gives its cut name the whole of itself on hover", async () => {
+    const { tooltipChunk, warmTooltips } = await import("../../components/ui/tooltip");
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    draw({});
+    fireEvent.click(row("Plan.pdf"));
+    fireEvent.keyDown(list(), { key: " " });
+    await waitFor(() => expect(document.querySelector("[data-files-quicklook-name]")!.getAttribute("data-slot")).toBe("tooltip-trigger"));
+    vi.restoreAllMocks();
+  });
+
   it("appears at once when Space opens it, and keeps a fade alone under reduced motion for a press", async () => {
     draw({});
     fireEvent.click(row("Plan.pdf"));

@@ -211,7 +211,7 @@ describe("a text file in a tab", () => {
     disk.down = true;
     fireEvent.change(field, { target: { value: "typed while away\n" } });
     // The line names the computer that is not answering, as every line of its family does.
-    await waitFor(() => expect(line()).toBe("The box is not answering. 1 change waits here"), { timeout: SAVE_AFTER_MS + 1500 });
+    await waitFor(() => expect(line()).toBe("The box is not answering. Changes wait here"), { timeout: SAVE_AFTER_MS + 1500 });
     disk.down = false;
     act(() => disk.opens.forEach((listener) => listener()));
     await waitFor(() => expect(line()).toBe("Saved 1:53 PM in Events"));

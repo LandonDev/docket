@@ -207,7 +207,7 @@ describe("a text file open", () => {
     h.session.edit("ab\n");
     await h.fire();
     const line = h.lines.at(-1)!;
-    expect(savedWords(line, "Events", NOW)).toBe("Offline. 2 changes wait here");
+    expect(savedWords(line, "Events", NOW)).toBe("Offline. Changes wait here");
     expect(line.actions?.map((a) => a.label)).toEqual(["Retry"]);
     expect(h.file.text).toBe("first\n");
     h.setDown(false);
@@ -222,11 +222,11 @@ describe("a text file open", () => {
     h.setDown(true);
     h.session.edit("first\ntyped while away\n");
     await h.fire();
-    expect(h.words()).toBe("Offline. 1 change waits here");
+    expect(h.words()).toBe("Offline. Changes wait here");
     h.setDown(false);
     const sent = h.session.reopened();
     // The send that follows says Saving… only once it has been out a while; until then the words still wait, never Saved.
-    expect(h.words()).toBe("Offline. 1 change waits here");
+    expect(h.words()).toBe("Offline. Changes wait here");
     h.tick(600);
     expect(h.words()).toBe("Saving…");
     await sent;
@@ -245,7 +245,7 @@ describe("a text file open", () => {
     h.loseNext();
     h.session.edit("first\nsecond\n");
     await h.session.flush();
-    expect(h.words()).toBe("Offline. 1 change waits here");
+    expect(h.words()).toBe("Offline. Changes wait here");
     const writes = () => h.calls.filter((c) => c.method === "work.files.write").map((c) => c.params);
     expect(writes()[0]).not.toHaveProperty("tried");
     h.session.edit("first\nsecond\nthird\n");
@@ -417,12 +417,12 @@ describe("a text file open", () => {
     h.setDown(true);
     h.session.edit("a\n");
     await h.fire();
-    expect(h.words()).toBe("Offline. 1 change waits here");
+    expect(h.words()).toBe("Offline. Changes wait here");
     // His next key: the words still wait, and the line says so, counted.
     h.session.edit("ab\n");
-    expect(h.words()).toBe("Offline. 2 changes wait here");
+    expect(h.words()).toBe("Offline. Changes wait here");
     h.tick(SAVE_AFTER_MS + 1);
-    expect(h.words()).toBe("Offline. 2 changes wait here");
+    expect(h.words()).toBe("Offline. Changes wait here");
     // The link back: the next send is answered, and only then is it Saved.
     h.setDown(false);
     await h.fire();
@@ -449,7 +449,7 @@ describe("a text file open", () => {
     const failing = h.session.flush();
     expect(h.words()).toBe("Saved 1:53 PM in Events");
     await failing;
-    expect(h.words()).toBe("Offline. 1 change waits here");
+    expect(h.words()).toBe("Offline. Changes wait here");
     expect(h.lines.filter((l) => l?.state === "saving")).toHaveLength(1);
   });
 
@@ -558,15 +558,17 @@ describe("the words", () => {
     expect(savedWords({ state: "saved" }, null, NOW)).toBe("Saved");
     expect(say({ state: "saved", at: new Date(2026, 10, 21, 9, 5).getTime() })).toBe("Saved Nov 21, 9:05 AM in Events");
     expect(say({ state: "saving" })).toBe("Saving…");
-    expect(say({ state: "offline", pending: 3 })).toBe("Offline. 3 changes wait here");
-    expect(say({ state: "offline", pending: 1 })).toBe("Offline. 1 change waits here");
+    expect(say({ state: "offline", pending: 3 })).toBe("Offline. Changes wait here");
+    expect(say({ state: "offline", pending: 1 })).toBe("Offline. Changes wait here");
+    // Polish 2 council round 1 (R1-C8): one sentence typed read "44 changes wait here"; the count was his keys.
+    expect(say({ state: "offline", pending: 44 })).toBe("Offline. Changes wait here");
     expect(say({ state: "conflict", detail: "Dana changed this at 2:04 PM" })).toBe("Dana changed this at 2:04 PM");
     expect(say({ state: "readonly", detail: "a mail's file" })).toBe("Read only, a mail's file");
     expect(say({ state: "copy", detail: "MacBook" })).toBe("A copy from MacBook. Changes stay here");
     expect(say({ state: "downloading", detail: "2.1 of 8.4 MB" })).toBe("Downloading… 2.1 of 8.4 MB");
     // In the frame, Offline names the computer that is not answering, as its family does; unnamed, it stands.
-    expect(offlineNamed({ state: "offline", pending: 3 }, "the box")?.words).toBe("The box is not answering. 3 changes wait here");
-    expect(offlineNamed({ state: "offline", pending: 1 }, "this Mac")?.words).toBe("This Mac is not answering. 1 change waits here");
+    expect(offlineNamed({ state: "offline", pending: 3 }, "the box")?.words).toBe("The box is not answering. Changes wait here");
+    expect(offlineNamed({ state: "offline", pending: 1 }, "this Mac")?.words).toBe("This Mac is not answering. Changes wait here");
     expect(offlineNamed({ state: "offline" }, "the box")?.words).toBe("The box is not answering. Changes wait here");
     expect(offlineNamed({ state: "offline", pending: 2 }, undefined)?.words).toBeUndefined();
     expect(offlineNamed({ state: "saving" }, "the box")?.words).toBeUndefined();

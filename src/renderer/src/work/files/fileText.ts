@@ -75,8 +75,8 @@ export function savedWords(line: SavedLine, where: string | null, now = Date.now
     case "saving":
       return "Saving…";
     case "offline": {
-      const n = line.pending ?? 0;
-      return n > 0 ? `Offline. ${n} ${n === 1 ? "change waits" : "changes wait"} here` : "Offline";
+      // A count would be his keystrokes, not his changes: that some wait is the fact.
+      return (line.pending ?? 0) > 0 ? "Offline. Changes wait here" : "Offline";
     }
     case "conflict":
       return line.detail ?? "This file changed somewhere else";
@@ -95,14 +95,12 @@ export function savedWords(line: SavedLine, where: string | null, now = Date.now
 
 /**
  * A kind's Offline, in the frame, names the computer whose link dropped (`host`, mid-line as `nameInLine` writes it):
- * "The box is not answering. 3 changes wait here", as every other line of the family does. Any other line stands, and
- * so does an Offline whose computer this window cannot name.
+ * "The box is not answering. Changes wait here", as every other line of the family does, with no count (the text
+ * kind counts keystrokes). Any other line stands, and so does an Offline whose computer this window cannot name.
  */
 export function offlineNamed<L extends SavedLine & { words?: string }>(line: L | null, host: string | undefined): L | null {
   if (line?.state !== "offline" || line.words || !host) return line;
-  const n = line.pending ?? 0;
-  const who = `${host[0]!.toUpperCase()}${host.slice(1)} is not answering.`;
-  return { ...line, words: n > 0 ? `${who} ${n} ${n === 1 ? "change waits" : "changes wait"} here` : `${who} Changes wait here` };
+  return { ...line, words: `${host[0]!.toUpperCase()}${host.slice(1)} is not answering. Changes wait here` };
 }
 
 /**
@@ -171,10 +169,11 @@ export function copyLine(kind: SavedLine | null, back: CopyBack, host: string, n
     case "gone":
       return { state: "conflict", words: `This file was moved or deleted on ${host}` };
     case "away":
-      return { state: "offline", words: `${host} is not answering. Changes wait here`, needs: true };
+      return { state: "offline", words: `${host[0]!.toUpperCase()}${host.slice(1)} is not answering. Changes wait here`, needs: true };
     case "refused": {
       const why = back.detail?.trim().replace(/\.$/, "");
-      return { state: "conflict", words: why ? `${host} refused the save. ${why[0]!.toUpperCase()}${why.slice(1)}` : `${host} refused the save` };
+      const who = `${host[0]!.toUpperCase()}${host.slice(1)}`;
+      return { state: "conflict", words: why ? `${who} refused the save. ${why[0]!.toUpperCase()}${why.slice(1)}` : `${who} refused the save` };
     }
     default:
       // Saved is said of a write of the copy the file holds (an older host says neither count): a write it does not

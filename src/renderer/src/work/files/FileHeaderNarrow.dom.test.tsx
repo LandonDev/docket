@@ -186,6 +186,35 @@ describe("the Beside seat's bar", () => {
   });
 });
 
+/** Polish 2 council round 1 (R1-C11, R1-C12): "In Events" was plain words, and the save line's folder 16px to hit. */
+describe("the folder a file's line names", () => {
+  const head = (line: Parameters<typeof FileHeader>[0]["line"], onShowFolder?: () => void) =>
+    render(<FileHeader name="Budget.xlsx" line={line} where="Events" running={null} onRun={() => undefined} {...(onShowFolder ? { onShowFolder } : {})} rows={[]} onPick={() => undefined} ask={{ disabled: false, pressed: false, run: () => undefined }} />);
+
+  it("is a press that shows the folder, with no save line as with one, 24px to hit and nothing moved", () => {
+    const shown: string[] = [];
+    head(null, () => void shown.push("Events"));
+    const link = screen.getByRole("button", { name: "Events" });
+    expect(link.parentElement!.textContent).toBe("In Events");
+    expect(link.className.split(" ")).toEqual(expect.arrayContaining(["relative", "after:absolute", "after:-top-0.5", "after:-bottom-1.5"]));
+    // The line's clip has room for the press, and takes it back.
+    expect(link.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["-mt-0.5", "pt-0.5", "-mb-1.5", "pb-1.5"]));
+    fireEvent.click(link);
+    expect(shown).toEqual(["Events"]);
+    cleanup();
+    head({ state: "saved", at: Date.now() }, () => undefined);
+    const saved = screen.getByRole("button", { name: "Events" });
+    expect(saved.hasAttribute("data-files-folder-link")).toBe(true);
+    expect(saved.closest("[data-files-save-line]")!.className).toContain("pb-1.5");
+  });
+
+  it("stays words where nothing can show the folder", () => {
+    head(null);
+    expect(screen.queryByRole("button", { name: "Events" })).toBeNull();
+    expect(screen.getByText("In Events").className).not.toContain("pb-1.5");
+  });
+});
+
 describe("a file tab's ⋯", () => {
   it("ends with Full Window and Close Tab; a Word file's own save choice stands with the other saves above them", async () => {
     const { fileMenuEnd } = await import("./FileTabView");
