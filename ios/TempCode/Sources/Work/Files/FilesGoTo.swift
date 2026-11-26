@@ -12,12 +12,25 @@ struct FilesGoTo: View {
     let jobs: [FilesRoot.Job]
     @State private var text = ""
     @State private var rows: [FilesFound.Row] = []
+    /// The jobs whose host could not look up the names, by name.
+    @State private var failed: [String] = []
     @State private var asking = true
     @FocusState private var focused: Bool
 
     var body: some View {
         NavigationStack {
             List {
+                // A host that could not look is said beside what the others found, with Try Again.
+                if let note = FilesFound.notSearched(failed) {
+                    HStack(spacing: Layout.rowGap) {
+                        Text(note).textStep(.meta).fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: Layout.rowGap)
+                        PillButton("Try Again") { Task { await ask() } }
+                    }
+                    .listRowInsets(Layout.rowInsets)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("files-go-to-failed")
+                }
                 ForEach(rows) { row in
                     Button { open(row) } label: {
                         FilesRowLabel(symbol: FilesGlyph.of(row.entry.kind), title: row.entry.name, fact: row.entry.where?.name ?? "", sector: jobs.count > 1 ? row.job.sector : nil)
@@ -29,8 +42,8 @@ struct FilesGoTo: View {
             }
             .listStyle(.plain)
             .overlay {
-                if rows.isEmpty, !asking {
-                    ContentUnavailableView(text.isEmpty ? "Nothing Recent" : "No Names Match", systemImage: "arrow.forward.circle")
+                if let empty = FilesGoToRules.empty(text: text, rows: rows.count, failed: failed, asking: asking) {
+                    ContentUnavailableView(empty, systemImage: "arrow.forward.circle")
                 }
             }
             .navigationTitle("Go To")
@@ -52,20 +65,19 @@ struct FilesGoTo: View {
         let words = text.trimmingCharacters(in: .whitespaces)
         if !words.isEmpty { try? await Task.sleep(for: .milliseconds(150)) }
         guard !Task.isCancelled else { return }
-        var found: [FilesFound.Row] = []
-        await withTaskGroup(of: (FilesRoot.Job, [FileEntry]).self) { group in
+        var answers: [(job: FilesRoot.Job, entries: [FileEntry]?)] = []
+        await withTaskGroup(of: (FilesRoot.Job, [FileEntry]?).self) { group in
             for job in jobs {
                 guard let files = model.registry.client(job.environmentId)?.work.files else { continue }
-                group.addTask { (job, (try? await files.names(job.workspaceId, words)) ?? []) }
+                group.addTask { (job, try? await files.names(job.workspaceId, words)) }
             }
             for await (job, entries) in group {
-                found += entries.map { FilesFound.Row(job: job, entry: $0) }
+                answers.append((job: job, entries: entries))
             }
         }
         guard !Task.isCancelled else { return }
-        // Each host ranks its own; across jobs the order of the jobs holds.
-        let order = Dictionary(jobs.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
-        rows = found.enumerated().sorted { (order[$0.element.job.id] ?? 0, $0.offset) < (order[$1.element.job.id] ?? 0, $1.offset) }.map(\.element)
+        // Each host ranks its own; across jobs the order of the jobs holds; a host that failed is named, never empty.
+        (rows, failed) = FilesGoToRules.merge(answers, order: jobs)
         asking = false
     }
 

@@ -623,9 +623,12 @@ public struct FilesFound: Equatable, Sendable {
     public var isEmpty: Bool { waiting.isEmpty && rows.isEmpty }
 
     /// The one quiet line under the results when a job's host could not search.
-    public var note: String? {
-        guard !failed.isEmpty else { return nil }
-        return failed.count == 1 ? "\(failed[0]) was not searched." : "\(failed.dropLast().joined(separator: ", ")) and \(failed.last!) were not searched."
+    public var note: String? { Self.notSearched(failed) }
+
+    /// "Unify was not searched.", "Unify and Purdue Esports were not searched."; nil for none.
+    public static func notSearched(_ names: [String]) -> String? {
+        guard let last = names.last else { return nil }
+        return names.count == 1 ? "\(last) was not searched." : "\(names.dropLast().joined(separator: ", ")) and \(last) were not searched."
     }
 
     static func sorted(_ rows: [Row]) -> [Row] {
@@ -643,5 +646,25 @@ public extension FilesRoot {
 
     static func jobs(environmentId: String, workspaces: [WorkspaceMeta]) -> [Job] {
         workspaces.filter { $0.kind == .work }.map { Job(id: ProjectPairs.key(environmentId, $0), environmentId: environmentId, workspaceId: $0.id, name: $0.name, sector: $0.sector) }
+    }
+}
+
+/// Go To's answer (Work/Files/FilesGoTo.swift): each job's host ranks its own names, the jobs keep their order, and a
+/// host that could not look is named beside the names the others found, never read as "No Names Match".
+public enum FilesGoToRules {
+    /// The rows in the jobs' order, each job's own in its host's order; the jobs whose host did not answer, by name.
+    /// `answers` holds each asked job with its names, or nil where its host failed.
+    public static func merge(_ answers: [(job: FilesRoot.Job, entries: [FileEntry]?)], order: [FilesRoot.Job]) -> (rows: [FilesFound.Row], failed: [String]) {
+        let place = Dictionary(order.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let ranked = answers.sorted { (place[$0.job.id] ?? 0) < (place[$1.job.id] ?? 0) }
+        let rows = ranked.flatMap { answer in (answer.entries ?? []).map { FilesFound.Row(job: answer.job, entry: $0) } }
+        return (rows, ranked.filter { $0.entries == nil }.map(\.job.name))
+    }
+
+    /// The sheet's empty words once nothing is out: "Nothing Recent" or "No Names Match"; nil while rows show, while
+    /// it asks, or where a host failed (its line says so instead).
+    public static func empty(text: String, rows: Int, failed: [String], asking: Bool) -> String? {
+        guard rows == 0, !asking, failed.isEmpty else { return nil }
+        return text.isEmpty ? "Nothing Recent" : "No Names Match"
     }
 }

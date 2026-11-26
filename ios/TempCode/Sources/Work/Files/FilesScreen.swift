@@ -48,11 +48,12 @@ struct FilesPlaceScreen: View {
             empty: searching ? PlaceEmpty(title: "No Results", line: saved == nil ? "Nothing here is called “\(query)”." : nil)
                 : PlaceEmpty(title: jobs.isEmpty ? "No Jobs Yet" : "No Places", line: jobs.isEmpty ? "Files shows the places of each Work workspace." : nil),
             failure: searching ? found?.note : Self.failure(bands),
-            retry: { await load(bands) },
+            // A failed search asks its hosts again; a failed place reads the places again.
+            retry: { if searching { await search(shown) } else { await load(bands) } },
             jobs: jobs.count > 1 ? jobs.map { PlaceJob(id: $0.id, name: $0.name, sector: $0.sector) } : [],
             filter: jobs.count > 1 ? $pick : nil,
             search: $query,
-            refresh: { await load(bands) }
+            refresh: { if searching { await search(shown) } else { await load(bands) } }
         ) {
             if searching {
                 FoundRows(found: found, saved: saved, multiJob: shown.count > 1) { saved = nil }
