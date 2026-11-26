@@ -19,6 +19,8 @@ import { bytesOfBase64, whenWords } from "./fileText";
 import { KindGlyph } from "./KindGlyph";
 import { ArchiveList, factsLine, MediaPlay } from "./Preview";
 import { hostFrom, useArchive } from "./previews";
+import { opensInApp } from "./open";
+import { useOriginOf } from "./saveAsPort";
 
 /**
  * The file kind's body (docs/agents/work-files.md "The file kind", docs/DESIGN.md "The Files place"): a text or
@@ -139,7 +141,7 @@ export function Body({ item, source, env, shell }: CanvasBodyProps<undefined>) {
   if (!workspaceId) return <EmptyState title="This file has no workspace" />;
   if (view.is === "loading" || !session) return <ItemSkeleton />;
   if (view.is === "failed") return null;
-  if (view.is === "facts") return <Facts name={item.title} entry={view.entry} why={view.why} env={env} workspaceId={workspaceId} itemId={item.id} source={source} />;
+  if (view.is === "facts") return <Facts name={item.title} entry={view.entry} why={view.why} env={env} workspaceId={workspaceId} itemId={item.id} source={source} scoped={view.scoped} />;
   return (
     <Suspense fallback={<ItemSkeleton />}>
       <TextEditor key={view.rev} name={item.title} path={canvasSourcePath(source) ?? item.title} text={view.text} readOnly={view.locked !== null || view.offer === true} onChange={(read) => session.edit(read)} place={place} />
@@ -155,7 +157,7 @@ const LOADING = { is: "loading" } as const;
 const loadingView = (): typeof LOADING => LOADING;
 
 /** A file's facts, for one no editor here shows: what it is, how big, when it changed, and the ways out. */
-export function Facts({ name, entry, why, env, workspaceId, itemId, source }: { name: string; entry: FileEntry | null; why?: string; env: string; workspaceId: string; itemId: string; source: CanvasBodyProps["source"] }) {
+export function Facts({ name, entry, why, env, workspaceId, itemId, source, scoped }: { name: string; entry: FileEntry | null; why?: string; env: string; workspaceId: string; itemId: string; source: CanvasBodyProps["source"]; scoped?: true }) {
   const kind = kindOfEntry(name).kind;
   const [busy, setBusy] = useState<"app" | "download" | null>(null);
   // One sentence of facts under the header that already names the file: the name is not said again.
@@ -163,7 +165,11 @@ export function Facts({ name, entry, why, env, workspaceId, itemId, source }: { 
   // The host is asked only on a press: a facts page drawn with no host (a preview) still draws.
   const link = (): ReturnType<typeof registry.linkOf> => registry.linkOf(env);
   // Its own app can be asked for a file in a library, on the computer it lies on; a download takes its bytes from the disk they are on.
-  const inLibrary = entry?.shared === true;
+  const origin = useOriginOf(itemId);
+  const app = origin?.file ? { copy: origin.folder.copy, source: origin.file }
+    : entry?.key.startsWith("lib:") ? { copy: { link: env, place: { kind: "teams" as const } }, source }
+    : null;
+  const appWay = app && opensInApp(app.copy) ? app : null;
   const cloudOnly = entry?.local === false;
   const run = (what: "app" | "download", fn: () => Promise<void>): void => {
     if (busy) return;
@@ -197,7 +203,7 @@ export function Facts({ name, entry, why, env, workspaceId, itemId, source }: { 
   const sound = here && kind === "audio" ? here : null;
   const zip = here && extOf(name) === "zip" ? here : null;
   const from = useMemo(() => hostFrom(env, workspaceId), [env, workspaceId]);
-  const archive = useArchive(zip ? from : null, zip, !!zip);
+  const archive = useArchive(zip ? from : null, zip, !!zip, scoped ? itemId : undefined);
   const ways = !entry ? null : drive ? (
     <div className="flex items-center gap-2">
       <Button variant="secondary" size="sm" onClick={() => void openUrl(`https://drive.google.com/file/d/${encodeURIComponent(drive)}/view`)}>
@@ -206,13 +212,13 @@ export function Facts({ name, entry, why, env, workspaceId, itemId, source }: { 
     </div>
   ) : (
     <div className="flex items-center gap-2">
-      {inLibrary ? (
-        <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => run("app", () => link().request("work.office.filesOpen", { source }).then(() => undefined))}>
+      {appWay ? (
+        <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => run("app", () => registry.linkOf(appWay.copy.link).request("work.office.filesOpen", { source: appWay.source }).then(() => undefined))}>
           <BusyLabel busy={busy === "app"} label="Open in its app" />
         </Button>
       ) : null}
       {!cloudOnly ? (
-        <Button variant={inLibrary || sound ? "ghost" : "secondary"} size="sm" disabled={busy !== null} onClick={() => run("download", download)}>
+        <Button variant={appWay || sound ? "ghost" : "secondary"} size="sm" disabled={busy !== null} onClick={() => run("download", download)}>
           <BusyLabel busy={busy === "download"} label="Download" />
         </Button>
       ) : null}

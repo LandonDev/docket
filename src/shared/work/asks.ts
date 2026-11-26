@@ -121,7 +121,8 @@ export const WORK_ASKS: readonly Ask[] = [
   ["work.files.linkAct", "operate", ok, ok, refused, refused],
   ["work.files.links", "read", ok, ok, ok, ok, [ok, refused, refused]],
   ["work.files.list", "read", ok, ok, ok, ok, [ok, hidden("work/files/farLink.ts"), ok]],
-  ["work.files.make", "operate", ok, ok, refused, refused, [ok, hidden("work/files/store.ts"), ok]],
+  // The places store strips makes for far Files rows. Save As also checks the selected folder's link.
+  ["work.files.make", "operate", ok, ok, refused, refused, [ok, hidden("work/files/SaveAs.tsx"), ok]],
   ["work.files.move", "operate", ok, ok, refused, refused, [ok, ok, ok]],
   ["work.files.names", "read", ok, ok, ok, ok],
   ["work.files.open", "operate", ok, ok, refused, refused, [ok, ok, ok]],
@@ -273,7 +274,7 @@ export const WORK_ASKS: readonly Ask[] = [
   ["work.office.filesFetch", "read", ok, ok, ok, ok, [ok, refused, ok]],
   ["work.office.filesLibraries", "read", ok, ok, ok, ok],
   ["work.office.filesList", "read", ok, ok, ok, ok, [ok, hidden("work/files/store.ts"), ok]],
-  ["work.office.filesOpen", "operate", ok, ok, refused, refused, [ok, hidden("work/files/FilesView.tsx"), ok]],
+  ["work.office.filesOpen", "operate", ok, ok, refused, refused, [ok, hidden("work/files/open.ts"), ok]],
   ["work.office.filesSearch", "read", ok, ok, ok, ok],
   ["work.office.filesSetRoots", "local", hidden("work/shell/settings.tsx"), hidden("work/shell/settings.tsx"), hidden("work/shell/settings.tsx"), hidden("work/shell/settings.tsx"), [ok, ok, ok]],
   ["work.office.filesThreads", "read", ok, ok, ok, ok, [ok, ok, ok]],

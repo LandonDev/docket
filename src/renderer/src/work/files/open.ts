@@ -4,6 +4,7 @@ import { kindOfEntry, openingTag, type FileEntry } from "@shared/work/files";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { platformOf } from "../../lib/hostPlatform";
+import { nameInLine } from "../../lib/hostWords";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { sessionStore } from "../../lib/tcserver/store";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
@@ -58,7 +59,7 @@ export async function heldBy(workspace: OpenFrom["workspace"], file: CanvasSourc
 }
 
 /** Whether a file of this place can open in its own app from this window (`appOpens`): its computer linked directly, a Mac or a PC. */
-export function opensInApp(copy: PlaceCopy): boolean {
+export function opensInApp(copy: { link: string; place: Pick<PlaceCopy["place"], "kind" | "vm"> }): boolean {
   const far = !registry.has(copy.link);
   return appOpens(copy, { far, ...(far ? {} : { platform: platformOf(copy.link) }) });
 }
@@ -67,6 +68,11 @@ export function opensInApp(copy: PlaceCopy): boolean {
 export async function openInApp(entry: Pick<FileEntry, "name" | "key" | "ref">, copy: PlaceCopy, from: Pick<OpenFrom, "busy">): Promise<void> {
   if (!entry.ref) return;
   if (copy.place.kind !== "teams" && copy.place.kind !== "onedrive") return void loadToast().then((toast) => toast.message(`${entry.name} has no viewer here yet`));
+  if (!opensInApp(copy)) {
+    const computer = copy.place.vm ? "the Windows VM" : nameInLine(copy.host);
+    const verb = kindOfEntry(entry.name).kind === "audio" ? "Play" : "Open";
+    return void loadToast().then((toast) => toast.message(`${verb} ${entry.name} on ${computer}.`));
+  }
   const marks = rowMarks(from.busy, [entry.key]);
   try {
     marks.say({ word: "Opening…" });
@@ -101,11 +107,12 @@ export async function openEntry(entry: FileEntry, copy: PlaceCopy, from: OpenFro
   if (!entry.ref) return null;
   const workspaceLink = from.workspace.environmentId;
   const here = copy.link === workspaceLink && !copy.place.vm;
-  const way = openWay(entry, copy, { link: workspaceLink, tabs: from.tabs, copy: from.copy });
+  const route = { link: workspaceLink, tabs: from.tabs, copy: from.copy };
+  const way = openWay(entry, copy, route);
   if (way === "app") {
     // A switch that decides what he sees is never only in Settings: where the copy being off is why, the refusal turns it on.
     const shown = kindOfEntry(entry.name).canvas !== null;
-    if (from.tabs && !here && !from.copy && shown && from.allowed) {
+    if (!here && !from.copy && shown && from.allowed && openWay(entry, copy, { ...route, copy: true }) === "tab") {
       const where = copy.place.vm ? "the Windows VM" : copy.host;
       void loadToast().then((toast) =>
         toast.message(`Teams files open on ${where} for this workspace.`, {

@@ -229,7 +229,7 @@ const isOffice = (name: string): boolean => /\.(xlsx|xlsm|xlsb|xls|docx|docm|doc
  * window links to that computer itself (one reached through another host, a PC only the box reaches, carries no
  * open) and that computer is a Mac or a Windows PC, or the Windows VM. A platform not known yet is not held against it.
  */
-export function appOpens(copy: Pick<PlaceCopy, "place">, computer: { far: boolean; platform?: string }): boolean {
+export function appOpens(copy: { place: Pick<FilePlace, "kind" | "vm"> }, computer: { far: boolean; platform?: string }): boolean {
   if (!LIBRARY.includes(copy.place.kind) || computer.far) return false;
   return copy.place.vm === true || computer.platform === undefined || computer.platform === "darwin" || computer.platform === "win32";
 }

@@ -224,14 +224,16 @@ the first paint.
 | the same, with Copy Teams files off | refused in one toast, "Teams files open on MacBook for this workspace.", whose press Open copies here turns the switch on and opens it, and whose other press opens it on that computer |
 | a kind no canvas shows, in a library | in its own app on its computer (`work.office.filesOpen`) |
 
-Open in its app (a library row's menu, a tab's More, the copy's Open on
-MacBook and the toast's other press) is drawn only where the window can open
+Open in its app (a library row's menu, a tab's More, its facts page, the copy's
+Open on MacBook and the toast's other press) is drawn only where the window can open
 the file there itself (`appOpens` in model.ts, `opensInApp` in open.ts): its
 computer is one the window links to directly, never one reached through the
 box (a PC only the box links to: `work.files.across` carries no open), and is
 a Mac or a Windows PC, or the Windows VM. A Linux machine's own library has no
 app to open it in. A computer whose platform the window does not know yet keeps
-the verb, and its host's refusal stands.
+the verb, and its host's refusal stands. If default Open needs an app the
+window cannot reach, it names the computer to open the file on. For a recording
+it says "Play … on …".
 | a kind no editor shows (a text or code file, a sound, a zip, anything else) | in a tab, as the `file` kind: text in an editor that saves as he types (Find and Replace on ⌘F and ⌥⌘F; a text replaced from the host, a Reload, opens at his scroll and caret, `textPlace.ts`), a sound with Play, a zip as the list of what it holds, the rest as its facts with Download |
 | a PDF, picture, video or deck on this computer a thread already holds | in a tab: the tab and the thread share its marks and its state, kept by the file ("Marks kept by the file"; a deck's by `deckKey`, docs/agents/work-slides.md "Kept by the deck, not the item") |
 | a copy of another computer's file that a thread already holds | in a tab of its own, as any copy: the thread's copy is a file of its own, with marks of its own; the tab's marks are the original's ("Marks kept by the file") |
@@ -1694,6 +1696,12 @@ them; a shared library's for his own window alone; the VM's never. A zip kept
 in the cloud is refused ("This file is kept in the cloud. Download it
 first.") and not read.
 
+A library copy open in a tab may lie outside every listed place. When the
+row lookup gives no facts, the tab asks for the copy by item ID through
+`work.files.read`. For a ZIP copy it reads the end record and directory
+in ranges tied to one version (`archiveCopy.ts`), with the same entry limit.
+The existing open-item read checks who can see the copy.
+
 ## The wire
 
 `work.files.*`, in `src/shared/contract-work-files.ts`: a schema, a
@@ -1984,7 +1992,8 @@ only a filter its rows can answer (no place, project, who or review:
 named in the page's one note: "Folders on Purdue laptop were not searched"
 (`searchGap`), with Retry only where asking again could help. No new reach:
 the window lists those folders by the same link. The words inside a file on
-another computer are never searched.
+another computer are never searched. When results arrive, the scope note
+takes the place of the LifeOS sign-in line if the search skipped a computer.
 
 **The filter**: `kinds` (entry kinds), `places` (place ids; a library's id
 takes all its channels), `within` (changed in a span before now: `day`,
@@ -2553,7 +2562,9 @@ over a file that changed there.
   are kept on this computer and offered when you open it again." in place of "They will be lost.
 - **Nothing he changed is dropped in silence** (.temp-code/plans/landed/F-edits-lost.md). Only his Discard, his
   Reload after its confirm, and a delete of the file after its confirm drop changes that have not reached the file.
-  - A text file changed elsewhere with nothing waiting here is read again (`FileSession.check`); a key he types while
+  - A text tab checks the version through its item's own read (`FileSession.check`). A failed read leaves the last
+    state in place. A confirmed removal holds the save and offers Keep Both when edits wait. A file changed elsewhere
+    with nothing waiting here is read again. A key he types while
     that read is out keeps his words on the version they were made on, and the line says the file changed, with
     Reload and Keep Both (`edits`, a count `load` compares across its read). Keys typed while Keep Both is out are
     not in the copy it made: the editor and the journal keep them, nothing is read over them, and the line still
@@ -2608,7 +2619,9 @@ picks, and stays linked to that file: each later edit is written to it.
   and `Folders` of MoveDialog.tsx) with the three folders he saved to last first under Recent (kept in the window's
   localStorage per workspace), opening in the folder of the document's own file where a Files tab knows it (the tab
   tells `tellOrigin`, saveAsPort.ts: a library Word file's folder, a copy's original's folder), else in the last one,
-  and New Folder at the trail's end (named in place, then walked into). The format starts as that file's own where
+  and New Folder at the trail's end where Files' New offers folders and the window links to that computer.
+  The sheet names the computer for folders reached through another host. A new folder is named in place, then
+  walked into. The format starts as that file's own where
   the host writes it (`formatForFile`, src/shared/work/saveAs.ts); a `.doc` starts as Word with "A .doc is saved as
   .docx" first on the drops line. At the right the document's first page as the host draws its Word file (`work.files.preview` on the
   document, LibreOffice), small; none for Markdown and none under 620px. The footer: Just a copy (unticked: linked),
@@ -2742,7 +2755,8 @@ over a colleague's Word file but his own press.
   files/tabs.ts `follow`), as a reopen and Live name it. A file of his own made a document, or a deck's copy to
   edit, takes the new item's title.
 - **His edits stay in the document.** The tab's `word` (`WordBack`) says how the Word file stands, and the header
-  says it plainly: "The Word file in Teams has not changed" ("OneDrive" for his own), "Changes since 9:12 PM are not in
+  says it plainly: "The Word file in Teams has not changed" ("OneDrive" for his own) before an edit, "Changes wait here"
+  for edits before the first save, "Changes since 9:12 PM are not in
   the Word file", "Saved to MacBook as Word 9:12 PM": a save names the computer that holds the file, as a copy's
   line does, and reads as in Teams only once OneDrive there says it has it (`wordLine`, then `cloudLine`). Before,
   it said "Saved to Teams" while only that computer had the file (W-18).

@@ -1206,7 +1206,7 @@ function OpenFile({
   useEffect(() => {
     if (!itemId || !place || !filePath || !fileHost || place.wire !== "files") return;
     const dir = filePath.replace(/[\\/]+[^\\/]*$/, "");
-    tellOrigin(itemId, { folder: { copy: place, at: { at: "file", host: fileHost, path: dir }, name: where ?? place.place.name, where: place.place.name }, name: tab.name });
+    tellOrigin(itemId, { folder: { copy: place, at: { at: "file", host: fileHost, path: dir }, name: where ?? place.place.name, where: place.place.name }, name: tab.name, file: { at: "file", host: fileHost, path: filePath } });
     return () => tellOrigin(itemId, null);
   }, [itemId, place, filePath, fileHost, where, tab.name]);
   const { of } = verbs;

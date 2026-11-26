@@ -1,7 +1,7 @@
 import type { FileBytes, FileSaved } from "@shared/contract-work-files";
 import type { CanvasSource } from "@shared/work";
 import { draftFileOf, type Draft, type DraftKey } from "@shared/work/drafts";
-import { FILE_TEXT_MAX, type FileEntry } from "@shared/work/files";
+import { FILE_TEXT_MAX, kindOfEntry, refKey, type FileEntry } from "@shared/work/files";
 import type { SavedLine } from "../canvas/kind";
 import { savingNow } from "../canvas/calm";
 import { bytesOfBase64, decodeText, encodeText, linkDropped, notSavedWords, triedAsText, whenWords, type TextFile } from "./fileText";
@@ -21,6 +21,11 @@ import { bytesOfBase64, decodeText, encodeText, linkDropped, notSavedWords, trie
  */
 
 export const SAVE_AFTER_MS = 700;
+
+// The wire carries the host's sentence. A failed or refused read does not establish removal.
+function readGone(err: unknown): boolean {
+  return textOf(err) === "That file or folder is not there any more.";
+}
 /**
  * A text up to this many characters is journaled on each edit. A longer one (a big log or CSV), whose copy and send to
  * the store would lag each key, is journaled at once, then at most every `JOURNAL_MS` while he types, its last edit kept.
@@ -39,7 +44,7 @@ export type FileView =
   /** `rev` grows each time the text is replaced from the host, so the editor takes it; `locked`: why it cannot be changed here */
   | { is: "text"; text: string; rev: number; locked: string | null; offer?: true }
   /** its facts: what it is, how big, when it changed; `why` says in a sentence why it is not shown as text, when it might have been */
-  | { is: "facts"; entry: FileEntry | null; why?: string }
+  | { is: "facts"; entry: FileEntry | null; why?: string; scoped?: true }
   | { is: "failed"; error: string };
 
 export interface FileSessionHost {
@@ -246,9 +251,25 @@ export class FileSession {
   }
 
   private async facts(why?: string): Promise<void> {
-    const got = await this.host.request<{ entries: (FileEntry | null)[] }>("work.files.stat", { workspaceId: this.of.workspaceId, refs: [this.of.source] }).catch(() => ({ entries: [null] }));
+    const { source, workspaceId, itemId, name } = this.of;
+    const got = await this.host.request<{ entries: (FileEntry | null)[] }>("work.files.stat", { workspaceId, refs: [source] }).catch(() => null);
+    let entry = got?.entries[0] ?? null;
+    let scoped = false;
+    if (!entry && source.at === "file") {
+      // Copies live outside the listed places. The item's own read can see the copy.
+      try {
+        const { size, changed } = await this.host.request<FileBytes>("work.files.read", { workspaceId, ref: source, itemId, offset: 0, length: 1 });
+        entry = { key: refKey(source), ref: source, folder: null, name, kind: kindOfEntry(name).kind, size, changed };
+        scoped = true;
+      } catch (err) {
+        if (!readGone(err)) {
+          if (!this.disposed) this.set({ is: "failed", error: textOf(err) });
+          return;
+        }
+      }
+    }
     if (this.disposed) return;
-    this.set({ is: "facts", entry: got.entries[0] ?? null, ...(why ? { why } : {}) });
+    this.set({ is: "facts", entry, ...(why ? { why } : {}), ...(scoped ? { scoped: true } : {}) });
     // A file that is not edited here says nothing of saving: the frame draws its own line.
     this.host.saved(null);
   }
@@ -426,14 +447,21 @@ export class FileSession {
    */
   async check(): Promise<void> {
     if (this.view.is !== "text" || this.saving || this.conflicted) return;
-    const got = await this.host.request<{ entries: (FileEntry | null)[] }>("work.files.stat", { workspaceId: this.of.workspaceId, refs: [this.of.source] }).catch(() => null);
-    if (!got || this.disposed || this.saving || this.view.is !== "text") return;
-    const entry = got.entries[0] ?? null;
-    if (entry && entry.changed === this.changed) return;
-    if (entry && !this.dirty) return void (await this.load());
+    const of = this.of;
+    const version = this.version;
+    let got: FileBytes | null;
+    try {
+      got = await this.host.request<FileBytes>("work.files.read", { ...this.ref(), itemId: of.itemId, offset: 0, length: 1 });
+    } catch (err) {
+      if (!readGone(err)) return;
+      got = null;
+    }
+    if (this.disposed || this.saving || this.conflicted || this.view.is !== "text" || this.of !== of || this.version !== version) return;
+    if (got?.version === version) return;
+    if (got && !this.dirty) return void (await this.load());
     this.conflicted = true;
-    this.gone = entry === null;
-    if (entry?.changed) this.changed = entry.changed;
+    this.gone = got === null;
+    if (got) this.changed = got.changed;
     this.line();
   }
 

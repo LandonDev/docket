@@ -279,13 +279,19 @@ export function archiveRows(entries: FileArchive["entries"]): ArchiveRow[] {
 }
 
 /** What a zip holds, as its own directory names it: asked once for a file while it is shown. Nothing is extracted. */
-export function useArchive(from: PictureFrom | null, entry: FileEntry | null, enabled = true): ArchiveView {
+export function useArchive(from: PictureFrom | null, entry: FileEntry | null, enabled = true, itemId?: string): ArchiveView {
   const [view, setView] = useState<{ key: string; view: ArchiveView } | null>(null);
-  const key = from && entry?.ref && enabled ? `${from.copy.link}\u0000${entry.key}\u0000${entry.changed ?? 0}` : null;
+  const key = from && entry?.ref && enabled ? `${from.copy.link}\u0000${entry.key}\u0000${entry.changed ?? 0}\u0000${itemId ?? ""}` : null;
   useEffect(() => {
     if (!key) return;
     let live = true;
-    const ask = previewSeams.archive ? previewSeams.archive(from!, entry!) : filesLink(from!.copy.link).request<FileArchive>("work.files.archive", { workspaceId: from!.workspaceId, ref: entry!.ref });
+    const link = () => filesLink(from!.copy.link);
+    const params = { workspaceId: from!.workspaceId, ref: entry!.ref };
+    const ask = previewSeams.archive ? previewSeams.archive(from!, entry!) : itemId
+      ? import("./archiveCopy").then(({ archiveCopy }) => archiveCopy(entry!.size ?? 0, (offset, length, version) =>
+          link().request<FileBytes>("work.files.read", { ...params, itemId, offset, length, ...(version ? { version } : {}) }),
+        ))
+      : link().request<FileArchive>("work.files.archive", params);
     void ask.then(
       (got) => live && setView({ key, view: { is: "list", entries: got.entries, more: got.more } }),
       (err: unknown) => live && setView({ key, view: { is: "failed", why: workErrorWords(err) || "The host did not answer." } }),

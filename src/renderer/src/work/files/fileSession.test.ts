@@ -16,7 +16,7 @@ const NOW = new Date(2026, 10, 23, 14, 30).getTime();
 const AT = (h: number, m: number): number => new Date(2026, 10, 23, h, m).getTime();
 
 /** A host holding one file: versions are counted, a write names the version it read. */
-function standIn(start: string, o: { locked?: string; name?: string; drafts?: DraftsPort; file?: { text: string; version: number; changed: number; gone: boolean; path: string } } = {}) {
+function standIn(start: string, o: { locked?: string; name?: string; drafts?: DraftsPort; unlisted?: boolean; file?: { text: string; version: number; changed: number; gone: boolean; path: string } } = {}) {
   const file = o.file ?? { text: start, version: 1, changed: AT(13, 52), gone: false, path: `/w/${o.name ?? "Notes.md"}` };
   /** The file is not at the path a call names: deleted, or renamed away from it. */
   const goneFrom = (params: Record<string, unknown>): boolean => file.gone || ((params.ref ?? (params.refs as unknown[])?.[0]) as { path: string }).path !== file.path;
@@ -40,12 +40,16 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
       calls.push({ method, params });
       if (down) throw new Error("not connected");
       if (method === "work.files.read") {
-        const typing = duringRead;
-        duringRead = null;
-        typing?.();
+        if (params.length !== 1) {
+          const typing = duringRead;
+          duringRead = null;
+          typing?.();
+        }
+        if (o.unlisted && params.itemId !== "i1") throw new Error("That tab holds no copy to read.");
+        if (goneFrom(params)) throw new Error("That file or folder is not there any more.");
+        return { data: b64(file.text), size: Buffer.byteLength(file.text), version: `v${file.version}`, changed: file.changed, end: true, ...(o.locked ? { locked: o.locked } : {}) } as T;
       }
-      if (method === "work.files.read") return { data: b64(file.text), size: Buffer.byteLength(file.text), version: `v${file.version}`, changed: file.changed, end: true, ...(o.locked ? { locked: o.locked } : {}) } as T;
-      if (method === "work.files.stat") return { entries: [goneFrom(params) ? null : { key: "k", ref: null, folder: null, name: o.name ?? "Notes.md", kind: "text", size: Buffer.byteLength(file.text), changed: file.changed }] } as T;
+      if (method === "work.files.stat") return { entries: [o.unlisted || goneFrom(params) ? null : { key: "k", ref: null, folder: null, name: o.name ?? "Notes.md", kind: "text", size: Buffer.byteLength(file.text), changed: file.changed }] } as T;
       if (method === "work.files.write") {
         if (params.copy) {
           const typing = duringKeep;
@@ -267,7 +271,7 @@ describe("a text file open", () => {
     const h = standIn("first\n");
     await h.session.load();
     await h.session.check();
-    expect(h.calls.map((c) => c.method)).toEqual(["work.files.read", "work.files.stat"]);
+    expect(h.calls.at(-1)).toMatchObject({ method: "work.files.read", params: { itemId: "i1", length: 1 } });
     h.theirs("theirs\n");
     await h.session.check();
     expect(h.session.getSnapshot()).toMatchObject({ is: "text", text: "theirs\n", rev: 1 });
@@ -276,6 +280,50 @@ describe("a text file open", () => {
     await h.session.check();
     expect(savedWords(h.lines.at(-1)!, null, NOW)).toBe("This file changed at 2:05 PM");
     expect(h.session.getSnapshot()).toMatchObject({ text: "theirs\n" });
+  });
+
+  it("keeps an unlisted open copy writable after a scoped look and a failed look", async () => {
+    const h = standIn("first\n", { unlisted: true });
+    await h.session.load();
+    await h.session.check();
+    expect(h.calls.at(-1)).toMatchObject({ method: "work.files.read", params: { itemId: "i1", length: 1 } });
+    h.setDown(true);
+    await h.session.check();
+    expect(h.words()).toBe("Saved 1:52 PM in Events");
+    h.setDown(false);
+    h.session.edit("mine\n");
+    await h.fire();
+    expect(h.file.text).toBe("mine\n");
+  });
+
+  it("keeps both conflict actions on an unlisted copy across another look and holds the save", async () => {
+    const h = standIn("first\n", { unlisted: true });
+    await h.session.load();
+    h.session.edit("mine\n");
+    h.theirs("theirs\n");
+    await h.session.check();
+    expect(h.words()).toBe("This file changed at 2:04 PM");
+    h.setDown(true);
+    await h.session.check();
+    h.setDown(false);
+    await h.session.check();
+    await h.fire();
+    expect(h.words()).toBe("This file changed at 2:04 PM");
+    expect(h.lines.at(-1)?.actions?.map((a) => a.label)).toEqual(["Reload", "Keep Both"]);
+    expect(h.calls.some((c) => c.method === "work.files.write")).toBe(false);
+    expect(h.file.text).toBe("theirs\n");
+  });
+
+  it("holds the save after the scoped read confirms removal", async () => {
+    const h = standIn("first\n", { unlisted: true });
+    await h.session.load();
+    h.session.edit("mine\n");
+    h.file.gone = true;
+    await h.session.check();
+    await h.fire();
+    expect(h.words()).toBe("This file was moved or deleted");
+    expect(h.lines.at(-1)?.actions?.map((a) => a.label)).toEqual(["Keep Both"]);
+    expect(h.calls.some((c) => c.method === "work.files.write")).toBe(false);
   });
 
   it("keeps keys typed while a change made elsewhere is read: nothing he typed is thrown away, and the line says the file changed", async () => {
@@ -409,6 +457,19 @@ describe("a text file open", () => {
 });
 
 describe("a file that is not text", () => {
+  it("gets the facts of an unlisted copy by its open item", async () => {
+    const h = standIn("PK", { name: "bundle.zip", unlisted: true });
+    await h.session.load();
+    expect(h.session.getSnapshot()).toMatchObject({ is: "facts", scoped: true, entry: { kind: "archive", size: 2 } });
+    expect(h.calls.at(-1)).toMatchObject({ method: "work.files.read", params: { itemId: "i1", length: 1 } });
+  });
+
+  it("says a failed look could not read the file", async () => {
+    const h = standIn("PK", { name: "bundle.zip", unlisted: true });
+    h.setDown(true);
+    await h.session.load();
+    expect(h.session.getSnapshot()).toEqual({ is: "failed", error: "not connected" });
+  });
   it("shows its facts, read from its row, and never reads its bytes", async () => {
     const h = standIn("PK", { name: "bundle.zip" });
     await h.session.load();

@@ -52,13 +52,14 @@ export function wordLine(word: WordBack, service: string, computer: string, now 
   // Its computer or drive not answering: his edits wait in the document, and it is tried again on each look.
   if (word.away && word.since) return { state: "offline", words: `${computer[0]!.toUpperCase()}${computer.slice(1)} is not answering. Changes wait here`, needs: true };
   // Saving by itself: Saving… once his newest words have waited past Word's pause (`saving`, canvas/calm.ts); inside
-  // it the last save stays, and a file never saved here says it is unchanged, never Saving with nothing typed.
+  // it the last save stays. Before the first save, the line says whether edits wait.
   if (word.auto) {
     if (word.since && saving) return { state: "saving", words: `Saving to ${computer}…` };
-    return word.at ? { state: "saved", words: `Saved to ${computer} ${whenWords(word.at, now)}` } : { state: "copy", words: `The Word file in ${service} has not changed` };
+    if (word.at) return { state: "saved", words: `Saved to ${computer} ${whenWords(word.at, now)}` };
   }
   if (!word.since && word.at) return { state: "saved", words: `Saved to ${computer} as Word ${whenWords(word.at, now)}` };
   if (word.at) return { state: "copy", words: `Changes since ${whenWords(word.at, now)} are not in the Word file` };
+  if (word.since) return { state: "copy", words: "Changes wait here" };
   return { state: "copy", words: `The Word file in ${service} has not changed` };
 }
 

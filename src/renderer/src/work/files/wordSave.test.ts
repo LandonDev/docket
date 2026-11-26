@@ -10,7 +10,9 @@ const TAB = { name: "AD Screening 9-2", key: "lib:recwellsportprograms:Esports/A
 
 describe("the header of a Word file opened as its document", () => {
   it("says plainly whether the Word file holds his changes, by the service it lies in", () => {
-    expect(wordLine({ since: true }, "Teams", "MacBook", NOW).words).toBe("The Word file in Teams has not changed");
+    expect(wordLine({ since: false }, "Teams", "MacBook", NOW).words).toBe("The Word file in Teams has not changed");
+    expect(wordLine({ since: true }, "Teams", "MacBook", NOW)).toEqual({ state: "copy", words: "Changes wait here" });
+    expect(wordLine({ since: true, auto: true }, "OneDrive", "MacBook", NOW, false).words).toBe("Changes wait here");
     expect(wordLine({ since: true, at: AT }, "Teams", "MacBook", NOW).words).toBe("Changes since 9:12 PM are not in the Word file");
     // A save is said of the computer that holds the file: OneDrive has not said it has it.
     expect(wordLine({ since: false, at: AT }, "OneDrive", "MacBook", NOW)).toMatchObject({ state: "saved", words: "Saved to MacBook as Word 9:12 PM" });

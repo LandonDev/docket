@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { CanvasSource } from "@shared/work";
 import type { SaveAsFormat } from "@shared/work/saveAs";
 import type { MoveTarget } from "./MoveDialog";
 
@@ -46,17 +47,25 @@ export interface SaveAsOrigin {
   folder: MoveTarget & { where: string };
   /** the file's name ("Practice register.doc") */
   name: string;
+  file?: CanvasSource;
 }
 
 const origins = new Map<string, SaveAsOrigin>();
+const originListeners = new Set<() => void>();
+const subscribeOrigin = (listener: () => void): (() => void) => {
+  originListeners.add(listener);
+  return () => void originListeners.delete(listener);
+};
 
 /** A Files tab tells where its document's file lies; null when the tab goes. */
 export function tellOrigin(itemId: string, origin: SaveAsOrigin | null): void {
   if (origin) origins.set(itemId, origin);
   else origins.delete(itemId);
+  for (const listener of originListeners) listener();
 }
 
 export const originOf = (itemId: string): SaveAsOrigin | null => origins.get(itemId) ?? null;
+export const useOriginOf = (itemId: string): SaveAsOrigin | null => useSyncExternalStore(subscribeOrigin, () => originOf(itemId));
 
 const drops = new Map<string, (format: SaveAsFormat) => string[]>();
 

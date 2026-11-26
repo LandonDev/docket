@@ -13,6 +13,7 @@ import { GroupInput, InputGroup } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { nameInLine } from "../../lib/hostWords";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { makeIn } from "./acts";
@@ -77,6 +78,10 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
   const press = useRef<{ said: string; op: string } | null>(null);
   const [naming, setNaming] = useState(false);
   const [pending, setPending] = useState(false);
+  const target = at?.folder.copy;
+  const far = target && !registry.has(target.link);
+  const makesFolder = target?.wire === "files" && !far && target.place.makes?.includes("folder");
+  const folderWhy = far ? `Make folders on ${nameInLine(target.host)}.` : null;
   // Google Drive and LifeOS make no file in a folder that a link could write again by version: there, and off.
   const off = [...sidebar.drives, ...(sidebar.lifeos ? [sidebar.lifeos] : [])].map((copy) => ({ name: copy.place.name, why: "Save As… saves to a computer's folders: the workspace's, Teams and OneDrive." }));
   const name = saveAsName(stem || "Untitled", format);
@@ -122,7 +127,7 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
   const formats: MenuRow[] = SAVE_AS_FORMATS.map((f) => ({ kind: "item", id: f.id, label: f.label, hint: `.${f.ext}`, checked: f.id === format }));
   const newFolder = async (typed: string | null): Promise<void> => {
     setNaming(false);
-    if (!typed?.trim() || !at) return;
+    if (!typed?.trim() || !at || !makesFolder) return;
     const made = await makeIn({ workspaceId: workspace.id, home: workspace.environmentId }, at.folder.copy, at.folder.at, "folder", typed);
     if (made?.folder) setAt({ folder: { copy: at.folder.copy, at: made.folder, name: made.name }, where: at.where });
   };
@@ -171,13 +176,13 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
                 entries={[]}
                 onInto={(folder) => setAt({ folder, where: at.where })}
                 onPlaces={() => setAt(null)}
-                end={
+                end={makesFolder ? (
                   <Button variant="ghost" size="xs" className="text-muted-foreground" disabled={naming} onClick={() => setNaming(true)}>
                     New Folder
                   </Button>
-                }
+                ) : null}
                 first={
-                  naming ? (
+                  naming && makesFolder ? (
                     <div className={ROW}>
                       <KindGlyph kind="folder" />
                       <NameField name="New Folder" className="h-6 flex-1 text-[13px]" onDone={(typed) => void newFolder(typed)} />
@@ -188,6 +193,7 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
             ) : (
               <Places places={places} recent={reach ? recentFolders("saveAs", workspace, places) : recent} off={off} waiting={!reach || reach.waiting} onInto={(folder) => setAt({ folder, where: "where" in folder ? (folder as Folder).where : folder.name })} />
             )}
+            {folderWhy ? <p className="shrink-0 p-2 text-xs text-muted-foreground">{folderWhy}</p> : null}
           </div>
         </div>
         <FirstPage workspace={workspace} source={source} format={format} />

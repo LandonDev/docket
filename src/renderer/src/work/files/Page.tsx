@@ -1242,7 +1242,9 @@ export function PageView({
     );
   }
   // One line over the list at most: an upload under way, the folder that did not load on a machine that is away, else what its place says.
-  const line = lifeosDown || lifeosAgain ? null : lineSays ? (
+  const line = gap && entries.length ? (
+    <NoteLine note={gap} fixes={{ busy: listing!.loading, run: () => listing!.retry() }} />
+  ) : lifeosDown || lifeosAgain ? null : lineSays ? (
     <div data-files-note className="flex min-h-8 min-w-0 shrink-0 items-center border-b border-border bg-background px-3 py-1">
       <HostLine live={hostLive} className="min-h-6 flex-1" />
     </div>
@@ -1259,8 +1261,6 @@ export function PageView({
   ) : results && listing?.pending?.length ? (
     // A place still being searched: its rows join below as it answers, and the line says which.
     <NoteLine note={searchingNote(listing.pending)!} fixes={noteFixes} />
-  ) : gap && entries.length ? (
-    <NoteLine note={gap} fixes={{ busy: listing!.loading, run: () => listing!.retry() }} />
   ) : down && !note && entries.length ? (
     <NoteLine note={down.fix?.kind === "wake" && listing?.asOf ? { ...down, line: `This is the list from ${clockTime(listing.asOf)}.` } : down} fixes={noteFixes} />
   ) : null;

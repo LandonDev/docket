@@ -11,6 +11,8 @@ import type { FileEntry, FilePlace, FolderRef, MakeKind } from "@shared/work/fil
 import { kindOfEntry, refKey } from "@shared/work/files";
 import { openMenus } from "../../chrome/menuRows";
 import { filesPort } from "../../lib/filesKeys";
+import type { LifeosStatus } from "@shared/contract-work-lifeos";
+import { resetLifeos, setLifeosStatus } from "../shell/lifeos";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import type { WorkViewProps } from "../views/registry";
 
@@ -353,6 +355,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   cleanup();
+  resetLifeos();
   resetTestKey();
 });
 
@@ -1312,6 +1315,7 @@ describe("Search", () => {
   });
 
   it("searches the folders on his own computer on Return alone, opens a file found there from its place, and names a computer no link of the window reaches", async () => {
+    setLifeosStatus("box", { lifeos: { state: "signed-out" }, keys: [] } as unknown as LifeosStatus);
     world.mayUse = ["env_mac", "env_pc"];
     world.links = { env_mac: "mac" };
     const box = host.answer;

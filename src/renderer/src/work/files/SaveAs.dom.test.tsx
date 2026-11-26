@@ -15,7 +15,7 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 const world = vi.hoisted(() => ({ fail: 0, refuse: null as string | null, calls: [] as { method: string; params: Record<string, unknown> }[], toasts: [] as { title: string; show?: () => void }[], opened: [] as unknown[], exists: false, choice: "other" as "action" | "other" | null, links: [] as unknown[], acting: null as null | Promise<unknown>, push: null as null | ((push: Record<string, unknown>) => void) }));
 
 const at = (path: string) => ({ at: "file" as const, host: "env_box", path });
-const place = (id: string, kind: string, name: string, root: string, can: string[] = ["make"]): FilePlace => ({ id, kind, name, host: "The box", env: "env_box", shared: kind !== "folder", can, state: { state: "ok" }, root: at(root) }) as unknown as FilePlace;
+const place = (id: string, kind: string, name: string, root: string, can: string[] = ["make"]): FilePlace => ({ id, kind, name, host: "The box", env: "env_box", shared: kind !== "folder", can, makes: ["folder"], state: { state: "ok" }, root: at(root) }) as unknown as FilePlace;
 
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (id: string) => ({
@@ -47,7 +47,7 @@ vi.mock("../../lib/connection", async (original) => {
     onOpen: () => () => undefined,
     onClose: () => () => undefined,
   });
-  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: () => true, environment: () => ({ name: "The box" }), environments: () => [], onLink: () => () => undefined, statusOf: () => ({ transport: "open" }) } };
+  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: (id: string) => id !== "desk", environment: () => ({ name: "The box" }), environments: () => [], onLink: () => () => undefined, statusOf: () => ({ transport: "open" }) } };
 });
 vi.mock("../shell/actions", () => ({ workspaceSettings: async () => ({ mayUseDesktop: [], windowsVm: false }), localHostId: async () => null, windowDesktops: async () => [], linkIdOfHost: () => "box" }));
 vi.mock("../canvas/CanvasPane", () => ({ CanvasPane: () => <div data-testid="pane" /> , useKindModule: () => null }));
@@ -248,6 +248,23 @@ describe("the sheet for a document made of a file", () => {
     const dialog = await sheet();
     expect(await within(dialog).findByRole("listbox", { name: "Folders in General" })).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "OpenDocument" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "New Folder" })).toBeTruthy();
+  });
+
+  it("names the far computer where a folder can be made and keeps Save available", async () => {
+    port.tellOrigin("i1", { folder: { copy: { ...general, link: "desk", host: "Desk PC" }, at: at("/cloud/General"), name: "General", where: "General" }, name: "Budget.docx" });
+    const dialog = await sheet();
+    expect(within(dialog).getByText("Make folders on Desk PC.")).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "New Folder" })).toBeNull();
+    expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(world.calls.some((c) => c.method === "work.files.make")).toBe(false);
+  });
+
+  it("leaves New Folder out when the connected place does not offer folders", async () => {
+    const copy = { ...general, place: { ...general.place, makes: ["text" as const] } };
+    port.tellOrigin("i1", { folder: { copy, at: at("/cloud/General"), name: "General", where: "General" }, name: "Budget.docx" });
+    const dialog = await sheet();
+    expect(within(dialog).queryByRole("button", { name: "New Folder" })).toBeNull();
   });
 
   it("saves a .doc as Word, and says its copy is a .docx", async () => {

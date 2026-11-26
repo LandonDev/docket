@@ -10,6 +10,7 @@ import type { FileBytes, FileSaved, FileTab } from "@shared/contract-work-files"
 import type { CanvasItem, CanvasSource } from "@shared/work";
 import type { FileEntry } from "@shared/work/files";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
+import { makeZip } from "../../../../main/server/work/templates/zip";
 
 // The whole suite runs these beside a hundred other files: a wait for the screen is given room.
 configure({ asyncUtilTimeout: 5000 });
@@ -20,8 +21,10 @@ interface Kept {
   changed: number;
   gone?: boolean;
   locked?: string;
+  archive?: Uint8Array;
+  unlisted?: boolean;
 }
-const disk = vi.hoisted(() => ({ files: new Map<string, unknown>(), calls: [] as { method: string; params: Record<string, unknown> }[], pushes: new Set<(push: Record<string, unknown>) => void>(), opens: new Set<() => void>(), down: false }));
+const disk = vi.hoisted(() => ({ files: new Map<string, unknown>(), calls: [] as { method: string; params: Record<string, unknown> }[], pushes: new Set<(push: Record<string, unknown>) => void>(), opens: new Set<() => void>(), down: false, platform: "darwin" }));
 const kept = (path: string): Kept => disk.files.get(path) as Kept;
 
 vi.mock("../../lib/connection", async (original) => {
@@ -36,6 +39,12 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.files.read") {
         const file = disk.files.get(pathOf(params.ref)) as Kept | undefined;
         if (!file || file.gone) throw new Error("Notes.md is not there any more.");
+        if (file.unlisted && params.itemId !== "i1") throw new Error("That tab holds no copy to read.");
+        if (file.archive) {
+          const offset = Number(params.offset);
+          const bytes = file.archive.subarray(offset, offset + Number(params.length));
+          return { data: Buffer.from(bytes).toString("base64"), size: file.archive.length, version: `v${file.version}`, changed: file.changed, end: offset + bytes.length >= file.archive.length } satisfies FileBytes;
+        }
         return { data: b64(file.text), size: file.text.length, version: `v${file.version}`, changed: file.changed, end: true, ...(file.locked ? { locked: file.locked } : {}) } satisfies FileBytes;
       }
       if (method === "work.files.stat") {
@@ -45,7 +54,7 @@ vi.mock("../../lib/connection", async (original) => {
           entries: (params.refs as unknown[]).map((ref) => {
             const file = disk.files.get(pathOf(ref)) as Kept | undefined;
             const name = pathOf(ref).split("/").pop()!;
-            return file && !file.gone ? ({ key: pathOf(ref), ref: ref as CanvasSource, folder: null, name, kind: name.endsWith(".zip") ? "archive" : name.endsWith(".mp3") ? "audio" : "text", size: 2_400_000, changed: file.changed } satisfies FileEntry) : null;
+            return file && !file.gone && !file.unlisted ? ({ key: pathOf(ref), ref: ref as CanvasSource, folder: null, name, kind: name.endsWith(".zip") ? "archive" : name.endsWith(".mp3") ? "audio" : "text", size: 2_400_000, changed: file.changed } satisfies FileEntry) : null;
           }),
         };
       }
@@ -59,6 +68,7 @@ vi.mock("../../lib/connection", async (original) => {
       }
       if (method === "work.files.copyBack") return { is: "ok" };
       if (method === "work.files.archive") return { entries: [{ name: "art/", size: 0, dir: true }, { name: "art/poster.png", size: 2048, dir: false }], more: true };
+      if (method === "work.office.filesOpen") return null;
       if (method === "work.canvas.keep") return { path: "/w/kept.pdf", name: "kept.pdf" };
       // A document's History, as the host keeps it.
       if (method === "work.history.versions") return { versions: [{ id: "v2", at: AT, cause: "idle", by: ["owner"], kept: "snapshot" }, { id: "v1", at: AT - 3_600_000, cause: "named", label: "Practice is on Tuesday", by: ["owner"], kept: "snapshot" }], shared: false, names: { owner: "You" } };
@@ -69,8 +79,9 @@ vi.mock("../../lib/connection", async (original) => {
     onOpen: (listener: () => void) => (disk.opens.add(listener), () => disk.opens.delete(listener)),
     onClose: () => () => undefined,
   });
-  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: () => true, environment: () => undefined, environments: () => [], onLink: () => () => undefined } };
+  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: (id: string) => id !== "desk", environment: () => undefined, environments: () => [], onLink: () => () => undefined } };
 });
+vi.mock("../../lib/hostPlatform", async (original) => ({ ...(await original<typeof import("../../lib/hostPlatform")>()), platformOf: () => disk.platform }));
 // Open in Drive goes to the system's browser.
 const opened = vi.hoisted(() => [] as string[]);
 vi.mock("../../lib/native", async (original) => ({ ...(await original<typeof import("../../lib/native")>()), openUrl: async (url: string) => void opened.push(url) }));
@@ -85,6 +96,7 @@ const { FileTabView } = await import("./FileTabView");
 const { SAVE_AFTER_MS } = await import("./fileSession");
 const { flushItem } = await import("../canvas/flush");
 const { dropKeptSessions } = await import("./FileKind");
+const { tellOrigin } = await import("./saveAsPort");
 
 const workspace = { id: "w1", environmentId: "box", path: "/w" } as Pick<WorkspaceMeta, "id" | "environmentId" | "path">;
 const AT = new Date(2026, 10, 23, 13, 52).getTime();
@@ -105,11 +117,13 @@ beforeEach(() => {
   disk.pushes.clear();
   disk.opens.clear();
   disk.down = false;
+  disk.platform = "darwin";
   disk.files.set("/w/Events/Notes.md", { text: "first line\n", version: 1, changed: AT } satisfies Kept);
 });
 afterEach(() => {
   cleanup();
   dropKeptSessions();
+  tellOrigin("i1", null);
   vi.useRealTimers();
 });
 
@@ -350,6 +364,35 @@ describe("a file no editor here shows", () => {
     expect(disk.calls.some((c) => c.method === "work.files.read")).toBe(false);
   });
 
+  it("lists the zip from the tab's own copy when the path is outside the listed places", async () => {
+    disk.files.set("/copies/Assets.zip", { text: "", version: 1, changed: AT, unlisted: true, archive: makeZip({ "art/poster.png": "poster" }) } satisfies Kept);
+    show("/copies/Assets.zip");
+    expect((await screen.findByRole("list", { name: "In this archive" })).textContent).toContain("poster.png");
+    expect(screen.queryByText("It is not where it was.")).toBeNull();
+    expect(disk.calls.filter((c) => c.method === "work.files.read").map((c) => c.params.itemId)).toEqual(["i1", "i1"]);
+    expect(disk.calls.some((c) => c.method === "work.files.archive")).toBe(false);
+  });
+
+  it.each([["desk", "darwin", false], ["box", "linux", false], ["box", "darwin", true]] as const)(
+    "matches the row's native app capability for %s on %s",
+    async (link, platform, available) => {
+      disk.platform = platform;
+      const root = { at: "file", host: "desk", path: "/library" } as const;
+      const file = { ...root, path: "/library/Assets.zip" };
+      const copy = { link, host: "Desk PC", wire: "files", place: { id: "lib", kind: "teams", name: "General", host: "Desk PC", env: "desk", shared: true, can: [], state: { state: "ok" }, root } } as const;
+      tellOrigin("i1", { folder: { copy: { ...copy, place: { ...copy.place, can: [] } }, at: root, name: "General", where: "General" }, name: "Assets.zip", file });
+      disk.files.set("/w/Events/Assets.zip", { text: "PK", version: 1, changed: AT } satisfies Kept);
+      show("/w/Events/Assets.zip");
+      await screen.findByRole("list", { name: "In this archive" });
+      const button = screen.queryByRole("button", { name: "Open in its app" });
+      expect(Boolean(button)).toBe(available);
+      if (button) {
+        fireEvent.click(button);
+        await waitFor(() => expect(disk.calls).toContainEqual({ method: "work.office.filesOpen", params: { source: file } }));
+      }
+    },
+  );
+
   it("plays a sound here on a press: nothing of it is read before, and its bytes come by the tab's own item", async () => {
     const made: Blob[] = [];
     Object.assign(URL, { createObjectURL: (blob: Blob) => (made.push(blob), "blob:sound"), revokeObjectURL: () => undefined });
@@ -438,8 +481,12 @@ describe("a copy that saves back to its file", () => {
 
   it("says a file that changed there in the foreground, with Reload and Keep Both", async () => {
     const keepBoth = vi.fn(async () => undefined);
+    kept(COPY).unlisted = true;
     show(COPY, { tab: { copyOf, back: { is: "changed", at: AT } }, copy: { host: "MacBook", keepBoth, reload: async () => undefined } });
+    await screen.findByRole("textbox", { name: "Agenda.md" });
     await waitFor(() => expect(line()).toBe("This file changed on MacBook"));
+    await act(async () => void window.dispatchEvent(new FocusEvent("focus")));
+    expect(line()).toBe("This file changed on MacBook");
     expect(header().querySelector("[data-files-save-line]")!.className).toContain("text-foreground");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Keep Both" }));
