@@ -275,11 +275,9 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
     const at = from ? visible.indexOf(from) : -1;
     const next = visible[Math.max(0, Math.min(visible.length - 1, at + by))];
     if (!next) return;
-    // While rows are ticked, the keys move the focus alone: the right side stays their summary.
-    if (!next.startsWith("more:") && !ticking) {
-      setSelected(next);
-      setOpened(true);
-    }
+    // While rows are ticked, the keys move the focus alone: the right side stays their summary. A narrow page keeps
+    // its list under the keys: the pick moves, and Enter or a press opens it over the list.
+    if (!next.startsWith("more:") && !ticking) setSelected(next);
     focusRow(next);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

@@ -330,7 +330,7 @@ function RequestFacts({ request, onOpenSession }: { request: HostRequest; onOpen
     onOpenSession ? (
       <span>
         from{" "}
-        <button type="button" className="focus-ring rounded-sm underline decoration-current/40 underline-offset-3 hover:text-foreground" onClick={() => onOpenSession(request.sessionId, request.environmentId)}>
+        <button type="button" className="focus-ring relative rounded-sm underline decoration-current/40 underline-offset-3 hover:text-foreground after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']" onClick={() => onOpenSession(request.sessionId, request.environmentId)}>
           {title}
         </button>
       </span>

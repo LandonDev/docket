@@ -1160,11 +1160,15 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     in Done.
   - **Keys** (only while the page has focus, never in a field, menu,
     popover or dialog; through lib/keys.ts): ↑/↓ and J/K move the pick and
-    the focus together (the focus alone while rows are ticked), X ticks,
+    the focus together (the focus alone while rows are ticked); on a narrow
+    page they keep the list on screen and open nothing over it, Enter or a
+    press opens the picked item, X ticks,
     Shift+X ticks a range, E edits, D opens Discard, L opens Send later,
     ⌘↩ (Ctrl+Enter) presses the primary verb, Escape leaves an edit, then
     the ticks, then the page. The list is one tab stop (the row focused
     last, else the picked one). Key caps show only in tooltips (`Tip`).
+    The held item's "from" thread press takes 24px over its 16px line (an
+    `::after`), as does the request card's (`threadLink.dom.test.tsx`).
     Nothing moves on a key.
   - **States**: the list's one-line bones and the detail's; "Nothing held"
     (no second line); "Not known yet" while a host did not answer, its row

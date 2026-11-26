@@ -119,7 +119,7 @@ export function DetailFacts({ item, job, when, onOpenSession, extra }: { item: H
         <button
           type="button"
           data-outbox-thread
-          className="focus-ring rounded-sm underline decoration-current/40 underline-offset-3 hover:text-foreground"
+          className="focus-ring relative rounded-sm underline decoration-current/40 underline-offset-3 hover:text-foreground after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']"
           onClick={() => onOpenSession(item.sessionId!, item.environmentId)}
         >
           {from.title}

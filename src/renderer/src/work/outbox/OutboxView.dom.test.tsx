@@ -1152,6 +1152,19 @@ describe("the Outbox, rebuilt around how he decides", () => {
     expect(picked()).toBe(first);
   });
 
+  /** The live walk (S9): at 1,024px the Outbox is narrow, and the first ↓ opened the item over the list, so focus went to a hidden row and the keys stopped. */
+  it("keeps a narrow page's list under the keys: the arrows move the pick, they open nothing over the list", async () => {
+    await open();
+    const list = () => document.querySelector<HTMLElement>("[data-outbox-list]")!;
+    const first = picked();
+    fireEvent.keyDown(page(), { key: "ArrowDown" });
+    await waitFor(() => expect(picked()).not.toBe(first));
+    fireEvent.keyDown(document.activeElement!, { key: "j" });
+    expect(list().className).not.toContain("@max-[40rem]/outbox:hidden");
+    expect(document.querySelector("[data-outbox-detail]")!.className).toContain("@max-[40rem]/outbox:hidden");
+    expect(document.activeElement?.closest("[data-outbox-row]")).toBeTruthy();
+  });
+
   it("X ticks the row, Shift+X ticks the range from the last tick, Escape clears the ticks before it closes the page", async () => {
     const closed = vi.fn();
     render(<OutboxView besideRail onClose={closed} />);
