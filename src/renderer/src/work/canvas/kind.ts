@@ -199,7 +199,8 @@ export interface StatusLine {
   /** "Read only, as of 2:04 PM" */
   detail?: string;
   action?: { label: string; run(): void | Promise<void> };
-  /** The word wraps beside the press, never cut: a word that is the whole fact and may be long (a computer's name). */
+  /** The word wraps beside the press, never cut: a word that is the whole fact and may be long (a computer's name). On a
+   * failed line its detail is then a line of its own; on a quiet line the detail that says what to do wraps under the word. */
   wrap?: boolean;
   /** It is about a save the kind also tells through `saved`: where the save line is drawn (Files), it is said there alone. */
   saving?: boolean;

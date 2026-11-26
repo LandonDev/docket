@@ -90,6 +90,7 @@ export function StateLine({ line, onHistory }: { line: StatusLine; onHistory?: (
         data-canvas-state="quiet"
         word={line.word}
         detail={line.detail}
+        wrap={line.wrap}
         press={line.action}
         end={
           line.history && onHistory ? (

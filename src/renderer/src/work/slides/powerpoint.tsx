@@ -136,6 +136,9 @@ export function forgetPowerPoint(): void {
 }
 export const useOpening = (itemId: string): Opening | undefined => useSyncExternalStore(subscribe, () => opens.get(itemId));
 
+/** A failure Retry cannot mend: PowerPoint is not installed on the computer the deck opens on (office/mac.ts `not-installed`). */
+export const cureless = (error: string): boolean => /\bis not installed\b/i.test(error);
+
 /** The switch's PowerPoint side: the deck opened in PowerPoint on its own computer. */
 export function openInPowerPoint(itemId: string, source: CanvasSource, env: string, o: { again?: boolean } = {}): Promise<void> {
   // His Retry keeps the failure, its button spinning, until the switch answers; the first ask says it opens.
@@ -173,14 +176,22 @@ export function InPowerPoint({ itemId, on, onRetry }: { itemId: string; on: stri
   if (opening?.state === "failed")
     return (
       <div data-in-powerpoint="failed" className="flex size-full flex-1">
-        <EmptyState title="Couldn't open it in PowerPoint" {...(workErrorWords(opening.error) ? { line: workErrorWords(opening.error) } : {})} action={{
-            label: "Retry",
-            busy: retrying,
-            onClick: () => {
-              setRetrying(true);
-              void Promise.resolve(onRetry()).finally(() => setRetrying(false));
-            },
-          }}
+        <EmptyState
+          title="Couldn't open it in PowerPoint"
+          {...(workErrorWords(opening.error) ? { line: workErrorWords(opening.error) } : {})}
+          // PowerPoint not on that computer fails the same way again: no Retry, as a Keynote he must export has none.
+          {...(cureless(opening.error)
+            ? {}
+            : {
+                action: {
+                  label: "Retry",
+                  busy: retrying,
+                  onClick: () => {
+                    setRetrying(true);
+                    void Promise.resolve(onRetry()).finally(() => setRetrying(false));
+                  },
+                },
+              })}
         />
       </div>
     );

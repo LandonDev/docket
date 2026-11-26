@@ -476,7 +476,9 @@ uses the same words when reading older restore labels.
   only, or moved) has no tools in the kind's bar: History ends its quiet line
   (`StatusLine.history`), so the item has one row over the grid, not a bar
   holding History alone over the line; where the line is said on a Files
-  tab's save line instead, History stays in the bar.
+  tab's save line instead, History stays in the bar. The read-only line's
+  reason says what to do, so it wraps under "Read only" on a line of its
+  own, never cut (`StatusLine.wrap`, `QuietLine`'s `wrap`).
   Keep Both is `work.sheets.restore` at the revision the sheet shows: on a
   missing file the package store makes the kept copy of that revision again
   where the file was (`putBack` in packages.ts, through Files' `makeFile`,

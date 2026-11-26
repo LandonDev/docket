@@ -30,6 +30,7 @@ export function QuietLine({
   detail,
   press,
   end,
+  wrap = false,
   ...marks
 }: {
   word: string | null;
@@ -37,6 +38,8 @@ export function QuietLine({
   press?: { label: string; run(): void | Promise<void> } | null | undefined;
   /** what the line holds at its far end: a read-only deck's Present, so the item has one row above it, not two */
   end?: ReactNode;
+  /** the detail says what to do and is never cut: it wraps on a line of its own under the word */
+  wrap?: boolean | undefined;
 } & Record<`data-${string}`, true | string | undefined>) {
   const [busy, setBusy] = useState(false);
   const run = () => {
@@ -47,9 +50,9 @@ export function QuietLine({
   return (
     <div data-quiet-line role="status" {...marks} className="flex min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">
       {word || detail ? (
-        <span className="flex min-w-0 items-baseline gap-1">
+        <span className={wrap && detail ? "flex min-w-0 flex-col" : "flex min-w-0 items-baseline gap-1"}>
           {word ? <span className="shrink-0 font-medium">{word}</span> : null}
-          {detail ? <CutDetail text={detail} /> : null}
+          {detail ? wrap ? <span data-quiet-detail className="text-pretty">{detail}</span> : <CutDetail text={detail} /> : null}
         </span>
       ) : null}
       {press ? (

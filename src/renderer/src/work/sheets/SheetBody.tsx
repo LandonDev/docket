@@ -556,12 +556,13 @@ function useFeeds(
   const saveError = view ? (sendError ?? view.saveError) : undefined;
   const store = view?.store;
   useEffect(() => {
-    // Read only asks nothing of him: one muted line, as on a deck; amber is for a line that needs him.
+    // Read only asks nothing of him: one muted line, as on a deck; amber is for a line that needs him. Its reason says
+    // what to do ("Save it as .xlsx in Excel to edit it here"), so it wraps under the word, never cut.
     // A file moved or deleted outside TempCode: what the sheet holds goes back where it was with Keep Both, as every kind's moved line offers.
     // The save line says it too (`savedLine`): in a Files tab it is said there alone, here only where there is no save line.
     // A sheet he cannot edit has no tools in the bar: History ends its line, so the item has one row above the grid.
     if (missing) shell.statusLine({ tone: "quiet", word: MOVED, ...(sync.host.restore ? { action: { label: "Keep Both", run: () => keepBoth(sync, env) } } : {}), saving: true, history: true });
-    else if (readOnly !== undefined) shell.statusLine({ tone: "quiet", word: "Read only", detail: readOnly, history: true });
+    else if (readOnly !== undefined) shell.statusLine({ tone: "quiet", word: "Read only", detail: readOnly, wrap: true, history: true });
     else if (saveError) shell.statusLine({ tone: "failed", word: "Couldn't save", detail: saveError, action: { label: store === "package" ? "Reload" : "Retry", run: () => sync.retry() }, saving: true });
     else shell.statusLine(null);
     return () => shell.statusLine(null);

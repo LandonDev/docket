@@ -1392,6 +1392,8 @@ describe("the sheet kind", () => {
     expect(line.getAttribute("data-canvas-state")).toBe("quiet");
     expect(line.hasAttribute("data-quiet-line")).toBe(true);
     expect(line.textContent).toContain("Read only");
+    // The reason says what to do: it wraps under the word, never cut.
+    expect(line.querySelector("[data-quiet-detail]")!.textContent).toBe("Saved as .xlsb, which opens read only");
   });
 
   it("draws a number he typed as the number the file saves, right-aligned, without a reload (decision 15)", async () => {

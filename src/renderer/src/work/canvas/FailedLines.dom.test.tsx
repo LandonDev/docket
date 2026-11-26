@@ -95,4 +95,13 @@ describe("a quiet line's cut reason", () => {
     expect(detail.getAttribute("tabindex")).toBe("0");
     expect(detail.getAttribute("data-slot")).toBe("tooltip-trigger");
   });
+
+  it("wraps on its own line under the word when it says what to do, never cut", () => {
+    const reason = "That computer cannot read a binary workbook. Save it as .xlsx in Excel to edit it here.";
+    render(<QuietLine word="Read only" detail={reason} wrap />);
+    const detail = screen.getByText(reason);
+    expect(detail.hasAttribute("data-quiet-detail")).toBe(true);
+    expect(detail.className).not.toContain("truncate");
+    expect(detail.parentElement!.className).toContain("flex-col");
+  });
 });

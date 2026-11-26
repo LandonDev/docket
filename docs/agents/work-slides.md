@@ -1475,7 +1475,8 @@ How it works:
   it lands and where it leaves.
 - **The mode, the written line and the state line** come from the view:
   "Agent writes" shows the last direct write with Undo; a host with no
-  LibreOffice in reach says "Can't draw the slides" once and the strip and
+  LibreOffice in reach says "Can't draw the slides" once (its reason, the way
+  out, wrapped whole on a line of its own under the words) and the strip and
   stage show each slide's title on a blank. While a drawn slide's page
   comes, the stage is its paper with a slide's bones, a title and a
   subtitle centred (`PaperBones`, pdf/PaperBones.tsx), in the box the
@@ -1490,7 +1491,8 @@ How it works:
   rail names it in a line (`hostName` of `hostOf`; none where the window
   has no way to it) (a spinner and "Opening in PowerPoint…"
   while the switch runs; "Couldn't open it in PowerPoint" with the
-  office pillar's words and Try again when it fails); the bar says how many
+  office pillar's words and Retry when it fails, no Retry when PowerPoint
+  is not installed there, `cureless`); the bar says how many
   suggestions wait in TempCode, with Review to go back to them.
 
 ### Shapes and slides by hand

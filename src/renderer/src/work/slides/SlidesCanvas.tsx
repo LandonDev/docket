@@ -645,7 +645,7 @@ function useFeeds(
           : failure
             ? { tone: "failed", word: "Couldn't save your words", detail: failure.message, action: { label: "Retry", run: () => session.commit() }, saving: true }
             : renderError
-              ? { tone: "failed", word: "Can't draw the slides", detail: renderDetail(renderError), action: retryRender ? { label: "Retry", run: retryRender } : undefined }
+              ? { tone: "failed", word: "Can't draw the slides", detail: renderDetail(renderError), wrap: true, action: retryRender ? { label: "Retry", run: retryRender } : undefined }
               : null,
     );
     return () => shell.statusLine(null);

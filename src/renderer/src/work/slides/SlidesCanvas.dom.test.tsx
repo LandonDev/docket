@@ -424,11 +424,11 @@ describe("the slides kind", () => {
   });
 
   it("says why when PowerPoint did not open the deck, and tries again on his press", async () => {
-    host.office.fail = "Microsoft PowerPoint is not installed on this Mac.";
+    host.office.fail = "Microsoft PowerPoint is showing a dialog on this Mac.";
     open({ ...revised(), hosted: true });
     fireEvent.click(within(await screen.findByRole("tablist", { name: "Open in" })).getByRole("tab", { name: "PowerPoint" }));
     expect(await screen.findByText("Couldn't open it in PowerPoint")).toBeTruthy();
-    expect(screen.getByText("Microsoft PowerPoint is not installed on this Mac.")).toBeTruthy();
+    expect(screen.getByText("Microsoft PowerPoint is showing a dialog on this Mac.")).toBeTruthy();
     host.office.fail = null;
     // Council round 12 (the walk): Retry swapped the failure for "Opening in PowerPoint…". It stays, Retry spinning, until the answer.
     let go!: () => void;
@@ -441,6 +441,16 @@ describe("the slides kind", () => {
     await act(async () => go());
     expect(await screen.findByText("In PowerPoint", { selector: "[data-slot=empty-title]" })).toBeTruthy();
     expect(host.office.calls.filter((c) => c.method === "work.office.switch")).toHaveLength(2);
+  });
+
+  it("says PowerPoint is not on that computer with no Retry, which would fail the same way", async () => {
+    host.office.fail = "Microsoft PowerPoint is not installed on this Mac.";
+    open({ ...revised(), hosted: true });
+    fireEvent.click(within(await screen.findByRole("tablist", { name: "Open in" })).getByRole("tab", { name: "PowerPoint" }));
+    expect(await screen.findByText("Couldn't open it in PowerPoint")).toBeTruthy();
+    expect(screen.getByText("Microsoft PowerPoint is not installed on this Mac.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    host.office.fail = null;
   });
 
   it("Present, at the bar's end, starts a show of the file from the slide on the stage; its menu has the other ways in", async () => {
@@ -558,6 +568,8 @@ describe("the slides kind", () => {
     open(deckView({ renders: { file: null, proposed: null }, renderError: "LibreOffice is not installed on this host" }));
     const line = await found('[data-canvas-state="failed"]');
     expect(line.textContent).toContain("Can't draw the slides");
+    // The way out is said whole, on its own line under the word.
+    expect(line.querySelector("[data-canvas-detail]")).not.toBeNull();
     expect(thumbs()).toHaveLength(12);
     expect(thumbs()[2].textContent).toContain("Slide 3");
   });

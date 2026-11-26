@@ -29,7 +29,7 @@ vi.mock("../../lib/connection", async (original) => {
   return { ...real, registry };
 });
 
-import { computerOf, forgetPowerPoint, hostOf, InPowerPoint, openInPowerPoint, presentInPowerPoint, useInPowerPoint, useOpening } from "./powerpoint";
+import { computerOf, cureless, forgetPowerPoint, hostOf, InPowerPoint, openInPowerPoint, presentInPowerPoint, sayOpening, useInPowerPoint, useOpening } from "./powerpoint";
 
 const VIEW = { slides: [] } as unknown as DeckView;
 const deckOn = (host: string): CanvasSource => ({ at: "file", host, path: "/work/deck.pptx" });
@@ -97,6 +97,15 @@ describe("a deck's computer, as this window names it", () => {
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalled();
+  });
+
+  it("offers no Retry when PowerPoint is not on that computer: a press would fail the same way", () => {
+    expect(cureless("Microsoft PowerPoint is not installed on this Mac.")).toBe(true);
+    expect(cureless("PowerPoint did not answer")).toBe(false);
+    sayOpening("absent", { state: "failed", error: "Microsoft PowerPoint is not installed on this Mac." });
+    render(<InPowerPoint itemId="absent" on={null} onRetry={() => undefined} />);
+    expect(screen.getByText("Couldn't open it in PowerPoint")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("asks a saved host by its own id, and the thread's host for a deck with no host of its own", async () => {
