@@ -14,6 +14,7 @@ import { CanvasPane, useKindModule } from "./CanvasPane";
 import { CanvasMore, CanvasTabs } from "./CanvasTabs";
 import { sayError, useFrame } from "./frame";
 import { useLinkHeld } from "./KindBar";
+import { useHostLinkDown } from "../shell/hostLinkDown";
 import type { CanvasKindDef, CanvasSelection } from "./kind";
 import { useOpening, type Opening } from "./fileDrop";
 import { itemVerbsFor } from "./itemVerbs";
@@ -100,6 +101,8 @@ export function CanvasSeat({
   };
 
   const review = useLinkHeld(feeds.review && feeds.review.count > 0 ? feeds.review : null, environmentId);
+  // While the window's link to the thread's computer is down, what asks that computer rests: opening a file, and a close, which sends what the item holds first.
+  const down = !!useHostLinkDown(environmentId);
   const own = feeds.more ?? [];
   // A pillar's verbs for this item (canvas/itemVerbs.ts), after the pane's own rows and before Close.
   const verbs = shown ? itemVerbsFor(shown, shown.kind) : [];
@@ -118,17 +121,18 @@ export function CanvasSeat({
     ...(onAsk
       ? []
       : ([
-          { kind: "item", id: "open-file", label: "Open file…", icon: File },
-          { kind: "item", id: "google-open", label: "Open from Google…", icon: FolderOpen },
+          { kind: "item", id: "open-file", label: "Open file…", icon: File, disabled: down },
+          { kind: "item", id: "google-open", label: "Open from Google…", icon: FolderOpen, disabled: down },
           { kind: "sep" },
         ] satisfies MenuRow[])),
     ...verbs.map((verb): MenuRow => ({ kind: "item", id: VERB_ROW + verb.id, label: verb.label, icon: verb.icon })),
     ...(verbs.length > 0 ? ([{ kind: "sep" }] satisfies MenuRow[]) : []),
-    { kind: "item", id: "close", label: "Close", icon: X },
-    ...(view.items.length > 1 ? ([{ kind: "item", id: "close-others", label: "Close others", icon: X }] satisfies MenuRow[]) : []),
+    { kind: "item", id: "close", label: "Close", icon: X, disabled: down },
+    ...(view.items.length > 1 ? ([{ kind: "item", id: "close-others", label: "Close others", icon: X, disabled: down }] satisfies MenuRow[]) : []),
   ];
   const pick = (id: string): void => {
     if (!shown) return;
+    if (down && (id === "open-file" || id === "google-open" || id === "close" || id === "close-others")) return;
     const entry = id.startsWith(KIND_ROW) ? own.find((e) => KIND_ROW + e.id === id) : undefined;
     if (entry) {
       Promise.resolve()

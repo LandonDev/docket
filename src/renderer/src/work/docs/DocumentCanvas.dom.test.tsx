@@ -69,6 +69,12 @@ describe("the document's body", () => {
     expect(within(container.querySelector<HTMLElement>("[data-canvas-failed]")!).getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeNull();
   });
 
+
+  it("names its bones as the tab does, never with Docket's own .tcdoc (council R2-A2)", () => {
+    const shell = { statusLine: () => {}, ready: () => {}, more: () => {} } as unknown as CanvasShell;
+    render(<Body item={{ ...ITEM, title: "Run of show.tcdoc" }} source={FILE} env="box" state={undefined} setState={() => {}} shell={shell} />);
+    expect(screen.getByRole("heading", { name: "Run of show" })).toBeTruthy();
+  });
   it("opens once for the same source: a canvas push's new copy of the item reopens nothing; another document opens", () => {
     const shell = { statusLine: () => {}, ready: () => {}, more: () => {} } as unknown as CanvasShell;
     const made = opening.made;

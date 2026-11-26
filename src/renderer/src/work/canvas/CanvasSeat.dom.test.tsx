@@ -832,6 +832,8 @@ describe("the frame a kind drives through its shell", () => {
       fireEvent.click(screen.getByRole("menuitem", { name: "Reject all" }));
       expect(adapter.accept).not.toHaveBeenCalled();
       expect(adapter.reject).not.toHaveBeenCalled();
+      // What asks the thread's computer rests too: opening a file, and a close, which sends what the item holds first (council R2-A10).
+      for (const name of ["Open file…", "Open from Google…", "Close"]) expect(screen.getByRole("menuitem", { name }).getAttribute("aria-disabled") ?? screen.getByRole("menuitem", { name }).getAttribute("data-disabled")).not.toBeNull();
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     } finally {
       status.mockRestore();

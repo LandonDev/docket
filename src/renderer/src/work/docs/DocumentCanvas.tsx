@@ -56,6 +56,7 @@ import { ShareButton } from "../guests/Share";
 import { shareTargetOf } from "../guests/api";
 import { openShare } from "../guests/sharePort";
 import { useWorkspaceOf } from "../files/workspaceOf";
+import { shownName } from "../files/model";
 import { DocSaveControls } from "../files/DocLinks";
 import { openSaveAs, tellDrops, useSaveAsAsk } from "../files/saveAsPort";
 
@@ -510,7 +511,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
           <Scroller scrollTop={state?.scrollTop ?? 0} ready={opened !== null && "open" in opened} onScroll={(scrollTop) => setState({ ...latestState.current, scrollTop })}>
             {(width) =>
               opened === null ? (
-                <ItemBones title={<Title text={item.title} />} />
+                <ItemBones title={<Title text={shownName(item.title)} />} />
               ) : "open" in opened ? (
                 <Opened
                   key={`${opened.host.env}|${opened.open.doc}|${session}`}
