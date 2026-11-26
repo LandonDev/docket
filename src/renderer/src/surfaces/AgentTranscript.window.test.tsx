@@ -341,6 +341,29 @@ describe("AgentTranscript older rows", () => {
     }
   });
 
+  it("a search hit older than the loaded rows asks for them through it, then lands on its row", async () => {
+    const older = withOlder();
+    older.load.mockImplementation(() => Promise.resolve(false));
+    try {
+      const { container, rerender } = render(<AgentTranscript sessionId="o3" blocks={chat(100, 100)} busy={false} visible />);
+      act(() => requestTranscriptJump("o3", 1));
+      expect(older.load).toHaveBeenCalledWith("o3", 1);
+      expect(blockIds(container)).not.toContain("u0");
+      // The run brought the whole thread: the hit's block is in, and the transcript scrolls to it.
+      vi.mocked(sessionStore.olderBefore).mockReturnValue(null);
+      vi.mocked(sessionStore.hasOlderHistory).mockReturnValue(false);
+      await act(async () => {
+        rerender(<AgentTranscript sessionId="o3" blocks={chat(200)} busy={false} visible />);
+      });
+      expect(blockIds(container)).toContain("u0");
+      measureRows(() => 48);
+      const u0 = container.querySelector<HTMLElement>('[data-row="u0"]')!;
+      expect(scrollerOf(container).scrollTop).toBe(Math.max(0, topOf(u0) - 12));
+    } finally {
+      older.restore();
+    }
+  });
+
   it("a short tail that fits the screen asks nothing while it follows the end", () => {
     const older = withOlder();
     try {

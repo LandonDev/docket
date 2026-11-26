@@ -8,6 +8,7 @@ import { newSession } from "../session";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
 import type { EventsPage, OmittedBody, SessionPage, SessionChanges } from "@server/shared/wire";
 import { workingPhase } from "../../surfaces/transcript/workingPhase";
+import { blockForSeq, pageTowardJump, pendingTranscriptJump, requestTranscriptJump, takeTranscriptJump } from "../transcriptJump";
 
 /**
  * The store over a remote socket: pages of the list, bounded pages of the
@@ -803,6 +804,74 @@ describe("remote profile: climbing to the top", () => {
     expect(sessionStore.get("s1")!.blocks.length).toBeGreaterThan(0);
     expect(tasks.length).toBeGreaterThan(100);
     expect(Math.max(...tasks)).toBeLessThanOrEqual(FOLD_SLICE_MS + 1);
+  });
+});
+
+describe("remote profile: a jump to an old search hit", () => {
+  const olderAsks = () =>
+    link.calls.filter((c) => c.method === "session.events" && (c.params as { beforeSeq?: number }).beforeSeq !== undefined);
+  afterEach(() => void takeTranscriptJump("s1"));
+
+  it("a hit at row 500 of 30,000 pages until its row is in, folded once, and lands on its block", async () => {
+    link.pageRows = 300;
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.events.set("s1", turns("s1", 15_000));
+    await boot(link);
+    await sessionStore.ensureLoaded("s1");
+    requestTranscriptJump("s1", 500);
+    const jump = pendingTranscriptJump("s1")!;
+    // What the transcript does when no block holds the hit yet.
+    expect(blockForSeq(sessionStore.get("s1")!.blocks, 500)).toBeNull();
+    const adds = { rows: 0 };
+    const real = FoldBuilder.prototype.add;
+    FoldBuilder.prototype.add = function (this: FoldBuilder, r: EventRow) {
+      adds.rows++;
+      return real.call(this, r);
+    };
+    try {
+      expect(pageTowardJump(jump, sessionStore)).toBe(true);
+      // Asked again while the run is out (each blocks change re-runs the effect): nothing more.
+      expect(pageTowardJump(jump, sessionStore)).toBe(true);
+      await vi.waitFor(() => expect(sessionStore.olderBefore("s1")).toBeLessThanOrEqual(500));
+    } finally {
+      FoldBuilder.prototype.add = real;
+    }
+    // 29,700 rows below the tail, 300 a page, until a page starts at or before seq 500 (at 301): 98 asks,
+    // one run, and one refold of the 29,700 rows from 301 on.
+    expect(olderAsks()).toHaveLength(98);
+    expect(sessionStore.olderBefore("s1")).toBe(301);
+    expect(adds.rows).toBe(29_700);
+    const blocks = sessionStore.get("s1")!.blocks;
+    const block = blockForSeq(blocks, 500)!;
+    expect(block).toMatchObject({ role: "assistant", text: "answer 250", seq: 500 });
+    // The jump still waits for the transcript to take it, and nothing else is asked for it.
+    expect(pendingTranscriptJump("s1")).toBe(jump);
+    expect(pageTowardJump(jump, sessionStore)).toBe(false);
+    expect(new Set(blocks.map((b) => b.id)).size).toBe(blocks.length);
+  });
+
+  it("a hit past the bound stops after JUMP_PAGES pages: the request is dropped and the thread pages on as before", async () => {
+    link.pageRows = 300;
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.events.set("s1", turns("s1", 30_000));
+    await boot(link);
+    await sessionStore.ensureLoaded("s1");
+    requestTranscriptJump("s1", 500);
+    pageTowardJump(pendingTranscriptJump("s1")!, sessionStore);
+    await vi.waitFor(() => expect(pendingTranscriptJump("s1")).toBeNull());
+    expect(olderAsks()).toHaveLength(JUMP_PAGES);
+    expect(sessionStore.olderBefore("s1")).toBe(59_701 - JUMP_PAGES * 300);
+    const blocks = sessionStore.get("s1")!.blocks;
+    expect(blocks).toHaveLength(300 + JUMP_PAGES * 300);
+    expect(blocks[0].seq).toBe(59_701 - JUMP_PAGES * 300);
+    expect(blocks.at(-1)!.text).toBe("answer 30000");
+    // Usable: Load earlier goes on from there (fewer rows remain than are loaded, so to the top), rows once and in order.
+    expect(await sessionStore.loadOlder("s1")).toBe(false);
+    const more = sessionStore.get("s1")!.blocks;
+    expect(more).toHaveLength(60_000);
+    const seqs = more.map((b) => b.seq!);
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+    expect(new Set(seqs).size).toBe(seqs.length);
   });
 });
 

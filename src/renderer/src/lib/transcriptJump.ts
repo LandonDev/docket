@@ -38,6 +38,35 @@ export function subscribeTranscriptJump(fn: () => void): () => void {
   };
 }
 
+/** What a jump asks of the store (lib/tcserver/store.ts) to reach an older row. */
+export type OlderReach = {
+  olderBefore(id: string): number | null;
+  loadOlder(id: string, through?: number): Promise<boolean>;
+};
+
+const paging = new WeakSet<TranscriptJump>();
+
+/**
+ * A hit older than the loaded rows (a remote thread's tail): the history
+ * pages in until its row is in, through one bounded run of the store's
+ * (`loadOlder(id, seq)`, at most JUMP_PAGES pages); the transcript lands
+ * on the row when its blocks change. When the run ends short of the row
+ * (past the bound, or a failed ask) the request is dropped and the thread
+ * stays as it is. Answers whether the jump waits on older rows.
+ */
+export function pageTowardJump(jump: TranscriptJump, store: OlderReach): boolean {
+  const before = store.olderBefore(jump.sessionId);
+  if (before === null || before <= jump.seq) return false;
+  if (paging.has(jump)) return true;
+  paging.add(jump);
+  const end = (): void => {
+    const left = store.olderBefore(jump.sessionId);
+    if (pending === jump && left !== null && left > jump.seq) pending = null;
+  };
+  void store.loadOlder(jump.sessionId, jump.seq).then(end, end);
+  return true;
+}
+
 /** The prose block that holds event row `seq`: a user row is its own block;
  *  an assistant stream's final row belongs to the block its first row began.
  *  So: the last user/assistant block born at or before `seq`. */

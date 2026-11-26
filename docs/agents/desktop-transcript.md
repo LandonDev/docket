@@ -74,6 +74,16 @@
   never two older asks in flight and no task folding more than a slice).
   The reader's anchor row keeps its place on screen as rows land above it
   (transcriptWindow.test.ts).
+- A search hit older than the loaded rows (`window.__docket.open(id, {seq})`
+  and every search open go through `requestTranscriptJump`) pages the
+  history in until its row is in: the transcript's jump effect finds no
+  block for the seq and calls `pageTowardJump` (lib/transcriptJump.ts),
+  one run of `loadOlder(id, seq)`, folded once, at most JUMP_PAGES (128)
+  pages, so at most 64 MiB by the host's page cap. When the row lands the
+  effect scrolls to its block; a run that ends short of it (the bound, a
+  failed ask) drops the request and leaves the thread as it is, Load
+  earlier still working. A hit at row 500 of 30,000 is 98 pages and one
+  refold (store.remote.test.ts "a jump to an old search hit").
 - The streaming reveal (surfaces/smoothText.ts) holds a lead behind the live
   end (seeded 100 ms, 250 ms for another host's thread, grown by an
   underrun, decaying back), never runs slower than the stream, shows every

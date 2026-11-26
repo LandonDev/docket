@@ -45,7 +45,7 @@ import { isTurnHeld } from "../lib/turnClock";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { usePaneVisible } from "../hooks/paneVisibility";
 import { saveTranscriptScroll, takeTranscriptScroll, type TranscriptScrollMemory } from "../lib/transcriptScrollMemory";
-import { blockForSeq, pendingTranscriptJump, subscribeTranscriptJump, takeTranscriptJump } from "../lib/transcriptJump";
+import { blockForSeq, pageTowardJump, pendingTranscriptJump, subscribeTranscriptJump, takeTranscriptJump } from "../lib/transcriptJump";
 import { useTranscriptAnchor } from "../hooks/useTranscriptAnchor";
 import { useTranscriptSelection } from "../hooks/useTranscriptSelection";
 import { SelectSessionContext } from "./AgentMarkdown";
@@ -1077,7 +1077,11 @@ export const AgentTranscript = memo(function AgentTranscript({
     const jump = pendingTranscriptJump(sessionId);
     if (!jump) return;
     const block = blockForSeq(blocks, jump.seq);
-    if (!block) return;
+    // Older than the loaded rows: page toward it; the blocks that land bring this back.
+    if (!block) {
+      pageTowardJump(jump, sessionStore);
+      return;
+    }
     const index = rowOf(block.id);
     if (index === undefined) return;
     const sc = scroller.current;
