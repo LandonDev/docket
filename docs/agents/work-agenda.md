@@ -21,3 +21,5 @@ Its view (`agenda/CalendarActView.tsx`, chunk `work-calendar-act`) shows every f
 ## Plain holds
 
 A create on his own calendar that invites no one runs at once in LifeOS (`plain: true`) and is never held. `agenda/index.ts` watches `calendarOps:list {limit: 50}` and records each one this host's live threads made as a Result of its thread, once it is `done`, once (`work_agenda_results`), and only for acts made since the host first watched.
+
+A Week block whose title is cut gives its full title on hover or keyboard focus.

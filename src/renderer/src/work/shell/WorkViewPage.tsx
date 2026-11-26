@@ -20,6 +20,7 @@ import { DOWN_PRESS_LABEL, useDownPress } from "./lifeosDown";
 import { retryLink } from "./linkRetry";
 import { useHostLive } from "./lifeosLive";
 import { DownEmpty } from "./DownEmpty";
+import { OFFLINE_WORDS, useComputerOffline } from "../tasks/offline";
 // The sign-in dialog Connections uses, loaded on the press: a view's sign-in opens it in place, never a page without it.
 import { SignInFor } from "./DownSignIn";
 import { clockTime } from "../../lib/duration";
@@ -121,8 +122,10 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   // A host whose status ask went unanswered on an open link is down too (`unanswered`): its own name and Retry.
   const unreachable = gated && (state === "unreachable" || session.state === "unreachable");
   const linkDown = useHostLinkDown(environmentId);
-  // The views whose presses (and Mail's and Messages' reads) go through the host: over what they hold, one line names it.
-  const actionLinkDown = session.client && LINK_LINE_VIEWS.has(def.id) ? linkDown : null;
+  const computerOffline = useComputerOffline();
+  // The frame owns Mail's offline note even when a host on this computer can still answer.
+  const mailOffline = def.id === "mail" && computerOffline ? OFFLINE_WORDS : null;
+  const actionLinkDown = session.client && LINK_LINE_VIEWS.has(def.id) ? (linkDown ?? mailOffline) : null;
   const silence = sessionWords(session);
   // The host answers, but this computer's key is never handed its LifeOS session (a given computer's): not silence, and Retry cannot help.
   const withheld = gated && !!session.withheld;
@@ -204,7 +207,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           {Head && !held ? <Head {...props} /> : null}
         </div>
       )}
-      {actionLinkDown && !held ? <HostLinkLine word={actionLinkDown} retryHost={environmentId} /> : null}
+      {actionLinkDown && !held ? <HostLinkLine word={actionLinkDown} retryHost={linkDown ? environmentId : undefined} /> : null}
       {unreachable && !blocked && !actionLinkDown ? (
         // The state line's shape (DESIGN.md "The state line"): 32px, glyph, the word in its tone, a muted detail, one action.
         <div data-view-state="failed" role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">

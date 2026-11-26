@@ -94,15 +94,15 @@ runs the same guard on its own lock.
 
 ## Bumping the pin
 
-The Work polish pin is `25ea17a8def82cb0ea5b046b86e998423e380e0a`. It keeps
+The Work polish pin is `3d3fc19bc42b70f70248bdf84be4e05bda63625a`. It keeps
 `WORK_KIT_API` at 3. The pin needs a signed Docket release.
 
-A bump is one commit that changes four files: package.json, bun.lock,
-`ios/TempCode/project.yml` (the phone's WorkKit `revision:` is the same commit)
-and the tracked `ios/TempCode/TempCode.xcodeproj/project.pbxproj`, whose one
-`revision = <commit>;` line is set by hand, since the box has no xcodegen to
-make the project again. The pin test holds all four equal. Push and tag (`vN`) the work-kit commit, set
-the sha in both, `bun install`. When the new commit adds a file the renderer's
+A bump changes five pin files in one commit: `package.json`, `bun.lock`,
+`ios/TempCode/project.yml`, the tracked `ios/TempCode/TempCode.xcodeproj/project.pbxproj`,
+and that project's `project.xcworkspace/xcshareddata/swiftpm/Package.resolved`.
+The pin test holds all five at the same revision. Push the work-kit commit,
+set the revision in the pin files, and run `bun install`. A tagged kit release
+also gets its `vN` tag. When the new commit adds a file the renderer's
 imports reach, `bun scripts/gen-work-kit-sources.ts` writes
 `work-kit-sources.css` again and that file rides in the same commit. A bump that
 moves Swift (LifeKit) is parse-checked for the phone on the box

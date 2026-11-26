@@ -226,6 +226,8 @@ export function mailLink(href: string): boolean {
 }
 
 export const tempcodeMailKit: MailKit = {
+  // Work’s frame gives the computer’s offline reason.
+  networkNote: false,
   toast,
   Face,
   SectorMark,

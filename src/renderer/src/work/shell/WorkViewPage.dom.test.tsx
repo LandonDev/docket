@@ -10,7 +10,7 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => ({
   ...(await original<object>()),
   useWorkspaces: () => [{ id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" }],
 }));
-vi.mock("convex/react", async (original) => ({ ...(await original<object>()), ConvexReactClient: class {} }));
+vi.mock("convex/react", async (original) => ({ ...(await original<object>()), ConvexReactClient: class { setAuth() {} close() {} } }));
 vi.mock("../../stores/project", async (original) => ({ ...(await original<object>()), useSelectedWorkspaceIds: () => ["ws"] }));
 const files = vi.hoisted(() => ({ opened: [] as unknown[][] }));
 const toasts = vi.hoisted(() => [] as { message: string; description?: string }[]);
@@ -285,6 +285,39 @@ describe("a view's boundary", () => {
 describe("a down link over a view", () => {
   it("is named over Mail, Messages, Tasks and a meeting's page, whose presses and reads go through the host", () => {
     expect([...LINK_LINE_VIEWS].sort()).toEqual(["mail", "messages", "prep", "tasks"]);
+  });
+
+  it("keeps Mail's offline note in the frame while the host link still answers", async () => {
+    let online = true;
+    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open" } as never);
+    const status = { lifeos: { state: "connected" as const, ownerId: "landon", since: 1 }, keys: [] };
+    vi.spyOn(registry, "linkOf").mockReturnValue({
+      environmentId: "env_box",
+      connected: true,
+      onPush: () => () => {},
+      onOpen: () => () => {},
+      request: vi.fn(async (method: string) => method === "work.lifeos.jwt"
+        ? { ok: true, url: "https://example.test", jwt: "test" }
+        : status),
+    } as never);
+    setLifeosStatus("env_box", status);
+    const was = WORK_VIEWS.mail.chunk;
+    WORK_VIEWS.mail.chunk = defineChunk("test-mail-offline", async () => ({ View: () => <p>Mail rows</p> }));
+    try {
+      render(<ViewFrame view="mail" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+      await screen.findByText("Mail rows");
+      expect(screen.queryByText("This computer is offline")).toBeNull();
+      online = false;
+      fireEvent(window, new Event("offline"));
+      expect(screen.getByText("This computer is offline").closest("[data-work-link-down]")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      online = true;
+      fireEvent(window, new Event("online"));
+      expect(screen.queryByText("This computer is offline")).toBeNull();
+    } finally {
+      WORK_VIEWS.mail.chunk = was;
+    }
   });
 
   it("is the boundary's line while it is down, in the link's words, over the error's own", () => {

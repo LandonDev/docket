@@ -7,6 +7,10 @@ const { openWorkView, workViewNow } = await import("../../lib/workSwitch");
 
 afterEach(() => openWorkView(null));
 
+it("leaves the offline note to Work’s frame", () => {
+  expect(tempcodeMailKit.networkNote).toBe(false);
+});
+
 describe("Open in Agenda", () => {
   it("opens the workspace's Agenda with the invitation's event", () => {
     openWorkView({ workspaceId: "ws", view: "mail" });

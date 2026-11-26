@@ -60,14 +60,14 @@ describe("the tracker", () => {
     workOpenPort.set((id) => void opened.push(id));
     render(body());
     const cell = document.querySelector("[data-project='p-lan'] [data-part=threads]") as HTMLElement;
-    expect(cell.textContent).toBe("1 mail to send");
+    expect(cell.textContent).toBe("1 mail to send,");
     expect(cell.querySelector("[data-outcome=held]")).toBeTruthy();
     fireEvent.click(within(cell).getByRole("button", { name: "1 mail to send" }));
     expect(opened).toEqual(["t-itap"]);
     // The thread's press, not the row's: no project page opened.
     expect(workViewNow()).toBeNull();
     // A question is amber; a project with no thread leaves its cell empty.
-    expect(document.querySelector("[data-project='p-trailer'] [data-part=threads]")!.textContent).toBe("Asks you");
+    expect(document.querySelector("[data-project='p-trailer'] [data-part=threads]")!.textContent).toBe("Asks you,");
     expect(document.querySelector("[data-project='p-season'] [data-part=threads]")).toBeNull();
     // The tip carries what a narrow cell cuts short: the thread and what it left him.
     expect(threadTip({ title: "Ask ITaP for two switches", outcome: { words: "1 mail to send", tone: "held" } })).toBe("Ask ITaP for two switches: 1 mail to send");

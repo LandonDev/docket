@@ -70,6 +70,8 @@ older client) is refused for a row that has either, so nothing goes unseen:
   written since; the host says that refusal as "The draft changed after you
   pressed Send…", never as LifeOS's stack, and asks nothing again.
 
+Mail leaves the computer’s offline note to the Work frame, even when the local host still answers. Other work-kit apps can keep the list’s note.
+
 When the Work host link drops, Send and its menu stay in place and cannot be pressed. Their shared tip gives the host link’s reason. The keyboard shortcut waits for the link too.
 
 **Undo for a held draft is a wait in the window.** The hold has no queue to
@@ -226,7 +228,7 @@ chip, `{at: 'lifeos', table: 'mailThreads', id}`; the first send links the
 thread to the mail). Which mailbox, which mail was open and the composer
 stay per workspace while the window lives (`MailPage`). The reader leaves
 the tab order while a full composer covers it. Closing the composer returns
-focus to the control in hand. The offline note wraps when the list is narrow.
+focus to the control in hand.
 
 A sender, and each known person in a message's Details, opens their page
 in People when the address is one of the sector's people (work-kit's

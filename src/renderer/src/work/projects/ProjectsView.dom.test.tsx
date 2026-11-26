@@ -173,7 +173,7 @@ describe("the Projects view", () => {
     expect(rows()).toEqual(["p-tryouts", "p-lan"]);
     const lan = document.querySelector("[data-project='p-lan']") as HTMLElement;
     expect(within(lan).getByText("Sam Ortiz")).toBeTruthy();
-    expect(lan.querySelector("[data-part=done]")!.textContent).toBe("2 of 8");
+    expect(lan.querySelector("[data-part=done]")!.textContent).toBe("2 of 8 done");
     expect(lan.querySelector("[data-part=next]")!.textContent).toContain("Stage and casters");
     // The Threads column is TempCode's (kit.tsx `threadFacts`); a project with no thread to speak of leaves its cell empty.
     expect(document.querySelector("[data-part=track-head]")!.textContent).toContain("Threads");
@@ -296,6 +296,8 @@ describe("the Projects view", () => {
     fireEvent.click(within(head()).getByRole("button", { name: "New project" }));
     expect(placeOf("ws").at).toBe("new");
     const dialog = screen.getByRole("dialog", { name: "New project" });
+    expect(within(dialog).getByRole("button", { name: "Cancel" }).dataset.variant).toBe("secondary");
+    expect(dialog.querySelector("[data-slot=dialog-footer]")?.classList.contains("border-t")).toBe(true);
     expect(within(dialog).getByLabelText("State").textContent).toContain("Active");
     expect(within(dialog).getByLabelText("Target").textContent).toBe("No target");
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Fall tryouts" } });
@@ -424,7 +426,7 @@ describe("threads", () => {
     try {
       render(<Screen {...props()} />);
       const cell = document.querySelector("[data-project='p-lan'] [data-part=threads]") as HTMLElement;
-      expect(cell.textContent).toBe("1 mail to send");
+      expect(cell.textContent).toBe("1 mail to send,");
       expect(cell.querySelector("[data-outcome=held]")).toBeTruthy();
       fireEvent.click(within(cell).getByRole("button", { name: "1 mail to send" }));
       expect(openThread).toHaveBeenCalledWith("t-itap");

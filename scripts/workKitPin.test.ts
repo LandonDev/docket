@@ -49,6 +49,14 @@ describe('the work-kit pin', () => {
     expect(revision, 'the WorkKit package in project.yml needs a revision: line under its url').toBe(pinnedCommit(spec))
   })
 
+  it('names the same work-kit revision in the tracked SwiftPM lock', () => {
+    const path = 'ios/TempCode/TempCode.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved'
+    const resolved = JSON.parse(read(path)) as {
+      pins: Array<{ identity: string; state: { revision?: string } }>
+    }
+    expect(resolved.pins.filter((pin) => pin.identity === 'work-kit').map((pin) => pin.state.revision)).toEqual([pinnedCommit(spec)])
+  })
+
   it('names that commit in the tracked Xcode project too, which the box cannot make again (no xcodegen)', () => {
     // A pin bump sets project.yml and this one line in the same commit: the project opened from a fresh checkout
     // builds against the pin, not the one before it.
