@@ -350,12 +350,13 @@ claimed by no kind, unless either is opened as a meeting (`meeting_open`).
   pane's More holds Accept all and Reject all. A filing that failed is the
   state line, with Try again.
 - **Notes:** once there are notes, a Notes and Transcript switch in the bar
-  (Transcript first). The notes are a short document on the document scale:
+  (Transcript first), whole in every bar, a narrow one with tasks waiting too. The notes are a short document on the document scale:
   any summary lines, then Decided, To do and Open questions, each line ending
   in its minute, an accent link that plays that moment. "Wrote notes, Mon
   10:52 AM" with Undo takes the stepper's place when no task waits.
 - **Find** at the bar's end (the kind's tools slot takes the free room, so
-  `ms-auto` puts it there): hits on `--find-hit`, the current one on `--sel-bg`
+  `ms-auto` puts it there), only over a transcript (none while there are no
+  turns), and giving way to the stepper while tasks wait: hits on `--find-hit`, the current one on `--sel-bg`
   with an accent line, Enter and Shift+Enter to step, Escape to close.
 - **A stretch:** a selection across turns tints them as one block and its
   span on the wave; the selection bar offers Ask ("15:02 to 15:41, Staff

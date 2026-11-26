@@ -12,6 +12,7 @@ import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { Skeleton } from "../../components/ui/skeleton";
 import { PrepSkeleton } from "./bones";
+import { HeldTip } from "../../components/heldTip";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
 import { moveBetweenRows } from "../rowKeys";
@@ -155,7 +156,8 @@ export function Title(props: WorkViewProps) {
 }
 
 export function Head(props: WorkViewProps) {
-  const hostHeld = !!useHostLinkDown(props.env);
+  const linkDown = useHostLinkDown(props.env);
+  const hostHeld = !!linkDown;
   const workspaceId = props.workspace.id;
   const eventId = useEventId(workspaceId);
   const { page } = usePrepHeld(workspaceId, eventId);
@@ -185,6 +187,7 @@ export function Head(props: WorkViewProps) {
       verb={verb}
       busy={busy}
       hostHeld={hostHeld}
+      heldWords={linkDown}
       // Add people and the notes open dialogs the page's body holds, which reads LifeOS: none while the session is down.
       dialogs={!downOf(props.lifeos)}
       thread={pageThread(page) !== null}
@@ -221,6 +224,8 @@ export interface PageVerbsProps {
   /** the press in flight: its button spins */
   busy?: "brief" | "followUp" | null;
   hostHeld?: boolean;
+  /** the link's words while it is down: the held verb's tip */
+  heldWords?: string | null;
   /** the page has a thread to open */
   thread: boolean;
   /** the body that holds Add people's and the notes' dialogs can draw them (the LifeOS session reads or is on its way); false drops both presses */
@@ -263,9 +268,11 @@ export function PageVerbs(p: PageVerbsProps) {
   return (
     <div className="flex items-center gap-1">
       {p.verb === "brief" ? (
-        <Button variant="ghost" size="sm" disabled={p.hostHeld || p.busy === "brief"} onClick={p.onBrief}>
-          <BusyLabel busy={p.busy === "brief"} label="Brief me" />
-        </Button>
+        <HeldTip held={p.hostHeld ? (p.heldWords ?? null) : null}>
+          <Button variant="ghost" size="sm" disabled={p.hostHeld || p.busy === "brief"} onClick={p.onBrief}>
+            <BusyLabel busy={p.busy === "brief"} label="Brief me" />
+          </Button>
+        </HeldTip>
       ) : p.verb === "preparing" || p.verb === "following" ? (
         // The thread is at work: the word says so, and a press opens it.
         <Button variant="ghost" size="sm" className="font-normal text-muted-foreground" onClick={p.onOpenThread}>
@@ -276,9 +283,11 @@ export function PageVerbs(p: PageVerbsProps) {
           Add notes
         </Button>
       ) : p.verb === "followUp" ? (
-        <Button variant="ghost" size="sm" disabled={p.hostHeld || p.busy === "followUp"} onClick={p.onFollowUp}>
-          <BusyLabel busy={p.busy === "followUp"} label="Follow up" />
-        </Button>
+        <HeldTip held={p.hostHeld ? (p.heldWords ?? null) : null}>
+          <Button variant="ghost" size="sm" disabled={p.hostHeld || p.busy === "followUp"} onClick={p.onFollowUp}>
+            <BusyLabel busy={p.busy === "followUp"} label="Follow up" />
+          </Button>
+        </HeldTip>
       ) : null}
       <RowsMenu
         label="More"

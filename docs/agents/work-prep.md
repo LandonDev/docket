@@ -6,6 +6,7 @@ It is Work pillar `prep` (55). Its host code is `src/main/server/work/prep/`, it
 
 Three things hold everywhere below:
 
+- **Its bones.** A cold open draws the page's own bones while its code comes (prep/bones.tsx, `bones: "prep"` on the view's def), never Tasks' rows first.
 - **Opening a page starts nothing.** The facts are read from LifeOS with no model. A thread starts only on his press (Brief me, Follow up) or from the routine he turned on.
 - **Nothing here sends, books or shares.** Prep declares no act kind. A suggested task is prep's own row until he ticks it; the follow-up mail is LifeOS's own draft, which the Outbox already holds.
 - **A thread never writes as him.** Every write method refuses a thread's own call (`mustBePerson`); a thread writes through the pillar's tools.
@@ -210,4 +211,4 @@ ahead.
 
 ## When a read or link fails
 
-The meeting page keeps the facts it has while the workspace’s computer is out of reach. Brief me, Follow up, and the filing and setup presses wait for the link. The page reads again when the link returns.
+The meeting page keeps the facts it has while the workspace’s computer is out of reach. Brief me, Follow up, and the filing and setup presses wait for the link; Brief me and Follow up stand disabled with the link's words as their tip (`HeldTip`). The page reads again when the link returns.

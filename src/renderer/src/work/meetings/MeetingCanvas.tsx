@@ -370,14 +370,9 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
   return (
     <>
       {notes && !view.find ? (
-        // The form's 24px switch, whole or not at all: it gives way in a narrow bar only while tasks wait (they show at
-        // their turn in the transcript then), so Notes is always in reach otherwise.
-        <Tabs
-          value={view.tab}
-          onValueChange={(tab) => setState({ ...view, tab: tab as MeetingState["tab"] })}
-          data-narrow-hide={stepping || undefined}
-          className={`mx-1 shrink-0 gap-0 ${stepping ? "@max-[560px]/bar:hidden" : ""}`}
-        >
+        // The form's 24px switch, whole, in every bar: Notes and the transcript stay in reach while tasks wait too, as
+        // Find gives way to the stepper there.
+        <Tabs value={view.tab} onValueChange={(tab) => setState({ ...view, tab: tab as MeetingState["tab"] })} className="mx-1 shrink-0 gap-0">
           <TabsList aria-label="Show" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
             <TabsIndicator />
             <TabsTrigger value="notes" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
@@ -389,7 +384,8 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
           </TabsList>
         </Tabs>
       ) : null}
-      {stepping ? null : view.find ? (
+      {/* No Find over a recording with no transcript to search. */}
+      {stepping || meeting.segments.length === 0 ? null : view.find ? (
         <div data-meeting-find className="ms-auto flex min-w-0 items-center gap-1">
           <InputGroup className="h-6 w-56 min-w-24 shrink rounded-md px-2 [&_svg:not([class*='size-'])]:size-3" leading={<Search />}>
             <GroupInput

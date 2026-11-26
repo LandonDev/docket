@@ -139,7 +139,8 @@ describe("the meeting canvas", () => {
     calm.unmount();
   });
 
-  it("the switch goes whole under the narrow bar while tasks wait to be stepped through", async () => {
+  // Council round 1 (R1-B22): with tasks waiting, Notes and the transcript stay in reach in a narrow bar.
+  it("the switch stays whole in a narrow bar while tasks wait to be stepped through", async () => {
     const { container } = await seat(sampleMeeting({ notes: SAMPLE_NOTES }));
     const notes = await screen.findByRole("tab", { name: "Notes" });
     const list = screen.getByRole("tablist", { name: "Show" });
@@ -148,10 +149,11 @@ describe("the meeting canvas", () => {
     expect(list.className).toContain("group-data-[orientation=horizontal]/tabs:h-6");
     // The pill glides under the triggers, which lift nothing of their own.
     for (const tab of [notes, screen.getByRole("tab", { name: "Transcript" })]) expect(tab.className).toContain("group-data-[variant=default]/tabs-list:data-active:bg-transparent");
-    const root = container.querySelector("[data-canvas-bar] [data-narrow-hide]") as HTMLElement;
-    expect(root.contains(list)).toBe(true);
+    const root = list.parentElement as HTMLElement;
+    expect(within(container.querySelector("[data-canvas-bar]") as HTMLElement).getByText("1/3")).toBeTruthy();
     expect(root.className).toContain("shrink-0");
-    expect(root.className).toContain("@max-[560px]/bar:hidden");
+    expect(root.hasAttribute("data-narrow-hide")).toBe(false);
+    expect(root.className).not.toContain("@max-[560px]/bar:hidden");
   });
 
   it("an open Find can narrow but keeps its field whole", async () => {
@@ -323,6 +325,13 @@ describe("the meeting canvas", () => {
     expect(container.querySelector("[data-meeting-player]")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(host.calls.filter((c) => c.method === "work.meetings.start")).toHaveLength(2));
+  });
+
+  // Council round 1 (R1-B24): Find is offered only over a transcript it can search.
+  it("offers no Find over a recording with no transcript", async () => {
+    const { container } = await seat(sampleMeeting({ status: "failed", rev: 9, segments: [], error: "It stopped when the computer restarted. The recording is fine." }));
+    await waitFor(() => expect(container.querySelector("[data-meeting-failed]")).toBeTruthy());
+    expect(within(container.querySelector("[data-canvas-bar]") as HTMLElement).queryByRole("button", { name: "Find" })).toBeNull();
   });
 
   it("could not transcribe never shows a host's id: a line never written for him leaves the title alone", async () => {

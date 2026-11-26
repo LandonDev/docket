@@ -130,7 +130,7 @@ vi.mock("../shell/lifeos", async (original) => ({
   },
 }));
 
-const { View, Head, Title, Kept, PrepPageBody } = await import("./PrepView");
+const { View, Head, Title, Kept, PageVerbs, PrepPageBody } = await import("./PrepView");
 const { resetPrep } = await import("./data");
 const { workOpenPort } = await import("../../lib/workSwitch");
 const { forgetOffered } = await import("../msforms/offer");
@@ -449,6 +449,22 @@ describe("the header", () => {
     await act(async () => fireEvent.click(within(screen.getByTestId("head")).getByRole("button", { name: "More" })));
     await act(async () => fireEvent.click(await screen.findByRole("menuitem", { name: "Add people…" })));
     expect(await screen.findByRole("dialog", { name: "Add people" })).toBeTruthy();
+  });
+});
+
+// Council round 1 (R1-B23): a verb held for the link is disabled in place, its tip the link's words.
+describe("a held verb", () => {
+  it("says why Brief me and Follow up are off while the host's link is down", () => {
+    const noop = () => {};
+    const verbs = { busy: null, thread: false, brief: "brief" as const, notes: false, rest: 0, ahead: null, onBrief: noop, onFollowUp: noop, onOpenThread: noop, onNotes: noop, onAddPeople: noop, onThread: noop, onDismissRest: noop, onAhead: noop };
+    const { rerender } = render(<PageVerbs {...verbs} verb="brief" hostHeld heldWords="The box is not connected" />);
+    const brief = screen.getByRole<HTMLButtonElement>("button", { name: "Brief me" });
+    expect(brief.disabled).toBe(true);
+    expect(brief.closest("[data-held]")).toBeTruthy();
+    rerender(<PageVerbs {...verbs} verb="followUp" hostHeld heldWords="The box is not connected" />);
+    expect(screen.getByRole("button", { name: "Follow up" }).closest("[data-held]")).toBeTruthy();
+    rerender(<PageVerbs {...verbs} verb="followUp" />);
+    expect(screen.getByRole("button", { name: "Follow up" }).closest("[data-held]")).toBeNull();
   });
 });
 
