@@ -796,6 +796,44 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1", "late 2"]);
   });
 
+  it("a held transcript whose resync failed retries its replay on the load retry's delay, and opening it replays at once (Sol S7)", async () => {
+    const setup = async (): Promise<EventRow[]> => {
+      sessionStore.reset();
+      link = new RemoteLink();
+      link.pages = [[wireMeta({ id: "s" })]];
+      link.events.set("s", turns("s", 2));
+      await boot(link);
+      sessionStore.setMounted(["s"]);
+      await sessionStore.ensureLoaded("s");
+      const late = turns("s", 2, 5).map((r, i) => ({ ...r, event: { ...r.event, text: `late ${i}` } as EventRow["event"] }));
+      link.events.set("s", [...turns("s", 2), ...late]);
+      return late;
+    };
+    const all = ["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1", "late 2", "late 3"];
+    vi.useFakeTimers();
+    try {
+      for (const way of ["timer", "open"] as const) {
+        const late = await setup();
+        const real = link.request.bind(link);
+        link.request = (<T,>(method: string, params?: unknown): Promise<T> =>
+          method === "session.list" || method === "session.changes" ? Promise.reject(new ConnectionLostError("connection closed")) : real<T>(method, params)) as typeof link.request;
+        link.push({ push: "resync" });
+        link.push({ push: "event", row: late[2]! });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(all.slice(0, 4));
+        const asked = (): number => link.calls.filter((c) => c.method === "session.events").length;
+        const before = asked();
+        if (way === "timer") await vi.advanceTimersByTimeAsync(1_000);
+        else await sessionStore.ensureLoaded("s");
+        await vi.advanceTimersByTimeAsync(0);
+        expect(asked()).toBe(before + 1);
+        expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(all);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
   async function masterWithChild(): Promise<{ asked: () => string[] }> {
     link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];

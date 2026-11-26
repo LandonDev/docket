@@ -195,6 +195,9 @@ type Entry = {
   /** A `resync` came while a replay held its rows: the rows held from this index on came after it, and wait for a
    *  second replay, from the cursor, that brings the rows the host shed before them. */
   resyncAt?: number;
+  /** A held transcript whose replay failed tries again on the load retry's delay (`retryHeld`). */
+  heldRetry?: { timer: ReturnType<typeof setTimeout>; attempt: number } | null;
+  heldAttempts?: number;
   /** Times this entry was unloaded: a fold that yielded across one stops (its rows are no longer this fold's). */
   unloads?: number;
   /** The replay of its gap on its way, and the socket it runs on: one on a newer socket waits it out. */
@@ -1666,6 +1669,8 @@ class SessionStore {
   ensureLoaded(id: string, why = "unknown"): Promise<void> {
     const entry = this.entries.get(id);
     if (!entry || !entry.meta) return Promise.resolve();
+    // Loaded but held behind a gap a replay never closed: opening it replays now.
+    if (entry.loaded && entry.held && entry.resyncHold) return this.replayHeld(entry);
     if (entry.loaded) return Promise.resolve();
     if (entry.loading) return entry.loading;
     return this.startLoad(entry, why);
@@ -1929,9 +1934,11 @@ class SessionStore {
           entry.resyncHold = true;
           entry.heldFailed = true;
           entry.resyncAt = undefined;
+          this.retryHeld(entry);
           return;
         }
         entry.heldFailed = false;
+        entry.heldAttempts = 0;
         const at = entry.resyncAt;
         entry.resyncAt = undefined;
         if (at !== undefined && entry.held) {
@@ -2005,6 +2012,32 @@ class SessionStore {
       entry.resyncHold = false;
       for (const row of held ?? []) this.applyPush(entry, row);
     }
+  }
+
+  /** A held transcript's replay, once more after the load retry's delay (1, 2, 4, 8, then every 15 s), on the live
+   *  socket; the cursor stays behind the gap until one works. */
+  private retryHeld(entry: Entry): void {
+    if (entry.heldRetry) return;
+    const attempt = entry.heldAttempts ?? 0;
+    entry.heldRetry = {
+      attempt,
+      timer: setTimeout(() => {
+        entry.heldRetry = null;
+        if (this.entries.get(entry.session.id) !== entry || !entry.held || !entry.resyncHold) return;
+        entry.heldAttempts = attempt + 1;
+        void this.replayHeld(entry);
+      }, retryDelay(attempt)),
+    };
+  }
+
+  /** The held transcript's replay now, through its hold. */
+  private replayHeld(entry: Entry): Promise<void> {
+    if (entry.heldRetry) clearTimeout(entry.heldRetry.timer);
+    entry.heldRetry = null;
+    return this.replayGap(entry, "resync").then(
+      () => this.bump(),
+      () => undefined,
+    );
   }
 
   /** Which socket of its link a transcript's replay would run on now. */
@@ -2391,8 +2424,12 @@ class SessionStore {
               if (this.attached.get(environmentId) === attached && attached.link.connected) return this.resync(attached.link);
             })
             // No release here: a hold ends only when that transcript's replay works (its `end`), never because the
-            // list failed first; a newer socket's replay drops it (`heldOn`).
-            .catch(() => undefined);
+            // list failed first; a newer socket's replay drops it (`heldOn`). One still held tries again later.
+            .catch(() => undefined)
+            .then(() => {
+              for (const entry of this.entries.values())
+                if (entry.meta?.environmentId === environmentId && entry.held && entry.resyncHold && entry.heldOn === socket) this.retryHeld(entry);
+            });
         }
         break;
       }
