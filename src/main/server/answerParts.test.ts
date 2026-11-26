@@ -348,3 +348,27 @@ describe('AnswerParts: a held resync goes before every later transcript push (So
   })
 })
 
+describe('AnswerParts: one bound for answers and held pushes, an answer charged whole (Sol S4)', () => {
+  it('pushes held behind an answer close the socket past the bound with no new answer; a part sent leaves its answer charged whole', () => {
+    const wire: string[] = []
+    const closes: string[] = []
+    const max = 2 * 1024 * 1024
+    const parts = new AnswerParts((t) => wire.push(t), { close: (_c, r) => closes.push(r), maxHeldChars: max, setTimer: () => 0, clearTimer: () => undefined })
+    parts.enable()
+    parts.mark('1', 'session.events', 'x')
+    const answer = JSON.stringify({ id: '1', ok: true, result: { rows: [], pad: 'p'.repeat(max / 2) } })
+    expect(parts.take('1', answer, true)).toBe(true)
+    // Four parts went out, unacked: the answer is still held whole.
+    expect(parts.heldChars).toBe(answer.length)
+    const push = (seq: number): string => JSON.stringify({ push: 'event', row: { sessionId: 'x', seq, ts: seq, event: { type: 'assistant-text', text: 'r'.repeat(256 * 1024), delta: false } } })
+    let n = 0
+    for (; closes.length === 0 && n < 20; n++) {
+      const text = push(n)
+      parts.holdPush(JSON.parse(text), text, true)
+    }
+    expect(closes).toEqual(['answers waiting in parts passed 64 MiB'])
+    expect(n).toBeLessThanOrEqual(5)
+    expect(parts.heldChars).toBe(0)
+  })
+})
+

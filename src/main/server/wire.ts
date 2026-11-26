@@ -867,8 +867,18 @@ export class AnswerParts {
     // socket shed must not reach the window ahead of the word that its rows were shed.
     const behindResync = !resync && this.behind.some((b) => b.resync)
     if (!behindResync && !threads.some((t) => (this.outstanding.get(t) ?? 0) > 0 || waiting.has(t))) return false
+    if (!this.charge(text.length)) return true
     this.behind.push({ text, compress, threads, ...(resync ? { resync: true as const } : {}) })
-    this.held += text.length
+    return true
+  }
+
+  /** Counts `chars` more held here; past the bound the socket closes and nothing more is held. */
+  private charge(chars: number): boolean {
+    if (this.held + chars > (this.options.maxHeldChars ?? PARTS_HELD_MAX_CHARS)) {
+      this.shut('answers waiting in parts passed 64 MiB')
+      return false
+    }
+    this.held += chars
     return true
   }
 
@@ -887,11 +897,8 @@ export class AnswerParts {
     this.marked.delete(id)
     if (this.closed || text.length <= PART_CHARS) return false
     if (this.queue.some((q) => q.id === id)) return false
-    if (this.held + text.length > (this.options.maxHeldChars ?? PARTS_HELD_MAX_CHARS)) {
-      this.shut('answers waiting in parts passed 64 MiB')
-      return true
-    }
-    this.held += text.length
+    // The whole string stays held until its last part leaves the queue.
+    if (!this.charge(text.length)) return true
     this.queue.push({ id, text, at: 0, compress, thread })
     if (thread) this.outstanding.set(thread, (this.outstanding.get(thread) ?? 0) + 1)
     this.pump()
@@ -919,10 +926,10 @@ export class AnswerParts {
       const last = end >= answer.text.length
       this.send(partText(answer.id, answer.at, last, body), answer.compress)
       this.sent += body.length
-      this.held -= body.length
       answer.at = end
       if (last) {
         this.queue.shift()
+        this.held -= answer.text.length
         if (answer.thread) this.finished(answer.thread)
       }
     }
