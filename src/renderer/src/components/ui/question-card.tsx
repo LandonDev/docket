@@ -115,6 +115,7 @@ export function QuestionCard({
   onSkip,
   showProgress = questions.length > 1,
   held = null,
+  whoCan = null,
   className,
 }: {
   icon?: ReactNode;
@@ -126,6 +127,8 @@ export function QuestionCard({
   showProgress?: boolean;
   /** Why the answer cannot go now (the host away): Skip and Continue are held, this their tooltip. */
   held?: string | null;
+  /** Who can answer, for a key that may not: said in Skip's and Continue's place; Back and Next stay so each question can be read. */
+  whoCan?: string | null;
   className?: string;
 }) {
   const id = useId();
@@ -144,7 +147,8 @@ export function QuestionCard({
     const freeform = choices.some((choice) => questions[index]?.options[choice]?.freeform === true);
     return !freeform || choices.length > 1 || (typed[index]?.trim() ?? "") !== "";
   };
-  const answered = hasAnswer(at);
+  // Read only, Next just turns the page: it waits on no pick.
+  const answered = hasAnswer(at) || (!!whoCan && at < questions.length - 1);
   const last = at === questions.length - 1;
 
   const go = (by: number) => setAt((index) => Math.min(questions.length - 1, Math.max(0, index + by)));
@@ -185,7 +189,7 @@ export function QuestionCard({
       go(1);
       return;
     }
-    if (held) return;
+    if (held || whoCan) return;
     onSubmitAnswers?.(
       questions.map((entry, index) =>
         (picked[index] ?? []).map((choice) => (entry.options[choice]?.freeform ? (typed[index] ?? "") : (entry.options[choice]?.label ?? ""))),
@@ -353,7 +357,8 @@ export function QuestionCard({
         </MorphFrame>
       </div>
 
-      <div data-slot="question-actions" className="mt-4 flex items-center justify-end gap-2">
+      <div data-slot="question-actions" className="mt-4 flex min-h-7 items-center justify-end gap-2">
+        {whoCan ? <span data-slot="question-who-can" className="me-auto min-w-0 text-pretty text-[13px] leading-5 text-muted-foreground">{whoCan}</span> : null}
         <MotionConfig reducedMotion={motionRule}>
           <AnimatePresence initial={false}>
             {at > 0 ? (
@@ -365,7 +370,7 @@ export function QuestionCard({
             ) : null}
           </AnimatePresence>
         </MotionConfig>
-        {onSkip ? (
+        {onSkip && !whoCan ? (
           <HeldTip held={held}>
             <Button variant="secondary" size="sm" disabled={!!held} onClick={onSkip}>
               Skip
@@ -373,6 +378,7 @@ export function QuestionCard({
           </HeldTip>
         ) : null}
         {/* Next only moves the card: only the last press, which sends, waits for the host. */}
+        {whoCan && last ? null : (
         <HeldTip held={last ? held : null}>
         <Button size="sm" disabled={!answered || (last && !!held)} onClick={submit} className="gap-0">
           <MotionConfig reducedMotion={motionRule}>
@@ -389,6 +395,7 @@ export function QuestionCard({
           </KbdGroup>
         </Button>
         </HeldTip>
+        )}
       </div>
     </div>
   );

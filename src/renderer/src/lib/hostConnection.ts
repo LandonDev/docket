@@ -1,5 +1,6 @@
 import type { Capability } from "@server/shared/capabilities";
 import type { RouteKind } from "@server/shared/contract-remote";
+import { linkFact } from "./connection/degraded";
 import type { EnvironmentStatus } from "./connection/types";
 
 /**
@@ -32,23 +33,13 @@ export function hostErrorText(err: unknown): string {
   return m[1] === "self" ? "That is this machine." : m[2];
 }
 
-/** `slow`: the host's answers are late (lib/connection/link.ts health). */
-export function statusText(status: EnvironmentStatus, now: number, slow = false): string {
-  switch (status.transport) {
-    case "open":
-      if (slow) return "connected, slow to answer";
-      return status.fresh ? "connected" : "connected, catching up";
-    case "connecting":
-      return "connecting…";
-    case "reconnecting": {
-      const wait = status.nextRetryAt ? Math.max(0, Math.ceil((status.nextRetryAt - now) / 1000)) : 0;
-      return wait > 0 ? `reconnecting, next try in ${wait} s` : "reconnecting…";
-    }
-    case "offline":
-      return "offline";
-    case "unauthorized":
-      return "key refused";
-  }
+/**
+ * A host's state as the trailing fact of its row in the Hosts menu: an open link's own words, else `linkFact`
+ * (`linkWords` without the name the row already shows). `slow`: the host's answers are late (lib/connection/link.ts health).
+ */
+export function statusText(status: EnvironmentStatus, slow = false, online?: boolean): string {
+  if (status.transport === "open") return slow ? "Slow to answer" : status.fresh ? "Connected" : "Catching up";
+  return linkFact({ kind: status.transport, status }, online);
 }
 
 const PRIVATE_HOST = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|\[?::1\]?$|localhost$|.*\.local$)/i;

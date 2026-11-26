@@ -235,6 +235,12 @@ describe("SearchView across hosts", () => {
     expect(run.children).toHaveLength(2);
     expect(run.className).toContain("after:content-[',']");
     expect(footer.className).not.toContain("gap-4");
+    // The run wraps between hosts, never inside one, so a later host is never cut off the end.
+    expect(footer.className.split(" ")).toEqual(expect.arrayContaining(["min-h-7", "py-1"]));
+    expect(footer.className).not.toMatch(/whitespace-nowrap|overflow-hidden|(^| )h-7/);
+    expect(run.className).toContain("flex-wrap");
+    expect(run.className).not.toContain("flex-nowrap");
+    for (const host of hosts) expect(host.className).toContain("whitespace-nowrap");
     expect(view.container.querySelector('[data-slot="spinner"]')).toBeNull();
     // No hint line under the field: the filters live in the field's menu.
     expect(view.container.textContent).not.toContain("type:");
@@ -587,6 +593,27 @@ describe("SearchView across hosts", () => {
     expect(messages[0].textContent).not.toMatch(/##|\*\*/);
     expect(messages[0].querySelector("[data-more]")?.textContent).toBe("+2 more");
     expect(messages[0].textContent?.match(/Box thread/g)).toHaveLength(1);
+    view.unmount();
+  });
+
+  it("a message hit whose match lies past its opening words starts a few words before it", async () => {
+    h.invokeOn.mockImplementation((env: string, method: string) =>
+      Promise.resolve({
+        hits:
+          method === "search_sessions" && env === "env_box"
+            ? [{ sessionId: "s-box", seq: 2, role: "assistant", snippet: "Practice pass 1 of 38. Check the gateway logs first", ts: 1, rank: -4 }]
+            : [],
+        truncated: false,
+      }),
+    );
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "gateway type:thread");
+    const message = rows(view).find((row) => row.dataset.kind === "message")!;
+    expect(message.textContent).toContain("…Check the gateway logs first");
+    expect(message.textContent).not.toContain("Practice pass");
+    expect(message.querySelector("mark")?.textContent).toBe("gateway");
+    // The excerpt keeps at least half the row; the thread's title beside it cuts first.
+    expect(message.querySelector("mark")!.closest("span.truncate")!.className.split(" ")).toContain("min-w-1/2");
     view.unmount();
   });
 

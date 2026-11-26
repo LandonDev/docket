@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { tooltipChunk, warmTooltips } from '../components/ui/tooltip'
 import { newTerminalFile } from '../lib/layout'
 import { DEV_TAB, DockBar, type DockBarProps } from './DockBar'
 
@@ -102,5 +103,42 @@ describe('DockBar', () => {
     expect(other).not.toContain('focus-within')
     expect(view.getByLabelText('Close build').className).not.toContain('opacity-0')
     expect(view.getByLabelText('Close zsh').parentElement!.className).not.toContain('opacity-0')
+  })
+
+  // S F2.1 (council 2): a live title can be cut at 192px and folders repeat, so the tip names the title whole.
+  async function tipOf(el: HTMLElement) {
+    fireEvent.pointerEnter(el, { pointerType: 'mouse' })
+    fireEvent.mouseEnter(el)
+    fireEvent.mouseMove(el)
+    const tip = await waitFor(
+      () => {
+        const content = document.querySelector('[data-slot="tooltip-content"]')
+        expect(content).not.toBeNull()
+        return content!
+      },
+      { timeout: 2000 }
+    )
+    return [...tip.querySelectorAll('span')].map((line) => line.textContent)
+  }
+
+  it("a terminal's tip names its whole live title, then its folder", async () => {
+    const title = 'bun run vitest --watch src/renderer/src/chrome/DockBar.dom.test.tsx'
+    await act(async () => {
+      await tooltipChunk.load()
+      warmTooltips()
+    })
+    const { tab } = mount({ terminals: [a, { ...b, path: title }] })
+    const tip = await tipOf(tab('bun run'))
+    expect(tip).toEqual([title, '/repo/web'])
+  })
+
+  it("a terminal named for its folder says the folder alone", async () => {
+    await act(async () => {
+      await tooltipChunk.load()
+      warmTooltips()
+    })
+    const { tab } = mount({ terminals: [a, { ...b, path: undefined }] })
+    const tip = await tipOf(tab('web'))
+    expect(tip).toEqual(['/repo/web'])
   })
 })

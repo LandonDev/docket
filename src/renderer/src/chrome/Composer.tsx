@@ -52,6 +52,7 @@ import type { AtMatch, PopoverMatches } from './CommandPopover'
 import { AttachmentChip, openAttachmentImages } from './AttachmentChip'
 import {
   AttachmentUploadError,
+  attachLine,
   attachmentSettings,
   copiesBytes,
   needsUpload,
@@ -550,7 +551,8 @@ export function Composer({
   useEffect(() => (sessionId ? takeComposerFiles(sessionId, admitAttachments) : undefined), [sessionId, admitAttachments])
   const attachFailed = useCallback((error: unknown) => {
     // An upload's failure is its chip's Failed; the line under the chips says only why, never the name again.
-    setAttachNote(error instanceof AttachmentUploadError ? error.why : error instanceof Error ? error.message : 'Could not attach the file')
+    // Never a failure's raw text: our own reasons and the mapped ones, else "Couldn't attach the file" (`attachLine`).
+    setAttachNote(error instanceof AttachmentUploadError ? error.why : attachLine(error))
   }, [])
 
   const removeAttachment = useCallback(
@@ -1300,7 +1302,7 @@ export function DraftRow({
   return (
     <Collapsible open={draft}>
       <CollapsibleContent>
-        <div data-composer-draft-row className="@container/draft-row flex h-7 min-w-0 items-center gap-1 px-1.5 pt-1 text-xs text-muted-foreground">
+        <div data-composer-draft-row className="group/draft-row @container/draft-row flex h-7 min-w-0 items-center gap-1 px-1.5 pt-1 text-xs text-muted-foreground">
           {hideProjectPicker || work ? null : (
             <CwdPicker
               cwd={cwd}

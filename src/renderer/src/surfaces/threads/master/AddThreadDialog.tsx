@@ -1,5 +1,6 @@
 import { dialogErrorWords } from "../../../lib/dialogErrorWords";
 import { modOrCtrl } from "../../../lib/keys";
+import { nameInLine } from "../../../lib/hostWords";
 import { useEffect, useMemo, useState } from "react";
 import type { Reasoning } from "@server/shared/catalog";
 import { DialogFooter, ErrorLine } from "../../../chrome/ConfirmDialog";
@@ -174,7 +175,7 @@ function AddThreadForm({
   }, [ensureKey]);
   const usable = (h: HostChoice) => !!h.target && (!("ensure" in h.target) || probes.get(h.id)?.state === "ready");
   const noteOf = (h: HostChoice): string | undefined => {
-    if (!h.target) return `No copy of the project on ${h.name}`;
+    if (!h.target) return `No copy of the project on ${nameInLine(h.name)}`;
     const probe = probes.get(h.id);
     return "ensure" in h.target && probe?.state === "none" ? probe.note : undefined;
   };
@@ -192,7 +193,7 @@ function AddThreadForm({
       let place: { projectId: string } | { cwd: string };
       if ("ensure" in target) {
         const made = await ensureLinkedOn(host, target.ensure);
-        if (!made.project) throw new Error(made.note ?? `No copy of the project on ${chosen?.name ?? host}`);
+        if (!made.project) throw new Error(made.note ?? `No copy of the project on ${nameInLine(chosen?.name ?? host)}`);
         place = { projectId: made.project.id };
       } else place = target;
       const meta = await startThread(

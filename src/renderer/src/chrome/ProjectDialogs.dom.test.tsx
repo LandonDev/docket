@@ -493,6 +493,15 @@ describe('ProjectTeardownDialog on a linked project', () => {
     ])
   })
 
+  // council-2 F9.2: a host's name mid-line is lower case ("the box", "this Mac"), DESIGN "Typography and text hierarchy".
+  it('names the copy\'s host mid-line in lower case', () => {
+    vi.mocked(registry.environment).mockImplementation((id: string) =>
+      id === BOX ? { id, name: 'The box', routes: [], credentialRef: id } : undefined
+    )
+    render(<ProjectTeardownDialog project={MAC} action="delete" onClose={() => {}} onDone={() => {}} />)
+    expect(screen.getByRole('checkbox', { name: 'Also delete the copy on the box' })).toBeTruthy()
+  })
+
   it('an unlinked project with nothing to clean up is a plain confirm', () => {
     render(<ProjectTeardownDialog project={SOLO} action="delete" onClose={() => {}} onDone={() => {}} />)
     expect(screen.getByRole('alertdialog')).toBeTruthy()

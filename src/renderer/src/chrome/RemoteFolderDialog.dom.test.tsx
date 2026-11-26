@@ -119,6 +119,44 @@ describe("RemoteFolderDialog", () => {
     await waitFor(() => expect(onPick).toHaveBeenCalledWith("/srv/agents/work/scratch"));
   });
 
+  // council-2 S F9.2: one footer. While a new folder is named, its Cancel goes back to the list and its confirm
+  // says Create and use; no second Cancel in the body, and no Use this folder that could take the parent.
+  it("keeps one footer while a new folder is named: Cancel goes back to the list, the confirm is Create and use", async () => {
+    const onClose = vi.fn();
+    const onPick = vi.fn();
+    render(<RemoteFolderDialog environmentId="box" onClose={onClose} onPick={onPick} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+    expect(screen.getAllByRole("button", { name: "Cancel" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Use this folder" })).toBeNull();
+    const footer = document.querySelector("[data-slot=dialog-footer]") as HTMLElement;
+    expect(within(footer).getByRole("button", { name: "Cancel" })).toBeTruthy();
+    expect(within(footer).getByRole("button", { name: "Create and use" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("New folder name"), { target: { value: "scratch" } });
+    fireEvent.click(within(footer).getByRole("button", { name: "Cancel" }));
+    await flush();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("New folder name")).toBeNull();
+    expect(screen.getByLabelText("Folder path")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "New folder" }));
+    expect(screen.getByRole("button", { name: "Use this folder" })).toBeTruthy();
+    expect(fs.created).toEqual([]);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("makes the folder on Enter in its name field", async () => {
+    const onPick = vi.fn();
+    render(<RemoteFolderDialog environmentId="box" onClose={() => {}} onPick={onPick} />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+    const name = screen.getByLabelText("New folder name");
+    fireEvent.change(name, { target: { value: "scratch" } });
+    fireEvent.submit(name.closest("form")!);
+    await flush();
+    expect(fs.created).toEqual(["/srv/agents/work/scratch"]);
+    await waitFor(() => expect(onPick).toHaveBeenCalledWith("/srv/agents/work/scratch"));
+  });
+
   it("titles itself with the caller's act on the host, in words, and never the host's id", async () => {
     render(<RemoteFolderDialog environmentId="box" onClose={() => {}} onPick={() => {}} />);
     await flush();

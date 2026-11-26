@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { StatusMark } from "../../components/ui/status";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { animate } from "motion/react";
@@ -358,10 +359,21 @@ describe("SplitShell's narrow fold", () => {
     const header = document.querySelector("[data-view-header]")!;
     expect(header.className).toContain("@container/header");
     const detail = document.querySelector("[data-view-detail]")!.className.split(/\s+/);
-    expect(detail).toEqual(expect.arrayContaining(["@max-[22rem]/header:hidden", "shrink-[1000]", "truncate"]));
+    expect(detail).toEqual(expect.arrayContaining(["@max-[22rem]/header:not-has-[[data-slot=status-word]]:hidden", "shrink-[1000]", "truncate"]));
     // The title holds whole beside the fact, and cuts only at the row's width.
     expect(document.querySelector("[data-view-title]")!.className.split(/\s+/)).toEqual(expect.arrayContaining(["shrink-0", "max-w-full", "truncate"]));
     expect(document.querySelector("[data-view-actions]")!.className).toContain("shrink-0");
+  });
+
+  it("a narrow header keeps a state's word: its detail leaves and the title cuts for it", () => {
+    render(shell({ detail: <StatusMark state="plan-ready" detail="3 tasks" /> }));
+    const detail = document.querySelector("[data-view-detail]")!.className.split(/\s+/);
+    // Under 22rem the fact leaves only when it has no state word; a state keeps its word whole and drops its detail.
+    expect(detail).not.toContain("@max-[22rem]/header:hidden");
+    expect(detail).toEqual(expect.arrayContaining(["@max-[22rem]/header:shrink-0", "@max-[22rem]/header:[&_[data-slot=status-detail]]:hidden"]));
+    expect(document.querySelector("[data-view-detail] [data-slot=status-word]")!.textContent).toBe("Plan ready");
+    const row = document.querySelector("[data-view-title]")!.closest("[data-view-header] > div")!;
+    expect(row.className).toContain("@max-[22rem]/header:has-[[data-view-detail]_[data-slot=status-word]]:[&_[data-view-title]]:shrink");
   });
 
   it("with no header, the chat lies from the top", () => {

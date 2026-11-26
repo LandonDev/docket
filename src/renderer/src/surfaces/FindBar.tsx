@@ -79,7 +79,9 @@ const FLAGS: { flag: FindFlag; face: string; label: string; keys: string }[] = [
  */
 export function FindBar(props: FindBarProps) {
   const { count, replaceVisible } = props;
-  const missed = count.state === "empty" || count.state === "invalid";
+  // A search that cannot run is invalid (red, aria-invalid); one that found nothing is only missed (`find-miss`: red held in dark, muted in light).
+  const invalid = count.state === "invalid";
+  const missed = count.state === "empty";
   return (
     <TooltipProvider>
       <div
@@ -109,12 +111,12 @@ export function FindBar(props: FindBarProps) {
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-1">
             {/* The input's 112px floor leaves the count room inside 240px, so "Invalid regex" never widens the field or drops the toggles to a second line; the group fits around the floor and the count. */}
-            <InputGroup className={cn("h-7 w-60 min-w-fit gap-1 pe-2", missed && "border-destructive")}>
+            <InputGroup className={cn("h-7 w-60 min-w-fit gap-1 pe-2", invalid && "border-destructive", missed && "border-find-miss-edge")}>
               <GroupInput
                 ref={props.searchRef}
                 main-field="true"
                 aria-label="Find"
-                aria-invalid={missed || undefined}
+                aria-invalid={invalid || undefined}
                 placeholder="Find"
                 className="w-0 min-w-28 font-mono text-xs"
                 value={props.search}
@@ -125,7 +127,7 @@ export function FindBar(props: FindBarProps) {
               />
               <span
                 data-count={count.state}
-                className={cn("min-w-0 shrink truncate text-xs tabular-nums", missed ? "text-destructive" : "text-muted-foreground")}
+                className={cn("min-w-0 shrink truncate text-xs tabular-nums", invalid ? "text-destructive" : missed ? "text-find-miss" : "text-muted-foreground")}
               >
                 {count.text}
               </span>

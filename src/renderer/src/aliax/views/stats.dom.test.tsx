@@ -121,9 +121,22 @@ describe("Pace", () => {
 
 describe("an empty month", () => {
   it("says the 30 days are empty, not the machine, when older logs are indexed", () => {
-    const empty = { ...STATS, totals: { ...STATS.totals, turns: 0 }, pace: [] };
+    const empty = { ...STATS, totals: { ...STATS.totals, turns: 0 }, pace: [], heatmap: [] };
     render(<StatsView data={empty} status={{ indexing: false, filesDone: 40, filesTotal: 40, rows: 1200 }} />);
     expect(screen.getByText("Nothing in the last 30 days")).toBeTruthy();
     expect(screen.queryByText(/session logs on this machine/)).toBeNull();
+  });
+
+  it("keeps the page open for Busiest hours when the last turn was 31 to 60 days ago", () => {
+    const zero = { input: 0, output: 0, cache_read: 0, cache_write: 0, turns: 0 };
+    const quiet = { ...STATS, totals: { ...STATS.totals, ...zero }, pace: [], daily: [], byProject: [], byTool: [], cacheDaily: [], modelDaily: [], byModel: [] };
+    render(<StatsView data={quiet} status={{ indexing: false, filesDone: 40, filesTotal: 40, rows: 1200 }} />);
+    const busiest = screen.getByRole("region", { name: "Busiest hours" });
+    expect(busiest.querySelector("[data-slot=page-empty]")).toBeNull();
+    // The 30-day sections say their own empty line; the page is not one empty state.
+    expect(screen.getByRole("region", { name: "Daily output" }).querySelector("[data-slot=page-empty]")!.textContent).toBe("Nothing in the last 30 days");
+    expect(document.querySelector("[data-slot=empty]")).toBeNull();
+    // No hit rate is claimed for a month with no input.
+    expect(screen.getByRole("region", { name: "Cache hit rate" }).textContent).not.toContain("% of input");
   });
 });

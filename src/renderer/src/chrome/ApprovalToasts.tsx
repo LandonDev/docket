@@ -69,8 +69,9 @@ export function ApprovalToasts({ notices, onFocusSession, onApproval }: Props) {
       const allow = runSkip ? "Run now" : "Allow";
       const deny = runSkip ? "Skip" : "Deny";
       toast.warning(
-        <Button variant="link" className="h-auto p-0 font-medium" onClick={() => actions.current.onFocusSession(sessionId)}>
-          {title}
+        // A toast is one line: the title shrinks inside the text column and ends in an ellipsis before the pair.
+        <Button variant="link" data-approval-title className="h-auto min-w-0 max-w-full shrink justify-start p-0 font-medium" onClick={() => actions.current.onFocusSession(sessionId)}>
+          <span className="truncate">{title}</span>
         </Button>,
         {
           id,

@@ -39,6 +39,7 @@ import { ROUTED_PROVIDERS, emptyAccounts, type AccountPins } from "@server/share
 import type { BuildConfig } from "@server/shared/build";
 import { TURN_PASS_OFF, passEnabled, type TurnPass } from "@server/shared/turnpass";
 import { prettyCwd } from "../lib/paths";
+import { nameInLine } from "../lib/hostWords";
 import {
   createProject,
   createWorkspace,
@@ -929,7 +930,7 @@ export function ProjectTeardownDialog({
     : [];
   const copyBoxes = others.map((copy) => ({
     key: `copy:${copy.environmentId}:${copy.id}`,
-    label: `Also delete the copy on ${liveHostFacts.nameOf(copy.environmentId)}`,
+    label: `Also delete the copy on ${nameInLine(liveHostFacts.nameOf(copy.environmentId))}`,
     checked: also.has(copy.id),
     disabled: !liveHostFacts.isOpen(copy.environmentId),
     set: (on: boolean) =>

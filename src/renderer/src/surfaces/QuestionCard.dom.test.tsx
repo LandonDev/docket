@@ -245,17 +245,44 @@ describe("QuestionCard", () => {
   });
 });
 
-// transcript-09 (D5): a key that may not answer gets Skip and Continue held, who can as their reason.
+// transcript-09 (D5), council 2 S F3.1: a key that may not answer gets who can in Skip's and Continue's place,
+// as the approval card does; Back and Next stay on a set so each question can be read.
 describe("a waiting question for a key that may not answer", () => {
   afterEach(() => vi.restoreAllMocks());
-  it("holds Skip and Continue", async () => {
+  async function readKey() {
     const { registry } = await import("../lib/connection");
     const { sessionStore } = await import("../lib/tcserver/store");
     vi.spyOn(sessionStore, "environmentOf").mockReturnValue("env_box");
     vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open", lastHello: { environmentId: "env_box", contract: 3, caps: ["read"], key: { id: "k", name: "Laptop" } } } as never);
     vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box", routes: [], credentialRef: null });
-    render(<QuestionCard question={meta([spec("Which?", ["A", "B"])])} />);
-    expect((screen.getByRole("button", { name: "Skip" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByRole("button", { name: /^Continue/ }).closest("[data-held]")).not.toBeNull();
+  }
+
+  it("says who can in place of Skip and Continue, with no key caps", async () => {
+    await readKey();
+    const view = render(<QuestionCard question={meta([spec("Which?", ["A", "B"])])} />);
+    const actions = view.container.querySelector("[data-slot=question-actions]")!;
+    expect(actions.textContent).toBe("Answer from a computer that manages the box");
+    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Continue/ })).toBeNull();
+    expect(actions.querySelector("kbd")).toBeNull();
+  });
+
+  it("keeps Back and Next on a set, Next turning the page with no pick", async () => {
+    await readKey();
+    const onAnswer = vi.fn();
+    const view = render(<QuestionCard question={meta([spec("First?", ["A", "B"]), spec("Second?", ["C", "D"])])} onAnswer={onAnswer} />);
+    const actions = () => view.container.querySelector("[data-slot=question-actions]")!;
+    expect(actions().textContent).toContain("Answer from a computer that manages the box");
+    // Beside Next the line wraps whole, never cut (DESIGN: a held line wraps, never truncates).
+    expect(actions().querySelector("[data-slot=question-who-can]")!.className).not.toContain("truncate");
+    const next = screen.getByRole("button", { name: /^Next/ }) as HTMLButtonElement;
+    expect(next.disabled).toBe(false);
+    fireEvent.click(next);
+    expect(screen.getByText("Second?")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
+    // The last question offers no Continue: nothing can be sent from this key.
+    expect(screen.queryByRole("button", { name: /^Continue/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+    expect(onAnswer).not.toHaveBeenCalled();
   });
 });

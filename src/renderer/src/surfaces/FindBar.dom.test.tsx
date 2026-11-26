@@ -33,19 +33,26 @@ const byLabel = (root: HTMLElement, label: string) => root.querySelector<HTMLEle
 describe("FindBar", () => {
   afterEach(cleanup);
 
-  it("shows the count in its tone: muted when it found something, destructive when it did not", () => {
+  it("shows the count in its tone: muted when it found something, invalid only when the search cannot run", () => {
     const { container, rerender } = render(<FindBar {...props()} />);
     const count = () => container.querySelector<HTMLElement>("[data-count]")!;
+    const group = () => container.querySelector<HTMLElement>('[data-slot="input-group"]')!;
     expect(count().textContent).toBe("2 of 7");
     expect(count().className).toContain("text-muted-foreground");
     expect(byLabel(container, "Find").getAttribute("aria-invalid")).toBeNull();
-    for (const [text, state] of [["No results", "empty"], ["Invalid regex", "invalid"]] as const) {
-      rerender(<FindBar {...props({ count: { text, state } })} />);
-      expect(count().textContent).toBe(text);
-      expect(count().className).toContain("text-destructive");
-      expect(byLabel(container, "Find").getAttribute("aria-invalid")).toBe("true");
-      expect(container.querySelector('[data-slot="input-group"]')!.className).toContain("border-destructive");
-    }
+    // A valid search with no match is not an invalid field: its tone is `find-miss` (red held in dark, muted in light).
+    rerender(<FindBar {...props({ count: { text: "No results", state: "empty" } })} />);
+    expect(count().textContent).toBe("No results");
+    expect(count().className).toContain("text-find-miss");
+    expect(count().className).not.toContain("text-destructive");
+    expect(byLabel(container, "Find").getAttribute("aria-invalid")).toBeNull();
+    expect(group().className).toContain("border-find-miss-edge");
+    expect(group().className.split(" ")).not.toContain("border-destructive");
+    rerender(<FindBar {...props({ count: { text: "Invalid regex", state: "invalid" } })} />);
+    expect(count().textContent).toBe("Invalid regex");
+    expect(count().className).toContain("text-destructive");
+    expect(byLabel(container, "Find").getAttribute("aria-invalid")).toBe("true");
+    expect(group().className.split(" ")).toContain("border-destructive");
     rerender(<FindBar {...props({ search: "", count: { text: "", state: "idle" } })} />);
     expect(count().textContent).toBe("");
   });

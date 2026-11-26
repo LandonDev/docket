@@ -6,6 +6,8 @@ import { joinPath, parentPath } from "./paths";
 const expandedByProject = new Map<string, Set<string>>();
 const selectedByProject = new Map<string, string | null>();
 const dirs = new Map<string, FsEntry[]>();
+/** Each folder's last listing that came back: a failed refresh draws these under its retry line. */
+const lastGood = new Map<string, FsEntry[]>();
 const listeners = new Set<() => void>();
 
 const REFRESH_MS = 150;
@@ -35,11 +37,17 @@ export function peekDir(path: string): FsEntry[] | null {
   return dirs.get(path) ?? null;
 }
 
+/** The folder's last good rows, kept through a failed refresh; gone only when the folder is forgotten. */
+export function lastListed(path: string): FsEntry[] | null {
+  return lastGood.get(path) ?? null;
+}
+
 export function listCachedDir(path: string): Promise<FsEntry[]> {
   const hit = dirs.get(path);
   if (hit) return Promise.resolve(hit);
   return listDir(hostOfCwd(path), path).then((entries) => {
     dirs.set(path, entries);
+    lastGood.set(path, entries);
     return entries;
   });
 }
@@ -50,22 +58,19 @@ export function refreshDir(path: string): Promise<FsEntry[]> {
 }
 
 export function forgetDir(path: string) {
-  for (const key of [...dirs.keys()]) {
-    if (key === path || key.startsWith(`${path}/`)) dirs.delete(key);
+  for (const key of [...dirs.keys(), ...lastGood.keys()]) {
+    if (key === path || key.startsWith(`${path}/`)) {
+      dirs.delete(key);
+      lastGood.delete(key);
+    }
   }
 }
 
-/** Re-list every cached folder. Agent writes and window focus use this. */
+/** Re-list every cached folder. Agent writes and window focus use this. A folder that fails keeps its last rows (`lastListed`). */
 export async function refreshCachedDirs(): Promise<void> {
   const paths = [...dirs.keys()];
   if (paths.length === 0) return;
-  await Promise.all(
-    paths.map((path) =>
-      refreshDir(path).catch(() => {
-        forgetDir(path);
-      }),
-    ),
-  );
+  await Promise.all(paths.map((path) => refreshDir(path).catch(() => {})));
 }
 
 export function subscribeDirsChanged(listener: () => void): () => void {

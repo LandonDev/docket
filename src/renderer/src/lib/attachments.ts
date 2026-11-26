@@ -2,6 +2,7 @@ import { registry } from "./connection";
 import { getPathForFile, invokeOn } from "./native";
 import { basename, pickFiles as pickFilePaths } from "./fs";
 import type { Attachment, AttachmentKind } from "./session";
+import { AttachmentReason } from "./attachmentUpload";
 
 export const MAX_ATTACHMENTS = 20;
 export const MAX_EMBED_BYTES = 20 * 1024 * 1024;
@@ -368,7 +369,7 @@ async function attachmentFromBlob(environmentId: string, file: File): Promise<At
   }
   if (!data) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    throw new Error(`Could not read ${name}`);
+    throw new AttachmentReason(`Couldn't read ${name}`);
   }
   try {
     const path = await invokeOn<string>(environmentId, "write_attachment", { name, data });

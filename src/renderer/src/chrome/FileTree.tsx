@@ -51,6 +51,7 @@ import {
   dirsTouchedByCreate,
   dirsTouchedByMove,
   forgetDir,
+  lastListed,
   listCachedDir,
   loadExpanded,
   loadSelected,
@@ -608,7 +609,7 @@ export function FileTree({
         timer = null;
         const batch = [...parents];
         parents.clear();
-        void Promise.all(batch.map((dir) => refreshDir(dir).catch(() => forgetDir(dir)))).then(() =>
+        void Promise.all(batch.map((dir) => refreshDir(dir).catch(() => {}))).then(() =>
           setEpoch((n) => n + 1),
         );
       }, 150);
@@ -642,7 +643,8 @@ export function FileTree({
       return;
     }
     let cancelled = false;
-    setChildren(null);
+    // A folder listed before keeps its rows while it is asked again, and after a failed ask (the retry line sits above them).
+    setChildren(lastListed(cwd));
     setError(null);
     void listCachedDir(cwd)
       .then((entries) => {
@@ -651,7 +653,7 @@ export function FileTree({
       .catch((err: unknown) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
-          setChildren([]);
+          setChildren(lastListed(cwd) ?? []);
         }
       });
     return () => {
@@ -895,7 +897,7 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
       .catch((err: unknown) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
-          setChildren([]);
+          setChildren(lastListed(entry.path) ?? []);
         }
       });
     return () => {
@@ -973,7 +975,7 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
   );
 }
 
-/** A folder the host could not list: one red line in its rows' place, with Retry (DESIGN "Loading and empty states"). */
+/** A folder the host could not list: one red line with Retry, above its last good rows when it had any (DESIGN "Loading and empty states"). */
 function FailedLine({ path, depth }: { path: string; depth: number }) {
   const { onRetry } = useTree();
   const [busy, setBusy] = useState(false);

@@ -196,7 +196,8 @@ export function dayTickInterval(days: number): number {
 export function StatsView({ data, status }: { data: StatsBundle | null; status: StatsStatus | null }) {
   const mix = useMemo(() => (data ? modelMix(data) : { series: [], rows: [] }), [data]);
 
-  const nothing = data !== null && data.totals.turns === 0 && data.pace.length === 0;
+  // Busiest hours reads 60 days: a populated heatmap keeps the page open when the 30-day sections are empty.
+  const nothing = data !== null && data.totals.turns === 0 && data.pace.length === 0 && data.heatmap.length === 0;
   // A first index is a load: the page's line says how far it has got.
   if (!data || (nothing && status?.indexing)) return <StatsSkeleton />;
   // A worker that is gone is the page's red line; its empty bundle states nothing.
@@ -303,7 +304,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
         <RankedBars label="Top projects" data={data.byProject} unit="tokens" />
       </Section>
 
-      <Section title="Cache hit rate" description={`${cacheHit}% of input served from cache, 30 days`}>
+      <Section title="Cache hit rate" description={cacheDenominator > 0 ? `${cacheHit}% of input served from cache, 30 days` : undefined}>
         {data.cacheDaily.length === 0 ? (
           <NoData named />
         ) : (

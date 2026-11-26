@@ -246,9 +246,13 @@ export function ChatToggle({ open, onToggle, words }: { open: boolean; onToggle:
 }
 
 /** The header's one fact: shrinks while the title holds, ends in an ellipsis (a StatusMark laid out as a row,
- *  its word allowed to cut too), and leaves a header narrower than 376px (22rem inside its 12px insets). Literal: Tailwind reads no built class. */
+ *  its word allowed to cut too), and leaves a header narrower than 376px (22rem inside its 12px insets). A state's
+ *  word ("Plan ready") stays there: its detail leaves and the title cuts for it. Literal: Tailwind reads no built class. */
 const VIEW_DETAIL_CLASS =
-  "min-w-0 shrink-[1000] truncate text-xs text-muted-foreground tabular-nums @max-[22rem]/header:hidden [&>[data-slot=status-mark]]:flex [&_[data-slot=status-word]]:min-w-0 [&_[data-slot=status-word]]:shrink [&_[data-slot=status-word]]:truncate";
+  "min-w-0 shrink-[1000] truncate text-xs text-muted-foreground tabular-nums @max-[22rem]/header:not-has-[[data-slot=status-word]]:hidden @max-[22rem]/header:shrink-0 @max-[22rem]/header:[&_[data-slot=status-detail]]:hidden [&>[data-slot=status-mark]]:flex [&_[data-slot=status-word]]:min-w-0 [&_[data-slot=status-word]]:shrink [&_[data-slot=status-word]]:truncate";
+/** The title's row: in a narrow header that keeps a state's word, the title is what cuts. */
+const VIEW_TITLE_ROW_CLASS =
+  "flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden @max-[22rem]/header:has-[[data-view-detail]_[data-slot=status-word]]:[&_[data-view-title]]:shrink";
 
 function ViewHeader({
   title,
@@ -291,7 +295,7 @@ function ViewHeader({
           {lead}
         </div>
       ) : (
-        <div className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden">
+        <div className={VIEW_TITLE_ROW_CLASS}>
           {typeof title === "string" ? <TruncateTip text={title}>{heading}</TruncateTip> : heading}
           {detail ? (
             // The fact gives way before the title (it shrinks first, to an ellipsis, a StatusMark's word

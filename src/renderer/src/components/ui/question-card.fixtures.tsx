@@ -40,4 +40,6 @@ export default [
   { name: "Three questions", props: { ...frame, title: "Release", questions: three } },
   { name: "Multi-select", props: { ...frame, title: "Merge checks", questions: multi } },
   { name: "A free-form option", props: { ...frame, title: "Naming", questions: freeform } },
+  { name: "A key that may only read", props: { ...frame, title: "Parse errors", questions: described, whoCan: "Answer from a computer that manages the box" } },
+  { name: "A set, for a key that may only read", props: { ...frame, title: "Release", questions: three, whoCan: "Answer from a computer that manages the box" } },
 ];

@@ -109,7 +109,7 @@ describe("HostsRow", () => {
   it("is one 28px row ending in a dot per host, its label naming every host and its state", () => {
     hosts([LOCAL, BOX], { local: status("open", "darwin"), env_box: status("offline", "linux") });
     render(<HostsRow onAddWorkspace={() => {}} />);
-    const row = screen.getByRole("button", { name: "Hosts: This Mac connected, box offline" });
+    const row = screen.getByRole("button", { name: "Hosts: This Mac, connected; box, offline" });
     expect(row.className).toContain("h-7");
     const dots = [...row.querySelectorAll("[data-host-status]")];
     expect(dots.map((d) => d.getAttribute("data-host-status"))).toEqual(["open", "offline"]);
@@ -161,7 +161,7 @@ describe("HostsRow", () => {
     const triggers = [...document.querySelectorAll('[data-menu-row^="host:"]')];
     expect(triggers.map((t) => t.getAttribute("data-menu-row"))).toEqual(["host:local", "host:env_box"]);
     expect(triggers[1].textContent).toContain("box");
-    expect(triggers[1].textContent).toContain("offline");
+    expect(triggers[1].querySelector("[data-menu-trailing]")!.textContent).toBe("Offline");
     expect(triggers.map((t) => t.querySelector("[data-host-glyph]")?.getAttribute("data-host-kind"))).toEqual(["mac", "server"]);
     // The row names the host once: the glyph is bare and hidden, in the 14px glyph column.
     for (const trigger of triggers) {
@@ -199,6 +199,19 @@ describe("HostsRow", () => {
     expect(box.getAttribute("aria-disabled")).toBe("true");
     expect(here.getAttribute("aria-disabled")).not.toBe("true");
     expect(box.getAttribute("aria-description")).toBe("Reconnecting to box…");
+  });
+
+  // F1.1 (council 2): one name a state. The row's trailing fact is `linkWords` without the name the row shows.
+  it("words each host's state as the line over the composer does, without the host's name", async () => {
+    const BOX2 = { ...BOX, id: "env_studio", name: "Studio" };
+    hosts([LOCAL, BOX, BOX2], { local: { ...status("open", "darwin"), fresh: false }, env_box: status("unauthorized", "linux"), env_studio: { ...status("reconnecting", "linux"), nextRetryAt: Date.now() + 4200 } });
+    render(<HostsRow onAddWorkspace={() => {}} />);
+    expect(screen.getByRole("button", { name: "Hosts: This Mac, catching up; box, no longer accepts this key; Studio, reconnecting…" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Hosts:/ }));
+    await act(flush);
+    const facts = [...document.querySelectorAll('[data-menu-row^="host:"] [data-menu-trailing]')].map((t) => t.textContent);
+    expect(facts).toEqual(["Catching up", "No longer accepts this key", "Reconnecting…"]);
+    expect(document.body.textContent).not.toMatch(/key refused|next try/);
   });
 
   // D5: a key that may only read is offered no verb its host would refuse: Switch to alone.

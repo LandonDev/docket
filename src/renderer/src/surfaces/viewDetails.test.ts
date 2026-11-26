@@ -9,10 +9,9 @@ const read = (file: string) => readFileSync(resolve(__dirname, "..", file), "utf
 
 describe("thread views and pages", () => {
   it("hover reveals wait --delay-hover, show at once on focus or an open menu, and keep their fade under reduced motion", () => {
-    // Both rows take the one recipe (components/ui/reveal.ts) rather than a class string of their own.
+    // The board row takes the one recipe (components/ui/reveal.ts) rather than a class string of their own.
     const calls = {
       "surfaces/threads/master/MasterRow.tsx": ['reveal("", { row: true, overlay: true })', reveal("", { row: true, overlay: true })],
-      "surfaces/settings/Archive.tsx": ['reveal("item", { row: true })', reveal("item", { row: true })],
     } as const;
     for (const [file, [call, classes]] of Object.entries(calls)) {
       const text = read(file);

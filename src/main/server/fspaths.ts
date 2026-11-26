@@ -250,6 +250,9 @@ async function walkProjectFiles(root: string): Promise<FsProjectFile[]> {
   return files
 }
 
+/** Never listed: Finder's litter, and git's insides (the file service refuses `.git` too, files.ts). */
+const LIST_HIDDEN = new Set(['.DS_Store', '.git'])
+
 export async function fsListPath(path: string): Promise<FsPathEntry[]> {
   const dir = expandHome(path)
   const rules = await loadIgnoreRules(dir)
@@ -261,7 +264,7 @@ export async function fsListPath(path: string): Promise<FsPathEntry[]> {
   }
   const output: FsPathEntry[] = []
   for (const entry of entries) {
-    if (entry.name === '.DS_Store') continue
+    if (LIST_HIDDEN.has(entry.name)) continue
     const entryPath = join(dir, entry.name)
     let isDir = entry.isDirectory()
     if (entry.isSymbolicLink()) {

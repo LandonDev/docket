@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { registry } from '../../lib/connection/registry'
+import type { EnvironmentStatus } from '../../lib/connection/types'
 import { newSession, type Block, type Session } from '../../lib/session'
 import { emptyThread } from '../../lib/tcserver/todos'
 import { mountProbe, Probe } from '../../test/renderProbe'
@@ -368,5 +370,45 @@ describe('WorkingStrip: the slot empties with a fade', () => {
     } finally {
       window.matchMedia = original
     }
+  })
+})
+
+// S F4.1 (council 2): every press in the strip goes to the host.
+describe('WorkingStrip: the presses a key may use, held while the host is away', () => {
+  afterEach(() => vi.restoreAllMocks())
+  const linked = (status: Partial<EnvironmentStatus>) => {
+    const full = { transport: 'open', fresh: true, ...status } as EnvironmentStatus
+    vi.spyOn(registry, 'statusOf').mockReturnValue(full)
+    vi.spyOn(registry, 'statuses').mockReturnValue(new Map([['env-local', full]]))
+    vi.spyOn(registry, 'environmentsSnapshot').mockReturnValue([{ id: 'env-local', name: 'the box' }] as never)
+  }
+  const readKey = { environmentId: 'env-local', contract: 3, caps: ['read'], key: { id: 'k', name: 'Laptop' } } as unknown as EnvironmentStatus['lastHello']
+
+  it('draws no Stop, Continue, Resume or Start now for a key that may only read, and keeps the time', () => {
+    linked({ lastHello: readKey })
+    for (const [s, word] of [
+      [session({ status: 'running', busySince: Date.now() - 92_000 }), /^1m 3\ds$/],
+      [session({ status: 'paused', frozenActiveElapsed: 250_000 }), /^Paused/],
+      [session({ status: 'stopped', frozenActiveElapsed: 95_000 }), /^Stopped/],
+      [session({ status: 'queued', activity: 'Queued  3rd in line' }), /^Queued/],
+    ] as const) {
+      const probe = mount(s, { onStart: () => {} })
+      expect(buttons(probe)).toEqual([])
+      expect(rowText(probe)).toMatch(word)
+      probe.unmount()
+    }
+  })
+
+  it("holds Stop and Continue while the host is away, the link's words their tooltip", () => {
+    linked({ transport: 'offline' })
+    const running = mount(session({ status: 'running', busySince: Date.now() - 92_000 }))
+    const stop = buttons(running)[0]
+    expect(stop.textContent).toBe('Stop')
+    expect(stop.disabled).toBe(true)
+    expect(stop.closest('[data-held]')).not.toBeNull()
+    running.unmount()
+    const paused = mount(session({ status: 'paused', frozenActiveElapsed: 250_000 }))
+    expect(buttons(paused).map((b) => [b.textContent, b.disabled])).toEqual([['Stop', true], ['Continue', true]])
+    paused.unmount()
   })
 })

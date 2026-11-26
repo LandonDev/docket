@@ -12,7 +12,7 @@ import {
 import { HostGlyph } from "../chrome/HostGlyph";
 import { FileTypeIcon } from "../chrome/FileTypeIcon";
 import { TypeGlyph } from "./threads/TypeGlyph";
-import { MatchText } from "../chrome/MatchText";
+import { MatchText, matchRanges } from "../chrome/MatchText";
 import { SearchFiltersMenu } from "../chrome/SearchFiltersMenu";
 import { FolderGlyph } from "../chrome/WorkspaceGlyph";
 import { OverlayNav } from "../chrome/TitleBar";
@@ -594,18 +594,18 @@ function isOnline(env: Environment, status: EnvironmentStatus | undefined): bool
 }
 
 /** Each host at the foot: its name, then 4px on its time muted, "offline",
- *  or "failed" in red with the raw reason on hover alone. */
+ *  or "failed" in red with the raw reason on hover alone. A 28px line that
+ *  wraps between hosts (never inside one), so no host is cut off the end. */
 export function HostFooter({ progress }: { progress: HostProgress[] }) {
   return (
     <div
       aria-label="Hosts searched"
-      className="flex h-7 shrink-0 items-center overflow-hidden border-t border-border px-3 text-xs whitespace-nowrap text-muted-foreground tabular-nums"
+      className="flex min-h-7 shrink-0 items-center border-t border-border px-3 py-1 text-xs text-muted-foreground tabular-nums"
     >
       {/* One comma run, never hosts set apart by space alone. */}
       <Facts
-        className="flex-nowrap"
         parts={progress.map((row) => (
-          <span key={row.environmentId} data-host-state={row.state} className="inline-flex items-baseline gap-1">
+          <span key={row.environmentId} data-host-state={row.state} className="inline-flex items-baseline gap-1 whitespace-nowrap">
             <span className="text-foreground">{row.name}</span>
             {row.state === "failed" && row.detail ? (
               <Tip label={<span className="min-w-0 break-words">{row.detail}</span>}>
@@ -670,7 +670,7 @@ function ResultList({
             <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
               {row.icon}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{row.title}</span>
+            <span className={`${row.snippet ? "min-w-1/2" : "min-w-0"} flex-1 truncate text-[13px] text-foreground`}>{row.title}</span>
             {row.meta ? (
               <span
                 className={`min-w-0 max-w-[45%] truncate text-xs text-muted-foreground ${row.mono ? "font-mono" : ""}`}
@@ -720,7 +720,20 @@ export function HostMark({
   );
 }
 
-type RowCopy = { icon: ReactNode; title: ReactNode; meta: string; mono: boolean };
+/** `snippet`: the title is a matched excerpt and the meta the thread it is from, so the title keeps at least half the row. */
+type RowCopy = { icon: ReactNode; title: ReactNode; meta: string; mono: boolean; snippet?: true };
+
+/** A snippet whose first match lies past its opening words starts a few words before it, after "…", so the
+ *  matched words hold the row's room before the thread's title beside it does. */
+const MATCH_LEAD = 12;
+const MATCH_KEEP = 24;
+export function leadToMatch(text: string, query: string): string {
+  const start = matchRanges(text, { query })[0]?.[0] ?? 0;
+  if (start <= MATCH_KEEP) return text;
+  const space = text.indexOf(" ", start - MATCH_LEAD);
+  const from = space >= 0 && space < start ? space + 1 : start - MATCH_LEAD;
+  return `…${text.slice(from)}`;
+}
 
 function rowCopy(hit: AppSearchHit, query: string): RowCopy {
   if (hit.kind === "conversation") {
@@ -735,9 +748,10 @@ function rowCopy(hit: AppSearchHit, query: string): RowCopy {
     const notes = hit.role === "notes";
     return {
       icon: notes ? <StickyNote className="size-3.5" /> : <MessageSquare className="size-3.5" />,
-      title: <MatchText text={plainSnippet(hit.preview) || hit.title} query={query} />,
+      title: <MatchText text={leadToMatch(plainSnippet(hit.preview), query) || hit.title} query={query} />,
       meta: hit.title,
       mono: false,
+      snippet: true,
     };
   }
   if (hit.kind === "file") {
@@ -762,9 +776,10 @@ function rowCopy(hit: AppSearchHit, query: string): RowCopy {
   if (hit.kind === "note") {
     return {
       icon: <StickyNote className="size-3.5" />,
-      title: <MatchText text={plainSnippet(hit.preview) || hit.title} query={query} />,
+      title: <MatchText text={leadToMatch(plainSnippet(hit.preview), query) || hit.title} query={query} />,
       meta: hit.preview ? hit.title : "",
       mono: false,
+      snippet: true,
     };
   }
   return {

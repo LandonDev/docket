@@ -47,18 +47,20 @@ afterEach(async () => {
 })
 
 describe('filesystem path operations', () => {
-  it('lists folders first, includes symlinked folders, marks simple ignores, and hides .DS_Store', async () => {
+  it('lists folders first, includes symlinked folders, marks simple ignores, and hides .DS_Store and .git', async () => {
     const root = await tempRoot('list')
     await mkdir(join(root, 'folder'))
     await writeFile(join(root, 'z.txt'), 'z')
     await writeFile(join(root, 'debug.log'), 'log')
     await writeFile(join(root, '.DS_Store'), 'hidden')
+    await mkdir(join(root, '.git'))
     await writeFile(join(root, '.gitignore'), '*.log\nignored\n')
     await mkdir(join(root, 'ignored'))
     await symlink(join(root, 'folder'), join(root, 'linked-folder'))
 
     const entries = await fsListPath(root)
     expect(entries.map((entry) => entry.name)).not.toContain('.DS_Store')
+    expect(entries.map((entry) => entry.name)).not.toContain('.git')
     expect(entries.find((entry) => entry.name === 'linked-folder')?.isDir).toBe(true)
     expect(entries.find((entry) => entry.name === 'debug.log')?.ignored).toBe(true)
     expect(entries.find((entry) => entry.name === 'ignored')?.ignored).toBe(true)

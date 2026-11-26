@@ -227,7 +227,7 @@ of the right panel's Changes section, not the header's.
 | Working | `RailWorking` / `RailWorkingView` in `chrome/RailWorking.tsx` on `workingRows` (lib/railWorking.ts) | the foot's first block, under its one hairline, from one row (`WORKING_MIN`; nothing else in the rail names a thread): a "Working" heading, then one RailRow per root thread on every host that needs the person, runs a turn, or finished while the window looked elsewhere and has not been looked at (`liveAgentTracker`), needs you first, then working by when the turn began, then done; archived threads and threads housed in a master's batch stay out. A row is an item: the thread's `TypeGlyph` at 12px in the 16px lead column, the title (muted, foreground while it is the thread on screen, `aria-current`), then the host glyph while the list's rows span two or more hosts and the state's `StatusMark` glyph at its end; its name is "<title>, <word>". Its tooltip leads with the whole title while the row cuts it (RailRow tells a tooltip function whether the label is cut), then says the state, what it is about and the elapsed time while it works (the word and the time as two spans, "Working 2m 12s"; `workingTipLine` is its one-line name, "Working: 2m 12s"), the project under them; the clock runs only while a working row shows. A click opens the thread. Four rows, then "N more", which opens the rest in place (a scroller at `max-h-[45vh]`) and reads "Show less" while open |
 | Foot | `RailFoot` in `chrome/ProjectRail.tsx` (`railFootRows`) | under one 1px hairline: Working when it has rows (`working`), then 16px under it the rows, in order: the sign-in row while this machine has no Claude or Codex account, the update row (the desktop app only), the Hosts row with two or more hosts, the Away row, Settings (Tooltip ⌘,), then the usage meter. The same foot, without Working, sits under the workspace column while the rail is collapsed (that column lists the threads), where the Go menu and the title bar's stand-ins reach Inbox and Notes |
 | Update row | `chrome/UpdateRow.tsx` (`updateRowState`) | one 28px RailRow, always there in the desktop app and absent at /ui: "Check for updates" with the running version at its end in 12px muted `tabular-nums` ("v1.0.307", which yields to the label in a rail under 15rem, so not at the default 200px, and stays in the row's name; asks the feed, as the app menu and Settings, General do), "Checking…" with the `Spinner` in the glyph slot and disabled while a check the person asked for runs (the background probes leave the row still), "Updated to 1.0.N" (opens What's new, ✕ dismisses), "Update to 1.0.N" (in a rail under 15rem the " to 1.0.N" yields whole, "Updated" and "Update", and stays in the row's name) or "Retry update" (installs; "The last download failed" on hover, never the updater's own text; What's new as the hover action when there are notes), "Downloading" with its percentage, "Restart to update"; the glyph is the accent while there is something to do, no tinted fill |
-| Hosts row | `HostsRow` in `chrome/HostRows.tsx` | only with two or more hosts: one 28px row ending in a 6px dot per host (`toneOf`), quiet while its host is well (`bg-muted-foreground`, half that while stale) and coloured only in trouble: amber while slow, connecting or reconnecting (the amber spinner in its place while it reconnects), red when refused, faint otherwise; its aria-label names each host and its state. A click opens a `DropdownMenu` with a submenu per host (the `HostGlyph`, bare and centred in the menu's 14px glyph column, the name taking the free room, then the state word and the `+N` deploy drift against the chevron), holding Switch to <host> (not for the host on screen), Add workspace here…, Mark all read, Pause all, Resume all, Stop all and Archive done, then Settings, which opens that computer's own page (Sharing for this computer; `computerPageOf`, lib/computerPage.ts). The line over a composer whose computer refused its key opens the same page from Pair again. A host's boot resume is a sonner toast ("7 threads resumed after restart", the host's name under it with two or more hosts; `useBootResumeToasts`) |
+| Hosts row | `HostsRow` in `chrome/HostRows.tsx` | only with two or more hosts: one 28px row ending in a 6px dot per host (`toneOf`), quiet while its host is well (`bg-muted-foreground`, half that while stale) and coloured only in trouble: amber while slow, connecting or reconnecting (the amber spinner in its place while it reconnects), red when refused, faint otherwise; its aria-label names each host and its state. A click opens a `DropdownMenu` with a submenu per host (the `HostGlyph`, bare and centred in the menu's 14px glyph column, the name taking the free room, then the state and the `+N` deploy drift against the chevron; the state is "Connected", "Catching up" or "Slow to answer" while the link is open, else `linkWords` without the host's name, `linkFact`: "No longer accepts this key", "Reconnecting…", "Offline"), holding Switch to <host> (not for the host on screen), Add workspace here…, Mark all read, Pause all, Resume all, Stop all and Archive done, then Settings, which opens that computer's own page (Sharing for this computer; `computerPageOf`, lib/computerPage.ts). The line over a composer whose computer refused its key opens the same page from Pair again. A host's boot resume is a sonner toast ("7 threads resumed after restart", the host's name under it with two or more hosts; `useBootResumeToasts`) |
 | Away row | `AwayRow` in `chrome/AwayRow.tsx` on `lib/away.ts` | right above Settings, in both feet. The whole 28px row is one switch named "Away from computer" (`role="switch"`, `aria-checked`; Space and Enter flip it): the moon, the 13px label, and at its end a still 32×18 track (switch-track.ts). Off, the label is "Away" (the whole name is cut at the rail's default 200px) and reads muted like the foot's other rows; on, the track fills `warning`, the moon turns `warning` and the label foreground. While a host has Work on, the label names the kinds away: "Away for Code", "Away for Work" or "Away for both", and the switch takes that name. The flip shows at once and rolls back with a toast ("Couldn't change Away") when the host refuses. Its tooltip: off "Away from computer: when on, threads decide without asking you", on "Away since 2:14 PM". It reads this machine's host (the page's host at /ui); the Threads menu's Away from Computer is the same switch, ticked while on |
 | Return toast | `AwayReturn` in `chrome/AwayReturn.tsx`, mounted once with the app's toasts | when a live `away` push turns a host's Away from on to off (never the state read at a link's open, so never at boot), each host's tally that lands in the next 3 s joins one sonner toast (`away-return`): "Decided without you in 4 threads" ("in 1 thread"), with Review. No decisions anywhere, no toast. Review opens `AwayReviewDialog` (the dialogs chunk): a `Modal` "Decided while you were away", one `ItemButton` per thread, most decisions first: its `TypeGlyph`, title, `HostGlyph` with two or more hosts, and "3 decisions" muted `tabular-nums`. A click opens the thread and closes the list |
 | Usage meter | `chrome/UsageMeter.tsx` on `src/shared/usageMeter.ts` (`meterFor`), the foot's last block | one 28px ghost row per provider with accounts, its own `railrow` container at the 12px inset, hovering and lit while open on `chrome-hover-ghost` (the hovered group's step in light, as the rail rows; dark holds the ghost button's 7%): the provider glyph, an 80px 4px `Progress` (56px in a rail under 15rem) of the pooled share (the mean room over every account routing could pick, each account's room its tighter of 5h and week; expired and unreported accounts left out; amber below 10%), then "in 2h" (the next refill) in 12px `text-muted-foreground`, or "Limited 3m" in `text-warning` while every account is throttled, on one line at any width; before any report an empty track and no text. A provider whose every account answered that its plan has no caps (Cursor's "no usage caps on this plan", `NO_CAPS_NOTE`) has no row; an account still unanswered, expired or whose poll failed keeps the empty track. No account name. Hover (the tooltip's delays), click or Enter opens a `Popover` to the right: the provider and "62% left", one row per usage window (5h, Week, each per-model cap) with its refill, percent and bar, and one muted foot line, "3 accounts with room". It moves on the `accounts` push alone |
@@ -474,7 +474,9 @@ its description already names the window, "Nothing in the last 30 days"
 elsewhere). The page's line says "12K turns in the last 30 days, updated
 5:30 PM" (`dayTime`: a weekday only for an earlier day); with no turns in
 the 30 days but older logs indexed, the body is one `Empty`, "Nothing in the
-last 30 days". While an index pass runs (the first, or a Reindex, over drawn charts too) the body
+last 30 days", unless Busiest hours has turns in its 60 days: then the page
+stays open, that chart drawn and each other section its own empty line, and
+Cache hit rate claims no rate. While an index pass runs (the first, or a Reindex, over drawn charts too) the body
 is each section's skeleton at its real height, Pace as tall as the series
 the last bundle drew (two before any), and the page's own line under the
 title counts the pass, once; a stats worker that is gone ("Couldn't load the
@@ -692,7 +694,8 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     its fold, a name cut short whole on hover (`TruncateTip`, never a
     path); an empty checkout is one Empty, "No files"; a folder the host
     could not list is one red line, "Couldn't list this folder", with
-    Retry.
+    Retry, above the rows it last listed (a failed refresh keeps them),
+    and no Files tree lists `.git`.
   - **Build** (`BuildPanel`): the target `Select` and Build or Cancel; one
     status row (`StatusMark`: Working with the time, Done, Failed with the
     exit code, Stopped; its detail one comma run, "exit 1, 1m 2s", naming
@@ -764,14 +767,18 @@ the field's menu (chrome/SearchFiltersMenu.tsx: Type and Host as checked
 `project:` naming another as its own picked row; each rewrites the typed
 tokens). With two or more hosts a foot says what each took, one comma run
 through `Facts`: the host's name, then 4px on its time muted ("box 1.2 s"),
-"offline", or "failed" in red with the raw reason on hover alone. When no
+"offline", or "failed" in red with the raw reason on hover alone; the run
+wraps between hosts, never inside one, so no host is cut off. When no
 host answers, the one `EmptyState` says "No host answered", its line the
 offline hosts ("The box is offline"). While a search is out and no hit has
 landed, the results are six still result rows in the hits' own shape (28px,
 the glyph on the hits' column). While its chunk loads, Search draws its
 strip with the field's bone and nothing under it, as it opens. A message row is a thread's best match as prose (no
 markdown marks, cut on a word's edge), its other matches folded into "+N
-more", the thread's name once at its end. Go to File and Go to Symbol are the same
+more", the thread's name once at its end. The match has first claim on the
+row: an excerpt whose match lies past its first 24 characters starts a word
+before it after "…", and it keeps at least half the row while the thread's
+name cuts first (a note's row too). Go to File and Go to Symbol are the same
 list in a picker dialog (chrome/PickerDialog.tsx) whose rows are menu rows.
 
 ### The viewers
@@ -966,7 +973,9 @@ fill and a hairline that steps to `border-input` while the box has focus;
 the checkpoint strip above it shares it; the hairline's step eases over
 `--dur-fast`), attachments as `Attachment` chips at its top (6px in, on the
 row's inset, each `rounded-md` so 12 = 6 + 6 with the box's corner; a failed
-upload is its chip's red Failed, and the line under the chips says only why;
+upload is its chip's red Failed, and the line under the chips says only why,
+in words (`attachLine`: "Not connected", our own reasons as written, else
+"Couldn't attach the file"; never a failure's raw text), a failed pick or paste the same;
 a send nothing took keeps the words and says "Not sent", with the caller's
 reason after a colon when it has one), then one row:
 `+` (28px) at the left, the field, Send (a 28px circle) at the right, 6px
@@ -1011,7 +1020,8 @@ the permission mode ends over Send: at the left the model
 button, which reads the model and the effort 4px after it ("Opus 5.5 High": the
 harness's mark already says Claude, so the name drops it; the name medium, the
 effort regular; its accessible name the uncut "Claude Opus 5.5, High effort") and opens
-the model menu: providers, search, the list, then the model's settings as
+the model menu: providers (it opens on the tab last chosen, Favorites at first; with no star, on the
+current model's provider instead), search, the list, then the model's settings as
 rows (Effort, Context, Speed only for the tiers the serving CLI lists, any
 other setting). Its model rows are menu rows (`MENU_ROW` at 28px, `rounded-lg`
 concentric with the 12px panel's 4px inset), and the group heading, the no-match
@@ -1103,7 +1113,7 @@ line of at most 80 characters in the row's 12px, muted with the row's
 hover fill and no border at rest, the field's ring on focus, the typed name
 in the foreground, as wide as its words and the first to give way (it takes
 the row's whole squeeze before the folder's name narrows, and under a 24rem
-row it is gone whole, never cut to "Name…"); Enter
+row, or a 32rem row that also holds the host picker, it is gone whole, never cut to "Name…"); Enter
 or Escape go back to the message. The name lives on the draft's record and
 the first send makes it the title (`session.create { title }`), which the
 host keeps over the title it would write from the message; left empty, the
@@ -1153,7 +1163,7 @@ hairline on its top edge, the sash, double-click for the default size; its
 height is at most 70% of the window's and never leaves the main view under
 312px, the bar with its shelf and a composer's room, `clampDockSize`) and
 under the same 36px bar (chrome/DockBar.tsx): the project's terminals as
-`Tabs variant="line"` (the terminal glyph, the title, the cwd on hover, a
+`Tabs variant="line"` (the terminal glyph, the title (cut at 192px), on hover the whole title over the cwd, or the cwd alone where the title is the folder's, a
 close on the active or hovered tab, middle click closes, drag to reorder),
 then a "Dev servers" tab with the live count beside it, then New terminal
 (⌃\`) and "Hide dock" (⌘J, the bottom-panel glyph, never the X a tab
@@ -1380,7 +1390,9 @@ path) instead of widening it; a code block scrolls inside its own box. The board
 actions, and last the conversation `Toggle` (`ChatToggle`, pressed while
 the chat shows). The header is a size container: the state line gives way first (it
 shrinks before the title, to an ellipsis) and leaves a header narrower
-than 376px (22rem inside its 12px insets);
+than 376px (22rem inside its 12px insets), except a state's word ("Plan
+ready"), which stays there whole while its detail leaves and the title
+cuts for it;
 then the title truncates; the actions never do. While the chat is folded and the thread is paused, the
 board draws the paused row of the slot above the composer under its header
 (`held`, `heldRowOf` in chatSlots.tsx: Stop, Continue, a master's "and 3

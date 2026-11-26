@@ -115,13 +115,14 @@ export function QuestionCard({
 
 /**
  * The card while it waits: its host's link and the key are read here alone, so an answered set subscribes to
- * nothing (D5). A key that may not answer gets the presses held with who can, as the host away gets its state.
+ * nothing (D5). The host away holds the presses with its state; a key that may not answer gets who can in Skip's
+ * and Continue's place, as the approval card does, with Back and Next kept for reading.
  */
 function LiveCard({ sessionId, ...props }: { sessionId: string } & ComponentProps<typeof Card>) {
   const host = sessionStore.environmentOf(sessionId);
   const held = useHostHeld(host);
   const may = useLinkMay(host ?? "", "session.answer");
-  return <Card {...props} held={may ? held : answerElsewhere(registry.environment(host ?? "")?.name ?? host ?? "")} />;
+  return <Card {...props} held={may ? held : null} whoCan={may ? null : answerElsewhere(registry.environment(host ?? "")?.name ?? host ?? "")} />;
 }
 
 /** A question's label ends its phrase with ":" (a question keeps its "?"), so the run reads "Approach: Fast, Small", never "Approach, Fast, Small". */

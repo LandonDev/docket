@@ -736,7 +736,10 @@ every line, as a banner's and the checkpoint strip's are) holds the open turn's
 elapsed time and Stop, nothing else, and the held states with their
 actions: Paused with Stop and Continue, Stopped with Resume (the harness is
 gone), Queued with Start now; a held row's way on (Continue, Resume, Start
-now) is the raised `secondary`, Stop the ghost beside it. Every Stop there
+now) is the raised `secondary`, Stop the ghost beside it. A key that may
+not use them (they go to the host, `operate`) gets the time and the word
+alone; while the host is away they are held, the link's words their
+tooltip. Every Stop there
 spins in place while it lands (`BusyLabel`, keeping its word), until its
 request settles, the row leaves its slot or `STOP_DEADLINE_MS` (10s) passes,
 so a Stop the host never acts on never spins for good; the timer's
@@ -4810,7 +4813,8 @@ section adds no words). A key that may not use a press does not get it: the
 control is not drawn (`useLinkMay`, `THREAD_MENU_METHODS`), or, where the
 place would be empty and he must know why, it says who can ("Send from a
 computer that manages the box", "Answer from a computer that manages the
-box"); the composer's refusal rides Send's tooltip as well, so it stands once typed words hide the field's. A press
+box", in an approval's pair's place and a question's Skip and Continue,
+whose set keeps Back and Next so each question can be read); the composer's refusal rides Send's tooltip as well, so it stands once typed words hide the field's. A press
 that acts in this window alone (a draft's permission mode, Cut, Start pass, which only arms the composer) is never
 held. The window's own rows (Open, Pin, Reveal, Copy path, the order) stay.
 `lib/docketAsksGuard.test.ts` lists every such control with its renders for a
@@ -4819,7 +4823,9 @@ read key and for a link that is down. A link's state is worded once,
 (the seconds only on the line over the composer, which alone ticks),
 "Connecting to the box…", "The box is offline", "This computer is offline",
 "The box is not the host this computer paired with" (with Pair again), "The
-box no longer accepts this key"; never the transport's own text. The line sits
+box no longer accepts this key"; never the transport's own text. A row that
+already names the host (the Hosts menu) ends in the same words without the
+name (`linkFact`: "No longer accepts this key", "Reconnecting…", "Offline"). The line sits
 on the box row's 6px inset, its glyph on `+`'s 28px axis and its words on the
 field's, wraps rather than cuts, and its Retry spins from the press until the
 link moves on. A failed read keeps the last good rows and says so in one red
@@ -5300,7 +5306,8 @@ its own, but for one kind: the held ask. An approval (chrome/ApprovalToasts.tsx)
 a computer's Allow and its asks (ComputerAllowToasts.tsx, ComputerAskToasts.tsx)
 and a Mac bridge card (MacBridgeCards.tsx) hold two presses (Allow and Deny,
 or the ask's own two), stay until answered or until the ask goes, and draw no
-close; the title opens the thread that asks, and the stack keeps the same seat
+close; the title opens the thread that asks (one line: in a narrow column it
+ends in an ellipsis before the pair), and the stack keeps the same seat
 as every toast. For a key that may not approve there is no pair: the line
 under the ask says who can ("Answer from a computer that manages the box"),
 as the card does. Whether a held ask gets a close, as a batch's failure toasts

@@ -5,22 +5,22 @@ import { capsText, hostErrorText, kindOf, originText, statusText } from "./hostC
 const at = (transport: EnvironmentStatus["transport"], extra: Partial<EnvironmentStatus> = {}): EnvironmentStatus => ({ ...IDLE_STATUS, transport, ...extra });
 
 describe("host connection words", () => {
-  it("words each transport state, with the retry countdown", () => {
-    const now = 1_000_000;
-    expect(statusText(at("open", { fresh: true }), now)).toBe("connected");
-    expect(statusText(at("open"), now)).toBe("connected, catching up");
-    expect(statusText(at("connecting"), now)).toBe("connecting…");
-    expect(statusText(at("reconnecting", { nextRetryAt: now + 4200 }), now)).toBe("reconnecting, next try in 5 s");
-    expect(statusText(at("reconnecting", { nextRetryAt: now - 1 }), now)).toBe("reconnecting…");
-    expect(statusText(at("offline"), now)).toBe("offline");
-    expect(statusText(at("unauthorized"), now)).toBe("key refused");
+  it("words each state as `linkWords` does, without the host's name and with no countdown", () => {
+    const now = Date.now();
+    expect(statusText(at("open", { fresh: true }))).toBe("Connected");
+    expect(statusText(at("open"))).toBe("Catching up");
+    expect(statusText(at("connecting"))).toBe("Connecting…");
+    expect(statusText(at("reconnecting", { nextRetryAt: now + 4200 }))).toBe("Reconnecting…");
+    expect(statusText(at("offline"), false, true)).toBe("Offline");
+    expect(statusText(at("offline"), false, false)).toBe("This computer is offline");
+    expect(statusText(at("offline", { lastError: "host identity changed: x" }), false, true)).toBe("Not the host this computer paired with");
+    expect(statusText(at("unauthorized"))).toBe("No longer accepts this key");
   });
   it("says a connected host is slow to answer, and leaves the other states as they were", () => {
-    const now = 1_000_000;
-    expect(statusText(at("open", { fresh: true }), now, true)).toBe("connected, slow to answer");
-    expect(statusText(at("open"), now, true)).toBe("connected, slow to answer");
-    expect(statusText(at("reconnecting", { nextRetryAt: now + 4200 }), now, true)).toBe("reconnecting, next try in 5 s");
-    expect(statusText(at("offline"), now, true)).toBe("offline");
+    expect(statusText(at("open", { fresh: true }), true)).toBe("Slow to answer");
+    expect(statusText(at("open"), true)).toBe("Slow to answer");
+    expect(statusText(at("reconnecting"), true)).toBe("Reconnecting…");
+    expect(statusText(at("offline"), true, true)).toBe("Offline");
   });
   it("names what a key may do beyond reading", () => {
     expect(capsText(["read"])).toBe("read only");

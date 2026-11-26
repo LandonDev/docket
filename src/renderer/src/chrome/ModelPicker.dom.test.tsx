@@ -7,7 +7,7 @@
  */
 import { beforeAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { findModel, mergeModelSettings, resetHarnessModelOverlays, saveModelPickerTab, setHarnessModels } from "../lib/models";
+import { findModel, mergeModelSettings, resetHarnessModelOverlays, saveFavoriteModels, saveModelPickerTab, setHarnessModels } from "../lib/models";
 import { agentModelsFor } from "../lib/tcserver/catalog";
 import type { ModelInfo, ProviderInfo } from "../lib/tcserver/types";
 import { ModelPicker } from "./ModelPicker";
@@ -58,6 +58,13 @@ async function open(name: RegExp) {
   return screen.getByRole("dialog", { name: "Model picker" });
 }
 
+/** A setting's open select lists its options outside the picker's own model rows. */
+const selectOptions = (menu: HTMLElement) =>
+  screen
+    .getAllByRole("option")
+    .filter((o) => !menu.contains(o))
+    .map((o) => o.textContent);
+
 beforeEach(() => {
   localStorage.clear();
   resetHarnessModelOverlays();
@@ -100,7 +107,7 @@ describe("ModelPicker", () => {
     const dialog = await open(/^Muse Wonder 1\.0 on Muse Code/);
     const effort = within(dialog).getByRole("combobox", { name: "Effort" });
     await act(async () => fireEvent.click(effort));
-    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Low", "Medium", "High", "Extra high", "Max"]);
+    expect(selectOptions(dialog)).toEqual(["Low", "Medium", "High", "Extra high", "Max"]);
   });
 
   it("the button reads the model and the effort", () => {
@@ -153,7 +160,7 @@ describe("ModelPicker", () => {
       const speed = within(menu).queryByRole("combobox", { name: "Speed" });
       if (!speed) return null;
       await act(async () => fireEvent.click(speed));
-      return screen.getAllByRole("option").map((o) => o.textContent);
+      return selectOptions(menu);
     };
     picker("codex", "codex:gpt-a");
     expect(await options(/^A on Codex/)).toEqual(["Standard", "Fast"]);
@@ -584,5 +591,30 @@ describe("ModelPicker in a Work thread", () => {
     expect(tabs(menu)).toContain("Cursor");
     await act(async () => fireEvent.input(within(menu).getByRole("combobox", { name: "Search models" }), { target: { value: "Composer" }, inputType: "insertText" }));
     expect(within(menu).getByRole("option", { name: /Composer 2/ })).toBeTruthy();
+  });
+
+  // O F4.1, M F4.1 (council 2): with no star the picker opens on the current model's provider, never an empty Favorites.
+  it("opens on the current model's provider while no model is starred, and on Favorites once one is", async () => {
+    seed("codex", [{ id: "gpt-6.2-sol", label: "GPT-6.2 Sol", reasoning: EFFORTS } as ModelInfo]);
+    const pressed = (menu: HTMLElement) =>
+      within(within(menu).getByRole("group", { name: "Providers" }))
+        .getAllByRole("button")
+        .filter((tab) => tab.getAttribute("aria-pressed") === "true")
+        .map((tab) => tab.getAttribute("aria-label"));
+    render(<ModelPicker harness="codex" model="codex:gpt-6.2-sol" onChange={() => {}} />);
+    let menu = await open(/GPT-6\.2 Sol/);
+    expect(pressed(menu)).toEqual(["Codex"]);
+    expect(within(menu).queryByText("No favorite models")).toBeNull();
+    expect(within(menu).getByRole("option", { name: /GPT-6\.2 Sol/ })).toBeTruthy();
+    // A press on the empty Favorites tab still shows it.
+    await act(async () => fireEvent.click(within(within(menu).getByRole("group", { name: "Providers" })).getByRole("button", { name: "Favorites" })));
+    expect(pressed(menu)).toEqual(["Favorites"]);
+    expect(within(menu).getByText("No favorite models")).toBeTruthy();
+    cleanup();
+
+    saveFavoriteModels(["codex:gpt-6.2-sol"]);
+    render(<ModelPicker harness="codex" model="codex:gpt-6.2-sol" onChange={() => {}} />);
+    menu = await open(/GPT-6\.2 Sol/);
+    expect(pressed(menu)).toEqual(["Favorites"]);
   });
 });

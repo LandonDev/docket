@@ -199,7 +199,8 @@ export function ModelPicker({
   useEffect(() => {
     if (!open) return;
     void probeHarnessAvailability({ environmentId });
-    setTab(coerceModelPickerTab(loadModelPickerTab(), shownInPicker));
+    // It opens on something to pick: with no star, the current model's provider rather than an empty Favorites.
+    setTab(coerceModelPickerTab(loadModelPickerTab(), shownInPicker, { noFavorites: loadFavoriteModels().length === 0, current: current.harness }));
     setQuery("");
   }, [open]);
 

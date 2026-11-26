@@ -25,6 +25,35 @@ import {
 
 export type UploadProgress = { sent: number; total: number };
 
+/** A failure worded here for the person ("report.pdf has nothing left to upload; attach it again"): shown as it is. */
+export class AttachmentReason extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AttachmentReason";
+  }
+}
+
+/**
+ * Why a file could not be attached, in words for the line under the chips (lowercase first, a clause): our own
+ * reasons as they are, the host's and the link's mapped, and anything else "couldn't attach the file", never the
+ * raw text of a failure.
+ */
+export function attachReason(error: unknown): string {
+  if (error instanceof AttachmentReason) return error.message;
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("bad request")) return "the thread's host is too old to take attachment uploads; update it";
+  if (message.startsWith("forbidden")) return "the thread's host refused the upload";
+  if (message.startsWith("attachment too large")) return "it is over the thread's host's limit for attachments";
+  if (message === "not connected" || message === "connection closed") return "not connected";
+  return "couldn't attach the file";
+}
+
+/** `attachReason` as the line under the chips says it: a mapped clause sentence-cased, our own words as written. */
+export function attachLine(error: unknown): string {
+  const why = attachReason(error);
+  return error instanceof AttachmentReason ? why : why.charAt(0).toUpperCase() + why.slice(1);
+}
+
 /** A failure the composer shows on the file's chip; never a failed turn. */
 export class AttachmentUploadError extends Error {
   constructor(
@@ -126,13 +155,6 @@ export async function hostSource(environmentId: string, path: string): Promise<S
   };
 }
 
-function friendly(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.startsWith("bad request")) return "the thread's host is too old to take attachment uploads; update it";
-  if (message.startsWith("forbidden")) return `the thread's host refused the upload (${message})`;
-  return message;
-}
-
 /** Stream one file's bytes into `sessionId`'s attachment dir on `threadEnv`; answers the landed path. */
 export async function uploadFile(opts: {
   threadEnv: string;
@@ -188,8 +210,8 @@ export async function uploadAttachment(
       : file.path && origin
         ? await hostSource(origin, file.path)
         : null;
-    if (!source) throw new Error(`${file.name} has nothing left to upload; attach it again`);
-    if (source.size > maxBytes) throw new Error(overLimitMessage({ name: file.name, size: source.size }, maxBytes));
+    if (!source) throw new AttachmentReason(`${file.name} has nothing left to upload; attach it again`);
+    if (source.size > maxBytes) throw new AttachmentReason(overLimitMessage({ name: file.name, size: source.size }, maxBytes));
     const landed = await uploadFile({
       threadEnv,
       sessionId,
@@ -220,8 +242,7 @@ export async function uploadAttachment(
     delete next.blob;
     return next;
   } catch (error) {
-    const why = friendly(error);
-    throw new AttachmentUploadError(file.id, `Could not attach ${file.name}: ${why}`, why.charAt(0).toUpperCase() + why.slice(1));
+    throw new AttachmentUploadError(file.id, `Could not attach ${file.name}: ${attachReason(error)}`, attachLine(error));
   }
 }
 

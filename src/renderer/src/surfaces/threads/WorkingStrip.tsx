@@ -12,6 +12,9 @@ import { duration } from "../../lib/duration";
 import { COLUMN_MAX_CLASS } from "../transcriptOutlineModel";
 import { DUR } from "../../lib/ease";
 import { reducedMotion } from "../../lib/motion";
+import { useLinkMay } from "../../lib/linkMayCore";
+import { useHostHeld } from "../../lib/connection/degraded";
+import { HeldTip } from "@renderer/components/heldTip";
 
 /** The longest a Stop spins when nothing settles it: past this, the control takes a click again. */
 export const STOP_DEADLINE_MS = 10_000;
@@ -95,6 +98,11 @@ export const WorkingStrip = memo(function WorkingStrip({
         ? (turnElapsed({ ...session, status }, now) ?? 0)
         : 0;
 
+  // Every press here goes to the host (session.interrupt, .resume, .start, all `operate`): a key that may not use them
+  // gets none, and while the host is away they are held, the link's words their tooltip (DESIGN "Loading and empty states").
+  const may = useLinkMay(session.environmentId ?? "", "session.interrupt");
+  const held = useHostHeld(session.environmentId);
+
   const [resumeBusy, setResumeBusy] = useState(false);
   const resume = (): void => {
     if (resumeBusy) return;
@@ -161,11 +169,15 @@ export const WorkingStrip = memo(function WorkingStrip({
       return (
         <>
           {elapsed >= 1000 ? time(elapsed) : null}
-          <Actions>
-            <Button variant="ghost" size="xs" onClick={stopTurn} disabled={stopping}>
-              <BusyLabel busy={stopping} label="Stop" align="end" />
-            </Button>
-          </Actions>
+          {may ? (
+            <Actions>
+              <HeldTip held={held}>
+                <Button variant="ghost" size="xs" onClick={stopTurn} disabled={stopping || !!held}>
+                  <BusyLabel busy={stopping} label="Stop" align="end" />
+                </Button>
+              </HeldTip>
+            </Actions>
+          ) : null}
         </>
       );
     }
@@ -187,36 +199,48 @@ export const WorkingStrip = memo(function WorkingStrip({
                 ? { ...shownStatus, detail: `and ${batchPaused} batch thread${batchPaused === 1 ? "" : "s"} with it` }
                 : shownStatus,
             )}
-            <Actions>
-              <Button variant="ghost" size="xs" onClick={stopTurn} disabled={stopping}>
-                <BusyLabel busy={stopping} label="Stop" />
-              </Button>
-              <Button variant="secondary" size="xs" onClick={resume} disabled={resumeBusy}>
-                <BusyLabel busy={resumeBusy} label="Continue" busyLabel="Continuing…" />
-              </Button>
-            </Actions>
+            {may ? (
+              <Actions>
+                <HeldTip held={held}>
+                  <Button variant="ghost" size="xs" onClick={stopTurn} disabled={stopping || !!held}>
+                    <BusyLabel busy={stopping} label="Stop" />
+                  </Button>
+                </HeldTip>
+                <HeldTip held={held}>
+                  <Button variant="secondary" size="xs" onClick={resume} disabled={resumeBusy || !!held}>
+                    <BusyLabel busy={resumeBusy} label="Continue" busyLabel="Continuing…" />
+                  </Button>
+                </HeldTip>
+              </Actions>
+            ) : null}
           </>
         );
       case "stopped":
         return (
           <>
             {heldMark(shownStatus)}
-            <Actions>
-              <Button variant="secondary" size="xs" onClick={resume} disabled={resumeBusy}>
-                <BusyLabel busy={resumeBusy} label="Resume" busyLabel="Resuming…" />
-              </Button>
-            </Actions>
+            {may ? (
+              <Actions>
+                <HeldTip held={held}>
+                  <Button variant="secondary" size="xs" onClick={resume} disabled={resumeBusy || !!held}>
+                    <BusyLabel busy={resumeBusy} label="Resume" busyLabel="Resuming…" />
+                  </Button>
+                </HeldTip>
+              </Actions>
+            ) : null}
           </>
         );
       case "queued":
         return (
           <>
             {heldMark(shownStatus)}
-            {onStart ? (
+            {onStart && may ? (
               <Actions>
-                <Button variant="secondary" size="xs" onClick={start} disabled={startBusy}>
-                  <BusyLabel busy={startBusy} label="Start now" busyLabel="Starting…" />
-                </Button>
+                <HeldTip held={held}>
+                  <Button variant="secondary" size="xs" onClick={start} disabled={startBusy || !!held}>
+                    <BusyLabel busy={startBusy} label="Start now" busyLabel="Starting…" />
+                  </Button>
+                </HeldTip>
               </Actions>
             ) : null}
           </>

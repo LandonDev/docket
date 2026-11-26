@@ -72,7 +72,9 @@ vi.mock("./connection", () => ({
 }));
 
 import {
+  AttachmentReason,
   AttachmentUploadError,
+  attachLine,
   bytesToBase64,
   copiesBytes,
   forgetAttachmentSettings,
@@ -190,6 +192,20 @@ describe("uploadAttachments", () => {
     expect((err as AttachmentUploadError).why).toBe("Not connected");
     expect(landed).toEqual(["a"]);
     expect(hosts.calls.box.at(-1)?.method).toBe("attachment.abort");
+  });
+});
+
+// S F4.2 (council 2): the line under the chips never carries a failure's raw text.
+describe("attachLine", () => {
+  it("says our own reasons as written, maps the host's and the link's, and words anything else", () => {
+    expect(attachLine(new AttachmentReason("report.pdf has nothing left to upload; attach it again"))).toBe("report.pdf has nothing left to upload; attach it again");
+    expect(attachLine(new Error("not connected"))).toBe("Not connected");
+    expect(attachLine(new Error("connection closed"))).toBe("Not connected");
+    expect(attachLine(new Error("bad request: unknown method attachment.begin"))).toBe("The thread's host is too old to take attachment uploads; update it");
+    expect(attachLine(new Error("forbidden: key k1 may not operate"))).toBe("The thread's host refused the upload");
+    expect(attachLine(new Error("attachment too large: 9 bytes is over this host's limit of 8"))).toBe("It is over the thread's host's limit for attachments");
+    expect(attachLine(new Error("EACCES: permission denied, open '/Users/me/x'"))).toBe("Couldn't attach the file");
+    expect(attachLine("boom")).toBe("Couldn't attach the file");
   });
 });
 

@@ -1,6 +1,6 @@
 import { dialogErrorWords } from "../lib/dialogErrorWords";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { BusyLabel, Button } from "@renderer/components/ui/button";
+import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { ItemButton, ItemContent, ItemMedia, ItemTitle } from "@renderer/components/ui/item";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator } from "@renderer/components/ui/breadcrumb";
@@ -144,8 +144,21 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
   const up = dir ? parentOf(dir) : null;
   const loading = !workRoot && !rootError;
 
-  const makeFolder = async (e: FormEvent) => {
-    e.preventDefault();
+  // While a new folder is named the footer is its own: Cancel goes back to the list (and focus to New folder), the confirm makes it.
+  const newFolderButton = useRef<HTMLButtonElement>(null);
+  const returning = useRef(false);
+  const backToList = () => {
+    returning.current = true;
+    setNewFolder(null);
+  };
+  useEffect(() => {
+    if (newFolder !== null || !returning.current) return;
+    returning.current = false;
+    newFolderButton.current?.focus();
+  }, [newFolder]);
+
+  const makeFolder = async (e?: FormEvent) => {
+    e?.preventDefault();
     const folder = newFolder?.trim();
     if (!folder || !dir) return;
     setPending(true);
@@ -248,13 +261,13 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
                   className="flex-1 font-mono text-xs"
                   data-remote-path
                 />
-                <Button variant="secondary" disabled={!dir} onClick={() => setNewFolder("")}>
+                <Button ref={newFolderButton} variant="secondary" disabled={!dir} onClick={() => setNewFolder("")}>
                   <FolderPlus />
                   New folder
                 </Button>
               </div>
             ) : (
-              <form onSubmit={(e) => void makeFolder(e)} className="flex items-center gap-2">
+              <form onSubmit={(e) => void makeFolder(e)}>
                 <Input
                   value={newFolder}
                   autoFocus
@@ -264,22 +277,15 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
                     if (e.key === "Escape") {
                       e.preventDefault();
                       e.stopPropagation();
-                      setNewFolder(null);
+                      backToList();
                     }
                   }}
                   placeholder="Folder name"
                   aria-label="New folder name"
                   spellCheck={false}
                   autoComplete="off"
-                  className="flex-1"
                   data-remote-new-folder
                 />
-                <Button variant="ghost" disabled={pending} onClick={() => setNewFolder(null)}>
-                  Cancel
-                </Button>
-                <Button type="submit" variant="secondary" disabled={!newFolder.trim() || pending}>
-                  <BusyLabel busy={pending} label="Create and use" />
-                </Button>
               </form>
             )}
           </>
@@ -297,7 +303,15 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
           <ErrorLine error={error} />
         )}
       </div>
-      <DialogFooter onCancel={onClose} confirmLabel="Use this folder" onConfirm={choose} disabled={!typed.trim() || pending} />
+      {newFolder === null ? (
+        <DialogFooter onCancel={onClose} confirmLabel="Use this folder" onConfirm={choose} disabled={!typed.trim() || pending} />
+      ) : (
+        <DialogFooter confirmLabel="Create and use" onConfirm={() => void makeFolder()} pending={pending} disabled={!newFolder.trim()}>
+          <Button data-dialog-cancel variant="secondary" disabled={pending} onClick={backToList}>
+            Cancel
+          </Button>
+        </DialogFooter>
+      )}
     </>
   );
 }

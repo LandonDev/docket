@@ -734,12 +734,21 @@ export function modelPickerTabs(
   return ["favorites", ...HARNESSES.filter(available)];
 }
 
+/**
+ * The tab the picker shows: the stored one while it is shown, else Favorites. At the picker's open
+ * (`opening`), Favorites with no star gives way to something to pick: the current model's provider, else the
+ * first shown. A press on the empty Favorites tab still shows it.
+ */
 export function coerceModelPickerTab(
   tab: ModelPickerTab,
   available: (id: HarnessId) => boolean,
+  opening?: { noFavorites: boolean; current?: HarnessId },
 ): ModelPickerTab {
   const tabs = modelPickerTabs(available);
-  return tabs.includes(tab) ? tab : "favorites";
+  const kept = tabs.includes(tab) ? tab : "favorites";
+  if (kept !== "favorites" || !opening?.noFavorites) return kept;
+  const providers = tabs.filter((t): t is HarnessId => t !== "favorites");
+  return (opening.current && providers.includes(opening.current) ? opening.current : providers[0]) ?? "favorites";
 }
 
 export function stepModelPickerTab(

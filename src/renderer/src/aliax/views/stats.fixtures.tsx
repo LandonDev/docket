@@ -60,5 +60,12 @@ export default [
   { name: "Two pace series, one running low", props: { data: STATS, status: null } },
   { name: "Pace with no finished cycles", props: { data: { ...STATS, pace: [] }, status: null } },
   { name: "Empty sections", props: { data: { ...STATS, daily: [], heatmap: [], byTool: [] }, status: null } },
+  {
+    name: "A quiet month, Busiest hours from the 60 days",
+    props: {
+      data: { ...STATS, totals: { ...STATS.totals, turns: 0, input: 0, output: 0, cache_read: 0, cache_write: 0 }, pace: [], daily: [], byModel: [], modelDaily: [], byProject: [], byTool: [], cacheDaily: [] },
+      status: { indexing: false, filesDone: 40, filesTotal: 40, rows: 1200 },
+    },
+  },
   { name: "Loading", props: { data: null, status: null } },
 ];

@@ -132,6 +132,22 @@ describe("AddThreadDialog", () => {
     expect(localStorage.getItem("docket.linkHosts")).toBeNull();
   });
 
+  // council-2 F9.2: a host's name mid-line is lower case ("the box"), DESIGN "Typography and text hierarchy".
+  it("says the host mid-line in lower case when it made no copy", async () => {
+    h.projects = [proj({})];
+    h.ensure.mockImplementation((_env: string, _args: unknown, dryRun?: boolean) =>
+      Promise.resolve(dryRun ? { cwd: "/work/temp-code", exists: false, project: null, note: null } : { cwd: null, exists: false, project: null, note: null }),
+    );
+    render(<AddThreadDialog master={master} siblings={[]} onClose={() => {}} />);
+    await flush();
+    fireEvent.click(hostButton("The box"));
+    fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "Port the view." } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await flush();
+    expect(await screen.findByText("No copy of the project on the box")).toBeTruthy();
+    expect(h.startThread).not.toHaveBeenCalled();
+  });
+
   it("a host with no checkout is disabled with the host's note, and a host with a copy needs no dry run", async () => {
     render(<AddThreadDialog master={master} siblings={[]} onClose={() => {}} />);
     await flush();

@@ -50,9 +50,30 @@ export function linkWords(name: string, degraded: Degraded, now?: number, online
     case "connecting":
       return `Connecting to ${nameInLine(name)}…`;
     case "reconnecting": {
-      const wait = now !== undefined && status.nextRetryAt ? Math.max(0, Math.ceil((status.nextRetryAt - now) / 1000)) : 0;
+      const wait = retryWait(status, now);
       return wait > 0 ? `Reconnecting to ${nameInLine(name)} in ${wait} s` : `Reconnecting to ${nameInLine(name)}…`;
     }
+  }
+}
+
+const retryWait = (status: EnvironmentStatus, now?: number): number =>
+  now !== undefined && status.nextRetryAt ? Math.max(0, Math.ceil((status.nextRetryAt - now) / 1000)) : 0;
+
+/**
+ * `linkWords` as a row's trailing fact, where the row already names the host (the Hosts menu): the same states
+ * in the same words, the host's name left out. No countdown: only the line over the composer ticks.
+ */
+export function linkFact(degraded: Degraded, online = !computerOffline()): string {
+  switch (degraded.kind) {
+    case "unauthorized":
+      return "No longer accepts this key";
+    case "offline":
+      if (!online) return "This computer is offline";
+      return identityChanged(degraded.status) ? "Not the host this computer paired with" : "Offline";
+    case "connecting":
+      return "Connecting…";
+    case "reconnecting":
+      return "Reconnecting…";
   }
 }
 

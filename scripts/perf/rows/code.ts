@@ -518,7 +518,7 @@ const pickerAt = picker({
 const MODELS = '[data-model-picker]'
 const pickerModel = picker({
   id: 'picker-model',
-  // A fresh profile has no favourites: the picker opens on Favorites, its list the line that says so.
+  // A fresh profile has no favourites: the picker opens on the current model's provider, its list that provider's rows.
   title: "The composer's model picker, to its list drawn; then type \"sonne\", a key at a time",
   region: MODELS,
   shown: `${shownIn(MODELS)} && !!document.activeElement?.closest(${JSON.stringify(MODELS)}) && document.querySelector(${JSON.stringify(MODELS)}).innerText.trim().length > 0`,

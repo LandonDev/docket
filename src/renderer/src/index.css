@@ -281,6 +281,11 @@
      `t-raise-field`) keeps the button's hairline here, as it was, and takes
      the field's edge in light, so the column's two edges match. */
   --outline-field-edge: var(--border);
+  /* A search with no match (the code editor's Find): red ink and edge here,
+     as it was; in light, where red is kept for a search that cannot run
+     (Invalid regex), the count's muted ink and the field's own edge. */
+  --find-miss: var(--destructive);
+  --find-miss-edge: var(--destructive);
   /* What a pressable part with an edge of its own hovers to: an outline
      button and a linked row (the muted fill here), a select's trigger (60%
      of it) and an attachment that opens (50%), as each did. In light all
@@ -455,6 +460,8 @@ html.theme-light {
   --skeleton-matte: color-mix(in srgb, var(--background) 16%, transparent);
   --check-edge: color-mix(in srgb, var(--foreground) 50%, transparent);
   --outline-field-edge: var(--input);
+  --find-miss: var(--muted-foreground);
+  --find-miss-edge: var(--input);
   --field-readonly: var(--muted-foreground);
   --hover-fill: color-mix(in srgb, var(--foreground) 5%, transparent);
   --hover-fill-field: color-mix(in srgb, var(--foreground) 5%, transparent);
@@ -554,6 +561,8 @@ html.theme-light {
   --color-skeleton: var(--skeleton);
   --color-skeleton-matte: var(--skeleton-matte);
   --color-check-edge: var(--check-edge);
+  --color-find-miss: var(--find-miss);
+  --color-find-miss-edge: var(--find-miss-edge);
   --color-field-readonly: var(--field-readonly);
   --color-hover-fill: var(--hover-fill);
   --color-hover-fill-field: var(--hover-fill-field);

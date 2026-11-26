@@ -268,6 +268,19 @@ describe("model picker tabs", () => {
     expect(coerceModelPickerTab("cursor", available)).toBe("cursor");
     expect(coerceModelPickerTab("favorites", available)).toBe("favorites");
   });
+
+  // O F4.1, M F4.1 (council 2): a picker opens on something to pick.
+  it("opens on the current model's provider while Favorites has no star", () => {
+    expect(coerceModelPickerTab("favorites", available, { noFavorites: true, current: "cursor" })).toBe("cursor");
+    // The current model's provider hidden: the first shown provider.
+    expect(coerceModelPickerTab("favorites", available, { noFavorites: true, current: "pi" })).toBe("claude");
+    expect(coerceModelPickerTab("pi", available, { noFavorites: true })).toBe("claude");
+    // With a star, or a provider tab stored, nothing moves.
+    expect(coerceModelPickerTab("favorites", available, { noFavorites: false, current: "cursor" })).toBe("favorites");
+    expect(coerceModelPickerTab("fx", available, { noFavorites: true, current: "cursor" })).toBe("fx");
+    // No provider shown at all: Favorites, the one tab there is.
+    expect(coerceModelPickerTab("favorites", () => false, { noFavorites: true, current: "claude" })).toBe("favorites");
+  });
 });
 
 describe("picker provider visibility", () => {

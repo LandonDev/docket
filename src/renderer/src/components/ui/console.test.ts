@@ -23,7 +23,7 @@ describe("the console recipe", () => {
 
 describe("red in rows", () => {
   it("a row's remove, stop or revoke is a ghost that turns red on hover; solid red stays in confirms", () => {
-    for (const file of ["surfaces/settings/computers/JobLog.tsx", "surfaces/settings/computers/Devices.tsx", "surfaces/settings/computers/SignIns.tsx"]) {
+    for (const file of ["surfaces/settings/computers/SignIns.tsx"]) {
       const text = readFileSync(resolve(src, file), "utf8");
       expect(text, file).not.toContain('variant="destructive"');
       expect(text, file).toContain("hover:text-destructive");

@@ -62,7 +62,7 @@ export function ToastPreview({ state = "approval" }: { state?: string }) {
           { sessionId: "proof", environmentId: "local", title: "Proof the print copy", error: "The box did not answer." },
         ],
       }]} /> : null}
-      {state === "approval" || state === "host away" || state === "read key" || state === "waiting question" || state === "mention menu" ? <ApprovalToasts notices={[{ sessionId: "guide", title: "Check the bridge", requestId: 1, tool: "Bash", label: "Run the route checks?", held: state === "host away" ? "The box is offline" : null, elsewhere: state === "read key" ? "Answer from a computer that manages the box" : null }]} onFocusSession={noop} onApproval={noop} /> : null}
+      {state === "approval" || state === "long title" || state === "host away" || state === "read key" || state === "waiting question" || state === "mention menu" ? <ApprovalToasts notices={[{ sessionId: "guide", title: state === "long title" ? "Check the bridge notes before the print run" : "Check the bridge", requestId: 1, tool: "Bash", label: "Run the route checks?", held: state === "host away" ? "The box is offline" : null, elsewhere: state === "read key" ? "Answer from a computer that manages the box" : null }]} onFocusSession={noop} onApproval={noop} /> : null}
       {state === "allow" ? <AllowToasts notices={[{ pairingId: "preview", name: "Field laptop", words: ["map", "river", "birch"] }]} onAnswered={noop} /> : null}
     </div>
   );

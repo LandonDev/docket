@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry, type Environment, type EnvironmentStatus, type Link } from "../lib/connection";
 import type { ServerPush, SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
@@ -345,6 +345,9 @@ describe("the rail", () => {
   });
 
   it("the state is a glyph button, never a word: it opens the threads popover and does not select the row", async () => {
+    // The popover rides the menu chunk: load it here, so the test does not lean on another file having loaded it.
+    const { menuChunk } = await import("../surfaces/chunks");
+    await menuChunk.load();
     const onSelect = vi.fn();
     const root = await mountRail([LOCAL, BOX], {}, onSelect);
     const row = workspaceRows(root)[0] as HTMLElement;
@@ -359,7 +362,8 @@ describe("the rail", () => {
       await flush();
     });
     expect(onSelect).not.toHaveBeenCalled();
-    expect(mark.getAttribute("aria-expanded")).toBe("true");
+    // The popover rides the menu chunk, which may land after a flush on a loaded machine.
+    await waitFor(() => expect(mark.getAttribute("aria-expanded")).toBe("true"));
   });
 
   it("dims a row whose only host is down, not the linked one", async () => {

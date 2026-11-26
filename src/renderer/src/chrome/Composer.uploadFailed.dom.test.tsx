@@ -11,6 +11,11 @@ vi.mock("./DraftHostPicker", () => ({ DraftHostPicker: () => null }));
 vi.mock("./BranchPicker", () => ({ BranchPicker: () => null }));
 vi.mock("./ThreadTypeChip", () => ({ ThreadTypeChip: () => null }));
 vi.mock("./ModelPicker", () => ({ ModelPicker: () => null }));
+// A paste whose file the host cannot take fails with the host's raw text.
+vi.mock("../lib/attachments", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../lib/attachments")>();
+  return { ...real, attachmentsFromFiles: () => Promise.reject(new Error("EACCES: permission denied, open '/Users/me/.tc/attachments/a1/shot.png'")) };
+});
 vi.mock("../lib/attachmentUpload", async (importOriginal) => {
   const real = await importOriginal<typeof import("../lib/attachmentUpload")>();
   return {
@@ -60,5 +65,33 @@ describe("a failed upload", () => {
     const note = view.getByRole("alert");
     expect(note.textContent).toBe("Not connected");
     expect(note.textContent).not.toContain("notes.txt");
+  });
+
+  // S F4.2 (council 2): a pick or a paste that fails says why in words, never the failure's raw text.
+  it("a paste that fails puts no raw failure in the red line: Couldn't attach the file", async () => {
+    const view = render(
+      <Composer
+        focused={false}
+        harness="claude"
+        model="claude-opus-5-5"
+        runtimeMode={"supervised" as never}
+        executionCwd="/jobs/app"
+        cwd="/jobs/app"
+        sessionId="chat-paste"
+        onFocus={() => {}}
+        onCwdChange={() => {}}
+        onModelChange={() => {}}
+        onRuntimeModeChange={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+    const field = view.container.querySelector<HTMLElement>("[data-composer-input]")!;
+    const file = new File(["png"], "shot.png", { type: "image/png" });
+    await act(async () => {
+      fireEvent.paste(field, { clipboardData: { files: [file], items: [], getData: () => "", types: ["Files"] } });
+    });
+    const note = await view.findByRole("alert");
+    expect(note.textContent).toBe("Couldn't attach the file");
+    expect(note.textContent).not.toMatch(/EACCES|\/Users/);
   });
 });

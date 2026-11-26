@@ -9,7 +9,7 @@ import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useSortable } from "../hooks/useSortable";
 import type { FilePaneTab } from "../lib/layout";
 import { shortcutFor } from "../lib/settings";
-import { terminalTabLabel } from "../lib/terminalTab";
+import { defaultTerminalTitle, terminalTabLabel } from "../lib/terminalTab";
 import { PanelBottomClose, Plus, Terminal, X } from "./icons";
 
 /** The Dev servers tab's value in the bar. */
@@ -109,7 +109,12 @@ export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose
                     <Terminal className="size-3.5" />
                     <span className="max-w-48 truncate">{label}</span>
                   </TooltipTrigger>
-                  <TooltipContent side="top">{file.cwd}</TooltipContent>
+                  {/* A live process title can be cut at 192px and several terminals share a folder:
+                      the tip names the title whole, then the folder, where the title is not the folder's own. */}
+                  <TooltipContent side="top" className="flex-col items-start gap-0.5 text-left">
+                    {label !== defaultTerminalTitle(file.cwd) ? <span className="min-w-0 break-words">{label}</span> : null}
+                    <span className="min-w-0 break-words">{file.cwd}</span>
+                  </TooltipContent>
                 </Tooltip>
                 {onClose ? (
                   // The active tab's close stays; another tab's waits on the shared hover reveal.

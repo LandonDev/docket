@@ -7,4 +7,5 @@ export default [
   { name: "Model menu open", props: {}, prepare },
   { name: "Harness unavailable", props: { missing: true }, prepare },
   { name: "No provider account", props: { noAccount: true }, prepare },
+  { name: "A new profile, no star: the current model's provider", props: { fresh: true }, prepare },
 ];

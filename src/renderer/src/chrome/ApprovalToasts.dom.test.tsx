@@ -162,7 +162,7 @@ describe("ApprovalToasts", () => {
     probe.rerender(render("Renamed", current));
     await act(async () => { await loadToast(); });
     expect(toast.warning).toHaveBeenCalledTimes(2);
-    expect(toast.warning.mock.calls[1][0].props.children).toBe("Renamed");
+    expect(toast.warning.mock.calls[1][0].props.children.props.children).toBe("Renamed");
   });
 });
 
@@ -193,6 +193,20 @@ describe("ApprovalToasts", () => {
     const titleView = render(<>{title as React.ReactNode}</>);
     fireEvent.click(titleView.getByRole("button", { name: "Fix the build" }));
     expect(onFocusSession).toHaveBeenCalledWith("s1");
+  });
+
+  // council-2 F9.1: in a narrow pane the title shrinks inside the text column and ends in an ellipsis,
+  // instead of keeping its width (the Button's shrink-0, nowrap) and running under Deny and Allow.
+  it("lets the title shrink and truncate so it ends before the pair", async () => {
+    render(<ApprovalToasts notices={[notice]} onFocusSession={vi.fn()} onApproval={vi.fn()} />);
+    await flushToast();
+    const [title] = vi.mocked(toast.warning).mock.calls[0];
+    const view = render(<>{title as React.ReactNode}</>);
+    const button = view.getByRole("button", { name: "Fix the build" });
+    const classes = button.className.split(/\s+/);
+    expect(classes).toEqual(expect.arrayContaining(["min-w-0", "max-w-full", "shrink"]));
+    expect(classes).not.toContain("shrink-0");
+    expect(view.getByText("Fix the build").className).toContain("truncate");
   });
 
   // edges-04: while the thread's host is away both presses are held, the host's state their tooltip; the toast stays.

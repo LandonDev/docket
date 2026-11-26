@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FsEntry } from "../lib/fs";
 
@@ -45,6 +45,7 @@ vi.mock("./ConfirmDialog", () => ({ useConfirm: () => async () => true }));
 
 import { FileTree } from "./FileTree";
 import { renamePath } from "../lib/fs";
+import { notifyDirsChanged } from "../lib/fileTree";
 
 async function mount() {
   const onOpenFile = vi.fn();
@@ -246,6 +247,21 @@ describe("FileTree", () => {
     fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("README.md")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps a folder's last rows under the line when a refresh fails", async () => {
+    const root = "/flaky-checkout";
+    state.dirs.set(root, [entry(`${root}/src`, true), entry(`${root}/README.md`)]);
+    render(<FileTree cwd={root} onOpenFile={vi.fn()} />);
+    await screen.findByText("README.md");
+    state.failing.add(root);
+    // An agent's write asks every listed folder again; this one fails and keeps its last good rows, the retry line above them.
+    act(() => notifyDirsChanged());
+    const line = await screen.findByRole("alert");
+    expect(line.textContent).toContain("Couldn't list this folder");
+    expect(screen.getAllByRole("treeitem").map((row) => row.dataset.path)).toEqual([`${root}/src`, `${root}/README.md`]);
+    expect(line.compareDocumentPosition(screen.getByText("README.md")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    state.failing.delete(root);
   });
 
   it("keeps the line when Retry fails again", async () => {

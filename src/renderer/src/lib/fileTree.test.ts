@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FsEntry } from "./fs";
 import {
   forgetDir,
+  lastListed,
   listCachedDir,
   notifyDirsChanged,
   peekDir,
@@ -60,6 +61,17 @@ describe("fileTree cache", () => {
     listDir.mockResolvedValueOnce([entry("created.ts")]);
     await refreshCachedDirs();
     expect(peekDir(root)).toEqual([entry("created.ts")]);
+  });
+
+  it("a failed refresh keeps the folder's last good rows until it is forgotten", async () => {
+    listDir.mockResolvedValueOnce([entry("kept.ts")]);
+    await listCachedDir(root);
+    listDir.mockRejectedValueOnce(new Error("link down"));
+    await refreshCachedDirs();
+    expect(peekDir(root)).toBeNull();
+    expect(lastListed(root)).toEqual([entry("kept.ts")]);
+    forgetDir(root);
+    expect(lastListed(root)).toBeNull();
   });
 
   it("notifyDirsChanged refreshes the cache and tells listeners", async () => {

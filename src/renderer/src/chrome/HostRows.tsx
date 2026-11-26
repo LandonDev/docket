@@ -45,9 +45,13 @@ export function toneOf(status: EnvironmentStatus, slow = false): string {
   }
 }
 
-/** "This Mac connected", one host's words for the row's aria-label. */
-function hostWord(environment: Environment, status: EnvironmentStatus | undefined, slow: boolean, now: number): string {
-  return `${environment.name} ${status ? statusText(status, now, slow) : "not connected"}`;
+/** One host's state, the trailing fact of its row in the menu: "Connected", "No longer accepts this key". */
+const hostState = (status: EnvironmentStatus | undefined, slow: boolean): string => (status ? statusText(status, slow) : "Not connected");
+
+/** "This Mac, connected", one host's words for the row's aria-label. */
+function hostWord(environment: Environment, status: EnvironmentStatus | undefined, slow: boolean): string {
+  const state = hostState(status, slow);
+  return `${environment.name}, ${state.charAt(0).toLowerCase()}${state.slice(1)}`;
 }
 
 /**
@@ -62,8 +66,7 @@ export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: s
   const slow = useSlowEnvironments();
   const [open, setOpen] = useState(false);
   if (environments.length < 2) return null;
-  const now = Date.now();
-  const label = `Hosts: ${environments.map((e) => hostWord(e, statuses.get(e.id), slow.has(e.id), now)).join(", ")}`;
+  const label = `Hosts: ${environments.map((e) => hostWord(e, statuses.get(e.id), slow.has(e.id))).join("; ")}`;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <RailRow
@@ -97,7 +100,7 @@ export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: s
       <DropdownMenuContent side="right" align="end" aria-label="Hosts">
         <HostsMenuRows
           environments={environments}
-          words={new Map(environments.map((e) => [e.id, statuses.get(e.id) ? statusText(statuses.get(e.id)!, now, slow.has(e.id)) : "not connected"]))}
+          words={new Map(environments.map((e) => [e.id, hostState(statuses.get(e.id), slow.has(e.id))]))}
           held={new Map(environments.map((e) => [e.id, hostsHeld([e.id])]))}
           onAddWorkspace={onAddWorkspace}
         />

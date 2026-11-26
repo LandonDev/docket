@@ -54,12 +54,13 @@ describe("Naming a new thread in the draft row", () => {
     expect(onDraftTitleChange).toHaveBeenLastCalledWith("Gateway audit");
   });
 
-  it("gives way whole in a draft row under 24rem, never cut to Name…", () => {
+  // M F4.2 (council 2): at 800px a 486px row with the host cut the folder to "Ho…" and the field to "Name thi…".
+  it("gives way whole in a draft row under 24rem, and under 32rem beside the host picker, never cut to Name…", () => {
     const view = mount({ threadType: "chat", draftTitle: "", onDraftTitleChange: vi.fn() });
     const input = field(view)!;
     const row = view.container.querySelector<HTMLElement>("[data-composer-draft-row]")!;
-    expect(row.className.split(" ")).toContain("@container/draft-row");
-    expect(input.className.split(" ")).toContain("@max-[24rem]/draft-row:hidden");
+    expect(row.className.split(" ")).toEqual(expect.arrayContaining(["@container/draft-row", "group/draft-row"]));
+    expect(input.className.split(" ")).toEqual(expect.arrayContaining(["@max-[24rem]/draft-row:hidden", "group-has-[[data-draft-host-picker]]/draft-row:@max-[32rem]/draft-row:hidden"]));
   });
 
   it("takes the row's squeeze before the folder's name does, so the folder is never cut to its first letter", () => {
