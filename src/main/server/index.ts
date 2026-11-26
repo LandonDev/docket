@@ -3978,6 +3978,8 @@ export async function startServer(
             else deskFocus.delete(connection)
             focus.set(connection, req.params.sessionId)
             focus.setShown(connection, req.params.shown ?? null)
+            // Threads still waiting for the boot's resume: the ones he looks at come back first (resumeAfterBoot.ts).
+            bootResumer.prefer([req.params.sessionId, req.params.shown].filter((id): id is string => !!id))
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.interrupt':

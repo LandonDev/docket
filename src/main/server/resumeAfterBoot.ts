@@ -24,6 +24,13 @@ import type { bootStamps } from './stalls'
  * first as slots free (`queueResume`); their ledger rows stay, so another
  * restart meanwhile brings them back the same way.
  *
+ * At boot no window is connected, so the order above is by depth and age
+ * alone. When a window says which thread it shows (`session.focus`, `prefer`)
+ * while threads still wait here, those threads and the threads above them
+ * move to the front of what has not started; the rest keep their order, the
+ * width, the gap and the cap. A thread already started, or a call once the
+ * run is over, changes nothing.
+ *
  * The result feeds one toast per boot in the rail ("7 threads resumed
  * after restart"): `notice` is what a socket connecting later is told, and
  * `onDone` what the sockets already open hear.
@@ -65,6 +72,11 @@ export class BootResumer {
   private readonly listeners = new Set<(notice: BootResumeNotice) => void>()
   private done: BootResumeNotice | null = null
   private running: Promise<BootResumeResult> | null = null
+  /** What waits, in order, and how many of them have started. */
+  private queue: { id: string; recordedAt: number; restartedAt: number; depth: number }[] = []
+  private next = 0
+  /** Threads a window showed before the queue was made. */
+  private readonly wanted = new Set<string>()
 
   constructor(private readonly deps: BootResumerDeps) {}
 
@@ -76,6 +88,29 @@ export class BootResumer {
   onDone(listener: (notice: BootResumeNotice) => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
+  }
+
+  /**
+   * A window shows these threads: each, with the threads above it, goes to the front of what has not started,
+   * the shown thread before its parents. Returns how many waiting threads moved ahead of another.
+   */
+  prefer(ids: Iterable<string>): number {
+    const first: string[] = []
+    for (const id of ids) {
+      for (let cursor: string | null = id, hops = 0; cursor && hops < 32; hops++) {
+        if (!first.includes(cursor)) first.push(cursor)
+        cursor = this.deps.store.getSession(cursor)?.parentId ?? null
+      }
+    }
+    for (const id of first) this.wanted.add(id)
+    const waiting = this.queue.slice(this.next)
+    const ahead = first.flatMap((id) => waiting.filter((item) => item.id === id))
+    if (!ahead.length) return 0
+    const rest = waiting.filter((item) => !ahead.includes(item))
+    const order = [...ahead, ...rest]
+    const moved = order.filter((item, i) => item !== waiting[i]).length
+    this.queue.splice(this.next, waiting.length, ...order)
+    return moved
   }
 
   /** Resume everything recorded. Runs once; a second call returns the first run. */
@@ -98,7 +133,7 @@ export class BootResumer {
 
     // Decide what still qualifies before any harness boots; the rest is
     // cleared at once so a restart mid-resume never replays it.
-    const queue: { id: string; recordedAt: number; restartedAt: number; depth: number }[] = []
+    const queue = this.queue
     for (const row of rows) {
       const meta = store.getSession(row.sessionId)
       if (!meta || meta.archived || meta.status === 'paused') {
@@ -116,19 +151,20 @@ export class BootResumer {
     store.clearResumeAfterBoot(result.skipped)
     // Deepest first (a subagent before its orchestrator), oldest record first within a depth.
     queue.sort((a, b) => b.depth - a.depth || a.recordedAt - b.recordedAt)
+    // What a window already showed while this boot was getting here.
+    if (this.wanted.size) this.prefer([...this.wanted])
     for (const item of queue) registry.resumePending.add(item.id)
     log(`[resume] ${queue.length} thread(s) were mid-turn at the last shutdown; resuming ${Math.min(this.deps.width ?? BOOT_RESUME_WIDTH, queue.length)} at a time`)
 
     const width = Math.max(1, this.deps.width ?? BOOT_RESUME_WIDTH)
     const gapMs = this.deps.gapMs ?? BOOT_RESUME_GAP_MS
-    let next = 0
     let lastResumedAt: number | undefined
     const worker = async (): Promise<void> => {
-      while (next < queue.length) {
-        const item = queue[next++]!
+      while (this.next < queue.length) {
+        const item = queue[this.next++]!
         // A slot under the cap, not counting the threads still waiting here
         // (their rows say running with no harness behind them yet).
-        const room = registry.bootResumeRoom?.([item.id, ...queue.slice(next).map((q) => q.id)]) ?? Number.POSITIVE_INFINITY
+        const room = registry.bootResumeRoom?.([item.id, ...queue.slice(this.next).map((q) => q.id)]) ?? Number.POSITIVE_INFINITY
         if (room <= 0 && registry.queueResume) {
           registry.queueResume(item.id, item.restartedAt)
           result.queued.push(item.id)
@@ -151,7 +187,7 @@ export class BootResumer {
         } finally {
           registry.resumePending.delete(item.id)
         }
-        if (next < queue.length && gapMs > 0) await new Promise((r) => setTimeout(r, gapMs))
+        if (this.next < queue.length && gapMs > 0) await new Promise((r) => setTimeout(r, gapMs))
       }
     }
     await Promise.all(Array.from({ length: Math.min(width, queue.length) }, worker))

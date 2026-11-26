@@ -526,7 +526,13 @@ each one by hand. Now:
   the handler stamped it, else this boot's), through the same
   `registry.resumeStopped` the Resume button uses. Four boot at a time, each
   worker pausing 750 ms between its threads; subagents go before their
-  parents. A thread the user paused stays paused; a thread that is gone or
+  parents. At boot no window is connected, so that order is all there is;
+  once a window says which thread it shows (`session.focus`), that thread
+  and the threads above it move to the front of what has not started
+  (`BootResumer.prefer`), the rest keeping their order, the width, the gap
+  and the cap. Timed on an isolated host (scripts/perf/host.ts `--boot`,
+  Nov 26): hello 4.0 to 4.6 s after the process starts, the first thread
+  resumed at 3.9 s, all 40 in 11.1 s. A thread the user paused stays paused; a thread that is gone or
   archived is forgotten. The transcript shows `Resumed after the host
   restarted at <time>`. Log lines start with `[resume]`.
 - **Stopped.** A thread whose row says running (or starting) with no live
