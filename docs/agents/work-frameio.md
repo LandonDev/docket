@@ -28,7 +28,7 @@ below is the first thing to run when the owner does.
 | Webhooks: signing, the receiver, the trigger source | `hooks.ts` |
 | The agent's tools | `tools.ts` |
 | The fake Frame.io and Adobe IMS | `fakeFrameio.ts`, used by `frameio.test.ts` |
-| The sign-in and address rows and their dialogs | `src/renderer/src/work/frameio/FrameioRow.tsx` (`FrameioRows`; no Settings page mounts them now, and the sign-in's state is a Connections row) |
+| The sign-in and address rows and their dialogs | `src/renderer/src/work/frameio/FrameioRow.tsx` (`FrameioRows`; no Settings page mounts them now, and the sign-in's state is a Connections row with no press: the only page a fix could name is Connections itself) |
 
 ## Sign-in
 

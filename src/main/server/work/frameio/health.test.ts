@@ -49,15 +49,18 @@ describe('the Frame.io connection', () => {
     expect(frameio.health!.lapses!(ctx)).toEqual([{ id: 'frameio.signin', pillar: 'frameio', title: 'Frame.io sign-in', until: NOW + 3_600_000 }])
   })
 
-  it('a sign-in that ran out needs him, with the sign-in button', () => {
+  it('a sign-in that ran out needs him, with no press: no page signs Frame.io in, and Connections is where the row stands', () => {
     const ctx = ctxWith(tokens({ refresh: undefined, expiresAt: NOW - 1 }))
-    expect(frameioRows(ctx, NOW)).toMatchObject([{ state: 'needs-you', line: 'The sign-in ran out. Sign in again.', fix: { kind: 'page', label: 'Sign in…', page: 'settings:work' }, until: NOW - 1 }])
+    const rows = frameioRows(ctx, NOW)
+    expect(rows).toMatchObject([{ state: 'needs-you', line: 'The sign-in ran out', until: NOW - 1 }])
+    expect(rows[0]!.fix).toBeUndefined()
   })
 
   it('signed out after using it: needs him', () => {
     const ctx = ctxWith(null)
     setSetting(ctx.db, 'publicUrl', 'https://hooks.example.com')
-    expect(frameioRows(ctx, NOW)).toMatchObject([{ id: 'frameio.signin', state: 'needs-you', line: 'Not signed in on this host', fix: { page: 'settings:work' } }])
+    expect(frameioRows(ctx, NOW)).toMatchObject([{ id: 'frameio.signin', state: 'needs-you', line: 'Not signed in on this host' }])
+    expect(frameioRows(ctx, NOW)[0]!.fix).toBeUndefined()
     const other = ctxWith(null)
     saveItem(other.db, { itemId: 'i1', sessionId: 's1', account: 'a', stackId: null, fileIds: ['f'] })
     expect(frameioRows(other, NOW)).toMatchObject([{ state: 'needs-you' }])

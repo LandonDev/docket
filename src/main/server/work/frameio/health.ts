@@ -9,10 +9,12 @@ import { itemsOf, statusOf } from './live'
  * refresh token keeps the sign-in going and Adobe does not say here when it
  * ends, so only a sign-in with no refresh token has a known end. A host that
  * never used Frame.io (no sign-in, no webhook address, no item, no sign-in
- * under way) has no row.
+ * under way) has no row. A row that needs him has no fix: the rows that
+ * sign in (`work/frameio/FrameioRow.tsx`) are on no page yet, and the only
+ * page a fix could name is Connections, where the row already stands, so a
+ * press would go nowhere. Its line says what is true.
  */
 
-const SIGN_IN = { kind: 'page', label: 'Sign in…', page: 'settings:work' } as const
 const ROW = { id: 'frameio.signin', pillar: 'frameio', group: 'Frame.io', title: 'Frame.io' } as const
 
 /** The known end of this host's sign-in: the access token's, when nothing renews it. */
@@ -26,11 +28,11 @@ export function frameioRows(ctx: WorkCtx, now = Date.now()): HealthRow[] {
   const t = frameioConfig.tokens.read()
   if (!t) {
     const used = !!status.publicUrl || status.pending || !!status.error || itemsOf(ctx.db).length > 0
-    return used ? [{ ...ROW, state: 'needs-you', line: 'Not signed in on this host', fix: SIGN_IN }] : []
+    return used ? [{ ...ROW, state: 'needs-you', line: 'Not signed in on this host' }] : []
   }
   const until = endOf()
   // Lapsed with nothing to renew it, or the renewal refused: only a new sign-in helps.
-  if ((until !== null && until <= now) || (t.expiresAt <= now && status.error)) return [{ ...ROW, state: 'needs-you', line: 'The sign-in ran out. Sign in again.', fix: SIGN_IN, ...(until !== null ? { until } : {}) }]
+  if ((until !== null && until <= now) || (t.expiresAt <= now && status.error)) return [{ ...ROW, state: 'needs-you', line: 'The sign-in ran out', ...(until !== null ? { until } : {}) }]
   const who = t.user?.email || t.user?.name
   return [{ ...ROW, state: 'working', line: who ? `Signed in as ${who}` : 'Signed in', ...(who ? { personal: true as const } : {}), ...(until !== null ? { until } : {}) }]
 }
