@@ -3103,10 +3103,11 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   detail, `Route.filesFile`, and its row wears the selected fill on the open
   Duo). On a cold launch the list paints the names kept from its last read
   (`FolderKept`; a kept file row opens nothing until the folder answers,
-  and a read that fails over kept rows says so in one line above them).
+  and a read that fails over rows shown, kept or read live, says so in the
+  failed-read row above them, in the list or the grid).
   The host's rows come in its order, a page at a time (the next page as the last row shows, a
   spinner row only while one is out; a next page that fails keeps the rows
-  and ends the list with the host's sentence and Try Again). Each row: the kind's glyph, the name (cut
+  and ends the list with the failed-read row: the host's sentence and Try Again). Each row: the kind's glyph, the name (cut
   in the middle), one fact: what is happening to it ("Esports Staff is in
   it", "3 suggestions", "A thread is writing", "In the cloud"), else in a
   lens the place it lives in, else when it changed ("9:41 AM",
@@ -3150,7 +3151,9 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   through it, not the Windows VM) the bar's overflow holds View as Icons:
   tiles of the host's small pictures (`work.files.thumbs`, asked forty at
   a time, once a run) with the kind's glyph until one comes or where none
-  does, the name under it in two lines. The choice is kept.
+  does, the name under it in two lines. It reads a page at a time as the
+  list does, under the same failed-read row and over the same foot. The
+  choice is kept.
 - **A file of another computer** opens as the copy its job's host makes:
   its row and the page's loading bar follow the bytes (`work.files` push's
   `opening`), then the reader as for any file.
@@ -3166,7 +3169,8 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   ignored), then takes each job's host's search as it answers, newest
   change first, each row led by its job's dot while several jobs show
   (`FilesFound`); the next keystroke cancels what is still out, and an
-  answer for older words never lands. A job whose host could not search is
+  answer for older words never lands. Only the newest search started,
+  typed, saved, Try Again's or a pull's, sets the rows. A job whose host could not search is
   named in one line. A folder's field filters its own rows. A saved search
   (made on his computer) runs from Saved Searches into the same list, its
   name as the header with a clear button.

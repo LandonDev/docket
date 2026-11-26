@@ -58,15 +58,22 @@ struct FolderScreen: View {
                     FilesFailed(title: "Can’t Open \(title)", message: message) { Task { await retry() } }
                 }
             case .loaded(let shown)?:
-                if rows.isEmpty, uploads.isEmpty {
+                // An empty folder read again that failed is the list's failed-read row alone, never "No Files".
+                if rows.isEmpty, uploads.isEmpty, !(query.isEmpty && shown.failed != nil) {
                     if query.isEmpty {
                         ContentUnavailableView(emptyTitle, systemImage: place.map { FilesGlyph.of($0) } ?? "folder")
                     } else {
                         ContentUnavailableView.search(text: query)
                     }
                 } else if grid, gridOffered, query.isEmpty {
-                    FilesGrid(client: client, workspaceId: workspaceId, entries: rows, menu: menu) { entry in open(entry) }
-                        .refreshable { await files.list(workspaceId, at, through: through, press: true) }
+                    FilesGrid(client: client, workspaceId: workspaceId, entries: rows, menu: menu, open: open) {
+                        head(shown)
+                    } foot: {
+                        foot(shown)
+                    } more: {
+                        Task { await files.more(workspaceId, at) }
+                    }
+                    .refreshable { await files.list(workspaceId, at, through: through, press: true) }
                 } else {
                     list(shown, rows: rows)
                 }
@@ -133,18 +140,7 @@ struct FolderScreen: View {
 
     private func list(_ shown: FilesHost.Listing, rows: [FileEntry]) -> some View {
         List {
-            // Kept rows read again: the host's words above what was kept.
-            if shown.cached, let failed = shown.failed {
-                QuietNote(text: failed, action: ("Try Again", { Task { await retry() } }))
-                    .listRowInsets(Layout.rowInsets)
-                    .listRowSeparator(.hidden)
-            }
-            if let place, place.state.state == .asleep, let at = shown.asOf ?? place.state.at {
-                Text("\(place.host.isEmpty ? place.name : place.host) is asleep. As of \(FilesRules.changedWords(Int(at))).")
-                    .textStep(.meta)
-                    .listRowInsets(Layout.rowInsets)
-                    .listRowSeparator(.hidden)
-            }
+            head(shown)
             ForEach(uploads) { upload in
                 UploadRow(upload: upload) { files.dismissUpload(workspaceId, at, id: upload.id) }
                     .listRowInsets(Layout.rowInsets)
@@ -154,20 +150,38 @@ struct FolderScreen: View {
                     .id(entry.key)
                     .onAppear { if entry.key == shown.entries.last?.key { Task { await files.more(workspaceId, at) } } }
             }
-            // The foot: a spinner only while the next page is asked for; a page that failed says why, with Try Again.
-            if shown.next != nil {
-                if files.loadingMore(workspaceId, at) {
-                    ProgressView().frame(maxWidth: .infinity).listRowSeparator(.hidden)
-                } else if let failed = shown.moreFailed {
-                    QuietNote(text: failed, action: ("Try Again", { Task { await files.more(workspaceId, at) } }))
-                        .listRowInsets(Layout.rowInsets)
-                        .listRowSeparator(.hidden)
-                        .accessibilityIdentifier("files-more-failed")
-                }
-            }
+            foot(shown)
         }
         .listStyle(.plain)
         .refreshable { await files.list(workspaceId, at, through: through, press: true) }
+    }
+
+    /// Above the rows, in the list and the grid alike: a read again that failed, the host's words over what
+    /// stays shown; a sleeping machine's one muted line.
+    @ViewBuilder private func head(_ shown: FilesHost.Listing) -> some View {
+        if let failed = shown.failed {
+            FailedRead(words: failed, retry: { await retry() }, identifier: "files-folder-failed")
+                .listRowSeparator(.hidden)
+        }
+        if let place, place.state.state == .asleep, let at = shown.asOf ?? place.state.at {
+            Text("\(place.host.isEmpty ? place.name : place.host) is asleep. As of \(FilesRules.changedWords(Int(at))).")
+                .textStep(.meta)
+                .listRowInsets(Layout.rowInsets)
+                .listRowSeparator(.hidden)
+        }
+    }
+
+    /// The foot, in the list and the grid alike: a spinner only while the next page is asked for; a page that
+    /// failed says why, with Try Again.
+    @ViewBuilder private func foot(_ shown: FilesHost.Listing) -> some View {
+        if shown.next != nil {
+            if files.loadingMore(workspaceId, at) {
+                ProgressView().frame(maxWidth: .infinity).listRowSeparator(.hidden)
+            } else if let failed = shown.moreFailed {
+                FailedRead(words: failed, retry: { await files.more(workspaceId, at) }, identifier: "files-more-failed")
+                    .listRowSeparator(.hidden)
+            }
+        }
     }
 
     /// The place a row lives in: a lens's row, its own home.
@@ -316,26 +330,35 @@ private extension FilesSpot {
 }
 
 /// The folder as icons: the host's small picture of each file where it makes one, else the kind's glyph; the
-/// name under it. A tile opens as its row does and holds the same menu.
-struct FilesGrid<Actions: View>: View {
+/// name under it. A tile opens as its row does and holds the same menu. The list's head and foot frame the
+/// tiles, and the last tile shown asks for the next page as the last row does.
+struct FilesGrid<Actions: View, Head: View, Foot: View>: View {
     let client: EnvironmentClient
     let workspaceId: String
     let entries: [FileEntry]
     @ViewBuilder let menu: (FileEntry) -> Actions
     let open: (FileEntry) -> Void
+    @ViewBuilder let head: () -> Head
+    @ViewBuilder let foot: () -> Foot
+    let more: () -> Void
     @ScaledMetric(relativeTo: .caption) private var tile: CGFloat = 96
 
     var body: some View {
         ScrollView {
-            // From the top, so a two-line name never lifts its tile above its neighbours.
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: tile), spacing: Layout.rowGap, alignment: .top)], spacing: Layout.textEdge) {
-                ForEach(entries, id: \.key) { entry in
-                    Button { open(entry) } label: { FilesTile(client: client, entry: entry, edge: tile) }
-                        .buttonStyle(.pressable)
-                        .contextMenu { menu(entry) }
-                        .id(entry.key)
-                        .accessibilityIdentifier("files-tile-\(entry.name)")
+            VStack(alignment: .leading, spacing: Layout.textEdge) {
+                head()
+                // From the top, so a two-line name never lifts its tile above its neighbours.
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: tile), spacing: Layout.rowGap, alignment: .top)], spacing: Layout.textEdge) {
+                    ForEach(entries, id: \.key) { entry in
+                        Button { open(entry) } label: { FilesTile(client: client, entry: entry, edge: tile) }
+                            .buttonStyle(.pressable)
+                            .contextMenu { menu(entry) }
+                            .id(entry.key)
+                            .accessibilityIdentifier("files-tile-\(entry.name)")
+                            .onAppear { if entry.key == entries.last?.key { more() } }
+                    }
                 }
+                foot()
             }
             .padding(Layout.textEdge)
         }

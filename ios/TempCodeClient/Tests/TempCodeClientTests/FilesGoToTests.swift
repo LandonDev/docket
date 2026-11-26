@@ -56,6 +56,16 @@ struct FilesGoToTests {
         #expect(!lookups.publishes(typed))
     }
 
+    /// Files' search (Work/Files/FilesScreen.swift `searchRuns`): a saved search pulled to refresh, then a name typed
+    /// while its read is out. The typed search started last, so the late refresh never replaces its rows.
+    @Test func aLateSavedSearchNeverReplacesTypedRows() {
+        var runs = FilesGoToRules.Lookups()
+        let pulled = runs.start()
+        let typed = runs.start()
+        #expect(!runs.publishes(pulled))
+        #expect(runs.publishes(typed))
+    }
+
     /// One spelling of a size on every phone screen (round 1, R1-F15): "KB", never "kB" beside it.
     @Test func aSizeHasOneSpelling() {
         #expect(FilesRules.size(15_389) == ByteCountFormatter.string(fromByteCount: 15_389, countStyle: .file))

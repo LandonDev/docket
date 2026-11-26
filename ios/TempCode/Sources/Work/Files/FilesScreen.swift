@@ -25,6 +25,8 @@ struct FilesPlaceScreen: View {
     /// A saved search running in the list in place of the places.
     @State private var saved: SavedRun?
     @State private var searches: [String: [SavedFileSearch]] = [:]
+    /// Typed, saved, Try Again's or a pull's: only the newest search started sets `found`.
+    @State private var searchRuns = FilesGoToRules.Lookups()
     @State private var goingTo = false
     @State private var making: FilesRoot.Job?
 
@@ -46,7 +48,7 @@ struct FilesPlaceScreen: View {
             ids: ids,
             loading: searching ? found.map { !$0.waiting.isEmpty } ?? true : bands.contains { $0.places == nil },
             empty: searching ? PlaceEmpty(title: "No Results", line: saved == nil ? "Nothing here is called “\(query)”." : nil)
-                : PlaceEmpty(title: jobs.isEmpty ? "No Jobs Yet" : "No Places", line: jobs.isEmpty ? "Files shows the places of each Work workspace." : nil),
+                : PlaceEmpty(title: jobs.isEmpty ? "No Jobs Yet" : "No Places", line: jobs.isEmpty ? "Files shows the places of each job." : nil),
             failure: searching ? found?.note : Self.failure(bands),
             // A failed search asks its hosts again; a failed place reads the places again.
             retry: { if searching { await search(shown) } else { await load(bands) } },
@@ -124,14 +126,16 @@ struct FilesPlaceScreen: View {
     }
 
     /// The search as he types: the rows the phone holds at once, then each job's host's answer once he pauses.
-    /// A new keystroke cancels the asks still out; an answer for older words never lands (`FilesFound`).
+    /// A new keystroke cancels the asks still out; an answer for older words never lands (`FilesFound`), and a
+    /// search started since, typed, saved or pulled, stops this one setting the rows (`searchRuns`).
     private func search(_ jobs: [FilesRoot.Job]) async {
+        let run = searchRuns.start()
         if let saved {
             var now = FilesFound(query: saved.search.name, jobs: [saved.job], local: [:])
             found = now
             guard let client = model.registry.client(saved.job.environmentId) else { return }
             do { now.land(try await client.work.files.search(saved.job.workspaceId, saved.search), job: saved.job, query: saved.search.name) } catch { now.fail(job: saved.job, query: saved.search.name) }
-            if !Task.isCancelled { found = now }
+            if !Task.isCancelled, searchRuns.publishes(run) { found = now }
             return
         }
         let words = query.trimmingCharacters(in: .whitespaces)
@@ -139,14 +143,14 @@ struct FilesPlaceScreen: View {
         let local = Dictionary(jobs.map { job in (job.id, model.registry.client(job.environmentId)?.work.files.known(job.workspaceId) ?? []) }, uniquingKeysWith: { first, _ in first })
         found = FilesFound(query: words, jobs: jobs, local: local)
         try? await Task.sleep(for: .milliseconds(300))
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, searchRuns.publishes(run) else { return }
         await withTaskGroup(of: (FilesRoot.Job, [FileEntry]?).self) { group in
             for job in jobs {
                 guard let files = model.registry.client(job.environmentId)?.work.files else { continue }
                 group.addTask { (job, try? await files.search(job.workspaceId, words)) }
             }
             for await (job, answer) in group {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, searchRuns.publishes(run) else { return }
                 if let answer { found?.land(answer, job: job, query: words) } else { found?.fail(job: job, query: words) }
             }
         }

@@ -41,7 +41,7 @@ public final class FilesHost {
         public var moreFailed: String? = nil
         /// Painted from the names kept on the phone: shown, opened to read, until the host answers.
         public var cached = false
-        /// Why the read over kept rows failed: one line above them.
+        /// Why the last read over the rows shown failed, kept from disk or read live before: one line above them.
         public var failed: String? = nil
     }
 
@@ -159,8 +159,8 @@ public final class FilesHost {
             listings[slot] = .loaded(Listing(entries: page.listing.entries, next: page.listing.next, trail: page.listing.trail?.map(\.name) ?? [], asOf: page.listing.asOf))
             kept?.keep(environmentId, workspaceId, folder, page.listing.entries)
         case .failed(let message):
-            // A kept page stays under the failure's line; with nothing shown the failure is the screen.
-            if var shown = listings[slot]?.value, shown.cached { shown.failed = FilesRules.sentence(message); listings[slot] = .loaded(shown) } else if listings[slot]?.value == nil { listings[slot] = .failed(message) }
+            // Rows shown, kept or read live, stay under the failure's line; with nothing shown the failure is the screen.
+            if var shown = listings[slot]?.value { shown.failed = FilesRules.sentence(message); listings[slot] = .loaded(shown) } else { listings[slot] = .failed(message) }
         case .reading: break
         }
     }

@@ -666,9 +666,9 @@ public enum FilesGoToRules {
         return (rows, ranked.filter { $0.entries == nil }.map(\.job.name))
     }
 
-    /// Counts Go To's lookups, typed and Try Again's alike: only the newest one started publishes its rows, its
-    /// failures and its end, so an older one that answers late neither replaces them nor leaves a spinner with
-    /// nothing out.
+    /// Counts Go To's lookups, typed and Try Again's alike, and the Files search's runs, typed, saved, Try Again's
+    /// and a pull's: only the newest one started publishes its rows, its failures and its end, so an older one
+    /// that answers late neither replaces them nor leaves a spinner with nothing out.
     public struct Lookups: Sendable {
         public private(set) var latest = 0
 

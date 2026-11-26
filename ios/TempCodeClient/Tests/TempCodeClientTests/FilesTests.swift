@@ -365,7 +365,7 @@ actor StubFilesWire: FilesWire {
         #expect(host.listing("w1", root)?.value?.moreFailed == nil)
     }
 
-    @Test func `a place that fails says why, and a shown list stays through a failed refresh`() async throws {
+    @Test func `a place that fails says why, and a shown list stays through a failed refresh, which it names`() async throws {
         let wire = StubFilesWire()
         let host = FilesHost(wire: wire, environmentId: "env_box", caps: full)
         await wire.refuse("work.files.list", "MacBook is out of reach.")
@@ -376,6 +376,13 @@ actor StubFilesWire: FilesWire {
         await wire.refuse("work.files.list", "MacBook is out of reach.")
         await host.list("w1", root)
         #expect(host.listing("w1", root)?.value?.entries.count == 1)
+        // The rows came from a live read, and the failed refresh is said above them all the same.
+        #expect(host.listing("w1", root)?.value?.cached == false)
+        #expect(host.listing("w1", root)?.value?.failed == "MacBook is out of reach.")
+        // The next read that answers takes the line away.
+        await wire.answer("work.files.list", #"{"entries":[\#(entry("A.pdf"))]}"#)
+        await host.list("w1", root, press: true)
+        #expect(host.listing("w1", root)?.value?.failed == nil)
     }
 
     @Test func `a change sends its id, and a refusal is the host's sentence as it is`() async throws {
