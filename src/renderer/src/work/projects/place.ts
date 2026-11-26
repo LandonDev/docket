@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { CanvasSource } from "@shared/work";
+import { PLACE_KEY } from "./bones";
 import { GROUPINGS, LIST_PLACE, ORDERS, SHOW_PARTS, type Display, type ProjectsPlace } from "work-kit/projects";
 
 /**
@@ -11,7 +12,7 @@ import { GROUPINGS, LIST_PLACE, ORDERS, SHOW_PARTS, type Display, type ProjectsP
  * the window's life only.
  */
 
-const KEY = "work.projects.place.v1";
+const KEY = PLACE_KEY;
 const AT = new Set<ProjectsPlace["at"]>(["list", "new", "project", "task"]);
 const text = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 

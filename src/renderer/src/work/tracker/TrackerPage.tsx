@@ -7,7 +7,7 @@ import "../projects/projects.css";
 import { Plus } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { Tip } from "../../components/tip";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { reveal } from "../../components/ui/reveal";
 import { Toggle } from "../../components/ui/toggle";
 import { cn } from "../../lib/cn";
@@ -75,11 +75,11 @@ export type TrackerBodyProps = {
   /** a host has not answered yet (a visit opened on kept answers): no all-clear until it has */
   pending?: boolean;
   waitingOnly: boolean;
-  onRetry: () => void;
+  onRetry: () => void | Promise<void>;
   /** the minute the due words and ages are reckoned at; left out, now and each minute after */
   now?: number;
   /** a job no host could read, in its group's place (a preview draws it with no host to ask) */
-  Down?: ComponentType<{ job: MergedJob; onRetry: () => void }>;
+  Down?: ComponentType<{ job: MergedJob; onRetry: () => void | Promise<void> }>;
 };
 
 /** The page from what the hosts answered: a preview and a test hand it jobs. */
@@ -119,7 +119,7 @@ export function TrackerBody({ jobs, loading, errors, pending = false, waitingOnl
   );
 }
 
-function JobGroup({ job, waitingOnly, now, onRetry, Down }: { job: MergedJob; waitingOnly: boolean; now: number; onRetry: () => void; Down: NonNullable<TrackerBodyProps["Down"]> }) {
+function JobGroup({ job, waitingOnly, now, onRetry, Down }: { job: MergedJob; waitingOnly: boolean; now: number; onRetry: () => void | Promise<void>; Down: NonNullable<TrackerBodyProps["Down"]> }) {
   const [resting, setResting] = useState(() => RESTING.get(job.sector) ?? false);
   const active = useMemo(() => job.projects.filter((p) => p.state === "active"), [job.projects]);
   const rest = useMemo(() => job.projects.filter((p) => p.state !== "active"), [job.projects]);
@@ -226,19 +226,29 @@ function ThreadCell({ lead }: { lead: TrackerThread }) {
  * its press (`DownLine`: Retry, Sign in, Open Settings); where that session reads (the host's read failed alone), the
  * host's words with a Retry that asks the hosts again.
  */
-function DownJob({ job, onRetry }: { job: MergedJob; onRetry: () => void }) {
+function DownJob({ job, onRetry }: { job: MergedJob; onRetry: () => void | Promise<void> }) {
   const session = useLifeosSession(job.at.environmentId, job.sector as SectorKey);
   if (downOf(session)) return <DownLine session={session} className="mx-2 px-2" />;
   return <HostDownLine words={job.down ?? ""} onRetry={onRetry} />;
 }
 
-/** The host's own words for a job it could not read, with a Retry that asks the hosts again. */
-export function HostDownLine({ words, onRetry }: { words: string; onRetry: () => void }) {
+/** The host's own words for a job it could not read, with a Retry that asks the hosts again and spins until they answer. */
+export function HostDownLine({ words, onRetry }: { words: string; onRetry: () => void | Promise<void> }) {
+  const [retrying, setRetrying] = useState(false);
   return (
     <p data-job-down className="mx-2 flex min-h-8 items-center gap-2 px-2 text-(length:--pk-text) text-muted-foreground">
       <span className="min-w-0 text-pretty">{words}</span>
-      <Button variant="ghost" size="xs" className="shrink-0" onClick={onRetry}>
-        Retry
+      <Button
+        variant="ghost"
+        size="xs"
+        className="shrink-0"
+        disabled={retrying}
+        onClick={() => {
+          setRetrying(true);
+          void Promise.resolve(onRetry()).finally(() => setRetrying(false));
+        }}
+      >
+        <BusyLabel busy={retrying} label="Retry" />
       </Button>
     </p>
   );

@@ -159,6 +159,20 @@ describe("the tracker", () => {
     expect(document.querySelector("[data-job=unify] [data-downline]")!.getAttribute("data-downline")).toBe("signed-out");
   });
 
+  /** Council round 1, sitting E (R1-E19): Retry stayed ready while the hosts were asked again. */
+  it("spins a down job's Retry until the hosts answer again", async () => {
+    let answer = (): void => {};
+    const onRetry = vi.fn(() => new Promise<void>((done) => (answer = done)));
+    render(body({ onRetry }));
+    const unify = document.querySelector("[data-job=unify]") as HTMLElement;
+    const retry = within(unify).getByRole<HTMLButtonElement>("button", { name: "Retry" });
+    fireEvent.click(retry);
+    expect(retry.disabled).toBe(true);
+    expect(retry.getAttribute("aria-busy") ?? retry.querySelector("[aria-busy], [role=status], svg")).toBeTruthy();
+    await act(async () => answer());
+    expect(retry.disabled).toBe(false);
+  });
+
   it("a host that did not answer is one quiet line; the rest of the page stands", () => {
     render(body({ errors: ["The Mac did not answer."] }));
     expect(document.querySelector("[data-host-silent]")!.textContent).toBe("The Mac did not answer.");

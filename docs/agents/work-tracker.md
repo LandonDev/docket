@@ -95,7 +95,8 @@ describes the project's longest wait. Loading is `ProjectFactsBones` under the h
   tracker (`whenNewDismissed` in projects/place.ts, once, the job's list behind it).
 - **A job LifeOS could not be read for.** Where the window's own session for the job is down, `DownLine` says it in
   the shared words with its press (Retry, Sign in, Open Settings). Where that session reads and the host's read
-  failed alone, the host's words with a Retry that asks the hosts again.
+  failed alone, the host's words with a Retry that asks the hosts again and spins until they answer (`reload`
+  settles when its read lands).
 - **The header** holds one control: Waiting on you, a quiet outline `Toggle` (its hairline at rest says it is a
   press), kept for the window's life. Nothing sits beside
   the page's name.

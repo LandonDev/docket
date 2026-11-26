@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { byPressing, byTarget, type TrackerOverview, type TrackerProject, type TrackerThread } from "@shared/work/tracker";
 import { registry } from "../../lib/connection";
 import { nameInLine } from "../../lib/hostWords";
@@ -103,8 +103,8 @@ export type TrackerView = {
   errors: string[];
   /** a Work host has not answered yet: no all-clear stands until it has */
   pending: boolean;
-  /** ask every host again (a down job's Retry) */
-  reload: () => void;
+  /** ask every host again (a down job's Retry): settles when that read has answered */
+  reload: () => Promise<void>;
 };
 
 /** The last answers, kept for the window's life: a visit draws them at once and reads again behind them. */
@@ -157,7 +157,16 @@ export function reconcileKept(kept: readonly HostAnswer[] | null, hosts: Iterabl
 export function useTracker(): TrackerView {
   const [answers, setAnswers] = useState<HostAnswer[] | null>(() => reconcileKept(kept, workSwitch.hosts(), (id) => registry.statusOf(id).transport));
   const [asked, setAsked] = useState(0);
-  const reload = useCallback(() => setAsked((n) => n + 1), []);
+  // Each Retry waits for the read it starts: `show` settles every one asked before it.
+  const waiting = useRef<(() => void)[]>([]);
+  const reload = useCallback(
+    () =>
+      new Promise<void>((done) => {
+        waiting.current.push(done);
+        setAsked((n) => n + 1);
+      }),
+    [],
+  );
   useEffect(() => {
     let alive = true;
     // Only the newest read lands: an older one that answers late never replaces a newer answer.
@@ -177,7 +186,9 @@ export function useTracker(): TrackerView {
       last.at = Date.now();
       poll.heard();
       void askHosts(askOverview).then((got) => {
-        if (n === reads.latest) show(got);
+        if (n !== reads.latest) return;
+        show(got);
+        if (alive) for (const done of waiting.current.splice(0)) done();
       });
     };
     const poll = quietPoll(read, TRACKER_AGAIN_MS);

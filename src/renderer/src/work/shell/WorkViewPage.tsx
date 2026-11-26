@@ -250,7 +250,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
         ) : (
           <KeptRegion value={kept.scope}>
             <ViewBoundary label={def.label} onRetry={() => def.chunk.load().then(() => setAttempt((n) => n + 1))}>
-              <Suspense fallback={<ViewSkeleton label={def.label} />}>
+              <Suspense fallback={def.bones?.(workspace) ?? <ViewSkeleton label={def.label} />}>
                 <View {...props} />
               </Suspense>
             </ViewBoundary>
@@ -267,7 +267,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
 const WAITS = { down: null, waits: true } as const;
 const noRetry = (): void => {};
 
-/** A view's chunk on its way: the one-column rows Tasks, Agenda, Docs and the lists start as, under the view's own header. */
+/** A view's chunk on its way: the one-column rows Tasks, Agenda, Docs and the lists start as, under the view's own header; a view that lands in another shape names its own (`WorkViewDef.bones`). */
 function ViewSkeleton({ label }: { label: string }) {
   return (
     <div className="mx-auto w-full max-w-[720px] px-5 py-5">

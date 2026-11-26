@@ -186,12 +186,31 @@ describe("asking the hosts", () => {
     const pending: ((v: unknown) => void)[] = [];
     vi.spyOn(registry, "linkOf").mockReturnValue({ request: () => new Promise((resolve) => void pending.push(resolve)) } as never);
     const view = renderHook(() => useTracker());
-    act(() => view.result.current.reload());
+    act(() => void view.result.current.reload());
     expect(pending).toHaveLength(2);
     pending[1]!({ jobs: [job("b-purdue", "purdue", [project("new")])] });
     await waitFor(() => expect(view.result.current.jobs[0]?.projects.map((p) => p.id)).toEqual(["new"]));
     await act(async () => pending[0]!({ jobs: [job("b-purdue", "purdue", [project("old")])] }));
     expect(view.result.current.jobs[0]!.projects.map((p) => p.id)).toEqual(["new"]);
+    view.unmount();
+    resetTracker();
+  });
+
+  /** Council round 1, sitting E (R1-E19): a down job's Retry spins until the read it started has answered. */
+  it("settles a Retry's promise when its read answers, not before", async () => {
+    rigged();
+    resetTracker();
+    vi.spyOn(workSwitch, "hosts").mockReturnValue(new Set(["box"]));
+    const pending: ((v: unknown) => void)[] = [];
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request: () => new Promise((resolve) => void pending.push(resolve)) } as never);
+    const view = renderHook(() => useTracker());
+    let settled = false;
+    act(() => void view.result.current.reload().then(() => (settled = true)));
+    expect(pending).toHaveLength(2);
+    await act(async () => pending[0]!({ jobs: [] }));
+    expect(settled).toBe(false);
+    await act(async () => pending[1]!({ jobs: [] }));
+    await waitFor(() => expect(settled).toBe(true));
     view.unmount();
     resetTracker();
   });

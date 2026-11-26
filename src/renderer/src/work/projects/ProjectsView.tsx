@@ -9,7 +9,6 @@ import { createLifeosProjectsClient, type SectorKey as KitSector } from "work-ki
 import { LIST_PLACE, projectPlace, Projects, ProjectsClientProvider, ProjectsKitProvider, type Project, type ProjectsPlace, type ProjectTask } from "work-kit/projects";
 import "work-kit/projects/styles.css";
 import "./projects.css";
-import { Skeleton } from "../../components/ui/skeleton";
 import type { ProjectMeta } from "../../lib/tcserver/types";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { dialogsChunk } from "../../surfaces/chunks";
@@ -21,6 +20,8 @@ import { BackToList, Bar, BarControls, BarTitle } from "./bar";
 import { projectsKitFor, setProjectsHost, withHostDone } from "./kit";
 import { LinkPicker, type LinkKind } from "./LinkPicker";
 import { setProjectsBack, setProjectsHere } from "./here";
+import { ProjectsBones } from "./bones";
+import { Skeleton } from "../../components/ui/skeleton";
 import { openDoc, placeOf, setPlace, useOpenedDoc, usePlace, type OpenedDoc } from "./place";
 
 const ProjectSettingsDialog = dialogsChunk.surface("ProjectSettingsDialog");
@@ -135,7 +136,7 @@ export function View(props: WorkViewProps) {
     });
   });
   // Bones only while the session is on its way; a failed one is the frame's to say, with nothing pulsing under it.
-  if (!convex || !client) return sessionWaits(lifeos) ? <Bones /> : null;
+  if (!convex || !client) return sessionWaits(lifeos) ? <ProjectsBones shape={place.at === "project" || place.at === "task" ? place.at : "list"} /> : null;
   return (
     <ConvexProvider client={convex}>
       <ProjectsKitProvider kit={kit}>
@@ -151,25 +152,6 @@ export function View(props: WorkViewProps) {
         </ProjectsClientProvider>
       </ProjectsKitProvider>
     </ConvexProvider>
-  );
-}
-
-/** The list's shape while the session is on its way: the tracker's rows, a name, its next task and a date. */
-function Bones() {
-  return (
-    <div aria-busy aria-label="Loading Projects" className="mx-auto flex w-full max-w-(--pk-list-column) flex-col gap-1 px-6 pt-12">
-      {["w-2/5", "w-1/3", "w-1/2", "w-1/4"].map((w) => (
-        <div key={w} className="flex h-8 items-center gap-6">
-          <span className="flex flex-[1.3]">
-            <Skeleton className={`h-3 ${w}`} />
-          </span>
-          <span className="flex flex-[1.4]">
-            <Skeleton className="h-3 w-3/5" />
-          </span>
-          <Skeleton className="h-3 w-12" />
-        </div>
-      ))}
-    </div>
   );
 }
 
