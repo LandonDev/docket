@@ -1,4 +1,6 @@
 import { hostOfCwd } from "./tcserver/projects";
+import { registry } from "./connection";
+import { sameCheckout, subscribeGitChangedAt } from "./gitChanged";
 import { listProjectFiles, type ProjectFile } from "./fs";
 import { scorePath, type FuzzyHit } from "./fuzzy";
 import { resolveWorkspacePath } from "./paths";
@@ -8,28 +10,85 @@ import { normalizeEditorPath } from "./search";
 const MAX_RECENTS = 30;
 const MAX_RESULTS = 80;
 
-type Cache = {
-  /** The host that answered; the same path may exist on several. */
+/**
+ * The project's file list, kept by host and cwd for the last
+ * KEPT_CHECKOUTS checkouts asked. A kept list is names for ranking alone:
+ * opening a file still goes through the host's checks. It paints at once
+ * and is asked again behind the paint (`loadProjectFiles(cwd, true)`) only
+ * when it is older than FRESH_MS or the window's own git-changed event
+ * named its checkout: no host push tells of a file his editor, a terminal or
+ * another host made, so age is the rule. A list is dropped when the link's
+ * key (or credential) changes, or its host leaves the registry.
+ */
+export const KEPT_CHECKOUTS = 4;
+export const FRESH_MS = 30_000;
+
+type Kept = {
   host: string;
   cwd: string;
   files: ProjectFile[];
+  /** When the answer landed (Date.now()). */
+  at: number;
+  /** The window's git-changed event named this checkout since. */
+  dirty: boolean;
+  /** The link's key when it was asked. */
+  key: string;
 };
 
-let cache: Cache | null = null;
-let inflight: { cwd: string; promise: Promise<ProjectFile[]> } | null = null;
-let epoch = 0;
+const kept = new Map<string, Kept>();
+/** An ask out, per slot; `changed` when a git-changed event named its checkout while it was out. */
+const inflight = new Map<string, { cwd: string; promise: Promise<ProjectFile[]>; changed: boolean }>();
+const epochs = new Map<string, number>();
 const recentsByCwd = new Map<string, string[]>();
+let offGitChanged: (() => void) | null = null;
 
 function normCwd(cwd: string): string {
   return cwd.replace(/\/+$/, "") || "/";
 }
 
+const slotOf = (host: string, cwd: string): string => `${host}\n${cwd}`;
+
+/** The link's key as the registry holds it now: a change drops what was kept under the old one. */
+function linkKeyOf(host: string): string {
+  const env = registry.environment(host);
+  return env ? `${env.keyId ?? ""}\n${env.credentialRef ?? ""}` : "";
+}
+
+/** The window's git-changed event marks the checkouts it names (all, unscoped) to be asked again on their next open. */
+function watchGitChanged(): void {
+  if (offGitChanged || typeof window === "undefined") return;
+  offGitChanged = subscribeGitChangedAt((changed) => {
+    const names = (at: string) => !changed || sameCheckout(changed, at);
+    for (const entry of kept.values()) if (names(entry.cwd)) entry.dirty = true;
+    for (const ask of inflight.values()) if (names(ask.cwd)) ask.changed = true;
+  });
+}
+
+/** The kept entry for this cwd on its host now, or null; one kept under another key is dropped. */
+function keptFor(cwd: string): Kept | null {
+  const host = hostOfCwd(cwd);
+  const slot = slotOf(host, cwd);
+  const entry = kept.get(slot);
+  if (!entry) return null;
+  if (entry.key !== linkKeyOf(host)) {
+    kept.delete(slot);
+    return null;
+  }
+  return entry;
+}
+
 export function peekProjectFiles(cwd: string): ProjectFile[] | null {
-  return cache?.cwd === cwd && cache.host === hostOfCwd(cwd) ? cache.files : null;
+  return keptFor(cwd)?.files ?? null;
 }
 
 export function invalidateProjectFiles(cwd?: string) {
-  if (!cwd || cache?.cwd === cwd) cache = null;
+  if (!cwd) {
+    kept.clear();
+    for (const ask of inflight.values()) ask.changed = true;
+    return;
+  }
+  for (const [slot, entry] of kept) if (entry.cwd === cwd) kept.delete(slot);
+  for (const ask of inflight.values()) if (ask.cwd === cwd) ask.changed = true;
 }
 
 export function rememberOpenedFile(cwd: string, path: string) {
@@ -46,26 +105,59 @@ export function recentOpenedFiles(cwd: string): string[] {
   return recentsByCwd.get(normCwd(cwd)) ?? [];
 }
 
+/**
+ * The project's files. Without `revalidate`, a kept list answers at once
+ * whatever its age. With it (a picker's open), a kept list still answers
+ * when it is fresh; one older than FRESH_MS, or named by a git-changed
+ * event, is asked again. Opens while an ask is out join it: at most one
+ * ask an open burst.
+ */
 export function loadProjectFiles(
   cwd: string,
-  refresh = false,
+  revalidate = false,
 ): Promise<ProjectFile[]> {
   if (!looksLikeProject(cwd)) return Promise.resolve([]);
+  watchGitChanged();
   const host = hostOfCwd(cwd);
-  if (!refresh && cache?.cwd === cwd && cache.host === host) return Promise.resolve(cache.files);
-  if (inflight?.cwd === cwd) return inflight.promise;
+  const slot = slotOf(host, cwd);
+  const entry = keptFor(cwd);
+  if (entry && (!revalidate || (!entry.dirty && Date.now() - entry.at < FRESH_MS))) {
+    // Most recent last: the LRU drops the first.
+    kept.delete(slot);
+    kept.set(slot, entry);
+    return Promise.resolve(entry.files);
+  }
+  const running = inflight.get(slot);
+  if (running) return running.promise;
 
-  const id = ++epoch;
+  const key = linkKeyOf(host);
+  const id = (epochs.get(slot) ?? 0) + 1;
+  epochs.set(slot, id);
   const promise = listProjectFiles(host, cwd)
     .then((files) => {
-      if (id === epoch) cache = { host, cwd, files };
+      if (id === epochs.get(slot) && key === linkKeyOf(host)) {
+        kept.delete(slot);
+        kept.set(slot, { host, cwd, files, at: Date.now(), dirty: ask.changed, key });
+        while (kept.size > KEPT_CHECKOUTS) kept.delete(kept.keys().next().value!);
+      }
       return files;
     })
     .finally(() => {
-      if (inflight?.cwd === cwd) inflight = null;
+      if (inflight.get(slot) === ask) inflight.delete(slot);
     });
-  inflight = { cwd, promise };
+  // A git-changed event while the ask is out still marks what lands.
+  const ask = { cwd, promise, changed: false };
+  inflight.set(slot, ask);
   return promise;
+}
+
+/** Test seam: forget every kept list and stop listening. */
+export function resetProjectFiles(): void {
+  kept.clear();
+  inflight.clear();
+  epochs.clear();
+  offGitChanged?.();
+  offGitChanged = null;
 }
 
 export type RankedFile = ProjectFile & FuzzyHit;

@@ -33,6 +33,13 @@ export function subscribeGitChanged(
   return () => window.removeEventListener(GIT_CHANGED, handler);
 }
 
+/** Every git-changed event with the checkout it names, or null when unscoped (fileIndex.ts marks its kept lists). */
+export function subscribeGitChangedAt(listener: (cwd: string | null) => void): () => void {
+  const handler = (e: Event) => listener((e as CustomEvent<string | null>).detail ?? null);
+  window.addEventListener(GIT_CHANGED, handler);
+  return () => window.removeEventListener(GIT_CHANGED, handler);
+}
+
 /** One checkout, or one path inside the other (a worktree under the repo). */
 export function sameCheckout(a: string, b: string): boolean {
   const x = strip(a);
