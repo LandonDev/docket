@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Prints only public hello metadata and counts; credentials stay in memory.
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { localCaller, probeWork } from './probe-work.mjs'
 const [port, version, contractRaw] = process.argv.slice(2)
@@ -104,7 +104,15 @@ try {
 // The Work pillars, only in a deploy's trial (box-update sets TEMP_CODE_PROBE_WORK=1 there): Work is
 // turned on and a workspace made, which the live data must never see (probe-work.mjs).
 let workLine = 'work=not asked'
-if (process.env.TEMP_CODE_PROBE_WORK === '1' && data !== '/srv/agents/temp-code-data') {
+// By the real folder: the live data's old name is a link to docket-data since the move to Docket's names.
+const real = (path) => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+if (process.env.TEMP_CODE_PROBE_WORK === '1' && real(data) !== real('/srv/agents/temp-code-data')) {
   const work = await probeWork(localCaller(marker.port))
   for (const note of work.notes) console.log(`PROBE NOTE: ${note}`)
   if (work.failures.length) throw Error(`a Work pillar did not load: ${work.failures.join('; ')}`)

@@ -84,7 +84,7 @@ its own, so a refusal can say which one moved:
 | `lock` | bun.lock, which is node_modules | needs a full release: node_modules changed |
 | `beside` | every tracked file under `resources/` (the work templates, the blank files, the appshot helper's source), the `.mjs` and `.cjs` under `scripts/` (the app bridge), `electron-builder.yml` and `build/entitlements.mac.plist` (what ships, the Info.plist keys, the fuses, the entitlements), and package.json's `name`, `productName`, `main` and `type` | needs a full release: the files beside the code changed |
 | `native` | the tc-computer Swift package and `scripts/lib/tcComputerBuild.ts` | needs a full release: a native helper changed |
-| `boot` | `src/main/boot.ts`, `codeChoice.ts`, `compileCache.ts` | needs a full release: the boot code changed |
+| `boot` | `src/main/boot.ts`, `codeChoice.ts`, `compileCache.ts`, `dataMove.ts` | needs a full release: the boot code changed |
 
 Files are hashed as git tracks them, by path and bytes, so a Mac and the box
 agree on one commit. package.json's version, its script table and its

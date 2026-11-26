@@ -32,7 +32,7 @@ while (($#)); do
 done
 if ((rehearsal)); then
   ((dry)) || { echo 'ERROR: --into is only allowed with --dry-run' >&2; exit 2; }
-  [[ $(realpath -e "$data") != /srv/agents/temp-code-data ]] || { echo 'ERROR: --into must be a rehearsal copy' >&2; exit 2; }
+  [[ $(realpath -e "$data") != "$(realpath -m /srv/agents/temp-code-data)" ]] || { echo 'ERROR: --into must be a rehearsal copy' >&2; exit 2; }
 fi
 build=${BOX_HISTORY_BUILD:-$(readlink -f /srv/agents/temp-code-builds/current)}
 home=$(getent passwd agents | cut -d: -f6)

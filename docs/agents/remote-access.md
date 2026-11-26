@@ -77,7 +77,9 @@
   command-list paths) must point, by real path, under a project cwd, a
   workspace path or the configured/box work root (never the bare home
   directory); the refusal is `forbidden: <method> is outside app-managed
-  roots` and never logs the path. The loopback socket is unfenced. Nothing
+  roots` and never logs the path. Roots are resolved too, so a root saved
+  by an old name (`~/.temp-code/worktrees/…`, a link to `~/.docket` since
+  the move, [docket-data-move.md](docket-data-move.md)) admits its files. The loopback socket is unfenced. Nothing
   was demoted to `local`: the /ui bundle and the desktop's remote-host
   flows call the whole donor family, and the phone calls `fs.readPreview`,
   `search.project` and `github.*`. `fence.test.ts` asserts every

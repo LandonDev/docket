@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent, EventRow } from '@shared/events'
 import {
@@ -344,6 +347,22 @@ describe('the marks', () => {
     expect(isProdData('/Users/me/Library/Application Support/temp-code', '/Users/me/Library/Application Support/temp-code')).toBe(true)
     expect(isProdData('/Users/me/Library/Application Support/temp-code-dev', '/Users/me/Library/Application Support/temp-code')).toBe(false)
     expect(isProdData(BOX_PROD_DATA_DIR, '/root/.config/temp-code')).toBe(true)
+    // The move to Docket's names keeps the id, so the last boot on the old name still owns its orphans.
+    expect(guardInstanceOf('/Users/me/Library/Application Support/Docket', store, true).id).toBe(first.id)
+  })
+
+  it('isProdData knows the prod dir behind a link at its old name', () => {
+    const root = mkdtempSync(join(tmpdir(), 'pg-prod-'))
+    try {
+      mkdirSync(join(root, 'Docket'))
+      symlinkSync('Docket', join(root, 'temp-code'))
+      expect(isProdData(join(root, 'temp-code'), join(root, 'Docket'))).toBe(true)
+      expect(isProdData(join(root, 'Docket'), join(root, 'temp-code'))).toBe(true)
+      mkdirSync(join(root, 'temp-code-dev'))
+      expect(isProdData(join(root, 'temp-code-dev'), join(root, 'Docket'))).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('markersOf reads the marks, the gateway scope and CLAUDE_PID, the mark winning', () => {

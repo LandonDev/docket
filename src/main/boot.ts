@@ -5,6 +5,10 @@
  * compiling it. The cache reaches disk only when index.ts flushes it (10 s
  * after boot and at quit): Electron's quit is not Node's exit path.
  *
+ * Before anything else it moves the app's folders and databases to Docket's
+ * names (dataMove.ts), so the single-instance lock, Chromium's profile, the
+ * code choice and the database all open the moved folder.
+ *
  * The code is the bundle's own `out/main/index.js`, or a code-only update
  * staged under userData when codeChoice.ts finds one it may run
  * (docs/agents/code-only-updates.md). A staged tree that throws while it
@@ -18,14 +22,16 @@
  * out/main/chunks/* and both entries would require it, so index.js would no
  * longer load alone through the cache that was just enabled, and a staged
  * index.js would share a file with the boot code it must not change. The
- * app reads what was picked from `globalThis.__tempcodeCode`.
+ * app reads what was picked from `globalThis.__tempcodeCode`, and what moved
+ * from `globalThis.__tempcodeDataMove`.
  */
 import { app } from 'electron'
 import { constants, enableCompileCache } from 'node:module'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BUNDLE_CODE_FLAG, bakedUserData, pickCode, sameProgramAlive, type CodeBoot } from './codeChoice'
 import { compileCacheDir, compileCacheLine } from './compileCache'
+import { OLD_DB, moveData, type DataMove } from './dataMove'
 
 // Packaged only: dev serves changing code, and the cache is a speedup, never a gate.
 if (app.isPackaged) {
@@ -46,12 +52,16 @@ const flagAt = process.argv.indexOf(BUNDLE_CODE_FLAG)
 if (flagAt >= 0) process.argv.splice(flagAt, 1)
 
 const bundleRoot = app.getAppPath()
+// An override is the caller's folder and never moves; index.ts sets userData to it a moment later.
+const override = process.env.TEMP_CODE_USER_DATA || bakedUserData(bundleRoot) || null
+const move = movedData(override)
+;(globalThis as { __tempcodeDataMove?: DataMove }).__tempcodeDataMove = move
 const code = pickCode({
   packaged: app.isPackaged,
   platform: process.platform,
   bundleRoot,
   // The same directory index.ts settles on a moment later (its harness block and TEMP_CODE_USER_DATA).
-  userData: process.env.TEMP_CODE_USER_DATA || bakedUserData(bundleRoot) || app.getPath('userData'),
+  userData: move.userData,
   pid: process.pid,
   alive: (pid) => sameProgramAlive(pid, process.execPath),
   bundleOnly: flagAt >= 0,
@@ -78,4 +88,27 @@ if (code.boot.running) {
 } else {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require(join(__dirname, 'index.js'))
+}
+
+/** The move to Docket's names, run once and never in the way: whatever goes wrong, the app starts on the old names. */
+function movedData(override: string | null): DataMove {
+  try {
+    const result = moveData({
+      platform: process.platform,
+      home: homedir(),
+      defaultUserData: app.getPath('userData'),
+      override,
+      localAppData: process.env.LOCALAPPDATA,
+      packaged: app.isPackaged,
+      pid: process.pid
+    })
+    if (result.setPath) app.setPath('userData', result.userData)
+    for (const line of result.did) console.log(`[boot] data: ${line}`)
+    for (const line of result.held) console.warn(`[boot] data, not moved: ${line}`)
+    return result
+  } catch (err) {
+    const words = `the move failed (${err instanceof Error ? err.message : String(err)}); the app runs on the old names`
+    console.warn(`[boot] ${words}`)
+    return { v: 1, userData: override ?? app.getPath('userData'), setPath: false, db: OLD_DB, did: [], held: [words] }
+  }
 }

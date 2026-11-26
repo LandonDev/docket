@@ -72,7 +72,7 @@ for timer in box-restore-drill box-restic-check; do
   [[ $(systemctl show "$timer.service" -p OnFailure --value) == "$timer-failed.service" ]] || die "$timer failure hook missing"
 done
 [[ -L /srv/agents/temp-code-builds/current && -L /srv/agents/temp-code-builds/previous ]] || die 'release links missing'
-[[ $(stat -c '%U:%G:%a' /srv/agents/temp-code-builds) == root:agents:755 ]] || die 'release link directory must be root-owned'
+[[ $(stat -Lc '%U:%G:%a' /srv/agents/temp-code-builds) == root:agents:755 ]] || die 'release link directory must be root-owned'
 [[ $(systemctl show temp-code -p WorkingDirectory --value) == /srv/agents/temp-code-builds/current ]] || die 'service not using current'
 current=$(readlink -f /srv/agents/temp-code-builds/current)
 pid=$(jq -er .pid /srv/agents/temp-code-data/server.json)

@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
+import { realpathSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { CALL_MARK, INSTANCE_MARK, NICE_PRELUDE, THREAD_MARK } from '@shared/bashMarks'
 import type { EventRow } from '@shared/events'
@@ -157,9 +158,19 @@ export function guardInstanceEnv(): Record<string, string> {
   return instance ? { [INSTANCE_MARK]: instance.id } : {}
 }
 
-/** The data dir is the prod one: Electron's default userData (no TEMP_CODE_USER_DATA override), or the box's service dir. */
+/** The data dir is the prod one: Electron's default userData (no TEMP_CODE_USER_DATA override), or the box's service dir,
+ *  by name or by real path, since the move to Docket's names leaves a link at each old name (dataMove.ts). */
 export function isProdData(dataDir: string, defaultUserData: string | null): boolean {
-  return dataDir === defaultUserData || dataDir === BOX_PROD_DATA_DIR
+  const real = realOr(dataDir)
+  return [defaultUserData, BOX_PROD_DATA_DIR].some((dir) => dir !== null && (dataDir === dir || real === realOr(dir)))
+}
+
+const realOr = (path: string): string => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
 }
 
 /**
@@ -179,7 +190,9 @@ export function guardInstanceOf(
     nonce = randomBytes(8).toString('hex')
     settings.setSetting(INSTANCE_NONCE_SETTING, nonce)
   }
-  return { id: createHash('sha256').update(`${dataDir}\0${nonce}`).digest('hex').slice(0, 12), sweepsUnmarked: prodData }
+  // The move to Docket's names (dataMove.ts) keeps the id: the last boot on the old name still owns its orphans.
+  const dir = dataDir.replace(/([\\/])Docket$/, '$1temp-code')
+  return { id: createHash('sha256').update(`${dir}\0${nonce}`).digest('hex').slice(0, 12), sweepsUnmarked: prodData }
 }
 
 /** The thread, the call and the instance a process belongs to, read off its environment. */

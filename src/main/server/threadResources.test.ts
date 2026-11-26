@@ -272,6 +272,7 @@ describe('removeResource rules', () => {
     await expect(removeResource({ ...dev, identifier: '/Users/landon' }, h.run)).rejects.toThrow('refused')
     expect(devInstanceDirAllowed('relative/dir')).toBe(false)
     expect(devInstanceDirAllowed('/tmp/tc/temp-code')).toBe(false)
+    expect(devInstanceDirAllowed('/Users/landon/Library/Application Support/Docket')).toBe(false)
     expect(devInstanceDirAllowed('/tmp/tc/temp-code-dev')).toBe(true)
   })
 })

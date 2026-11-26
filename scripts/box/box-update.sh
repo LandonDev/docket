@@ -6,7 +6,9 @@ cd /
 [[ $EUID == 0 ]] || { echo 'Run sudo box-update <ref>' >&2; exit 2; }
 [[ $# == 1 && $1 != -* && $1 =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || { echo 'Usage: box-update <branch|tag|sha>' >&2; exit 2; }
 ref=$1
-builds=/srv/agents/temp-code-builds
+# The real folder: since the move to Docket's names (scripts/box/docket-move.sh)
+# the old name is a link, and find and readlink -f below must agree on paths.
+builds=$(readlink -f /srv/agents/temp-code-builds)
 data=/srv/agents/temp-code-data
 state=/var/lib/box-baseline
 home=/srv/agents/home
@@ -28,8 +30,12 @@ source "$lib"
 export BOX_UPDATE_ASSET_BASE BOX_UPDATE_FRESH_MODULES=${BOX_UPDATE_FRESH_MODULES:-0}
 lib_as_agents() { as_agents bash -c 'source "$0" && "$@"' "$lib" "$@"; }
 link_to() {
+  # A build in this folder is linked by its name, so the link holds through the
+  # folder's rename either way (docket-move.sh and its --undo).
+  local target=$2
+  if [[ $(dirname "$target") == "$builds" ]]; then target=$(basename "$target"); fi
   rm -f "$builds/.$1.next"
-  ln -s "$2" "$builds/.$1.next"
+  ln -s "$target" "$builds/.$1.next"
   mv -Tf "$builds/.$1.next" "$builds/$1"
 }
 expected() { lib_as_agents expected_of "$1"; }

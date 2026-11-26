@@ -14,7 +14,7 @@ as_agents() { runuser -u agents -- env HOME="$AGENTS_HOME" PATH="$AGENTS_PATH" "
 version_ge() { [[ $(printf '%s\n%s\n' "$2" "$1" | sort -V | head -1) == "$2" ]]; }
 dir_as() {
   local dir=$1 mode=$2
-  if [[ ! -d $dir ]] || [[ $(stat -c '%a:%U:%G' "$dir") != "$mode:agents:agents" ]]; then
+  if [[ ! -d $dir ]] || [[ $(stat -Lc '%a:%U:%G' "$dir") != "$mode:agents:agents" ]]; then
     install -d -o agents -g agents -m "$mode" "$dir"; changed "$dir"
   else skip "$dir"; fi
 }
@@ -90,7 +90,7 @@ visudo -cf /etc/sudoers.d/91-box-update
 put /etc/apparmor.d/temp-code <<EOF
 abi <abi/4.0>,
 include <tunables/global>
-profile temp-code "/srv/agents/{temp-code,temp-code-builds/*}/node_modules/electron/dist/electron" flags=(unconfined) {
+profile temp-code "/srv/agents/{temp-code,temp-code-builds/*,docket-builds/*}/node_modules/electron/dist/electron" flags=(unconfined) {
   userns,
   include if exists <local/temp-code>
 }

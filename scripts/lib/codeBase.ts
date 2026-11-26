@@ -33,7 +33,7 @@ import { join } from 'node:path'
 import type { CodeBase } from '../../src/main/codeChoice'
 
 /** The files out/main/boot.js is made of. scripts/lib/codeBase.test.ts holds this list to boot.ts's own imports. */
-export const BOOT_SOURCES = ['src/main/boot.ts', 'src/main/codeChoice.ts', 'src/main/compileCache.ts'] as const
+export const BOOT_SOURCES = ['src/main/boot.ts', 'src/main/codeChoice.ts', 'src/main/compileCache.ts', 'src/main/dataMove.ts'] as const
 
 /** What shapes the signed bundle itself: the packer's rules (what ships, the Info.plist keys, the fuses) and the entitlements. */
 export const BUNDLE_SHAPE = ['electron-builder.yml', 'build/entitlements.mac.plist'] as const

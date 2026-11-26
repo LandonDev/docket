@@ -229,7 +229,8 @@ export const FULL_DENY_DIRS = [
   '.aliax',
   'Library/Keychains',
   'Library/Application Support/TempCode',
-  'Library/Application Support/temp-code'
+  'Library/Application Support/temp-code',
+  'Library/Application Support/Docket'
 ] as const
 /** On a Windows host, in place of the Mac's ~/Library ones: Windows' saved credentials and keys, the app's data. */
 export const WINDOWS_FULL_DENY_DIRS = [
@@ -244,7 +245,8 @@ export const WINDOWS_FULL_DENY_DIRS = [
   'AppData/Local/Microsoft/Vault',
   // The installed app's data is the package's name (windowFrame.ts localUserData); a build named after the product writes TempCode.
   'AppData/Local/TempCode',
-  'AppData/Local/temp-code'
+  'AppData/Local/temp-code',
+  'AppData/Local/Docket'
 ] as const
 export const FULL_DENY_FILES = ['.claude/.credentials.json', '.codex/auth.json'] as const
 

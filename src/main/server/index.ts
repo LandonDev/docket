@@ -42,6 +42,7 @@ import { loadEnvironmentId } from './remote/environment'
 import { handleRemote, type RemoteContext } from './remote/handlers'
 import { buildFacts, hostPlatform } from '../buildInfo'
 import { hostLabel } from '../hostLabel'
+import { doctorDataMove } from '../dataMoveBoot'
 import { shortHostName } from '@shared/hostNames'
 import type { BuildFacts } from '@shared/deployDrift'
 import type { MediaRange } from '@shared/contract-fsgit'
@@ -3240,7 +3241,8 @@ export async function startServer(
                 addonHost: addonHost.status(),
                 watches: watchStats(),
                 watchFailures: watchFailures(),
-                ...(folderReaderNow() ? { folderReader: folderReaderNow()! } : {})
+                ...(folderReaderNow() ? { folderReader: folderReaderNow()! } : {}),
+                ...doctorDataMove()
               } satisfies DoctorGetResult
             })
             break

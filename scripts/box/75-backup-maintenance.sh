@@ -21,7 +21,9 @@ if ! grep -qxF /srv/agents/temp-code-builds /etc/restic/excludes; then
   changed 'excluded release builds and trial scratch data'
 fi
 # Files' previews are pictures made again on demand (docs/agents/work-files.md "Previews"): never backed up.
-for path in /srv/agents/temp-code-data/work-files/previews /srv/agents/temp-code-data/work-files/preview-scratch; do
+# Since the move to Docket's names (docket-move.sh) the real folders are docket-*; restic keeps the old names as links.
+for path in /srv/agents/temp-code-data/work-files/previews /srv/agents/temp-code-data/work-files/preview-scratch \
+  /srv/agents/docket-builds /srv/agents/docket-data/work-files/previews /srv/agents/docket-data/work-files/preview-scratch; do
   if ! grep -qxF "$path" /etc/restic/excludes; then
     printf '%s\n' "$path" >> /etc/restic/excludes
     changed "excluded $path"

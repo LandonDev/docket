@@ -3,13 +3,14 @@ import { computerBannerHooks } from './server/computer/hold'
 import { app, shell, dialog, net, BrowserWindow, Notification, ipcMain, powerMonitor, powerSaveBlocker } from 'electron'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
+import { mkdirSync, writeFileSync } from 'fs'
 import { flushCompileCache, getCompileCacheDir } from 'node:module'
 import { REVEAL_NO_WINDOW } from '@shared/contract-work-reveal'
 import { bootMark } from './server/boot'
 import { noteInstallOnQuit, registerUpdates, selfUpdate, setCodeStatus } from './update'
 import { applyHarness, bakedHarness, harnessIdentity } from './harness'
 import { codeBoot } from './codeBoot'
+import { dataMoveBoot } from './dataMoveBoot'
 import { appRoot } from './server/appRoot'
 import { SOAK_SWITCHES, soakWindow } from './soakWindow'
 import { configureAliax, upstream } from './aliax'
@@ -103,7 +104,7 @@ applyHarness(process.env, baked)
 // Windows: the data dir sits under %LOCALAPPDATA%, off the roaming profile (windowFrame.ts).
 const winUserData = localUserData(process.platform, process.env, app.getPath('userData'))
 if (winUserData) app.setPath('userData', winUserData)
-/** The app's own userData before any override: the installed app's data dir, the prod one on a Mac. */
+/** The app's own userData before any override: the installed app's data dir, the prod one on a Mac (Docket once boot.ts moved it). */
 const defaultUserData = app.getPath('userData')
 const identity = harnessIdentity(app.isPackaged, baked, process.env, {
   name: app.getName(),
@@ -183,22 +184,6 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // Electron names userData after package.json's productName, else its name
-  // (temp-code); the builder's productName names only the bundle, so a
-  // packaged Mac app runs in the same temp-code dir as dev mode and this finds
-  // the database already there. It copies only if that name ever changes.
-  // The old dir is a macOS path, so only a Mac looks.
-  if (process.platform === 'darwin' && app.isPackaged && !process.env.TEMP_CODE_USER_DATA) {
-    const dbPath = join(app.getPath('userData'), 'temp-code.db')
-    const oldDir = join(homedir(), 'Library', 'Application Support', 'temp-code')
-    if (!existsSync(dbPath) && existsSync(join(oldDir, 'temp-code.db'))) {
-      mkdirSync(app.getPath('userData'), { recursive: true })
-      for (const f of ['temp-code.db', 'temp-code.db-wal', 'temp-code.db-shm']) {
-        if (existsSync(join(oldDir, f)))
-          copyFileSync(join(oldDir, f), join(app.getPath('userData'), f))
-      }
-    }
-  }
   registerAssetProtocol()
   registerAppProtocol()
   // A sign-in window opens over the app window in front.
@@ -267,7 +252,8 @@ app.whenReady().then(async () => {
       else handoff.windowReady()
     }
   }) : undefined
-  server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
+  // boot.ts moved temp-code.db to docket.db and left a link (dataMove.ts); Windows and a held move keep the old name.
+  server = await startServer(join(app.getPath('userData'), dataMoveBoot()?.db ?? 'temp-code.db'), {
     prodData: isProdData(app.getPath('userData'), defaultUserData),
     // Counted from the code that runs, never app.getAppPath(): under a code-only update that is the
     // bundle, and its out/ is the older one (docs/agents/code-only-updates.md).

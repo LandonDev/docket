@@ -35,9 +35,9 @@ export function appDataDir(
   return env.XDG_CONFIG_HOME || join(home, '.config')
 }
 
-/** Where the installed app's userData lived before the product rename, and where `dev:prod` still runs. */
-const prodUserData = (platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string =>
-  join(appDataDir(platform, env), 'temp-code')
+/** The installed app's userData: `temp-code`, where `dev:prod` runs, a link to `Docket` once boot.ts moved it (dataMove.ts). */
+const prodUserData = (platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string[] =>
+  ['temp-code', 'Docket'].map((name) => join(appDataDir(platform, env), name))
 
 /**
  * Rule 2: only the app the user lives in may take the shim. The packaged app
@@ -55,6 +55,6 @@ export function mayClaimShim({
 }): boolean {
   const userData = env.TEMP_CODE_USER_DATA
   if (!userData) return isPackaged
-  if (resolve(userData) === prodUserData(platform, env)) return true
+  if (prodUserData(platform, env).includes(resolve(userData))) return true
   return env.TEMP_CODE_CLAIM_SHIM === '1'
 }

@@ -36,8 +36,8 @@ export interface RemovalOutcome {
 
 const trimmed = (r: RunResult): string => (r.stderr || r.stdout).trim().split('\n')[0] ?? ''
 
-/** The installed app's data dirs: a dev instance is never one of these. */
-export const PROTECTED_USER_DATA = new Set(['TempCode', 'temp-code'])
+/** The installed app's data dirs, by every name they had (dataMove.ts): a dev instance is never one of these. */
+export const PROTECTED_USER_DATA = new Set(['TempCode', 'temp-code', 'Docket'])
 
 export async function removeResource(row: ThreadResource, run: ResourceRunner): Promise<RemovalOutcome> {
   switch (row.kind) {

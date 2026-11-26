@@ -235,7 +235,9 @@ alone cannot read them.
 
 - `box-backup.timer` runs `/usr/local/sbin/box-backup` (scripts/box/
   restic-backup.sh) daily at 04:15 New York plus up to 20 minutes, in
-  prod.slice. It snapshots every `*.db` in `/srv/agents/temp-code-data` with
+  prod.slice. It snapshots every `*.db` in `/srv/agents/temp-code-data` that
+  is a real file (a link at an old name, `temp-code.db` → `docket.db` since
+  the move, is skipped, so each database is copied once) with
   `VACUUM INTO` as the agents user into `/srv/agents/backups/sqlite` (the live
   database files are excluded; a mid-write copy is worthless), writes a
   `manifest.json` alongside them with a generation id, schema counts and all
@@ -281,7 +283,8 @@ ssh box 'systemctl list-timers box-restore-drill.timer box-restic-check.timer'
 The Mac side is scripts/mac/backup.sh installed by scripts/mac/install-backup.sh
 as the launchd agent `dev.landon.tempcode.backup` (03:30 daily, log in
 `~/Library/Logs/tempcode-backup.log`): same snapshot step over
-`~/Library/Application Support/temp-code`, including `checkpoints/`.
+`~/Library/Application Support/temp-code`, resolved to the real folder
+(`Docket` once the app has moved it), including `checkpoints/`.
 
 ## Heartbeat scaffold (initial install; live state below)
 
@@ -378,7 +381,8 @@ gets it on its own.
 | ExecStart | `/usr/local/lib/temp-code/run`, with `WorkingDirectory=/srv/agents/temp-code-builds/current`; `env -u ELECTRON_RUN_AS_NODE xvfb-run -a … dbus-run-session -- node_modules/electron/dist/electron .` |
 | Environment | `/etc/temp-code.env` (root, 600, managed): `TEMP_CODE_USER_DATA=/srv/agents/temp-code-data`, `TEMP_CODE_HEADLESS=1`, `TEMP_CODE_CLAIM_SHIM=1`, `AGENT_CLI_CREDENTIAL_STORE=file`, `TEMP_CODE_REMOTE_PORT=7677`, `NODE_ENV=production`, `SHELL=/bin/bash` |
 | Secrets | `/etc/temp-code.secrets.env` (root, 600, optional, never written by the scripts); the unit reads it when present |
-| AppArmor | `/etc/apparmor.d/temp-code` grants userns to Electron in the original checkout and each release build; the renderer keeps its sandbox |
+| AppArmor | `/etc/apparmor.d/temp-code` grants userns to Electron in the original checkout and each release build, under `temp-code-builds/*` and `docket-builds/*` (it matches real paths); the renderer keeps its sandbox |
+| Docket's names | after scripts/box/docket-move.sh (as root, the service stopped): `docket-data`, `docket-builds` and `home/.docket` are the real folders, and each old name above is a relative link to its new one, so the env, the unit and every stored path keep working; the database is `docket.db` with `temp-code.db` a link ([docket-data-move.md](agents/docket-data-move.md) "The box") |
 | Local admin | `tc-local <method> [json]` or `tc-local --hello` (`/usr/local/bin`, runs the installed copy of `scripts/box/tc-local.mjs`) over the port in `<data>/server.json` |
 | Logs | `journalctl -u temp-code` |
 

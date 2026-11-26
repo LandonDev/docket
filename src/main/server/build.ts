@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
@@ -105,7 +105,9 @@ export async function resolveBuildDir(
   const { stdout: common } = await execFileP('git', ['-C', project.cwd, 'rev-parse', '--git-common-dir'])
   const repoRoot = resolve(project.cwd, common.trim(), '..')
   const dir = join(root, `${slug(basename(repoRoot))}-${slug(branch)}`)
-  const registered = (await checkouts(project.cwd)).some((c) => c.dir === dir)
+  // By the real path: git records one, and ~/.temp-code is a link to ~/.docket since the move to Docket's names.
+  const real = (path: string): string => (existsSync(path) ? realpathSync(path) : path)
+  const registered = (await checkouts(project.cwd)).some((c) => real(c.dir) === real(dir))
   try {
     if (registered && existsSync(dir)) {
       await execFileP('git', ['-C', dir, 'checkout', '--detach', '--force', branch])

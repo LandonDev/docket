@@ -12,7 +12,8 @@ chown agents:agents "$staging"
 trap 'rm -rf -- "$staging"' EXIT
 runuser -u agents -- python3 - "$data" "$staging" <<'PY'
 import json, pathlib, sqlite3, sys, uuid
-files = sorted(pathlib.Path(sys.argv[1]).glob('*.db'))
+# temp-code.db is a link to docket.db since the move to Docket's names: one copy each.
+files = sorted(f for f in pathlib.Path(sys.argv[1]).glob('*.db') if not f.is_symlink())
 if not files:
     raise RuntimeError('no SQLite databases to snapshot')
 manifest = {'version': 1, 'generation': uuid.uuid4().hex, 'databases': {}}

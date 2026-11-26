@@ -35,15 +35,17 @@ These are held:
   keys.ts), the Frame.io webhook, Windows task names in the VM, the local CA
   certificate, and `TERM_PROGRAM`.
 - **Processes.** Utility process names.
-- **Paths and files.** Data folders (macBridge.ts, threadResourcesRemove.ts,
-  the guest's folders), the Office render cache, the print and download temp
+- **Paths and files.** Data folders as the code spells them (macBridge.ts,
+  threadResourcesRemove.ts, the guest's folders; on disk the app's own
+  folders and databases move to Docket's names at boot, with a link at each
+  old name: [docket-data-move.md](docket-data-move.md)), the Office render cache, the print and download temp
   names, the phone's inbox folder, and Word's "(before TempCode saved it)"
   backups that already sit on disk.
 - **The wire.** The user-agent pattern the Office add-in route reads.
 - **The old name.** `KNOWN_APP_NAMES`.
 
 Also kept, because other things read them: appId, bundle ids,
-URL schemes, `TEMP_CODE_*`, package, module and database names, the
+URL schemes, `TEMP_CODE_*`, package and module names, the
 updater's file names, the Office add-in's Id and URLs, and work-kit's
 `TEMPCODE_THEME` (its name is written into files). Changing any of these
 needs a migration.
@@ -82,7 +84,9 @@ match on the path alone, so the query changes nothing on the server.
 Proven 2026-11-25 with test builds TempCodeE2E 1.0.393 → DocketE2E 1.0.394,
 one bundle id (`bun scripts/e2e-updater.ts --rename[=present|hand] [--next]`,
 `--win --rename`; facts.json under each run's ROOT). `app.getName()` stays
-`temp-code` and userData does not move on either OS.
+`temp-code`, so both builds start on the same userData; boot.ts then moves
+an installed app's to `Docket` ([docket-data-move.md](docket-data-move.md)),
+which these runs, on an override, leave alone.
 
 - **Mac.** ShipIt moves TempCode.app to Docket.app and installs the new
   build; one app is left in the folder. It does not open it again: it starts

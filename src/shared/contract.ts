@@ -1430,6 +1430,8 @@ export type DoctorGetResult = Record<z.infer<typeof providerEnum>, DoctorReport>
   watchFailures?: { what: string; error: string; fallback: string; at: number }[]
   /** Windows: how folders on mapped drives are read (files/places/winDir.ts): in one go by the folder reader, or row by row and why. */
   folderReader?: { mode: 'one read' | 'row by row' | 'not started'; words: string; why?: string }
+  /** The move to Docket's names at this launch (src/main/dataMove.ts): the folder and database it runs on, what it changed, and what stays on the old names and why. */
+  dataMove?: { userData: string; db: string; did: string[]; held: string[] }
 }
 
 export type ServerResponse =

@@ -16,6 +16,9 @@ export AWS_ACCESS_KEY_ID; AWS_ACCESS_KEY_ID=$(security find-generic-password -s 
 export AWS_SECRET_ACCESS_KEY; AWS_SECRET_ACCESS_KEY=$(security find-generic-password -s tempcode-r2-backups -a "$AWS_ACCESS_KEY_ID" -w)
 [[ -n $RESTIC_PASSWORD && -n $AWS_ACCESS_KEY_ID && -n $AWS_SECRET_ACCESS_KEY ]] || { echo 'ERROR: Keychain items missing' >&2; exit 1; }
 [[ -d $data ]] || { echo "ERROR: no data dir at $data" >&2; exit 1; }
+# The real folder: since the move to Docket's names (docs/agents/docket-data-move.md) temp-code is a
+# link to Docket, and restic keeps a link as a link.
+data=$(cd -P -- "$data" && pwd)
 
 mkdir -p "$staging"
 if ! mkdir "$staging/.lock" 2>/dev/null; then echo 'another backup is running' >&2; exit 1; fi
@@ -25,7 +28,8 @@ echo "[$(date '+%F %T')] backup start"
 
 rm -rf "$staging/sqlite"; mkdir -p "$staging/sqlite"
 for db in "$data"/*.db; do
-  [[ -f $db ]] || continue
+  # temp-code.db is a link to docket.db since the move: one snapshot each.
+  [[ -f $db && ! -L $db ]] || continue
   name=$(basename "$db"); tmp="$staging/sqlite/.tmp-$name"
   sqlite3 "$db" "VACUUM INTO '$tmp'"
   [[ $(sqlite3 "$tmp" 'PRAGMA quick_check') == ok ]] || { echo "ERROR: snapshot of $name failed its check" >&2; exit 1; }

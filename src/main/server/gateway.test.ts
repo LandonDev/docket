@@ -59,6 +59,8 @@ describe('mayClaimShim', () => {
     expect(mac({ isPackaged: true, env: {} })).toBe(true)
     expect(mac({ isPackaged: false, env: {} })).toBe(false)
     expect(mac({ isPackaged: false, env: { TEMP_CODE_USER_DATA: prod } })).toBe(true)
+    // The folder boot.ts moved it to (dataMove.ts), for a dev:prod that names it.
+    expect(mac({ isPackaged: false, env: { TEMP_CODE_USER_DATA: join(home, 'Library', 'Application Support', 'Docket') } })).toBe(true)
     expect(mac({ isPackaged: false, env: { TEMP_CODE_USER_DATA: `${prod}-dev` } })).toBe(false)
     expect(mac({ isPackaged: false, env: { TEMP_CODE_USER_DATA: `${prod}-dev`, TEMP_CODE_CLAIM_SHIM: '1' } })).toBe(true)
     expect(mac({ isPackaged: true, env: { TEMP_CODE_USER_DATA: `${prod}-dev` } })).toBe(false)

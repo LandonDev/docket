@@ -16,16 +16,15 @@ docs/agents/prompt-overhead.md). A new subject's long account goes in
   the peer link after its deploy, makes it fetch that second and offer
   "Restart to update" (src/main/update.ts `selfUpdate`, the rules in
   updateTrigger.ts: a version it already runs or holds is ignored, and
-  nothing installs without the restart click). Its data
-  lives in `~/Library/Application Support/temp-code/` (package.json's
-  `name`; the builder's `productName` names only the bundle).
+  nothing installs without the restart click). Its data is
+  `~/Library/Application Support/Docket/`.
 - No signed release reaches users until `bun run release:publish` runs (see
   below). But every `release-N` the box cuts is offered to the owner's own
   Mac app as a code-only update, run after his restart ("Code-only updates"
   below): commit only finished, verified slices.
 - `stable` is a pointer the updater no longer reads; it is moved onto
   master at each cutover (`git branch -f stable master`) and otherwise
-  left alone. The pre-MonoCode line (v96) lives on in the reflog only.
+  left alone.
 
 ## The user lives in the installed app — never touch it
 Do not launch anything against the prod userData (that means never
@@ -82,7 +81,7 @@ the installed app from running at once: quit one before opening the
 other. Master only adds to the database (new tables, defaulted columns),
 so the two apps can take turns on it. Layout lives in localStorage, which
 differs by origin, so it does not carry across; unread is the host's mark
-("Read and unread: the host's mark" below) and does.
+and does.
 
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod, the old updater's checkout, is read by
@@ -122,6 +121,8 @@ Read the file a task touches before changing that subject.
   [docs/agents/project-preambles.md](docs/agents/project-preambles.md)
 - **Name and icon** — Docket everywhere, TempCode recognised
   (src/shared/appName.ts); `bun run icons`. [docs/agents/name-and-icon.md](docs/agents/name-and-icon.md)
+- **Docket's data names** — folders and databases renamed at boot, a link at each
+  old name (src/main/dataMove.ts). [docs/agents/docket-data-move.md](docs/agents/docket-data-move.md)
 - **UI standard** — docs/DESIGN.md wins every conflict; Kobra on Base UI under
   src/renderer/src/components/ui, mapped in components/README.md; the guard
   tests under src/renderer/src/lib/*Guard.test.ts; verify with typecheck, the
@@ -178,7 +179,7 @@ Read the file a task touches before changing that subject.
   ceiling (treewatch.ts, `watches` in doctor.get).
   [docs/agents/linux-agent-host.md](docs/agents/linux-agent-host.md)
 - **The Windows build** — an NSIS installer and a zip for x64, unsigned, per user with no admin
-  (`%LOCALAPPDATA%\Programs\Docket`, an old install `TempCode`; data in `%LOCALAPPDATA%\temp-code`, the package's name); every Windows build
+  (`%LOCALAPPDATA%\Programs\Docket`, an old install `TempCode`; data in `%LOCALAPPDATA%\Docket`); every Windows build
   passes `--config build/electron-builder.win.yml` and stages the win32 Claude CLI first
   (scripts/win-stage.ts); every `release:publish` adds them once the Mac's release is live, never failing it (scripts/release-publish-win.sh, `--no-win`); the frame (src/main/windowFrame.ts), the
   updater's Windows path (only "Restart to update" installs there), one key map (`modKey`,

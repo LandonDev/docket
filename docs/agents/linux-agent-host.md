@@ -14,7 +14,10 @@
 - The box (`ssh box`, docs/box.md) runs temp-code from
   `/srv/agents/temp-code-builds/current`
   as `temp-code.service` (agents user, agents.slice, Xvfb, a private D-Bus),
-  data in `/srv/agents/temp-code-data`, env in `/etc/temp-code.env`; the
+  data in `/srv/agents/temp-code-data`, env in `/etc/temp-code.env`. Once
+  scripts/box/docket-move.sh has run, the real folders are `docket-builds`,
+  `docket-data` and `home/.docket`, each with a link at its old name that
+  every path above still goes through ([docket-data-move.md](docket-data-move.md)); the
   tunnel maps `docket.landonhale.com` (and the old `tempcode.landonhale.com`) to its 7677. Deploy a ref with
   `ssh box 'box-update master'` (clone + build → trial → snapshot → commit,
   with rollback on failure) or `ssh box 'box-update v1.0.N'` (the release's
@@ -330,8 +333,8 @@
   userData dir and a nonce in the `guard.instanceNonce` setting), a
   process marked by another instance is left alone, and one with no
   instance mark is swept only by the instance on the prod data dir
-  (`isProdData`: Electron's default userData, or the box's
-  /srv/agents/temp-code-data), so a dev instance never touches the
+  (`isProdData`: Electron's default userData by either name, or the box's
+  /srv/agents/temp-code-data, by name or real path), so a dev instance never touches the
   installed app's processes; and a call
   whose processes pass `tools.memoryCapMb` (8 GiB) is killed with its tool
   result saying so. A codex app-server carries `TEMP_CODE_THREAD` alone.
