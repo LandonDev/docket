@@ -2936,14 +2936,16 @@ export class SessionRegistry {
     by?: UserTextBy,
     limits: { ceiling?: SessionMeta['permission']; before?: (created: SessionMeta) => Promise<void> } = {}
   ): Promise<SessionMeta> {
-    const { firstMessage, attachments, items: _items, mailAdopt: _mailAdopt, bridge: _bridge, ...spec } = raw
+    const { firstMessage, attachments, items: _items, mailAdopt: _mailAdopt, bridge: _bridge, tune: _tune, send: _send, ...spec } = raw
     const { before, ceiling } = limits
+    if (firstMessage && _send) throw new Error('session.create: a first message rides `firstMessage` or `send`, not both')
     if (firstMessage) return this.startWith(spec, firstMessage, { ...(by ? { by } : {}), ceiling, before, ...(attachments?.length ? { attachments } : {}) })
     const created = await this.create(spec, { ceiling, eager: !before })
     if (!before) return created
     await before(created)
     const after = this.get(created.id) ?? created
-    if (this.scheduler.admit(after, { first: true, optIn: this.wantsQueue(after) }) === 'start') void this.handleFor(after.id).catch(() => {})
+    // A folded `send` that stored its row owns the boot (admitted or queued as any send); else the create's own eager boot, after the steps.
+    if (!this.store.hasUserText(created.id) && this.scheduler.admit(after, { first: true, optIn: this.wantsQueue(after) }) === 'start') void this.handleFor(after.id).catch(() => {})
     return after
   }
 

@@ -70,4 +70,34 @@ describe('a folded create', () => {
     const got = await runCreateSteps('t1', { bridge: { macPeer: 'mac-1' }, items: [{ kind: 'sheet', source: file, title: 'Budget' }] }, s.step, s.id)
     expect(got.itemsFailed).toEqual([{ title: 'Budget', error: 'forbidden: outside the roots' }])
   })
+
+  it("an ordinary draft's speed and message run last, as session.tune then session.send for the new thread", async () => {
+    const s = stepper()
+    const p: CreateStepParams = { bridge: { macPeer: 'mac-1' }, tune: { ultrafast: true }, send: { text: 'hello', attachments: [{ path: '/w/a.txt', name: 'a.txt', kind: 'file' }] } }
+    expect(hasCreateSteps({ send: { text: 'hello' } })).toBe(true)
+    expect(hasCreateSteps({ tune: { fast: true } })).toBe(true)
+    expect(await runCreateSteps('t1', p, s.step, s.id)).toEqual({ itemsFailed: [] })
+    expect(s.asked.map((r) => r.method)).toEqual(['macBridge.thread.set', 'session.tune', 'session.send'])
+    expect(paramsOf(s.asked[1])).toEqual({ sessionId: 't1', ultrafast: true })
+    expect(paramsOf(s.asked[2])).toEqual({ sessionId: 't1', text: 'hello', attachments: [{ path: '/w/a.txt', name: 'a.txt', kind: 'file' }] })
+  })
+
+  it("a send the host refuses is answered as the send's own error; the steps before it stand", async () => {
+    const s = stepper({ 'session.send': 'forbidden: session.send is outside app-managed roots', 'work.canvas.open': 'no such file' })
+    const got = await runCreateSteps('t1', { items: [{ kind: 'sheet', source: file, title: 'B' }], send: { text: 'hello' } }, s.step, s.id)
+    expect(got).toEqual({ itemsFailed: [{ title: 'B', error: 'no such file' }], sendError: 'forbidden: session.send is outside app-managed roots' })
+  })
+
+  it('a tune that fails stops the message, as the awaited tune did', async () => {
+    const s = stepper({ 'session.tune': 'unknown session: t1' })
+    const got = await runCreateSteps('t1', { tune: { fast: true }, send: { text: 'hello' } }, s.step, s.id)
+    expect(got.sendError).toBe('unknown session: t1')
+    expect(s.asked.map((r) => r.method)).toEqual(['session.tune'])
+  })
+
+  it('a mail chat the host will not adopt sends nothing, the tune and the message included', async () => {
+    const s = stepper({ 'work.mail.chat.adopt': 'off' })
+    await expect(runCreateSteps('t1', { mailAdopt: { workspaceId: 'w1', kind: 'box' }, tune: { fast: true }, send: { text: 'hello' } }, s.step, s.id)).rejects.toThrow(CHAT_DID_NOT_START)
+    expect(s.asked.map((r) => r.method)).toEqual(['work.mail.chat.adopt'])
+  })
 })

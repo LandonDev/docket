@@ -12,19 +12,24 @@ import type { CanvasSource } from '@shared/work'
  *   step left it, and the window runs the step again before its next send ("The chat did not start").
  * - `items`: `work.canvas.open` each (a far file's copy first, `work.office.filesCopy`). Failing, the item is named in
  *   the answer and the message goes all the same.
+ * - `tune`: `session.tune`, the draft's Fast or Ultrafast (a host whose hello lists `create.draft`). Failing, the
+ *   message does not go, as the window's awaited tune stopped it: the thread stays and the answer says why.
+ * - `send`: `session.send`, the draft's first message as the window sent it (`create.draft`), last. Failing, the thread
+ *   stays with what the send left, and the answer carries the send's own error (`sendError`): what create-then-send
+ *   left. A must step that failed sends nothing.
  *
  * A create with steps boots its harness at the send, after them (sessions.ts `create`'s `eager`): the bridge step
  * reboots a harness that is starting, and the first send used to join that boot and die with it.
  */
 
-export type CreateStepParams = Pick<CreateSessionParams, 'items' | 'mailAdopt' | 'bridge'>
+export type CreateStepParams = Pick<CreateSessionParams, 'items' | 'mailAdopt' | 'bridge' | 'tune' | 'send'>
 export type ItemFailed = { title: string; error: string }
 
 /** The words a must step's failure stops the send with, the window's own (renderer commands.ts `afterCreate`). */
 export const CHAT_DID_NOT_START = 'The chat did not start'
 
 /** Whether a create carries any step to run. */
-export const hasCreateSteps = (p: CreateStepParams): boolean => !!(p.bridge || p.mailAdopt || p.items?.length)
+export const hasCreateSteps = (p: CreateStepParams): boolean => !!(p.bridge || p.mailAdopt || p.items?.length || p.tune || p.send)
 
 /** A step as the request the window would have sent, parsed by the contract as any request is. */
 function request(id: string, method: string, params: Record<string, unknown>): ClientRequest {
@@ -39,7 +44,7 @@ export async function runCreateSteps(
   p: CreateStepParams,
   step: (req: ClientRequest) => Promise<unknown>,
   stepId: () => string
-): Promise<{ itemsFailed: ItemFailed[] }> {
+): Promise<{ itemsFailed: ItemFailed[]; sendError?: string }> {
   if (p.bridge) {
     // An older Mac link or a key that may not approve: the thread runs without the bridge.
     await step(request(stepId(), 'macBridge.thread.set', { sessionId, macPeer: p.bridge.macPeer })).catch(() => undefined)
@@ -60,6 +65,12 @@ export async function runCreateSteps(
     } catch (err) {
       itemsFailed.push({ title: item.title, error: words(err) })
     }
+  }
+  try {
+    if (p.tune) await step(request(stepId(), 'session.tune', { sessionId, ...p.tune }))
+    if (p.send) await step(request(stepId(), 'session.send', { sessionId, ...p.send }))
+  } catch (err) {
+    return { itemsFailed, sendError: words(err) }
   }
   return { itemsFailed }
 }

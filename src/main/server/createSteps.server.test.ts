@@ -14,6 +14,7 @@ import { remoteSocketUrl } from '../../../scripts/lib/connectProbe'
 let root: string
 let server: RunningServer
 let key: string
+let approveKey: string
 let projectId: string
 
 type Frame = { id?: string; ok?: boolean; result?: unknown; error?: string; push?: string; features?: string[] }
@@ -67,6 +68,7 @@ beforeAll(async () => {
   const workspace = await server.registry.createWorkspace(repo, 'steps')
   projectId = (await server.registry.createProject(workspace.id, 'steps', 'local')).id
   key = (await server.remoteAuth.createKey({ name: 'create-steps', audience: 'client', caps: ['operate'], createdBy: 'local' })).token
+  approveKey = (await server.remoteAuth.createKey({ name: 'create-steps-approve', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local' })).token
 }, 60_000)
 afterAll(async () => {
   await server?.close()
@@ -99,6 +101,80 @@ describe('a folded create on a real host', () => {
       // An operate key may not set the bridge (approve): the thread has none.
       const bridge = await remote.request('macBridge.thread.get', { sessionId: 'folded-1' })
       expect((bridge.result as { macPeer: string | null }).macPeer).toBeNull()
+    } finally {
+      remote.close()
+    }
+  })
+})
+
+describe("an ordinary draft's first send whole (create.draft)", () => {
+  const users = (id: string): string[] => server.registry.eventsAfter(id, 0).flatMap((r) => (r.event.type === 'user-text' ? [r.event.text] : []))
+  const outside = [{ path: '/etc/hosts', name: 'hosts', kind: 'file' }]
+
+  it.each([
+    ['operate', () => key],
+    ['approve', () => approveKey]
+  ])("on a %s key: one request, the speed and the message run as their own calls, and every refusal is the separate call's", async (_caps, token) => {
+    const remote = await client(await remoteSocketUrl(`http://127.0.0.1:${server.remote!.port}`, token()))
+    const tag = _caps
+    try {
+      expect((await remote.hello).features).toContain('create.draft')
+      // The old path's calls on a thread of their own: create, bridge, tune, send.
+      const plain = await remote.request('session.create', { id: `plain-${tag}`, projectId, threadType: 'chat' })
+      expect(plain.ok, plain.error).toBe(true)
+      const bridged = await remote.request('macBridge.thread.set', { sessionId: `plain-${tag}`, macPeer: 'mac-1' })
+      expect((await remote.request('session.tune', { sessionId: `plain-${tag}`, ultrafast: true })).ok).toBe(true)
+      expect((await remote.request('session.send', { sessionId: `plain-${tag}`, text: 'hello' })).ok).toBe(true)
+      const sent = remote.requests()
+
+      const made = await remote.request('session.create', {
+        id: `whole-${tag}`, projectId, threadType: 'chat', bridge: { macPeer: 'mac-1' }, tune: { ultrafast: true }, send: { text: 'hello' }
+      })
+      expect(made.ok, made.error).toBe(true)
+      expect(remote.requests() - sent).toBe(1)
+      expect(made.result).not.toHaveProperty('sendError')
+      expect(users(`whole-${tag}`)).toEqual(['hello'])
+      const a = server.registry.get(`plain-${tag}`)!
+      const b = server.registry.get(`whole-${tag}`)!
+      // His defaults and the key's ceiling chose the same access and model on both paths; the speed landed on both.
+      expect([b.permission, b.provider, b.model, b.ultrafast, b.fast]).toEqual([a.permission, a.provider, a.model, true, false])
+      expect(a.ultrafast).toBe(true)
+      // The bridge: whatever the separate call made of this key, the folded step made the same.
+      const bridgeOf = async (id: string) => ((await remote.request('macBridge.thread.get', { sessionId: id })).result as { macPeer: string | null }).macPeer
+      expect(await bridgeOf(`whole-${tag}`)).toBe(await bridgeOf(`plain-${tag}`))
+      if (tag === 'operate') expect(bridged.ok).toBe(false)
+    } finally {
+      remote.close()
+    }
+  })
+
+  it("a send the fence refuses answers the separate send's error and leaves the thread, as create-then-send did", async () => {
+    const remote = await client(await remoteSocketUrl(`http://127.0.0.1:${server.remote!.port}`, key))
+    try {
+      await remote.hello
+      expect((await remote.request('session.create', { id: 'refused-plain', projectId, threadType: 'chat' })).ok).toBe(true)
+      const separate = await remote.request('session.send', { sessionId: 'refused-plain', text: 'read this', attachments: outside })
+      expect(separate.ok).toBe(false)
+      const made = await remote.request('session.create', { id: 'refused-whole', projectId, threadType: 'chat', send: { text: 'read this', attachments: outside } })
+      expect(made.ok, made.error).toBe(true)
+      expect((made.result as { id: string; sendError?: string }).sendError).toBe(separate.error)
+      // Both threads exist and hold no row of his: what the old path left.
+      for (const id of ['refused-plain', 'refused-whole']) {
+        expect(server.registry.get(id)).toBeTruthy()
+        expect(users(id)).toEqual([])
+      }
+    } finally {
+      remote.close()
+    }
+  })
+
+  it('a first message rides firstMessage or send, never both', async () => {
+    const remote = await client(await remoteSocketUrl(`http://127.0.0.1:${server.remote!.port}`, key))
+    try {
+      await remote.hello
+      const made = await remote.request('session.create', { id: 'both', projectId, threadType: 'chat', firstMessage: 'a', send: { text: 'b' } })
+      expect(made.ok).toBe(false)
+      expect(server.registry.get('both')).toBeFalsy()
     } finally {
       remote.close()
     }

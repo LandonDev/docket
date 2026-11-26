@@ -134,6 +134,11 @@ export const CreateSessionParams = z.object({
   }).optional(),
   /** `macBridge.thread.set`'s Mac: the thread takes that Mac's bridge before its first turn */
   bridge: z.object({ macPeer: z.string().min(1).max(200) }).optional(),
+  /** `session.tune`'s speed, set before the first turn (a host whose hello lists `create.draft`, HOST_FEATURES) */
+  tune: z.object({ fast: z.literal(true).optional(), ultrafast: z.literal(true).optional() }).optional(),
+  /** `session.send`'s first message, run last as its own request (`create.draft`): a send that fails leaves the thread,
+   *  and the answer's `sendError` says why, as create-then-send left it. Never with `firstMessage`. */
+  send: z.object({ text: z.string().min(1), attachments: z.array(AttachmentSchema).optional() }).optional(),
   /** Work (src/shared/work): 'work' asks for a Work thread; the host stamps
    *  the scope itself from the workspace, a Work Chat or a Work parent, and
    *  refuses what it cannot honour (work/scope.ts). */
@@ -145,7 +150,11 @@ export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 /** Pre-parse shape (defaults still optional) — what callers construct. */
 export type CreateSessionInput = z.input<typeof CreateSessionParams>
 /** `session.create`'s answer: the thread, and with `items`, each that did not open and why (the message went all the same). */
-export type CreateSessionReply = SessionMeta & { itemsFailed?: { title: string; error: string }[] }
+export type CreateSessionReply = SessionMeta & {
+  itemsFailed?: { title: string; error: string }[]
+  /** A folded `send` that did not go: its own error; the thread stays (createSteps.ts). */
+  sendError?: string
+}
 
 export interface SessionBatchResult {
   attempted: string[]

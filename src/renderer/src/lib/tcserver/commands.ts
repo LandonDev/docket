@@ -198,29 +198,44 @@ export function hostFoldsCreate(environmentId: string): boolean {
   return registry.statusOf(environmentId).lastHello?.features?.includes("create.steps") ?? false;
 }
 
+/** Whether `environmentId`'s host runs an ordinary draft's whole first send inside its create: speed and message too. */
+function hostFoldsDraft(environmentId: string): boolean {
+  return registry.statusOf(environmentId).lastHello?.features?.includes("create.draft") ?? false;
+}
+
 type FirstSend = { text: string; attachments: ServerAttachment[] };
+type Fold = CreateFold & Pick<CreateSessionInput, "firstMessage" | "attachments" | "bridge" | "tune" | "send">;
 
 /** The draft's first message, its files, and the steps between its create and its message, for one `session.create`;
- *  null when they cannot ride it: an older host, a draft with no foldable step, or a run setting the create does not take. */
-async function foldOf(
-  session: Session,
-  environmentId: string,
-  first: FirstSend | undefined,
-): Promise<(CreateFold & Pick<CreateSessionInput, "firstMessage" | "attachments" | "bridge">) | null> {
-  if (!first || !first.text.trim() || !hostFoldsCreate(environmentId)) return null;
-  // Fast and ultrafast are set after the create (`session.tune`): the first turn would start without them.
-  if (session.modelSettings.ultrafast === "true" || session.modelSettings.fast === "true") return null;
-  // Only a draft whose step can ride the create folds (a dock's: work/dock); any other first send is create, then send.
+ *  null when they cannot ride it: an older host, a step that runs only here, or a run setting the create does not take.
+ *  A host with `create.draft` takes every draft's first send: the steps, the speed and the message as the requests
+ *  the window would have sent, in its order (createSteps.ts); a host with `create.steps` alone, a dock's. */
+async function foldOf(session: Session, environmentId: string, first: FirstSend | undefined): Promise<Fold | null> {
+  if (!first || !first.text.trim()) return null;
+  const whole = hostFoldsDraft(environmentId);
+  if (!whole && !hostFoldsCreate(environmentId)) return null;
+  const ultrafast = session.modelSettings.ultrafast === "true";
+  const fast = !ultrafast && session.modelSettings.fast === "true";
+  // Fast and ultrafast are set after the create (`session.tune`): an older host's first turn would start without them.
+  if (!whole && (ultrafast || fast)) return null;
   const step = created.get(session.id);
-  if (!step?.fold) return null;
-  const steps = step.fold();
+  // A step that runs only here (no `fold`) must run before the message: create, the step, then send.
+  if (step && !step.fold) return null;
+  // With `create.steps` alone only a dock's draft folds; any other first send is create, then send.
+  if (!whole && !step) return null;
+  const steps: CreateFold = step?.fold?.() ?? {};
   const bridge = await bridgeFor(environmentId).catch(() => null);
+  const files = first.attachments.length ? { attachments: first.attachments } : {};
   return {
-    firstMessage: first.text,
-    ...(first.attachments.length ? { attachments: first.attachments } : {}),
     ...(steps.items?.length ? { items: steps.items } : {}),
     ...(steps.mailAdopt ? { mailAdopt: steps.mailAdopt } : {}),
     ...(bridge ? { bridge } : {}),
+    ...(whole
+      ? {
+          ...(ultrafast ? { tune: { ultrafast: true as const } } : fast ? { tune: { fast: true as const } } : {}),
+          send: { text: first.text, ...files },
+        }
+      : { firstMessage: first.text, ...files }),
   };
 }
 
@@ -267,14 +282,17 @@ async function createDraft(session: Session, first?: FirstSend): Promise<{ meta:
     // The first send whole, for a host that runs its steps (`foldOf`): one request before the host has the turn.
     ...(fold ?? {}),
   });
-  const { itemsFailed, ...made } = wire as CreateSessionReply;
+  const { itemsFailed, sendError, ...made } = wire as CreateSessionReply;
   const meta: SessionMeta = { ...made, environmentId: link.environmentId };
   if (fold) {
     // The host stored the message and ran the steps before it answered: the rows load as any thread's.
     const step = created.get(session.id);
     created.delete(session.id);
-    sessionStore.adopt(meta, { folded: true });
+    // The message did not go: the thread stays as create-then-send left it (adopted as made here, his message on
+    // screen) and the send's own error is the caller's.
+    sessionStore.adopt(meta, sendError === undefined ? { folded: true } : { created: true });
     if (itemsFailed?.length) step?.onItemsFailed?.(itemsFailed);
+    if (sendError !== undefined) throw new Error(sendError);
     return { meta, sent: true };
   }
   sessionStore.adopt(meta, { created: true });

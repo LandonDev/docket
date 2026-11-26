@@ -40,6 +40,7 @@ vi.mock("../macBridge", async (original) => ({
   bridgeNewThread: async (_environmentId: string, sessionId: string) => {
     if (bridge.on) bridge.set.push(sessionId);
   },
+  bridgeFor: async () => (bridge.on ? { macPeer: "mac-1" } : null),
 }));
 import type { EventRow, ServerPush, SessionMeta } from "./types";
 
@@ -78,6 +79,8 @@ class FakeLink implements Link {
   followed = new Set<string>();
   /** A folded create whose host tells every window of the new thread before it answers (a mail chat's adopt step). */
   pushBeforeReply = false;
+  /** A folded `send` the host refuses (createSteps.ts `sendError`): the thread stays, no row stored. */
+  sendFails: string | null = null;
   request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params });
     if (method === "session.list") return Promise.resolve([] as T);
@@ -92,6 +95,18 @@ class FakeLink implements Link {
       if (!p.subscribe) return Promise.resolve(rows as T);
       this.followed.add(p.sessionId);
       return Promise.resolve({ rows, moreBefore: false, moreAfter: false, reset: false, subscribed: true } as T);
+    }
+    if (method === "session.create" && (params as any).send) {
+      // A whole first send (`create.draft`): the host ran the steps, then the message as its own send, then answered.
+      const p = params as any;
+      if (this.sendFails) return Promise.resolve({ ...this.made(wireMeta({ id: p.id, status: "idle" })), sendError: this.sendFails } as T);
+      const wire = this.made(wireMeta({ id: p.id, status: "running", fast: !!p.tune?.fast, ultrafast: !!p.tune?.ultrafast }));
+      this.rows.set(p.id, [{ sessionId: p.id, seq: 1, ts: 1, event: { type: "user-text", text: p.send.text } }]);
+      setTimeout(() => {
+        this.stream({ sessionId: p.id, seq: 2, ts: 2, event: { type: "assistant-text", text: "On it.", delta: false } });
+        this.push({ push: "session", session: { ...wire, status: "idle" } });
+      }, 0);
+      return Promise.resolve(wire as T);
     }
     if (method === "session.create" && (params as any).firstMessage) {
       // A folded create: the host stores the message before it answers, then streams the turn to followers.
@@ -294,6 +309,121 @@ describe("send", () => {
     expect(link.of("session.create")[0].cwd).toBeUndefined();
     expect(link.of("session.create")[0].context1m).toBe(true);
     expect(link.of("session.tune")[0]).toEqual({ sessionId: draft.id, fast: true });
+  });
+});
+
+describe("a new thread's first send on a host that folds a draft whole (create.draft)", () => {
+  const hello = (features: string[]) =>
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open", lastHello: { features } } as never);
+  /** The requests the press made before the host had the turn, up to the one carrying his words; the store's own
+   *  follow of a made thread (`session.subscribe`, never awaited by the send) is not one of them. */
+  let from = 0;
+  beforeEach(() => void (from = link.calls.length));
+  const beforeTurn = (): string[] => {
+    const calls = link.calls.slice(from).filter((c) => c.method !== "session.subscribe");
+    const i = calls.findIndex((c) => c.method === "session.send" || (c.method === "session.create" && (c.params.send || c.params.firstMessage)));
+    return calls.slice(0, i + 1).map((c) => c.method);
+  };
+
+  it("a plain draft is one request: the create carries the message, and the reply follows the thread", async () => {
+    hello(["create.steps", "create.draft"]);
+    const draft = newSession("local", "claude", "/repo");
+    sessionStore.mutate([draft]);
+    await send(draft, "hello", [], undefined, undefined);
+    expect(beforeTurn()).toEqual(["session.create"]);
+    expect(link.of("session.create")[0]).toMatchObject({ id: draft.id, send: { text: "hello" } });
+    expect(link.of("session.create")[0]).not.toHaveProperty("firstMessage");
+    expect(link.of("session.create")[0]).not.toHaveProperty("bridge");
+    expect(link.of("session.send")).toHaveLength(0);
+    expect(link.of("session.tune")).toHaveLength(0);
+    expect(sessionStore.get(draft.id)!.blocks.map((b) => [b.role, b.text])).toEqual([["user", "hello"], ["assistant", "On it."]]);
+  });
+
+  it("this Mac's bridge, a file, his model and Fast all ride the one request", async () => {
+    hello(["create.steps", "create.draft"]);
+    bridge.on = true;
+    const draft = { ...newSession("local", "claude", "/repo", "claude:sonnet-5.5"), modelPicked: true as const, modelSettings: { effort: "high", fast: "true" } };
+    sessionStore.mutate([draft]);
+    await send(draft, "read this", [{ name: "a.txt", path: "/repo/a.txt", kind: "file" } as never], undefined, undefined);
+    expect(beforeTurn()).toEqual(["session.create"]);
+    expect(link.of("session.create")[0]).toMatchObject({
+      provider: "claude", model: "claude-sonnet-5-5", reasoning: "high",
+      bridge: { macPeer: "mac-1" }, tune: { fast: true },
+      send: { text: "read this", attachments: [{ path: "/repo/a.txt", name: "a.txt", kind: "file" }] },
+    });
+    // Nothing of the old path's steps runs here: the host ran them as their own requests.
+    expect(bridge.set).toEqual([]);
+    expect(link.calls.map((c) => c.method)).not.toContain("session.tune");
+  });
+
+  it("Ultrafast rides as ultrafast alone", async () => {
+    hello(["create.steps", "create.draft"]);
+    const draft = { ...newSession("local", "codex", "/repo", "codex:gpt-5.5"), modelSettings: { ultrafast: "true", fast: "true" } };
+    sessionStore.mutate([draft]);
+    await send(draft, "go", [], undefined, undefined);
+    expect(link.of("session.create")[0].tune).toEqual({ ultrafast: true });
+  });
+
+  it("a dock's step rides with the message as before, now beside the send", async () => {
+    hello(["create.steps", "create.draft"]);
+    const draft = newSession("local", "claude", "/repo");
+    sessionStore.mutate([draft]);
+    afterCreate.set(draft.id, async () => undefined, { fold: () => ({ items: [{ kind: "sheet", source: { at: "file", host: "local", path: "/repo/B.xlsx" }, title: "B" }] as never }) });
+    await send(draft, "What changed?", [], undefined, undefined);
+    expect(beforeTurn()).toEqual(["session.create"]);
+    expect(link.of("session.create")[0]).toMatchObject({ items: [{ title: "B" }], send: { text: "What changed?" } });
+    expect(afterCreate.pending(draft.id)).toBe(false);
+  });
+
+  it("a step that runs only here keeps create, the step, then send", async () => {
+    hello(["create.steps", "create.draft"]);
+    const draft = newSession("local", "claude", "/repo");
+    sessionStore.mutate([draft]);
+    const ran: string[] = [];
+    afterCreate.set(draft.id, async () => void ran.push(draft.id));
+    await send(draft, "hi", [], undefined, undefined);
+    expect(beforeTurn()).toEqual(["session.create", "session.send"]);
+    expect(ran).toEqual([draft.id]);
+  });
+
+  it.each([
+    ["no create.draft (create.steps alone)", ["create.steps"]],
+    ["neither", []],
+  ])("a host with %s gets the old calls: create, bridge, tune, send", async (_name, features) => {
+    hello(features);
+    bridge.on = true;
+    const draft = { ...newSession("local", "claude", "/repo"), modelSettings: { fast: "true" } };
+    sessionStore.mutate([draft]);
+    await send(draft, "hello", [], undefined, undefined);
+    // The bridge is its own request on the old path (lib/macBridge.ts bridgeNewThread, mocked here to record it).
+    expect(bridge.set).toEqual([draft.id]);
+    expect(beforeTurn()).toEqual(["session.create", "session.tune", "session.send"]);
+    expect(link.of("session.create")[0]).not.toHaveProperty("send");
+    expect(link.of("session.create")[0]).not.toHaveProperty("tune");
+  });
+
+  it("a first send the host refuses leaves what create-then-send left: the thread, his message on screen, the send's error", async () => {
+    const run = async (features: string[]) => {
+      hello(features);
+      const draft = newSession("local", "claude", "/repo");
+      sessionStore.mutate([draft]);
+      const error = await send(draft, "hello", [], undefined, undefined).then(() => null, (e: Error) => e.message);
+      return { error, made: !!sessionStore.metaOf(draft.id), draft: sessionStore.isDraft(draft.id), rows: sessionStore.get(draft.id)!.blocks.map((b) => [b.role, b.text]) };
+    };
+    link.sendFails = "forbidden: session.send is outside app-managed roots";
+    const folded = await run(["create.steps", "create.draft"]);
+    // The old path on the same refusal: the create answers, the send is refused.
+    sessionStore.reset();
+    link = new FakeLink();
+    link.request = ((original) => function (this: FakeLink, method: string, params?: unknown) {
+      if (method === "session.send") { this.calls.push({ method, params }); return Promise.reject(new Error("forbidden: session.send is outside app-managed roots")); }
+      return original.call(this, method, params);
+    })(link.request) as FakeLink["request"];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    const old = await run([]);
+    expect(folded).toEqual(old);
+    expect(folded).toEqual({ error: "forbidden: session.send is outside app-managed roots", made: true, draft: false, rows: [["user", "hello"]] });
   });
 });
 

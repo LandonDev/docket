@@ -3882,14 +3882,19 @@ export async function startServer(
             const ceiling = principal.kind === 'remote' ? accessCeiling(principal.caps) : undefined
             // A window's draft may fold its first send's steps into the create (createSteps.ts): run here, each as its own request.
             let itemsFailed: ItemFailed[] = []
+            let sendError: string | undefined
             const steps = hasCreateSteps(req.params)
             const before = steps
               ? async (created: SessionMeta): Promise<void> => {
-                  itemsFailed = (await runCreateSteps(created.id, req.params, runStep, () => `${req.id}~step${++stepSeq}`)).itemsFailed
+                  ;({ itemsFailed, sendError } = await runCreateSteps(created.id, req.params, runStep, () => `${req.id}~step${++stepSeq}`))
                 }
               : undefined
             const session = await registry.createSession(req.params, userTextByOf(principal), { ceiling, before })
-            const result: CreateSessionReply = itemsFailed.length ? { ...session, itemsFailed } : session
+            const result: CreateSessionReply = {
+              ...session,
+              ...(itemsFailed.length ? { itemsFailed } : {}),
+              ...(sendError !== undefined ? { sendError } : {})
+            }
             sendFrame({ id: req.id, ok: true, result })
             break
           }

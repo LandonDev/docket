@@ -512,6 +512,24 @@ public enum Methods {
                     self.macPeer = macPeer
                 }
             }
+            public struct Tune: Codable, Hashable, Sendable {
+                public let fast: Bool?
+                public let ultrafast: Bool?
+
+                public init(fast: Bool? = nil, ultrafast: Bool? = nil) {
+                    self.fast = fast
+                    self.ultrafast = ultrafast
+                }
+            }
+            public struct Send: Codable, Hashable, Sendable {
+                public let text: String
+                public let attachments: [Attachment]?
+
+                public init(text: String, attachments: [Attachment]? = nil) {
+                    self.text = text
+                    self.attachments = attachments
+                }
+            }
 
             public let id: String?
             public let provider: ProviderId?
@@ -539,10 +557,12 @@ public enum Methods {
             public let items: [Item]?
             public let mailAdopt: MailAdopt?
             public let bridge: Bridge?
+            public let tune: Tune?
+            public let send: Send?
             public let scope: SessionScope?
             public let about: ContextChip?
 
-            public init(id: String? = nil, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, agentType: AgentType? = nil, cwd: String? = nil, title: String? = nil, parentId: Patch<String>? = nil, projectId: Patch<String>? = nil, workspaceId: Patch<String>? = nil, threadType: Patch<ThreadType>? = nil, planPath: String? = nil, permission: PermissionPolicy? = nil, context1m: Bool? = nil, threadRules: ThreadRules? = nil, goal: String? = nil, startedBy: String? = nil, masterId: String? = nil, after: String? = nil, queue: Bool? = nil, master: Bool? = nil, firstMessage: String? = nil, attachments: [Attachment]? = nil, items: [Item]? = nil, mailAdopt: MailAdopt? = nil, bridge: Bridge? = nil, scope: SessionScope? = nil, about: ContextChip? = nil) {
+            public init(id: String? = nil, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, agentType: AgentType? = nil, cwd: String? = nil, title: String? = nil, parentId: Patch<String>? = nil, projectId: Patch<String>? = nil, workspaceId: Patch<String>? = nil, threadType: Patch<ThreadType>? = nil, planPath: String? = nil, permission: PermissionPolicy? = nil, context1m: Bool? = nil, threadRules: ThreadRules? = nil, goal: String? = nil, startedBy: String? = nil, masterId: String? = nil, after: String? = nil, queue: Bool? = nil, master: Bool? = nil, firstMessage: String? = nil, attachments: [Attachment]? = nil, items: [Item]? = nil, mailAdopt: MailAdopt? = nil, bridge: Bridge? = nil, tune: Tune? = nil, send: Send? = nil, scope: SessionScope? = nil, about: ContextChip? = nil) {
                 self.id = id
                 self.provider = provider
                 self.model = model
@@ -569,6 +589,8 @@ public enum Methods {
                 self.items = items
                 self.mailAdopt = mailAdopt
                 self.bridge = bridge
+                self.tune = tune
+                self.send = send
                 self.scope = scope
                 self.about = about
             }
