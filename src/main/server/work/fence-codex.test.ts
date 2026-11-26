@@ -20,6 +20,8 @@ class FakeProc extends EventEmitter {
   stderr = new PassThrough()
   stdin: Writable
   killed = false
+  /** Every request the driver wrote, by method. */
+  methods: string[] = []
   starts: { method: string; params: Record<string, unknown>; homeConfig: string | null }[] = []
   constructor(
     public argv: string[],
@@ -32,6 +34,7 @@ class FakeProc extends EventEmitter {
           if (!line) continue
           const frame = JSON.parse(line) as Frame
           if (frame.id === undefined) continue
+          this.methods.push(frame.method ?? '')
           if (frame.method === 'thread/start' || frame.method === 'thread/resume') {
             // what the home's config.toml holds at the moment the thread starts: codex reads it then
             const config = env.CODEX_HOME && existsSync(join(env.CODEX_HOME, 'config.toml')) ? readFileSync(join(env.CODEX_HOME, 'config.toml'), 'utf8') : null
@@ -39,7 +42,11 @@ class FakeProc extends EventEmitter {
             this.out({ id: frame.id, result: { thread: { id: 't1' } } })
             // the one server a fenced thread mounts; a code thread's fake mounts the same, which is no concern of this test
             this.out({ method: 'mcpServer/startupStatus/updated', params: { name: 'app', status: 'ready' } })
-          } else if (frame.method === 'mcpServerStatus/list') this.out({ id: frame.id, result: statusList })
+          } else if (frame.method === 'mcpServerStatus/list') {
+            const id = frame.id
+            if (holdList) heldList = () => this.out({ id, result: statusList })
+            else this.out({ id, result: statusList })
+          }
           else this.out({ id: frame.id, result: {} })
         }
         cb()
@@ -56,6 +63,9 @@ class FakeProc extends EventEmitter {
 const spawned: FakeProc[] = []
 /** What the app-server's settled list answers (`mcpServerStatus/list`); none by default, as an older app-server. */
 let statusList: unknown = {}
+/** Hold the list's answer until the test sends it (`heldList`). */
+let holdList = false
+let heldList: (() => void) | null = null
 vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:child_process')>()),
   spawn: (file: string, args: string[], opts: { env: NodeJS.ProcessEnv }) => {
@@ -209,6 +219,30 @@ it("a Work thread whose app-server's settled list names a server but the app's i
     await expect(handle.send('carry on')).rejects.toThrow(/Work fence/)
   } finally {
     statusList = {}
+  }
+})
+
+it('a first send waiting on the gate when the settled list breaks the fence writes no turn and fails with the fence', async () => {
+  statusList = { data: [{ name: 'app', runtimeStatus: 'connected' }, { name: 'lifeos', runtimeStatus: 'connected' }], nextCursor: null }
+  holdList = true
+  try {
+    const handle = await codexDriver.start({ session: session({ id: 'cx-9', scope: 'work' }), emit: () => {}, setNativeId: () => {}, requestApproval: async () => false })
+    handles.push(handle)
+    const proc = spawned.at(-1)!
+    // A server still starting holds the first-turn gate; the send waits on it.
+    proc.out({ method: 'mcpServer/startupStatus/updated', params: { name: 'app', status: 'starting' } })
+    await new Promise((r) => setTimeout(r, 10))
+    const sent = handle.send('carry on')
+    await new Promise((r) => setTimeout(r, 10))
+    // The list answers now, naming a stranger: the fence breaks and the wait ends.
+    heldList!()
+    await expect(sent).rejects.toThrow(/Work fence: Codex started an MCP server that is not this app's \("lifeos"\)/)
+    expect(proc.killed).toBe(true)
+    expect(proc.methods).not.toContain('turn/start')
+  } finally {
+    statusList = {}
+    holdList = false
+    heldList = null
   }
 })
 

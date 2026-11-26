@@ -1450,8 +1450,12 @@ export const codexDriver: HarnessDriver = {
         // dispose) must not swallow the message: the registry drops the
         // handle and boots a fresh one on this word.
         // A fence that broke stays broken for this handle: the message is refused, never sent to a harness that mounted a stranger's server.
-        if (fenceBroken) throw new Error(`Work fence: Codex started an MCP server that is not this app's ("${fenceBroken}"); this thread's harness was stopped`)
-        if (disposed || conn.exited) throw new Error('harness gone: the codex app-server has exited')
+        // Asked again right before the turn goes out: the first-turn wait can end on the fence breaking (breakFence).
+        const refuse = (): void => {
+          if (fenceBroken) throw new Error(`Work fence: Codex started an MCP server that is not this app's ("${fenceBroken}"); this thread's harness was stopped`)
+          if (disposed || conn.exited) throw new Error('harness gone: the codex app-server has exited')
+        }
+        refuse()
         setStatus('running')
         // The first send waits for the MCP servers: said as the CLI's
         // initializing, and its time noted on the span's `delivered`.
@@ -1504,6 +1508,7 @@ export const codexDriver: HarnessDriver = {
         }
         // A re-set that failed at the move is sent again before the next turn.
         if (!currentTurnId && wantedRoot && wantedRoot !== heldRoot) await setSkillRoot(wantedRoot)
+        refuse()
         if (gateMs !== null) ctx.mark?.('delivered', `mcp=${gateMs}`)
         // A person's steer into the running turn: turn/steer appends it to
         // exactly that turn, and refuses when it has ended ("no active turn
@@ -1514,7 +1519,7 @@ export const codexDriver: HarnessDriver = {
           conn
             .request('turn/steer', { threadId, expectedTurnId: currentTurnId, input, clientUserMessageId: steerId })
             .catch(() => {
-              if (!disposed && !conn.exited) start()
+              if (!disposed && !conn.exited && !fenceBroken) start()
             })
           return
         }
