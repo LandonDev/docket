@@ -29,6 +29,9 @@ struct NoticeLine<Glyph: View>: View {
     var chevron: Bool?
     @ViewBuilder let glyph: () -> Glyph
     @Environment(\.noticeStep) private var step
+    /// The glyph's slot grows with the text, as the glyph does, so the gap to the first letter stays open.
+    @ScaledMetric(relativeTo: .footnote) private var slot = TranscriptMetrics.glyphSlot
+    @ScaledMetric(relativeTo: .footnote) private var slotLine = TranscriptMetrics.glyphLine
 
     var body: some View {
         let shown = details.filter { !$0.isEmpty }
@@ -36,7 +39,7 @@ struct NoticeLine<Glyph: View>: View {
         let run = step ? Array(shown.dropFirst()) : shown
         HStack(alignment: .top, spacing: 0) {
             glyph()
-                .frame(width: TranscriptMetrics.glyphSlot, height: TranscriptMetrics.glyphLine)
+                .frame(width: slot, height: slotLine)
                 .padding(.trailing, TranscriptMetrics.glyphGap)
             words(target: target, run: run)
                 .lineLimit(wrap ? 4 : 1)

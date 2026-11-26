@@ -63,6 +63,26 @@ public enum ConnectionSentence {
     }
 }
 
+/// A computer's link with no name in it, for a row that already names the computer (Home's host card): the
+/// desktop's `linkFact` (src/renderer/src/lib/connection/degraded.ts), "Reconnecting…", "Offline", "No longer
+/// accepts this key". `ConnectionSentence` stays the one sentence where nothing else names it.
+public enum ConnectionFact {
+    public static func text(for status: EnvironmentStatus) -> String {
+        switch status.transport {
+        case .open: "Connected"
+        case .connecting: "Connecting…"
+        case .reconnecting, .suspended: "Reconnecting…"
+        case .offline:
+            switch status.halt {
+            case .identityChanged?: "Not the host this computer paired with"
+            case .contractMismatch?: "Needs an update"
+            case nil: "Offline"
+            }
+        case .unauthorized: "No longer accepts this key"
+        }
+    }
+}
+
 /// A computer's name inside a sentence, as the desktop says it (src/renderer/src/lib/hostWords.ts `nameInLine`):
 /// "The box" reads "the box", "This Mac" reads "this Mac"; a name of its own ("Studio Mac") stays as it is.
 public func nameInLine(_ name: String) -> String {

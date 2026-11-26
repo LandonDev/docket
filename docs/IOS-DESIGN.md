@@ -131,8 +131,10 @@ copies linked across hosts (one `linkId`) are one row. The row is the
 workspace's mark at 28 pt (the repo icon in a continuous `size / 4`
 corner with a hairline outline, else the git host's mark, else a folder),
 the name in the title step at medium (a name two rows share gets one meta
-line under it: the computer's name when each is on its own computer, else
-the shortest parent folders that differ, `HomeSections.nameHints`), and the
+line under it: the computer's name when the copies span computers, with
+the shortest parent folders that differ before it only where two copies on
+one computer still tie ("work on Mac"), and the folders alone when every copy
+is on one computer, `HomeSections.nameHints`), and the
 desktop column's one status,
 loudest first (useProjectSignals.ts `workspaceRailStatuses`): paused (the
 pause glyph in warning), needs you (a warning dot: waiting on an answer,
@@ -153,8 +155,9 @@ every host is down sits at 50 % opacity. An unauthorized or offline host,
 or one reconnecting for longer than the 1.5 s hold (`HomeSections.troubled`,
 the status line's and the desktop's `DEGRADED_GRACE_MS`), shows one status
 row at the top of Home with the action (Retry, Sign In Again), never a
-blank screen; its words are the computer's page's sentence
-(`ConnectionStatusText`, `ConnectionSentence`), never the socket's raw error
+blank screen; under the host's name its words leave the name out, the
+desktop's `linkFact` ("Reconnecting…", "Offline", "No longer accepts this
+key"; `ConnectionFact`), never the socket's raw error
 (Diagnostics shows that); a host reached through the box folds under
 the box's row while the box is in trouble (`HomeHostInput.via`), and one the
 relay says is locked, asleep or unreachable gets no row: its foot row's line

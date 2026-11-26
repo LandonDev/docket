@@ -236,6 +236,13 @@ public struct ToolPhrase: Hashable, Sendable {
         s.prefix(1).uppercased() + s.dropFirst()
     }
 
+    /// `cap` for text that may be a command as typed: only a first word in plain lower case (a verb, a word of
+    /// ours) is raised; `TEMP_CODE_GATEWAY_TRACE=1`, `iOS` or `./run.sh` stays exactly as written.
+    private static func capPhrase(_ s: String) -> String {
+        let first = s.prefix { !$0.isWhitespace }
+        return !first.isEmpty && first.allSatisfy({ $0.isLowercase && $0.isLetter }) ? cap(s) : s
+    }
+
     // MARK: - commands
 
     private static let past: [String: String] = [
@@ -256,16 +263,17 @@ public struct ToolPhrase: Hashable, Sendable {
         "format": "formatting", "manage": "managing",
     ]
 
-    /// "check git status" → "checked git status" / "checking git status".
+    /// "check git status" → "checked git status" / "checking git status". A first word that is no known verb
+    /// keeps its own case: a command's text is never recased.
     private static func tense(_ phrase: String, live: Bool) -> String {
         var words = phrase.split(separator: " ").map(String.init)
         guard let first = words.first else { return phrase }
         let w = first.lowercased()
         let verb: String
         if live {
-            verb = ing[w] ?? (past[w] != nil ? (w.hasSuffix("e") ? String(w.dropLast()) : w) + "ing" : w)
+            verb = ing[w] ?? (past[w] != nil ? (w.hasSuffix("e") ? String(w.dropLast()) : w) + "ing" : first)
         } else {
-            verb = past[w] ?? w
+            verb = past[w] ?? first
         }
         words[0] = verb
         return words.joined(separator: " ")
@@ -284,7 +292,7 @@ public struct ToolPhrase: Hashable, Sendable {
         let live = live ?? tool.isLive
         func form(_ phrase: String) -> String { !live && tool.isRefused ? phrase : tense(phrase, live: live) }
         let desc = (input(tool)["description"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !desc.isEmpty { return [cap(form(trim(desc.prefix(1).lowercased() + desc.dropFirst(), 60)))] }
+        if !desc.isEmpty { return [capPhrase(form(trim(desc, 60)))] }
         if let title = foldedTitle(tool) { return ["\(cap(form(title.verb))) \(title.object)"] }
         return commandPhrases(commandOf(tool), cwd: cwd).enumerated().map { index, phrase in
             index == 0 ? cap(form(phrase)) : form(phrase)

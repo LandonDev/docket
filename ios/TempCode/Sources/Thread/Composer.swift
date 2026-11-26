@@ -600,10 +600,21 @@ struct ComposerBox<Trailing: View>: View {
                 .accessibilityLabel("Add photos")
                 .transition(.opacity)
             }
-            ComposerField(draft: draft, prompt: blocked ?? placeholder, label: blocked ?? "Message", focused: focused, off: blocked != nil)
-                .padding(.vertical, ComposerMetrics.fieldPad)
-                .padding(.leading, canAttach ? 0 : ComposerMetrics.gap)
-                .frame(minHeight: side)
+            Group {
+                if let blocked {
+                    // The reason whole, wrapping at any text size: a field's prompt is cut to one line.
+                    Text(blocked)
+                        .transcriptType(TranscriptType.prose)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    ComposerField(draft: draft, prompt: placeholder, label: "Message", focused: focused, off: false)
+                }
+            }
+            .padding(.vertical, ComposerMetrics.fieldPad)
+            .padding(.leading, canAttach ? 0 : ComposerMetrics.gap)
+            .frame(minHeight: side)
             if blocked == nil {
                 button
                     .transition(.opacity)

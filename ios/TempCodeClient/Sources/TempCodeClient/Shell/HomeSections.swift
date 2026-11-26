@@ -493,29 +493,48 @@ public enum HomeSections {
     }
 
     /// What tells same-named workspaces apart on Home, by workspace id: for
-    /// a name two or more rows share, the computer's name when each sits on
-    /// its own computer, else the shortest run of parent folders that differs
-    /// ("work", "work/old"); nothing for a name only one row has.
+    /// a name two or more rows share across computers, the computer's name,
+    /// and where two copies on one computer still tie, the shortest run of
+    /// parent folders that differs before it ("work on Mac"); on one
+    /// computer alone, the folders ("work", "u/old"). Nothing for a name only
+    /// one row has.
     public nonisolated static func nameHints(_ workspaces: [HomeWorkspace], hostName: (String) -> String?) -> [String: String] {
         var out: [String: String] = [:]
         let groups = Dictionary(grouping: workspaces) { $0.name.lowercased() }.values.filter { $0.count > 1 }
         for group in groups {
-            let hosts = group.map { $0.members.first?.environmentId ?? "" }
-            if Set(hosts).count == group.count {
-                for (workspace, host) in zip(group, hosts) { out[workspace.id] = hostName(host) }
+            let byHost = Dictionary(grouping: group) { $0.members.first?.environmentId ?? "" }
+            guard byHost.count > 1 else {
+                out.merge(folderHints(group)) { first, _ in first }
                 continue
             }
-            let parents = group.map { workspace -> [String] in
-                let parts = (workspace.members.first?.workspace.path ?? "").split(separator: "/").map(String.init)
-                return Array(parts.dropLast())
-            }
-            let deepest = parents.map(\.count).max() ?? 0
-            for depth in 1...max(1, deepest) {
-                let hints = parents.map { $0.suffix(depth).joined(separator: "/") }
-                if Set(hints).count == hints.count || depth == deepest {
-                    for (workspace, hint) in zip(group, hints) where !hint.isEmpty { out[workspace.id] = hint }
-                    break
+            for (host, copies) in byHost {
+                let name = hostName(host)
+                let folders = copies.count > 1 ? folderHints(copies) : [:]
+                for copy in copies {
+                    switch (folders[copy.id], name) {
+                    case let (folder?, name?): out[copy.id] = "\(folder) on \(name)"
+                    case let (folder?, nil): out[copy.id] = folder
+                    case let (nil, name): out[copy.id] = name
+                    }
                 }
+            }
+        }
+        return out
+    }
+
+    /// The shortest run of parent folders, one depth for the whole set, that tells these copies apart.
+    nonisolated static func folderHints(_ copies: [HomeWorkspace]) -> [String: String] {
+        var out: [String: String] = [:]
+        let parents = copies.map { workspace -> [String] in
+            let parts = (workspace.members.first?.workspace.path ?? "").split(separator: "/").map(String.init)
+            return Array(parts.dropLast())
+        }
+        let deepest = parents.map(\.count).max() ?? 0
+        for depth in 1...max(1, deepest) {
+            let hints = parents.map { $0.suffix(depth).joined(separator: "/") }
+            if Set(hints).count == hints.count || depth == deepest {
+                for (workspace, hint) in zip(copies, hints) where !hint.isEmpty { out[workspace.id] = hint }
+                break
             }
         }
         return out
