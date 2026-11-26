@@ -192,7 +192,9 @@ The service uses physical pixels for window geometry and input at every Windows 
   service names the tab's page only when every other pane is the
   browser's own (`chrome-extension:` and the like) and the selected tab
   names that page. Anything else stays refused (`BrowserAddress`,
-  docs/computer-protocol.md §25.12). Linked hosts share their listener ports,
+  docs/computer-protocol.md §25.12). Opened the normal way, Aside shows
+  no page tree to the service, so it stays refused. Launched with
+  `--force-renderer-accessibility`, it reads and acts like Chrome. Linked hosts share their listener ports,
   LAN addresses and names, and tunnel names when they connect and on each
   heartbeat. Before browser input the host confirms the lists over the
   live peer links. A missing or stale list stops input on every site,

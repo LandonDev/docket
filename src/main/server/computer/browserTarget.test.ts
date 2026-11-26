@@ -19,7 +19,7 @@ const box = (origin: string) => ({ listenerPorts: [7677], lanAddresses: [], tunn
 
 describe('the computer tools refuse the app’s own web routes on both public names', () => {
   it.each(['https://tempcode.landonhale.com', 'https://docket.landonhale.com'])('saved as %s', async (saved) => {
-    for (const url of ['https://tempcode.landonhale.com/ui', 'https://docket.landonhale.com/ui', 'https://docket.landonhale.com/w/doc/x', 'wss://tempcode.landonhale.com/ws']) {
+    for (const url of ['https://tempcode.landonhale.com/ui', 'https://docket.landonhale.com/ui', 'https://docket.landonhale.com/w/doc/x', 'https://docket.landonhale.com/pair', 'https://tempcode.landonhale.com/pair', 'wss://tempcode.landonhale.com/ws']) {
       expect(await refusedBrowserTarget({ browser: true, url }, box(saved))).toBe(TEMPCODE_ORIGIN_REFUSAL)
     }
   })
