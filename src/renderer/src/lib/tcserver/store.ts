@@ -17,7 +17,7 @@ import {
   type LinkRequestOptions,
 } from "../connection";
 import { modeForPolicy } from "./access";
-import { applyRowBody, emptyFold, foldEvent, foldOptimisticUser, reconcilePending, type FoldState } from "./fold";
+import { applyRowBody, emptyFold, FoldBuilder, foldEvent, foldOptimisticUser, reconcilePending, type FoldState } from "./fold";
 import type { EventsPage, SessionChanges, SessionPage } from "@server/shared/wire";
 import type { MirrorCursor, MirrorHost } from "@server/shared/launchMirror";
 import { HISTORY_PAGE_ROWS } from "@server/shared/wireBudgets";
@@ -442,6 +442,8 @@ class SessionStore {
   private listeners = new Set<() => void>();
   private metaListeners = new Set<(changes: MetaChanges) => void>();
   private metaChildren = new Map<string, string[]>();
+  /** A master's batch threads (roots that name it), by the master's id: what `mountedClosure` keeps with a mounted master. */
+  private masterThreads = new Map<string, Set<string>>();
   private entryOrder = new Map<string, number>();
   private nextEntryOrder = 0;
   private changedMetaIds = new Set<string>();
@@ -711,6 +713,7 @@ class SessionStore {
     this.entries.clear();
     this.draftRules.clear();
     this.metaChildren.clear();
+    this.masterThreads.clear();
     this.entryOrder.clear();
     this.nextEntryOrder = 0;
     this.changedMetaIds.clear();
@@ -844,7 +847,22 @@ class SessionStore {
   private indexMeta(id: string, next: SessionMeta | null): void {
     this.changedMetaIds.add(id);
     for (const ancestor of this.ancestorsOf(id)) this.affectedMetaIds.add(ancestor);
-    const previous = this.metaOf(id)?.parentId;
+    const was = this.metaOf(id);
+    const masterWas = was?.masterId && !was.parentId ? was.masterId : undefined;
+    const masterNow = next?.masterId && !next.parentId ? next.masterId : undefined;
+    if (masterWas !== masterNow) {
+      if (masterWas) {
+        const threads = this.masterThreads.get(masterWas);
+        threads?.delete(id);
+        if (threads?.size === 0) this.masterThreads.delete(masterWas);
+      }
+      if (masterNow) {
+        const threads = this.masterThreads.get(masterNow);
+        if (threads) threads.add(id);
+        else this.masterThreads.set(masterNow, new Set([id]));
+      }
+    }
+    const previous = was?.parentId;
     if (previous !== next?.parentId) {
       if (previous) {
         const siblings = this.metaChildren.get(previous)!;
@@ -1374,6 +1392,9 @@ class SessionStore {
     const now = new Set(ids);
     this.mounted = now;
     const left = before ? [...before].filter((id) => !now.has(id)) : [];
+    // The same panes again (a tab change that moved none) with the unload already on its way: nothing to
+    // rearm, and the pass keeps its time.
+    if (before && left.length === 0 && before.size === now.size && this.unloadTimer) return;
     this.leave(left, now);
   }
 
@@ -1400,9 +1421,13 @@ class SessionStore {
 
   /** `left` went off screen: recently shown, and the unload runs after the grace period. */
   private leave(left: string[], now: ReadonlySet<string>): void {
-    this.recent = [...left, ...this.recent.filter((id) => !now.has(id) && !left.includes(id))]
+    const recent = [...left, ...this.recent.filter((id) => !now.has(id) && !left.includes(id))]
       .filter((id) => this.entries.has(id) && !this.apart.has(id))
       .slice(0, KEEP_RECENT);
+    const same = left.length === 0 && recent.length === this.recent.length && recent.every((id, i) => id === this.recent[i]);
+    this.recent = recent;
+    // Nothing left and the recently shown are as they were: a pass already on its way keeps its time.
+    if (same && this.unloadTimer) return;
     if (this.unloadTimer) clearTimeout(this.unloadTimer);
     this.unloadTimer = setTimeout(() => {
       this.unloadTimer = null;
@@ -1416,13 +1441,16 @@ class SessionStore {
   private mountedClosure(): Set<string> | null {
     if (!this.mounted) return null;
     const keep = new Set([...this.mounted, ...this.apart]);
-    for (const entry of this.entries.values()) {
-      const master = entry.meta?.masterId;
-      if (master && !entry.meta!.parentId && keep.has(master)) keep.add(entry.meta!.id);
-    }
-    for (const entry of this.entries.values()) {
-      const parent = entry.meta?.parentId;
-      if (parent && keep.has(parent)) keep.add(entry.meta!.id);
+    // Walked from the kept ids through the two indexes, never over every thread: a switch costs what is on
+    // the page, whatever the rail holds.
+    for (const id of [...keep]) for (const thread of this.masterThreads.get(id) ?? NO_IDS) keep.add(thread);
+    const walk = [...keep];
+    for (let at = 0; at < walk.length; at++) {
+      for (const child of this.metaChildren.get(walk[at]) ?? NO_IDS) {
+        if (keep.has(child)) continue;
+        keep.add(child);
+        walk.push(child);
+      }
     }
     return keep;
   }
@@ -1811,13 +1839,32 @@ class SessionStore {
    *  the last slice, so nothing folds between two of a page's rows. */
   private async foldSliced(entry: Entry, rows: EventRow[]): Promise<void> {
     let sliceAt = performance.now();
-    for (let i = 0; i < rows.length; i++) {
-      this.foldRow(entry, rows[i]);
-      if (i + 1 < rows.length && performance.now() - sliceAt > FOLD_SLICE_MS) {
-        await yieldToWindow();
-        if (this.entries.get(entry.session.id) !== entry) return;
-        sliceAt = performance.now();
+    for (let i = 0; i < rows.length; ) {
+      // One builder a slice: the thread's blocks copy once a slice, not once a row (a 1 MiB gap page
+      // into a long thread was rows × blocks). Built again after each yield, from what the entry holds
+      // then: his own send or a fetched body may have landed between two slices.
+      const builder = new FoldBuilder(foldStateOf(entry), entry.session.cwd);
+      let seq = entry.lastSeq;
+      let ts: number | undefined;
+      for (; i < rows.length; ) {
+        const row = rows[i++];
+        this.noteSinceHead(entry, row);
+        builder.add(row);
+        // What `foldRow` keeps of a row the fold took: a persisted row past the cursor.
+        if (!row.ephemeral && row.seq > seq) {
+          seq = row.seq;
+          ts = row.ts;
+          entry.rows?.push(row);
+        }
+        if (performance.now() - sliceAt > FOLD_SLICE_MS) break;
       }
+      const after = builder.state();
+      if (after.lastSeq !== entry.lastSeq) entry.lastTs = ts;
+      this.landFold(entry, after);
+      if (i >= rows.length) return;
+      await yieldToWindow();
+      if (this.entries.get(entry.session.id) !== entry) return;
+      sliceAt = performance.now();
     }
   }
 
@@ -1926,16 +1973,22 @@ class SessionStore {
         // so a row that lands mid-way is folded by the index loop below.
         const rows = [...page.rows, ...entry.rows];
         entry.rows = rows;
-        const cwd = entry.session.cwd;
-        let state = emptyFold();
-        for (let i = 0; i < rows.length; i += HEAD_CHUNK) {
-          for (const row of rows.slice(i, i + HEAD_CHUNK)) state = foldEvent(state, row, cwd);
-          if (i + HEAD_CHUNK < rows.length) await new Promise((r) => setTimeout(r, 0));
-          if (!live()) return false;
+        // One builder for the whole refold: each row is folded once and the blocks never copied a row.
+        // The window gets the thread back every FOLD_SLICE_MS; `rows.length` is read each step, so a
+        // push that lands mid-way folds too.
+        const builder = new FoldBuilder(emptyFold(), entry.session.cwd);
+        let sliceAt = performance.now();
+        for (let i = 0; i < rows.length; i++) {
+          builder.add(rows[i]);
+          if (i + 1 < rows.length && performance.now() - sliceAt > FOLD_SLICE_MS) {
+            await yieldToWindow();
+            if (!live()) return false;
+            sliceAt = performance.now();
+          }
         }
         // The person's unechoed rows meet the refolded log: an echo among
         // the rows stands for its row, the rest stay pending in their place.
-        state = reconcilePending(state, entry.session.blocks.filter((b) => b.pending));
+        const state = reconcilePending(builder.state(), entry.session.blocks.filter((b) => b.pending));
         this.refoldCursor(entry, state.lastSeq);
         entry.nextId = Math.max(state.nextId, entry.nextId);
         entry.session = {
@@ -2051,8 +2104,8 @@ class SessionStore {
     const id = entry.session.id;
     head.fetching = true;
     const live = (): boolean => this.entries.get(id) === entry && entry.head === head;
-    const cwd = entry.session.cwd;
-    let state = emptyFold();
+    // One builder for the whole head: its blocks are never copied a row.
+    const builder = new FoldBuilder(emptyFold(), entry.session.cwd);
     // The head arrives in slices: each call reads at most HEAD_FETCH rows
     // on the server and folds here in HEAD_CHUNK pieces with a yield
     // between, so neither process holds a 40k-row log in one breath.
@@ -2074,7 +2127,8 @@ class SessionStore {
       if (!live()) return;
       for (let i = 0; i < rows.length; i += HEAD_CHUNK) {
         if (!live()) return;
-        for (const row of rows.slice(i, i + HEAD_CHUNK)) state = foldEvent(state, row, cwd);
+        const end = Math.min(rows.length, i + HEAD_CHUNK);
+        for (let at = i; at < end; at++) builder.add(rows[at]);
         if (i + HEAD_CHUNK < rows.length) await new Promise((r) => setTimeout(r, 0));
       }
       // A page can be cut short by bytes (the host reads 4 MiB pages), not
@@ -2087,8 +2141,8 @@ class SessionStore {
     }
     if (!live()) return;
     // Pushes that landed while the head folded are in `since`, after the tail.
-    for (const row of head.since) state = foldEvent(state, row, cwd);
-    state = reconcilePending(state, entry.session.blocks.filter((b) => b.pending));
+    for (const row of head.since) builder.add(row);
+    const state = reconcilePending(builder.state(), entry.session.blocks.filter((b) => b.pending));
     this.refoldCursor(entry, state.lastSeq);
     entry.nextId = Math.max(state.nextId, entry.nextId);
     entry.session = {
@@ -2259,17 +2313,38 @@ class SessionStore {
     entry.lastTs = undefined;
   }
 
-  private foldRow(entry: Entry, row: EventRow): boolean {
+  /** While a head is on its way, a row that lands is kept to fold after it (a call's partial rows in one slot). */
+  private noteSinceHead(entry: Entry, row: EventRow): void {
     const head = entry.head;
-    if (head) {
-      if (row.ephemeral && row.event.type === "tool-call" && row.event.partial) {
-        const slot = head.previews.get(row.event.callId);
-        if (slot === undefined) {
-          head.previews.set(row.event.callId, head.since.length);
-          head.since.push(row);
-        } else head.since[slot] = row;
-      } else head.since.push(row);
+    if (!head) return;
+    if (row.ephemeral && row.event.type === "tool-call" && row.event.partial) {
+      const slot = head.previews.get(row.event.callId);
+      if (slot === undefined) {
+        head.previews.set(row.event.callId, head.since.length);
+        head.since.push(row);
+      } else head.since[slot] = row;
+    } else head.since.push(row);
+  }
+
+  /** A fold's answer written into the entry; false when it is the state the entry already held. */
+  private landFold(entry: Entry, after: FoldState): boolean {
+    if (after.blocks === entry.session.blocks && after.busy === !!entry.session.busy && after.lastSeq === entry.lastSeq && after.nextId === entry.nextId && after.thread === entry.session.thread && after.context === entry.session.context) {
+      return false;
     }
+    entry.lastSeq = after.lastSeq;
+    entry.nextId = after.nextId;
+    entry.session = {
+      ...entry.session,
+      blocks: after.blocks,
+      busy: after.busy,
+      thread: after.thread,
+      ...contextAfterFold(entry.session.context, after.context),
+    };
+    return true;
+  }
+
+  private foldRow(entry: Entry, row: EventRow): boolean {
+    this.noteSinceHead(entry, row);
     const before = foldStateOf(entry);
     const after = foldEvent(before, row, entry.session.cwd);
     if (after === before) return false;

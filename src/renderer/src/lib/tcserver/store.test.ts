@@ -1285,6 +1285,77 @@ describe("the mounted set", () => {
     expect(sessionStore.get("other")?.loaded).toBe(false);
   });
 
+  it("a master's threads and their subagents are kept whatever order the list gave them in, by two indexes and one pass over the threads", async () => {
+    // The grandchild is listed before its parent, and 2,000 threads no pane shows sit around them.
+    link.metas = [
+      wireMeta({ id: "grandkid", parentId: "kid" }),
+      wireMeta({ id: "m", isMaster: true }),
+      wireMeta({ id: "child", masterId: "m" }),
+      wireMeta({ id: "kid", parentId: "child" }),
+      wireMeta({ id: "other" }),
+      ...Array.from({ length: 2_000 }, (_, i) => wireMeta({ id: `idle${i}` })),
+    ];
+    for (const id of ["child", "kid", "grandkid", "other"]) link.events.set(id, rowsFor(id, 2));
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await Promise.all(["child", "kid", "grandkid", "other"].map((id) => sessionStore.ensureLoaded(id, "test")));
+    // Walks of a map as large as the thread list: the unload pass makes one; the closure made two more.
+    let walks = 0;
+    const values = Map.prototype.values;
+    const spy = vi.spyOn(Map.prototype, "values").mockImplementation(function (this: Map<unknown, unknown>) {
+      if (this.size > 2_000) walks++;
+      return values.call(this);
+    });
+    vi.useFakeTimers();
+    try {
+      sessionStore.setMounted(["m"]);
+      await vi.advanceTimersByTimeAsync(3100);
+    } finally {
+      vi.useRealTimers();
+      spy.mockRestore();
+    }
+    expect(walks).toBe(1);
+    for (const id of ["child", "kid", "grandkid"]) expect(sessionStore.get(id)?.loaded).toBe(true);
+    expect(sessionStore.get("other")?.loaded).toBe(false);
+    // A thread that leaves its master's batch is no longer kept with it.
+    link.push({ push: "session", session: wireMeta({ id: "child", masterId: undefined }) });
+    await sessionStore.ensureLoaded("other", "test");
+    vi.useFakeTimers();
+    try {
+      sessionStore.setMounted(["m", "other"]);
+      sessionStore.setMounted(["m"]);
+      await vi.advanceTimersByTimeAsync(3100);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sessionStore.get("child")?.loaded).toBe(false);
+  });
+
+  it("the same panes again leave the unload on its way: one timer, and the pass keeps its time", async () => {
+    link.metas = [wireMeta({ id: "a" }), wireMeta({ id: "other" })];
+    for (const id of ["a", "other"]) link.events.set(id, rowsFor(id, 2));
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await Promise.all(["a", "other"].map((id) => sessionStore.ensureLoaded(id, "test")));
+    vi.useFakeTimers();
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    try {
+      sessionStore.setMounted(["a"]);
+      // A tab change that moves no pane, five times inside the grace period.
+      for (let i = 0; i < 5; i++) {
+        await vi.advanceTimersByTimeAsync(500);
+        sessionStore.setMounted(["a"]);
+      }
+      expect(timers.mock.calls.filter(([, ms]) => ms === 3000)).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(600);
+      // 3.1 s after the pane change, not 3 s after the last of the five.
+      expect(sessionStore.get("other")?.loaded).toBe(false);
+    } finally {
+      timers.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("a chat shown apart from every pane (a Work dock) is held as a mounted pane's: kept through the sweep, replayed on a reconnect, let go as one that left", async () => {
     link.metas = [wireMeta({ id: "a" }), wireMeta({ id: "docked" }), wireMeta({ id: "other" })];
     for (const id of ["a", "docked", "other"]) link.events.set(id, rowsFor(id, 2));

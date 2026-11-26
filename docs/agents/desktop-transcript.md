@@ -41,7 +41,12 @@
   `foldAll` is `foldPage`. "Load earlier" refolds the kept rows behind the
   older page through one builder (`foldOlder`): exact, since the board's
   rounds and todos (`Block.round`, `Block.todo`) count from the first row,
-  and each page costs its rows once. Rows (surfaces/transcriptActivity.ts,
+  and each page costs its rows once. The store (lib/tcserver/store.ts) folds
+  through the builder everywhere a page lands: a resume page (`foldSliced`,
+  one builder a slice, built again after each yield from what the entry
+  holds then), "Load earlier" (`loadOlder`) and the local profile's head
+  (`fetchHead`); store.remote.test.ts counts a 1,000-row gap into 4,000
+  blocks at 13,000 block visits (9,000,000 row by row). Rows (surfaces/transcriptActivity.ts,
   transcriptRows.ts): `extendTurns` splits the turns again only from the
   first block that changed, a live turn made from the last one regroups its
   items from that block (`turnItems`, `turnUser`; a block's part in the
@@ -103,7 +108,10 @@
   (docs/agents/interactive-lane.md).
   The store keeps the last `KEEP_RECENT` (6) transcripts whose panes left
   loaded and subscribed, so a switch back sends nothing (a chat a Work dock
-  shows counts as a mounted pane, `sessionStore.showApart`); the markdown
+  shows counts as a mounted pane, `sessionStore.showApart`); what stays is
+  walked from the panes through two indexes (a thread's children, a
+  master's threads), never over every thread, and the same panes named
+  again leave the 3 s unload on its way; the markdown
   worker parses one commit's texts newest first. docs/TRANSCRIPT.md
   "Opening a thread on another host" has the numbers. The local profile's
   `session.events` reads on the reader worker in 4 MiB pages

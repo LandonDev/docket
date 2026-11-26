@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sessionStore, type Link } from "./store";
+import { foldProbe } from "./fold";
 import { openStamps } from "../openStamps";
 import { ConnectionLostError } from "../connection";
 import { newSession } from "../session";
@@ -612,6 +613,69 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(blocks[0].text).toBe("prompt 1");
     expect(blocks.at(-1)!.text).toBe("answer 1000");
     expect(yields).toBeGreaterThan(100);
+  });
+});
+
+describe("remote profile: what a page costs to fold", () => {
+  /** The fold's own count of blocks read and copied (fold.ts `foldProbe`). */
+  const visitsOf = async (run: () => Promise<unknown>): Promise<number> => {
+    foldProbe.visits = 0;
+    await run();
+    return foldProbe.visits;
+  };
+  // One slice a page, whatever the machine's speed: the count below is of the fold, not of the clock.
+  const oneSlice = (): (() => void) => {
+    const spy = vi.spyOn(performance, "now").mockReturnValue(0);
+    return () => spy.mockRestore();
+  };
+
+  it("a resume page into a long thread copies its blocks once a slice, not once a row", async () => {
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.pageRows = 4_000;
+    link.events.set("s1", turns("s1", 2_000));
+    await boot(link);
+    const restore = oneSlice();
+    try {
+      sessionStore.setMounted(["s1"]);
+      await sessionStore.ensureLoaded("s1");
+      expect(sessionStore.get("s1")!.blocks).toHaveLength(4_000);
+      // The gap after a cut: 1,000 rows more, answered as one resume page.
+      const gap = turns("s1", 500, 4_001);
+      link.events.set("s1", [...link.events.get("s1")!, ...gap]);
+      const visits = await visitsOf(async () => {
+        link.open();
+        await vi.waitFor(() => expect(sessionStore.get("s1")!.blocks).toHaveLength(5_000));
+      });
+      // Row by row this was 1,000 copies of 4,000 to 5,000 blocks: over 4,000,000.
+      expect(visits).toBeLessThan(40_000);
+    } finally {
+      restore();
+    }
+    const blocks = sessionStore.get("s1")!.blocks;
+    expect(blocks[3_999].text).toBe("answer 2000");
+    expect(blocks[4_000].text).toBe("prompt 1");
+    expect(blocks.at(-1)!.text).toBe("answer 500");
+    expect(new Set(blocks.map((b) => b.id)).size).toBe(5_000);
+  });
+
+  it("an older page refolds the kept rows once, through one builder", async () => {
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.pageRows = 2_000;
+    link.events.set("s1", turns("s1", 3_000));
+    await boot(link);
+    const restore = oneSlice();
+    try {
+      await sessionStore.ensureLoaded("s1");
+      const visits = await visitsOf(() => sessionStore.loadOlder("s1"));
+      expect(sessionStore.get("s1")!.blocks).toHaveLength(4_000);
+      // 4,000 rows refolded: row by row it copied the growing blocks 4,000 times (8,000,000 visits).
+      expect(visits).toBeLessThan(40_000);
+    } finally {
+      restore();
+    }
+    const blocks = sessionStore.get("s1")!.blocks;
+    expect(blocks[0].text).toBe("prompt 1001");
+    expect(blocks.at(-1)!.text).toBe("answer 3000");
   });
 });
 
