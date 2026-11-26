@@ -99,7 +99,12 @@
   picker's list, the model picker's rows and the context meter's breakdown with them
   (chrome/BranchRows.tsx, ModelRows.tsx, ContextBreakdown.tsx: a popover's body is drawn only while it
   is open, by when the chunk is in), the Accounts page's bones with its own chunk (the window's fallback,
-  surfaces/SurfaceSkeleton.tsx, draws its rows alone), every select rides
+  surfaces/SurfaceSkeleton.tsx, draws its rows alone), the chrome glyphs no first-paint surface draws (a module
+  each under chrome/icons/, made with a pure `wrap` call behind the same `chrome/icons` barrel, so each rides
+  the chunk that draws it; chrome/icons.test.ts holds their shape), the key check's whole table (a first-paint
+  control asks lib/linkMayCore.ts, a leaf with the methods Docket's controls ask about, held equal to the
+  host's rule by its test; `src/shared/capabilities.ts` carries every Work schema and is in NEVER_IN_ENTRY),
+  every select rides
   selectChunk: the composer's
   permission, thread type and model setting pickers and every ChoiceSelect
   (asking for the chunk as it mounts) draw a cold trigger of the same

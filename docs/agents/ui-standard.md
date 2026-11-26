@@ -170,3 +170,13 @@ Use `--only <scene,scene>`, `--pass owner|device|read|all` and `--theme dark|lig
 to narrow a run. The device and read passes cover scenes where the key matters.
 The walk uses isolated hosts and a loopback provider. It asserts nothing.
 Look for failed poses in `walk.log` and in the pictures marked `-FAILED`.
+
+## A control the host may refuse
+
+A control that can only be refused is held while its host's link is down (after a 1.5 s grace, counted from
+the drop): disabled in place, `components/heldTip.tsx` giving the link's words (`lib/connection/degraded.ts`
+`linkWords`) as its tooltip. A control the window's key may not use is not drawn, or, where an empty place needs
+a reason, says which computer can ("Send from a computer that manages the box"). A first-paint control asks
+`lib/linkMayCore.ts` (`linkMay`, `useLinkMay`), never `lib/linkMay.ts`, whose table pulls every Work schema into
+the first paint. `lib/docketAsksGuard.test.ts` lists every such control with its tests for a read key and a
+down link.
