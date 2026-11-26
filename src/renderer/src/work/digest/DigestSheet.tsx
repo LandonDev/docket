@@ -7,10 +7,13 @@ import { Item, ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { Skeleton } from "../../components/ui/skeleton";
-import { useEnvironments } from "../../lib/connection";
+import { useEnvironmentStatuses, useEnvironments } from "../../lib/connection";
+import { IDLE_STATUS, type EnvironmentStatus } from "../../lib/connection/types";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { cn } from "../../lib/cn";
-import { emptyLine, listSections, rowWhen, tellDetail, unansweredLine } from "./notice";
+import { asSentence, asSentences, emptyLine, listSections, rowWhen, tellDetail, unansweredLine } from "./notice";
+import { linkDownWords, linkIsDown } from "../shell/hostLinkDown";
+import { retryLink } from "../shell/linkRetry";
 import { useJobName } from "../jobName";
 import { routeOf } from "./open";
 import { loadDigest, type DigestView } from "./store";
@@ -110,7 +113,7 @@ export function DigestList({
       <Empty>
         <EmptyHeader>
           <EmptyTitle>The digest did not load</EmptyTitle>
-          <EmptyDescription>{unanswered}.</EmptyDescription>
+          <EmptyDescription>{asSentence(unanswered)}</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
           <Button variant="secondary" size="sm" disabled={retrying} onClick={retry}>
@@ -150,7 +153,8 @@ export function DigestList({
         </section>
       ))}
       {unanswered ? (
-        <div className="flex items-center gap-2">
+        // On the titles' edge, past the dot's box, as the headings are.
+        <div data-digest-foot className="flex items-center gap-2 ps-6">
           <p className="min-w-0 flex-1 text-xs text-muted-foreground">{unanswered}</p>
           {/* Its word ends where the rows' times end; its box overhangs the column as a row's does. */}
           <Button variant="ghost" size="xs" className="-me-2" disabled={retrying} onClick={retry}>
@@ -165,6 +169,23 @@ export function DigestList({
 /** The body's box: the sheet's 20px inset, groups 16px apart, its own scroll. */
 export const DIGEST_BODY = "flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-5 pb-5";
 export const DIGEST_WIDTH = 480;
+
+/**
+ * The foot's words and its Retry for the hosts whose read failed. A host whose link is down is said in the link's one
+ * wording ("The box is offline", `linkDownWords`), and Retry asks its link first (`retryLink`), since a read over a
+ * link that is down only fails again; "did not answer" is kept for a host whose link is open.
+ */
+export function footOf(errors: readonly { environmentId: string }[], name: (id: string) => string, status: (id: string) => EnvironmentStatus): { unanswered: string; retry: () => Promise<void> } {
+  const down = errors.filter((e) => linkIsDown(status(e.environmentId)));
+  const silent = errors.filter((e) => !down.includes(e));
+  return {
+    unanswered: asSentences([...down.map((e) => linkDownWords(name(e.environmentId), status(e.environmentId))), unansweredLine(silent.map((e) => name(e.environmentId)))]),
+    retry: async () => {
+      await Promise.all(down.map((e) => retryLink(e.environmentId)));
+      await loadDigest();
+    },
+  };
+}
 
 export function DigestSheet({
   open,
@@ -185,7 +206,8 @@ export function DigestSheet({
   useEffect(() => {
     if (open) void loadDigest();
   }, [open]);
-  const unanswered = unansweredLine(view.errors.map((e) => environments.find((env) => env.id === e.environmentId)?.name ?? "A host"));
+  const statuses = useEnvironmentStatuses();
+  const { unanswered, retry } = footOf(view.errors, (id) => environments.find((env) => env.id === id)?.name ?? "A host", (id) => statuses.get(id) ?? IDLE_STATUS);
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" width={DIGEST_WIDTH}>
@@ -193,7 +215,7 @@ export function DigestSheet({
           <SheetTitle>Digest</SheetTitle>
         </SheetHeader>
         <div className={DIGEST_BODY}>
-          <DigestList view={view} now={now} unanswered={unanswered} onOpenRow={onOpenRow} onRetry={loadDigest} />
+          <DigestList view={view} now={now} unanswered={unanswered} onOpenRow={onOpenRow} onRetry={retry} />
         </div>
       </SheetContent>
     </Sheet>

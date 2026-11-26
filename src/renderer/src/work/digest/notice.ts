@@ -1,9 +1,11 @@
 import { digestLine, nowLine } from "@shared/work/digest";
 import type { TellRow } from "@shared/work/tell";
 import { clockTime, dayTime } from "../../lib/duration";
+import { nameInLine } from "../../lib/hostWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { jobNameNow, jobNameOf } from "../jobName";
+import { atHead } from "../shell/lifeosWords";
 import type { DigestView, MergedDay } from "./store";
 
 /**
@@ -292,10 +294,20 @@ export function emptyLine(now: number, locale?: string): string {
 
 const named = (names: readonly string[]): string => (names.length === 1 ? names[0]! : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
 
-/** "The Mac did not answer", "The Mac and the box did not answer". */
+/** "The Mac did not answer", "The Mac and the box did not answer": the first name leads the line, the others sit in it. */
 export function unansweredLine(names: readonly string[]): string {
-  return names.length === 0 ? "" : `${named(names)} did not answer`;
+  return names.length === 0 ? "" : `${named(names.map((name, i) => (i === 0 ? atHead(name) : nameInLine(name))))} did not answer`;
 }
+
+/** A line as a sentence: its stop, unless it ends in a wait's "…" ("Reconnecting to the box…"). */
+export const asSentence = (line: string): string => (line && !line.endsWith("…") ? `${line}.` : line);
+
+/** Lines said as one: each but the last a sentence; the last keeps its own end, as the foot's line has no stop. */
+export const asSentences = (lines: readonly string[]): string =>
+  lines
+    .filter(Boolean)
+    .map((line, i, all) => (i < all.length - 1 ? asSentence(line) : line))
+    .join(" ");
 
 /** A setting some hosts would not take: "The Mac did not take it". */
 export function refusedLine(names: readonly string[]): string {

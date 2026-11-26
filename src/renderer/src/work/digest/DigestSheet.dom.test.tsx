@@ -98,6 +98,8 @@ describe("the list", () => {
     w().rows.set("box", [tell({ title: "Morning summary" })]);
     render(<Sheet />);
     expect(await screen.findByText("The Mac did not answer")).toBeTruthy();
+    // On the titles' edge with the headings, past the dot's box (council R1-A18).
+    expect(screen.getByText("The Mac did not answer").closest("[data-digest-foot]")!.className).toContain("ps-6");
     expect(screen.getByText("Morning summary")).toBeTruthy();
     w().down.delete("mac");
     w().rows.set("mac", [tell({ host: "mac", title: "Thumbnail review is ready", sector: "hypixel" })]);
