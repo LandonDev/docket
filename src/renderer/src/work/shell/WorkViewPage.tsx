@@ -33,7 +33,8 @@ import { workErrorWords } from "../../lib/workErrorWords";
  * reads LifeOS through the workspace's own sector. Signed out it is one
  * sign-in; unreachable, one state line over what was last shown; while the
  * host says LifeOS is connecting, one named wait in the body's place, no
- * press. While the view's chunk loads it is a column of rows; a view that throws (a LifeOS
+ * press. While the view's chunk loads it is the bones its def draws (`bones`: Mail's list beside its pane, a meeting's or
+ * a project's page), else a column of rows; a view that throws (a LifeOS
  * read refused) is its own error with Retry, never the window's.
  */
 export function WorkViewSurface() {
@@ -120,7 +121,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   // A host whose status ask went unanswered on an open link is down too (`unanswered`): its own name and Retry.
   const unreachable = gated && (state === "unreachable" || session.state === "unreachable");
   const linkDown = useHostLinkDown(environmentId);
-  const actionLinkDown = session.client && (def.id === "tasks" || def.id === "prep") ? linkDown : null;
+  // The views whose presses (and Mail's and Messages' reads) go through the host: over what they hold, one line names it.
+  const actionLinkDown = session.client && LINK_LINE_VIEWS.has(def.id) ? linkDown : null;
   const silence = sessionWords(session);
   // The host answers, but this computer's key is never handed its LifeOS session (a given computer's): not silence, and Retry cannot help.
   const withheld = gated && !!session.withheld;
@@ -192,7 +194,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
             className="size-3.5 shrink-0 text-muted-foreground @max-[26rem]/viewhead:hidden group-has-[[data-view-heading]_button]/viewhead:hidden"
           />
           {/* The name gives way to the view's own controls only once they have given all they can: it is cut, never drawn under them. */}
-          <span ref={heading} tabIndex={-1} data-view-heading className="focus-ring flex min-w-0 items-center rounded-sm">
+          {/* Its ring sits 4px off the words, which do not move for it. */}
+          <span ref={heading} tabIndex={-1} data-view-heading className="focus-ring -mx-1 flex min-w-0 items-center rounded-sm px-1">
             {/* The view's name, or the way back from a page inside it (Back to Agenda, Back to People): never held, since
                 going back needs no session. The view's controls are (below). */}
             {Title ? <Title {...props} /> : <span className="truncate font-medium text-foreground">{def.label}</span>}
@@ -201,7 +204,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           {Head && !held ? <Head {...props} /> : null}
         </div>
       )}
-      {actionLinkDown && !held ? <HostLinkLine word={actionLinkDown} /> : null}
+      {actionLinkDown && !held ? <HostLinkLine word={actionLinkDown} retryHost={environmentId} /> : null}
       {unreachable && !blocked && !actionLinkDown ? (
         // The state line's shape (DESIGN.md "The state line"): 32px, glyph, the word in its tone, a muted detail, one action.
         <div data-view-state="failed" role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
@@ -249,7 +252,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           <DownEmpty live={WAITS} environmentId={environmentId} onRetry={noRetry} />
         ) : (
           <KeptRegion value={kept.scope}>
-            <ViewBoundary label={def.label} onRetry={() => def.chunk.load().then(() => setAttempt((n) => n + 1))}>
+            <ViewBoundary label={def.label} cause={linkDown} onRetry={() => def.chunk.load().then(() => setAttempt((n) => n + 1))}>
               <Suspense fallback={def.bones?.(workspace) ?? <ViewSkeleton label={def.label} />}>
                 <View {...props} />
               </Suspense>
@@ -265,6 +268,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
 }
 
 const WAITS = { down: null, waits: true } as const;
+/** The views the frame names a down link over (`HostLinkLine`, with Retry): their presses, and Mail's and Messages' reads, go through the host. */
+export const LINK_LINE_VIEWS: ReadonlySet<WorkViewId> = new Set(["mail", "messages", "tasks", "prep"]);
 const noRetry = (): void => {};
 
 /** A view's chunk on its way: the one-column rows Tasks, Agenda, Docs and the lists start as, under the view's own header; a view that lands in another shape names its own (`WorkViewDef.bones`). */
@@ -279,8 +284,9 @@ function ViewSkeleton({ label }: { label: string }) {
 /**
  * A view that throws (a LifeOS read refused, a chunk that did not load) is the view's error with Retry, which mounts it
  * again. The error stays, its Retry spinning, while what Retry asks (`onRetry`: the view's code fetched again) is out.
+ * `cause`: the host's link words while it is down, the line in the error's place.
  */
-export class ViewBoundary extends Component<{ label: string; children: ReactNode; onRetry?: () => void | Promise<unknown> }, { error: string | null; attempt: number; retrying: boolean }> {
+export class ViewBoundary extends Component<{ label: string; children: ReactNode; cause?: string | null; onRetry?: () => void | Promise<unknown> }, { error: string | null; attempt: number; retrying: boolean }> {
   override state = { error: null as string | null, attempt: 0, retrying: false };
   static getDerivedStateFromError(error: unknown): { error: string } {
     return { error: workErrorWords(error) };
@@ -290,7 +296,8 @@ export class ViewBoundary extends Component<{ label: string; children: ReactNode
       return (
         <EmptyState
           title={`${this.props.label} did not load`}
-          line={this.state.error || undefined}
+          // While the host's link is down that is the cause, said in the link's words, over what the error said.
+          line={this.props.cause || this.state.error || undefined}
           action={{
             label: "Retry",
             busy: this.state.retrying,

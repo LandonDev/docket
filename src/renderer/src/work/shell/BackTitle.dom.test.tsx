@@ -16,6 +16,8 @@ describe("BackTitle", () => {
     expect(to!.className).not.toContain("truncate");
     expect(name!.textContent).toBe("Maya Chen");
     expect(name!.className).toContain("min-w-0 truncate");
+    // Council round 1 (R1-B28): under 26rem of header the name goes whole rather than stand as a stub.
+    expect(name!.className).toContain("@max-[26rem]/viewhead:hidden");
     fireEvent.click(screen.getByRole("button", { name: "Back to People" }));
     expect(back).toHaveBeenCalledOnce();
   });

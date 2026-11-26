@@ -3,11 +3,10 @@ import { ConvexProvider } from "convex/react";
 import { MailClientProvider, MailKitProvider, useMailClient, useMailKit, type ComposeState, type MailNav, type MailTaskRequest, type MailtoDraft } from "work-kit/mail";
 import "work-kit/mail/styles.css";
 import "./mail.css";
-import { Skeleton } from "../../components/ui/skeleton";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
-import { SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import { sessionWaits } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
+import { clampList, LIST_WIDTH, MailBones, readListWidth } from "./bones";
 import { mailClientFor, RevealMailbox, startNudge } from "./client";
 import { tempcodeMailKit } from "./kit";
 import { mailPaneOf, type ContextChip } from "@shared/work";
@@ -36,6 +35,8 @@ import { DockSash } from "../dock/DockSash";
 import { MAIL_BESIDE } from "./chat/layout";
 import type { SectorKey } from "@shared/work";
 
+export { clampList, LIST_WIDTH, MailBones };
+
 /** The chat beside the mail, in a chunk of its own: it loads when he first asks. */
 /** A mail thread with its open task, whose project a Start thread files under. */
 const MAIL_THREAD = makeFunctionReference<"query", { id: string }, { task?: { projectId?: string | null } | null } | null>("mail:thread");
@@ -54,20 +55,6 @@ const MailDock = mailChatChunk.surface("MailDock", <div className="min-h-0 flex-
  * head, the reader's More), so the frame draws no header over the list's
  * head (`ownHead`); the region still names the view.
  */
-
-/** The list's width: its default, its bounds, and where the app keeps it. */
-export const LIST_WIDTH = { base: 296, min: 260, max: 480, key: "tc.mail.listWidth" } as const;
-
-export const clampList = (width: number): number => Math.min(LIST_WIDTH.max, Math.max(LIST_WIDTH.min, Math.round(width)));
-
-function readListWidth(): number {
-  try {
-    const kept = Number(localStorage.getItem(LIST_WIDTH.key));
-    return kept ? clampList(kept) : LIST_WIDTH.base;
-  } catch {
-    return LIST_WIDTH.base;
-  }
-}
 
 const NO_TASKS: ReadonlySet<string> = new Set();
 
@@ -479,22 +466,3 @@ export function MailFrame({ list, pane }: { list: ReactNode; pane: ReactNode }) 
   );
 }
 
-/** While the session opens: the list's rows beside the reading pane's head and lines, the frame Mail lands in. */
-export function MailBones() {
-  return (
-    <div role="status" aria-label="Loading Mail" aria-busy className="@container/mail flex h-full min-h-0 select-none">
-      <div style={{ width: readListWidth() }} className="flex shrink-0 flex-col border-r border-border @max-[40rem]/mail:w-full! @max-[40rem]/mail:border-r-0">
-        <SurfaceSkeleton kind="rows" count={8} />
-      </div>
-      <div className="min-w-0 flex-1 px-8 pt-8 @max-[40rem]/mail:hidden">
-        <Skeleton className="h-4 w-64 max-w-full" />
-        <Skeleton className="mt-2 h-3 w-40" />
-        <div className="mt-6 flex flex-col gap-3">
-          <Skeleton className="h-3 w-[88%]" />
-          <Skeleton className="h-3 w-[72%]" />
-          <Skeleton className="h-3 w-[80%]" />
-        </div>
-      </div>
-    </div>
-  );
-}

@@ -20,7 +20,7 @@ vi.mock("../../components/ui/toaster", () => {
 });
 vi.mock("../files/openFrom", async (original) => ({ ...(await original<object>()), openInFiles: async (...args: unknown[]) => void files.opened.push(args) }));
 
-const { ViewBoundary, ViewFrame, WorkViewSurface } = await import("./WorkViewPage");
+const { LINK_LINE_VIEWS, ViewBoundary, ViewFrame, WorkViewSurface } = await import("./WorkViewPage");
 const { openWorkView } = await import("../../lib/workSwitch");
 const { WORK_VIEWS } = await import("../views/registry");
 const { defineChunk } = await import("../../lib/lazyChunk");
@@ -278,6 +278,43 @@ describe("a view's boundary", () => {
     );
     expect(screen.getByText("Tasks did not load")).toBeTruthy();
     expect(container.textContent).not.toContain("work.tasks.list");
+  });
+});
+
+/** Council round 1, sitting B (R1-B1, R1-B7): with the box away, Mail and Messages say why, never a bare "did not load". */
+describe("a down link over a view", () => {
+  it("is named over Mail, Messages, Tasks and a meeting's page, whose presses and reads go through the host", () => {
+    expect([...LINK_LINE_VIEWS].sort()).toEqual(["mail", "messages", "prep", "tasks"]);
+  });
+
+  it("is the boundary's line while it is down, in the link's words, over the error's own", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    function Mail(): never {
+      throw new Error("LifeOS refused the read");
+    }
+    render(
+      <ViewBoundary label="Mail" cause="The box is not connected">
+        <Mail />
+      </ViewBoundary>,
+    );
+    expect(screen.getByText("Mail did not load")).toBeTruthy();
+    expect(screen.getByText("The box is not connected")).toBeTruthy();
+    expect(screen.queryByText("LifeOS refused the read")).toBeNull();
+  });
+});
+
+/** Council round 1, sitting B (R1-B5, R1-B21): a cold open draws the bones of what lands, so nothing jumps. */
+describe("a view's bones while its chunk is on its way", () => {
+  it("are Mail's list beside its pane and a meeting's page, never the generic rows", () => {
+    const workspace = { id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" } as never;
+    const mail = render(<>{WORK_VIEWS.mail.bones!(workspace)}</>);
+    // The list at its kept width, beside the pane's bones.
+    expect(screen.getByRole("status", { name: "Loading Mail" }).firstElementChild!.getAttribute("style")).toContain("width: 296px");
+    mail.unmount();
+    const prep = render(<>{WORK_VIEWS.prep.bones!(workspace)}</>);
+    expect(prep.container.firstElementChild!.className).toContain("ps-7");
+    // A one-column view keeps the frame's rows.
+    expect(WORK_VIEWS.tasks.bones).toBeUndefined();
   });
 });
 

@@ -1,6 +1,8 @@
+import { createElement } from "react";
 import { Calendar } from "../icons";
 import { defineChunk } from "../../lib/lazyChunk";
 import type { WorkViewDef } from "../views/registry";
+import { PrepSkeleton } from "./bones";
 
 /**
  * A meeting's page (docs/agents/work-prep.md): a view of the workspace with no row of its own.
@@ -15,5 +17,7 @@ export const prepView: WorkViewDef = {
   fact: () => null,
   readsLifeos: true,
   inside: "agenda",
+  // The page's own bones: never the generic rows before a meeting's page.
+  bones: () => createElement(PrepSkeleton),
   chunk: defineChunk("work-prep-view", () => import("./PrepView")),
 };

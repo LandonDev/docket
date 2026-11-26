@@ -1,7 +1,9 @@
+import { createElement } from "react";
 import { defineChunk } from "../../lib/lazyChunk";
 import { Mail } from "../icons";
 import type { WorkViewDef } from "../views/registry";
 import { useUnreadCount } from "./facts";
+import { MailBones } from "./bones";
 
 /**
  * The Mail row of a linked Work workspace and its view
@@ -18,5 +20,7 @@ export const mailView: WorkViewDef = {
   ownHead: true,
   fact: () => null,
   useFact: useUnreadCount,
+  // Its list beside the reading pane, at the kept width: never the generic rows before Mail.
+  bones: () => createElement(MailBones),
   chunk: defineChunk("work-mail-view", () => import("./MailView")),
 };

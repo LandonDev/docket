@@ -145,6 +145,8 @@ describe("the mail canvas with LifeOS unreachable", () => {
       const { container, lines } = body();
       expect(lines.at(-1)).toBeNull();
       expect(container.querySelector("[data-lifeos-waits]")!.textContent).toBe("LifeOS is still connecting on the box");
+      // A wait, not a fault (R1-B6): its words are muted, never the foreground title a down state takes.
+      expect(container.querySelector("[data-lifeos-waits] [data-slot=empty-description]")!.textContent).toBe("LifeOS is still connecting on the box");
       expect(container.textContent!.split("LifeOS is still connecting").length - 1).toBe(1);
       expect(screen.queryByLabelText("Loading the mail")).toBeNull();
       expect(container.querySelectorAll("button")).toHaveLength(0);

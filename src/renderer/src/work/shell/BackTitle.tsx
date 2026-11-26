@@ -4,7 +4,7 @@ import { Button } from "../../components/ui/button";
 /**
  * The way back, one shape on every Work screen inside a view (docs/DESIGN.md "Project screens"; People's person page, a
  * meeting's page): a 24px arrow, where it goes, then where he is, muted. Where it goes is never cut: a narrow header
- * cuts the name after it alone.
+ * cuts the name after it alone, and under 26rem drops it.
  */
 export function BackTitle({ back, name, onBack }: { back: string; name: string | undefined; onBack: () => void }) {
   return (
@@ -13,7 +13,8 @@ export function BackTitle({ back, name, onBack }: { back: string; name: string |
         <ArrowLeft />
       </Button>
       <span className="shrink-0">{back}</span>
-      {name ? <span className="min-w-0 truncate font-normal text-muted-foreground">{name}</span> : null}
+      {/* Under 26rem of header the name goes whole, never a stub: the page's title says it just below. */}
+      {name ? <span className="min-w-0 truncate font-normal text-muted-foreground @max-[26rem]/viewhead:hidden">{name}</span> : null}
     </span>
   );
 }

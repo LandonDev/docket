@@ -275,7 +275,13 @@ Settings → Work.
   row for it (`workViewRows`), its parent's row reads as open while it shows
   (`rowOfView`), and that row then leads back to the parent rather than
   closing the view. A view row opens `WorkViewSurface` over the thread panes
-  under the strip; picking a thread or the row again closes it.
+  under the strip; picking a thread or the row again closes it. While a
+  view's chunk is on its way the frame draws the bones its def names
+  (`WorkViewDef.bones`: Mail's list beside its pane, mail/bones.tsx; a
+  meeting's page, prep/bones.tsx), else one column of rows. While the
+  host's link is down the frame names it over Mail, Messages, Tasks and a
+  meeting's page, with Retry (`LINK_LINE_VIEWS`, `HostLinkLine`), and a
+  view that threw says the link's words under its "did not load".
   Under the head, a Work job's list (`sidebarItems(…, "job")`,
   lib/sidebarRows.ts; drawn by work/shell/WorkColumnRows.tsx, Work's chunk)
   is two sections in place of the code column's cards and folds. **Projects**

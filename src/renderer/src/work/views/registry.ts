@@ -66,7 +66,8 @@ export interface WorkViewDef {
   /** The view stands inside another and has no row of its own (a meeting's page, inside Agenda): the column draws none for it, and its parent's row reads as open while it shows. */
   inside?: WorkViewId;
   chunk: Chunk<WorkViewModule>;
-  /** The bones the frame draws while the chunk loads, in the shape of what lands (a project's page); with none, rows. */
+  /** The bones the frame draws while the chunk loads, in the shape of what lands (Mail's list beside its pane, a meeting's or a
+   * project's page); with none, rows. */
   bones?: (workspace: WorkspaceMeta) => ReactNode;
 }
 

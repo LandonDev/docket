@@ -11,6 +11,7 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { Skeleton } from "../../components/ui/skeleton";
+import { PrepSkeleton } from "./bones";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
 import { moveBetweenRows } from "../rowKeys";
@@ -61,6 +62,8 @@ import {
   whenLine,
   type HeadVerb,
 } from "./model";
+
+export { PrepSkeleton };
 
 /**
  * A meeting's page (docs/agents/work-prep.md): who is coming, the last mail
@@ -444,30 +447,6 @@ export function View(props: WorkViewProps) {
       />
       {dialog === "notes" ? <NotesDialog key={`notes:${eventId}`} env={props.env} page={page} onClose={close} /> : null}
     </>
-  );
-}
-
-/** The page's bones, at its own insets and in its shape: the title and its line, then people, then a section of rows. */
-export function PrepSkeleton() {
-  return (
-    <div aria-busy className="mx-auto flex w-full max-w-[720px] flex-col ps-7 pe-6 py-6">
-      <Skeleton className="h-4 w-[34%]" />
-      <Skeleton className="mt-2.5 h-3 w-[46%]" />
-      <div className="mt-8 flex flex-col gap-3">
-        <Skeleton className="h-3 w-[9%]" />
-        {[38, 30, 44].map((w, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <Skeleton className="size-6 rounded-full" />
-            <Skeleton className="h-3" style={{ width: `${w}%` }} />
-          </div>
-        ))}
-      </div>
-      <div className="mt-8 flex flex-col gap-3">
-        <Skeleton className="h-3 w-[7%]" />
-        <Skeleton className="h-3 w-[58%]" />
-        <Skeleton className="h-3 w-[42%]" />
-      </div>
-    </div>
   );
 }
 
