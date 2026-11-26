@@ -7,6 +7,8 @@ import { GroupInput, Input, InputGroup } from "../components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
 import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "./SurfaceSkeleton";
+import { FailLine, rawError } from "./FailLine";
+import { nameInLine } from "../lib/hostWords";
 import { Facts } from "./settings/hosts/Facts";
 import { ConfirmDialog } from "../chrome/ConfirmDialog";
 import {
@@ -63,6 +65,10 @@ let rememberedNoteId: string | null = null;
 let focusedEnvironmentId: string | null = null;
 
 /** Show this note, on this host, when the view next opens (a search hit). */
+/** A failed read of the notes, the host named mid-line ("Couldn't load notes on the box"). */
+const notesLoadWords = (environmentId: string): string =>
+  `Couldn't load notes on ${nameInLine(registry.environment(environmentId)?.name ?? "this computer")}`;
+
 export function focusNote(environmentId: string, noteId: string): void {
   rememberedNoteId = noteId;
   focusedEnvironmentId = environmentId;
@@ -114,7 +120,9 @@ export function NotesView({
   });
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // A failure in plain words, the program's own text kept for the tooltip.
+  const [error, setError] = useState<{ words: string; raw: string; load?: boolean } | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(rememberedNoteId);
   const [creating, setCreating] = useState(false);
@@ -136,7 +144,7 @@ export function NotesView({
         return next[0]?.id ?? null;
       });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError({ words: notesLoadWords(environmentId), raw: rawError(err), load: true });
     } finally {
       setLoading(false);
     }
@@ -188,10 +196,11 @@ export function NotesView({
         ...(cwd && looksLikeProject(cwd) ? { sourceCwd: cwd } : {}),
       });
       setNotes(await loadNotes(environmentId, true));
+      setError(null);
       setSelectedId(note.id);
       setQuery("");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError({ words: "Couldn't make a note", raw: rawError(err) });
     } finally {
       setCreating(false);
     }
@@ -220,7 +229,7 @@ export function NotesView({
         return next[0]?.id ?? null;
       });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError({ words: notesLoadWords(environmentId), raw: rawError(err), load: true });
     }
   };
 
@@ -261,10 +270,22 @@ export function NotesView({
       </div>
       <div
         ref={listLock}
-        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
+        className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none"
       >
-        {error && notes.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-destructive">{error}</p>
+        {/* With no note to show, a failed load is the list's one empty state with Retry; over notes, one red line under the head. */}
+        {error && !(error.load && notes.length === 0) ? <FailLine words={error.words} detail={error.raw} className="px-3 py-2" /> : null}
+        {error?.load && notes.length === 0 ? (
+          <EmptyState
+            title={error.words}
+            action={{
+              label: "Retry",
+              busy: retrying,
+              onClick: () => {
+                setRetrying(true);
+                void refresh().finally(() => setRetrying(false));
+              },
+            }}
+          />
         ) : loading && notes.length === 0 ? (
           <SurfaceSkeleton kind="rows" lines={3} count={6} label="Loading notes" />
         ) : visible.length === 0 ? (
@@ -585,9 +606,10 @@ function NoteEditor({
   return (
     <div
       ref={lockOverscroll}
-      className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
+      className="@container/detail min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
     >
-      <div data-note-detail className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-8">
+      {/* A narrow pane (under 576px) insets 16px a side, so the text keeps its room. */}
+      <div data-note-detail className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 @xl/detail:px-8">
         <header className="flex flex-col">
           {note.slug || project ? (
             <div className="flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
@@ -622,7 +644,7 @@ function NoteEditor({
             }}
             onKeyDown={onTitleKeyDown}
             aria-label="Note title"
-            className={`${note.slug || project ? "mt-2 " : ""}h-auto rounded-none border-0 p-0 text-base font-semibold leading-6 tracking-[-0.01em] text-foreground shadow-none!`}
+            className={`${note.slug || project ? "mt-2 " : ""}h-auto rounded-none border-0 border-b border-transparent p-0 text-base font-semibold leading-6 tracking-[-0.01em] text-foreground shadow-none!`}
             placeholder="Untitled"
           />
           {time ? (

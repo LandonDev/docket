@@ -1,4 +1,5 @@
 // The words and numbers the Stats page prints; colours are tokens (aliax/charts/palette.ts).
+import { CATALOG } from '@shared/catalog'
 import { modelLabel as catalogName } from '@renderer/lib/threads/agents'
 
 export const compact = (n: number): string => {
@@ -27,10 +28,6 @@ export const shortDay = (iso: string): string =>
 export const localTime = (ms: number): string =>
   new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 
-/** Local date and time, e.g. "Fri 5:30 PM". */
-export const localDayTime = (ms: number): string =>
-  new Date(ms).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
-
 /** The viewer's timezone, named once so every clock label is unambiguous. */
 export const TIMEZONE =
   new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' })
@@ -42,12 +39,25 @@ export const clip = (s: string, max = 18): string =>
   s.length > max ? `${s.slice(0, max - 1)}…` : s
 
 /** A model as the rest of the app names it ("Claude Fable 5.1"), from the
- *  catalogs; an id no catalog knows, trimmed to read on an axis. */
+ *  catalogs, the shared catalog's whole list too (a model this install's CLI
+ *  hides, "GPT-6.1 Sol"); an id no catalog knows, in title case ("Mystery 9"),
+ *  never a raw id beside the named ones. */
 export const modelLabel = (m: string): string => {
   const bare = m.replace(/-\d{8}$/, '').replace(/-latest$/, '')
   for (const provider of ['claude', 'codex']) {
     const name = catalogName(provider, bare)
     if (name !== bare) return name
   }
-  return bare.replace(/^claude-/, '')
+  const listed = [...CATALOG.claude.models, ...CATALOG.codex.models].find((model) => model.id === bare)
+  if (listed) return listed.label
+  return titleCase(bare.replace(/^claude-/, ''))
 }
+
+/** "mystery-9" as "Mystery 9", "gpt-7-2-nova" as "GPT 7.2 Nova": words capitalized, numbers joined by points. */
+const titleCase = (id: string): string =>
+  id
+    .split('-')
+    .filter(Boolean)
+    .map((part) => (/^gpt$/i.test(part) ? 'GPT' : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join(' ')
+    .replace(/(\d) (?=\d)/g, '$1.')

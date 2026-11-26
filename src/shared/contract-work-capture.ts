@@ -44,6 +44,8 @@ export interface CaptureState {
   last: SectorKey | null
   /** sectors with a Work workspace on this host, so a file or a thread has a home */
   homes: SectorKey[]
+  /** his jobs as he reads them: each sector's Work workspace by its name on this host (docs/DESIGN.md "One name a thing"); a host a build behind sends none */
+  jobs?: { sector: SectorKey; name: string }[]
   /** LifeOS answers: a capture can be filed now */
   connected: boolean
   /** the host's LifeOS session by its state's name, so the window says why it cannot file; a host a build behind sends none */

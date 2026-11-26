@@ -171,7 +171,7 @@ export class CodeUpdates {
     const staged = boot.staged()
     this.set({
       ...(boot.running ? { running: { commit: boot.running.commit, release: boot.running.release, subject: boot.running.subject } } : {}),
-      ...(boot.fellBack ? { notice: fellBackLine(boot.fellBack.commit, boot.bundle.version) } : {}),
+      ...(boot.fellBack ? { notice: fellBackLine(boot.bundle.version) } : {}),
       ...(staged ? { offer: { commit: staged.commit, release: staged.release, subject: staged.subject, phase: 'ready' as const } } : {})
     })
     if (boot.fellBack) this.log(`${boot.fellBack.commit.slice(0, 7)} ${boot.fellBack.why}; running the bundle's ${boot.bundle.version}`)
@@ -280,7 +280,7 @@ export class CodeUpdates {
     if (decision.kind === 'skip') return this.log(`${head.commit.slice(0, 7)} from ${envId} skipped: ${decision.why}`)
     if (decision.kind === 'refuse') {
       this.log(`${head.commit.slice(0, 7)} from ${envId} refused: ${decision.line}`)
-      this.set({ notice: refusedLine(head.commit, decision.line) })
+      this.set({ notice: refusedLine(decision.line) })
       return
     }
     const started = Date.now()
@@ -300,7 +300,7 @@ export class CodeUpdates {
       remove(home)
       if (typeof sha256 === 'string') this.bad.set(head.commit, sha256)
       const line = err instanceof Error ? err.message : String(err)
-      this.set({ offer: undefined, notice: refusedLine(head.commit, line) })
+      this.set({ offer: undefined, notice: refusedLine(line) })
       return this.log(`${head.commit.slice(0, 7)} refused by boot: ${line}`)
     }
     boot.sweep([INCOMING_DIR])

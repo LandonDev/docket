@@ -14,23 +14,28 @@ export function StatusGlyph({ status }: { status: SessionMeta["status"] }) {
   return <StatusMark state={threadStateOf(status, { settled: true })} word={false} />;
 }
 
-/** The detail's numbers as one muted line: `lead`'s elements first (the
- *  model line, the host glyph), 8px apart, then every word and number as
- *  one comma run, "main, +12 −3, 3 tasks, $0.12": `lead`'s plain words (the
- *  branch), the diff in green and red, tasks, context and cost. Never two
- *  facts set apart by space alone. */
+/** The detail's numbers as one muted line: `lead`'s glyphs first (the host
+ *  glyph), 8px apart, then every fact as one comma run, "Opus 5.5 High 200k,
+ *  main, +12 −3, 3 tasks, $0.12": `facts` (the model line), `lead`'s plain
+ *  words (the branch), the diff in green and red, tasks, context and cost.
+ *  Never two facts set apart by space alone (DESIGN "Typography and text
+ *  hierarchy"). */
 export function AgentNumbersLine({
   parts,
   lead = [],
+  facts = [],
   className = "",
 }: {
   parts: NumberPart[];
   lead?: ReactNode[];
+  /** Elements that open the comma run as its first facts (the model line). */
+  facts?: ReactNode[];
   className?: string;
 }) {
-  const before = lead.filter((t) => t !== null && t !== undefined && t !== false && t !== "");
-  if (parts.length === 0 && before.length === 0) return null;
+  const shown = (t: ReactNode) => t !== null && t !== undefined && t !== false && t !== "";
+  const before = lead.filter(shown);
   const words: ReactNode[] = [
+    ...facts.filter(shown),
     ...before.filter(isWords),
     ...parts.map((p) =>
       p.key === "diff" ? (
@@ -42,6 +47,7 @@ export function AgentNumbersLine({
       ),
     ),
   ];
+  if (words.length === 0 && before.length === 0) return null;
   return (
     <span
       data-slot="agent-numbers"
@@ -51,11 +57,12 @@ export function AgentNumbersLine({
         <Fragment key={`lead-${i}`}>{t}</Fragment>
       ))}
       {words.length > 0 ? (
-        <span data-slot="agent-facts" className="min-w-0">
+        // One comma sentence; an element fact (the model line, 16px tall) sits on the run's 16px line.
+        <span data-slot="agent-facts" className="min-w-0 leading-4">
           {words.map((w, i) => (
             <Fragment key={i}>
               {i > 0 ? ", " : null}
-              {w}
+              {isWords(w) || i >= facts.filter(shown).length ? w : <span className="inline-flex max-w-full align-top">{w}</span>}
             </Fragment>
           ))}
         </span>

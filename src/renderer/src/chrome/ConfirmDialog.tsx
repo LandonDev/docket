@@ -1,3 +1,4 @@
+import { dialogErrorWords } from "../lib/dialogErrorWords";
 import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import {
@@ -146,7 +147,7 @@ export function ConfirmDialog({
       // again and Cancel cannot replace the landing.
       closeThen(onDone);
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };

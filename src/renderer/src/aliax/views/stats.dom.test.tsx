@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { SECTION_SKELETON, StatsView, paceLine, paceTitle } from "./stats";
+import { SECTION_SKELETON, StatsView, paceHeight, paceLine, paceTitle, resetPaceCount } from "./stats";
 import { HEATMAP_HEIGHT } from "./stats/heatmap";
 import { STATS } from "./stats.fixtures";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetPaceCount();
+});
 
 const headings = () => screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
 const ORDER = ["Pace", "Daily output", "Model mix", "Top projects", "Cache hit rate", "Busiest hours", "Tools used"];
@@ -79,7 +82,9 @@ describe("Stats", () => {
     expect(headings()).toEqual(ORDER);
     const height = (h: string) => (document.querySelector(`[data-section-skeleton="${h}"]`) as HTMLElement).style.height;
     // A chart's 200px plot, with its legend's 24px where it draws one and the pace headline's above that.
-    expect(height("Pace")).toBe("248px");
+    // Pace: its one legend, then two series (a fresh window's guess), each its headline and plot, 16px apart.
+    expect(height("Pace")).toBe(`${paceHeight(2)}px`);
+    expect(paceHeight(2)).toBe(24 + 2 * (24 + 200) + 16);
     expect(height("Daily output")).toBe("224px");
     expect(height("Model mix")).toBe("224px");
     expect(height("Cache hit rate")).toBe("200px");
@@ -93,5 +98,32 @@ describe("Stats", () => {
       const line = region.querySelector("p [data-slot=skeleton]");
       expect(Boolean(line), h).toBe(Boolean(SECTION_SKELETON[h as keyof typeof SECTION_SKELETON].description));
     }
+  });
+});
+
+describe("Pace", () => {
+  it("says its legend once, at its head, never under each series", () => {
+    render(<StatsView data={STATS} status={null} />);
+    const pace = screen.getByRole("region", { name: "Pace" });
+    expect(pace.querySelectorAll("[data-slot=chart-legend]")).toHaveLength(1);
+    expect(pace.querySelector("[data-slot=pace-series] [data-slot=chart-legend]")).toBeNull();
+    expect(pace.querySelector("[data-slot=chart-legend]")!.textContent).toContain("Usual");
+  });
+
+  it("waits as tall as the last bundle drew it", () => {
+    const three = { ...STATS, pace: [...STATS.pace, { ...STATS.pace[0], label: "week" }] };
+    render(<StatsView data={three} status={null} />);
+    cleanup();
+    render(<StatsView data={null} status={null} />);
+    expect((document.querySelector('[data-section-skeleton="Pace"]') as HTMLElement).style.height).toBe(`${paceHeight(3)}px`);
+  });
+});
+
+describe("an empty month", () => {
+  it("says the 30 days are empty, not the machine, when older logs are indexed", () => {
+    const empty = { ...STATS, totals: { ...STATS.totals, turns: 0 }, pace: [] };
+    render(<StatsView data={empty} status={{ indexing: false, filesDone: 40, filesTotal: 40, rows: 1200 }} />);
+    expect(screen.getByText("Nothing in the last 30 days")).toBeTruthy();
+    expect(screen.queryByText(/session logs on this machine/)).toBeNull();
   });
 });

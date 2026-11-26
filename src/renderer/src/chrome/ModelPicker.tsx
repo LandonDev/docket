@@ -261,9 +261,11 @@ export function ModelPicker({
       );
     };
 
+    // The menu's item (its ⌘. / Ctrl+.) opens the focused thread's picker
+    // wherever the focus sits: the terminal, a picker or a select only guard
+    // the raw key above, whose press they may want for themselves.
     const onMenu = () => {
       if (!hotkeys) return;
-      if (inBlockingUi(document.activeElement)) return;
       toggleFromHotkey();
     };
 

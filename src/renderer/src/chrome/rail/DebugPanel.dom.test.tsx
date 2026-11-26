@@ -18,7 +18,7 @@ vi.mock("../../surfaces/monaco/debug/session", () => ({ debugController: () => c
 vi.mock("../../lib/monaco/opener", () => ({ openFileAt }));
 
 import { getEditorState, setEditorState, type EditorState } from "../../lib/monaco/editorState";
-import DebugPanel from "./DebugPanel";
+import DebugPanel, { debugErrorWords } from "./DebugPanel";
 import { resetTooltips, tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 
 const initial: EditorState = getEditorState();
@@ -152,16 +152,28 @@ describe("DebugPanel", () => {
   });
 
   it("shows an error as one line and follows the store", () => {
-    seed({ debugPhase: "running", debugError: "Could not attach to 5005" });
+    seed({ debugPhase: "running", debugError: "Could not attach to localhost:5005: connection refused" });
     render(<DebugPanel />);
-    expect(screen.getByText("Could not attach to 5005").className).toContain("text-destructive");
+    // Plain words, never the host or its port (rightpanel-19).
+    expect(screen.getByText("Couldn't attach: nothing is listening for a debugger").className).toContain("text-destructive");
+    expect(screen.queryByText(/localhost/)).toBeNull();
     // A failed attach is failed: no spinner says work is in flight.
     expect(document.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("failed");
     expect(screen.getByText("Failed")).toBeTruthy();
     expect(document.querySelector("[data-slot=spinner]")).toBeNull();
     act(() => setEditorState({ debugPhase: "stopped", debugError: null }));
     expect(document.querySelector("[data-slot=status-mark]")?.getAttribute("data-state")).toBe("paused");
-    expect(screen.queryByText("Could not attach to 5005")).toBeNull();
+    expect(screen.queryByText(/Couldn't attach/)).toBeNull();
     expect(control("Continue").disabled).toBe(false);
+  });
+});
+
+describe("debugErrorWords", () => {
+  it("words each known failure and keeps a plain line, never a host, port or path", () => {
+    expect(debugErrorWords("connect ECONNREFUSED 127.0.0.1:5005")).toBe("Couldn't attach: nothing is listening for a debugger");
+    expect(debugErrorWords("request timed out after 10000ms")).toBe("The debugger didn't answer");
+    expect(debugErrorWords("not connected")).toBe("Its computer isn't answering");
+    expect(debugErrorWords("The program ended")).toBe("The program ended");
+    expect(debugErrorWords("Cannot find class com.x.Main in /w/src")).toBe("The debug session failed");
   });
 });

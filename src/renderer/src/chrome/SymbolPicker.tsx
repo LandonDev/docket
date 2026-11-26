@@ -10,9 +10,10 @@ import { usePointerHighlight } from "../hooks/usePointerHighlight";
 import type { EditorNavigation } from "../lib/search";
 import type { WorkspaceSymbolRow } from "../surfaces/monaco/lsp/providers";
 import { PickerDialog, PickerNote, pickerRowClass } from "./PickerDialog";
+import { MatchText } from "./MatchText";
 
 /**
- * ⌘O: workspace symbols from the project's running language servers
+ * ⌘⇧O: workspace symbols from the project's running language servers
  * (`workspaceSymbols` in surfaces/monaco/lsp/providers.ts, loaded lazily so
  * the shell stays free of the editor chunk). Queries settle for 250 ms.
  */
@@ -48,6 +49,8 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
   const [active, setActive] = useState(0);
   const [rows, setRows] = useState<WorkspaceSymbolRow[]>([]);
   const [loading, setLoading] = useState(false);
+  /** A failure is said as one, never as "No matching symbols". */
+  const [failure, setFailure] = useState<"none" | "failed" | null>(null);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -58,6 +61,7 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
     }
     let cancelled = false;
     setLoading(true);
+    setFailure(null);
     const timer = window.setTimeout(() => {
       void import("../surfaces/monaco/lsp/providers")
         .then(({ workspaceSymbols }) => workspaceSymbols(projectId, trimmed))
@@ -66,8 +70,10 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
           setRows(next);
           setActive(0);
         })
-        .catch(() => {
-          if (!cancelled) setRows([]);
+        .catch((err: { symbolSearch?: "none" | "failed" }) => {
+          if (cancelled) return;
+          setRows([]);
+          setFailure(err?.symbolSearch === "none" ? "none" : "failed");
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -111,9 +117,13 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
       ? "Type a symbol name"
       : loading && rows.length === 0
         ? "Searching…"
-        : rows.length === 0
-          ? "No matching symbols"
-          : null;
+        : failure === "none"
+          ? "No language server is running for this project"
+          : failure
+            ? "Couldn't search symbols"
+            : rows.length === 0
+              ? "No matching symbols"
+              : null;
 
   return (
     <PickerDialog
@@ -131,7 +141,7 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
       listId={empty ? undefined : listId}
       activeId={rows[active] ? `${listId}-${active}` : null}
     >
-      {empty ? <PickerNote>{empty}</PickerNote> : <SymbolList id={listId} rows={rows} active={active} onActive={setActive} onPick={pick} />}
+      {empty ? <PickerNote>{empty}</PickerNote> : <SymbolList id={listId} rows={rows} active={active} query={query} onActive={setActive} onPick={pick} />}
     </PickerDialog>
   );
 }
@@ -140,12 +150,15 @@ export function SymbolList({
   id,
   rows,
   active,
+  query = "",
   onActive,
   onPick,
 }: {
   id: string;
   rows: WorkspaceSymbolRow[];
   active: number;
+  /** The words typed: the name marks them as file rows mark theirs. */
+  query?: string;
   onActive: (index: number) => void;
   onPick: (row: WorkspaceSymbolRow) => void;
 }) {
@@ -177,13 +190,14 @@ export function SymbolList({
             onClick={() => onPick(row)}
             className={pickerRowClass(highlighted)}
           >
-            <span className="w-16 shrink-0 truncate text-xs text-muted-foreground">
+            {/* Wide enough for "constructor" and "type parameter" whole. */}
+            <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">
               {KIND_LABELS[row.kind] ?? "symbol"}
             </span>
             <span className="min-w-0 flex-1 truncate">
-              {row.name}
+              <MatchText text={row.name} query={query.trim()} />
               {row.containerName ? (
-                <span className="ms-2 text-muted-foreground">{row.containerName}</span>
+                <span className="ms-1 text-muted-foreground">{row.containerName}</span>
               ) : null}
             </span>
             <span className="min-w-0 max-w-[45%] truncate font-mono text-xs text-muted-foreground">

@@ -1,7 +1,8 @@
+import { dialogErrorWords } from "../../../lib/dialogErrorWords";
 import { useState } from "react";
 import { Checkbox } from "@renderer/components/ui/checkbox";
 import { Item, ItemContent, ItemGroup, ItemMedia, ItemTitle } from "@renderer/components/ui/item";
-import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../../chrome/ConfirmDialog";
 import { Modal, useModalClose } from "../../../chrome/Modal";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { TypeGlyph } from "../TypeGlyph";
@@ -44,7 +45,7 @@ export function AdoptThreadDialog({
       if (close) close(onClose);
       else onClose();
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };

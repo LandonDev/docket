@@ -102,8 +102,19 @@ export function keyStatus(report: UsageReport | undefined): { text: string; tone
   if (!report) return null;
   if (report.expired || report.note === "key revoked") return { text: "Key revoked", tone: "warning" };
   // Anything else is the probe's own note: "pay as you go", or why it could not answer (a 429, a 5xx).
-  const note = report.note ?? "Pay as you go";
-  return { text: note.charAt(0).toUpperCase() + note.slice(1), tone: "muted" };
+  return { text: report.note ? noteWords(report.note).text : "Pay as you go", tone: "muted" };
+}
+
+/**
+ * A provider's usage note in the page's words: sentence case, no closing
+ * period, and an HTTP status out of the words ("usage unavailable (502)" is
+ * "Usage unavailable", 502 kept for the tooltip alone).
+ */
+export function noteWords(note: string): { text: string; code?: string } {
+  const coded = /^(.*?)\s*\((\d{3})\)\s*\.?\s*$/.exec(note.trim());
+  const base = (coded ? coded[1]! : note).trim().replace(/\.$/, "");
+  const text = base.charAt(0).toUpperCase() + base.slice(1);
+  return coded ? { text, code: coded[2] } : { text };
 }
 
 /** A row's state line, first match wins; null when there is nothing to say. */
@@ -149,7 +160,7 @@ export function rowLine(
     return { text: "One-year token", tone: "muted", detail: profile.expiresAt !== undefined ? `lapses ${shortDay(profile.expiresAt)}` : undefined };
   }
   if (owner) {
-    return { text: `Refreshed by ${owner.name}`, tone: "muted", detail: profile.syncedAt !== undefined ? `synced ${agoLabel(profile.syncedAt, now)}` : undefined };
+    return { text: `Refreshed by ${owner.name}`, tone: "muted", detail: profile.syncedAt !== undefined ? agoLabel(profile.syncedAt, now) : undefined };
   }
   return null;
 }

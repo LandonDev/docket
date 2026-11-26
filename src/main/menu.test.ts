@@ -298,4 +298,15 @@ describe('menu state', () => {
   it('listens on menu:state', () => {
     expect(vi.mocked(ipcMain.on).mock.calls.map(([channel]) => channel)).toContain('menu:state')
   })
+
+  it("runs main's own rows for a window's in-app bar over menu:run, and nothing else it is asked", () => {
+    const run = vi.mocked(ipcMain.on).mock.calls.find(([channel]) => channel === 'menu:run')![1] as (event: unknown, id: unknown) => void
+    vi.mocked(shell.openPath).mockClear()
+    run({}, 'show_logs')
+    expect(shell.openPath).toHaveBeenCalledTimes(1)
+    vi.mocked(app.quit).mockClear()
+    for (const id of ['quit', 'toggle_sidebar', 7, undefined]) run({}, id)
+    expect(app.quit).not.toHaveBeenCalled()
+    expect(shell.openPath).toHaveBeenCalledTimes(1)
+  })
 })

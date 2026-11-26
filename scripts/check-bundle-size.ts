@@ -90,6 +90,10 @@ export const NEVER_IN_ENTRY = [
   // Every menu, context menu and popover body rides menuChunk (chrome/menuRows.tsx); the
   // first paint draws a menu by its parts through components/ui/lazy-menus.tsx.
   'src/renderer/src/chrome/menuBody.tsx',
+  // The context meter's popover body rides it too (the meter's ring and percent are the first paint's).
+  'src/renderer/src/chrome/ContextBreakdown.tsx',
+  // The Accounts page's bones are its chunk's: the window's fallback draws the rows alone (surfaces/SurfaceSkeleton.tsx).
+  'src/renderer/src/aliax/views/accounts/usageSkeleton.tsx',
   'node_modules/@base-ui/react/menu/root/MenuRoot.mjs',
   'node_modules/@base-ui/react/popover/root/PopoverRoot.mjs',
   'src/renderer/src/components/ui/dropdown-menu.tsx',

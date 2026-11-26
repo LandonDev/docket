@@ -5,7 +5,9 @@ import {
   dedupePairedFiles,
   foldFileHits,
   formatSeconds,
-  hostTimingLabel,
+  hostTimingWord,
+  offlineLine,
+  foldMessageHits,
   hostToken,
   hostsMatching,
   matchesProject,
@@ -490,21 +492,38 @@ describe("hit builders and labels", () => {
     ]);
   });
 
+  it("folds a thread's message hits into one row with the rest as more, as files fold", () => {
+    const msg = (n: number, sessionId = "s1", host = "box") =>
+      ({ id: `message:${sessionId}:${n}`, kind: "message", host, sessionId, cwd: "/w", harness: "claude", title: "Fix the flaky gateway test", updatedAt: 1, seq: n, role: "assistant", preview: `hit ${n}`, score: 20 - n }) as const;
+    const thread = { id: "conversation:s1", kind: "conversation", host: "box", sessionId: "s1", cwd: "/w", harness: "claude", title: "Fix the flaky gateway test", updatedAt: 1, score: 30, positions: [] } as const;
+    const folded = foldMessageHits([thread, msg(1), msg(2), msg(3), msg(1, "s2"), msg(4), msg(5), msg(6), msg(2, "s1", "mac")]);
+    expect(folded.map((hit) => hit.id)).toEqual(["conversation:s1", "message:s1:1", "message:s2:1", "message:s1:2"]);
+    expect(folded[1]).toMatchObject({ seq: 1, more: 5 });
+    expect(folded[2]).not.toHaveProperty("more");
+    expect(folded[3]).toMatchObject({ host: "mac" });
+    expect(folded[3]).not.toHaveProperty("more");
+  });
+
   it("builds note hits with the host in the id", () => {
     const [hit] = noteHits("box", [{ id: "n1", title: "T", snippet: "s", updatedAt: Date.now(), sourceCwd: "/w" }]);
     expect(hit).toMatchObject({ id: "note:box:n1", kind: "note", host: "box", noteId: "n1", cwd: "/w" });
     expect(hit.score).toBeGreaterThan(12);
   });
 
-  it("formats the footer line per host state", () => {
-    expect(hostTimingLabel({ environmentId: "b", name: "box", state: "done", elapsedMs: 1234 })).toBe("box: 1.2 s");
-    expect(hostTimingLabel({ environmentId: "b", name: "box", state: "done", elapsedMs: 80 })).toBe("box: 80 ms");
-    expect(hostTimingLabel({ environmentId: "b", name: "box", state: "done", elapsedMs: 12_400 })).toBe("box: 12 s");
-    expect(hostTimingLabel({ environmentId: "b", name: "mac", state: "skipped", elapsedMs: 0, detail: "offline" })).toBe(
-      "mac: skipped (offline)",
-    );
-    expect(hostTimingLabel({ environmentId: "b", name: "mac", state: "failed", elapsedMs: 0, detail: "x" })).toBe("mac: failed (x)");
-    expect(hostTimingLabel({ environmentId: "b", name: "mac", state: "searching", elapsedMs: 0 })).toBe("mac: …");
+  it("words the footer's state per host, with no colon and no raw reason", () => {
+    expect(hostTimingWord({ environmentId: "b", name: "box", state: "done", elapsedMs: 1234 })).toBe("1.2 s");
+    expect(hostTimingWord({ environmentId: "b", name: "box", state: "done", elapsedMs: 80 })).toBe("80 ms");
+    expect(hostTimingWord({ environmentId: "b", name: "box", state: "done", elapsedMs: 12_400 })).toBe("12 s");
+    expect(hostTimingWord({ environmentId: "b", name: "mac", state: "skipped", elapsedMs: 0, detail: "offline" })).toBe("offline");
+    expect(hostTimingWord({ environmentId: "b", name: "mac", state: "failed", elapsedMs: 0, detail: "EPIPE" })).toBe("failed");
+    expect(hostTimingWord({ environmentId: "b", name: "mac", state: "searching", elapsedMs: 0 })).toBe("…");
     expect(formatSeconds(0)).toBe("1 ms");
+  });
+
+  it("says the offline hosts in one line, and nothing when none is", () => {
+    const off = (name: string) => ({ environmentId: name, name, state: "skipped" as const, elapsedMs: 0, detail: "offline" });
+    expect(offlineLine([off("The box")])).toBe("The box is offline");
+    expect(offlineLine([off("The box"), off("Studio"), off("Mac")])).toBe("The box, Studio and Mac are offline");
+    expect(offlineLine([{ environmentId: "b", name: "box", state: "failed", elapsedMs: 0, detail: "x" }])).toBeNull();
   });
 });

@@ -9,7 +9,7 @@ import { AccountsView, type AccountsViewProps } from "./accounts";
  */
 export function AccountsPagePreview(props: AccountsViewProps) {
   return (
-    <Page title="Accounts" description="The sign-ins and keys threads route through." width="table">
+    <Page title="Accounts" width="table">
       <AccountsView {...props} />
     </Page>
   );

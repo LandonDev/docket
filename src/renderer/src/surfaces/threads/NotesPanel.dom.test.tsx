@@ -142,19 +142,23 @@ describe("NotesBody", () => {
     expect(request).toHaveBeenCalledWith("session.notes.set", { sessionId: "s1", text: "## Goal\n\nEscaped.\n" });
   });
 
-  it("a failed save says so in red", async () => {
+  it("a failed save says so in red with its reason, and keeps his draft in sight", async () => {
     render(<NotesBody session={session} />);
     await flush();
-    request.mockImplementationOnce(() => Promise.reject(new Error("offline")));
+    request.mockImplementationOnce(() => Promise.reject(new Error("not connected")));
     fireEvent.click(screen.getByRole("button", { name: "Edit notes" }));
     fireEvent.change(screen.getByLabelText("Notes source"), { target: { value: "## Goal\n\nlost?\n" } });
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await flush();
     const mark = screen.getByText("Save failed").closest<HTMLElement>('[data-slot="status-mark"]')!;
     expect(mark.dataset.state).toBe("failed");
+    expect(mark.querySelector('[data-slot="status-detail"]')!.textContent).toBe("no answer");
+    // The source stays open with his words, never the old rendered text (rightpanel-16).
+    expect((screen.getByLabelText("Notes source") as HTMLTextAreaElement).value).toBe("## Goal\n\nlost?\n");
+    expect(screen.queryByTestId("md")).toBeNull();
   });
 
-  it("a first draft that failed to save stays: Save failed, and the pencil brings it back to retry", async () => {
+  it("Retry saves the kept draft again; the line stays, spinning, until the answer", async () => {
     request.mockImplementationOnce(() => Promise.resolve({ text: "", updatedAt: null, path: null }));
     render(<NotesBody session={session} />);
     await flush();
@@ -165,11 +169,16 @@ describe("NotesBody", () => {
     await flush();
     expect(screen.queryByText("No notes yet")).toBeNull();
     expect(screen.getByText("Save failed")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Edit notes" }));
     expect((screen.getByLabelText("Notes source") as HTMLTextAreaElement).value).toBe("## Goal\n\nfirst\n");
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    await flush();
+    let answer: (v: unknown) => void = () => {};
+    request.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(request).toHaveBeenLastCalledWith("session.notes.set", { sessionId: "s1", text: "## Goal\n\nfirst\n" });
+    expect(screen.getByText("Save failed")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => answer({ text: "## Goal\n\nfirst\n", updatedAt: Date.now(), path: "/p/notes.md" }));
+    expect(screen.queryByText("Save failed")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("loading shows skeleton lines, not words", () => {

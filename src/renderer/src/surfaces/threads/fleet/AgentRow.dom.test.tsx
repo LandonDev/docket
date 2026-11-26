@@ -205,6 +205,10 @@ describe("AgentRowView", () => {
     const { meta, status } = row("Build the shell");
     const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
     expect(container.querySelector("[data-tally]")?.textContent).toBe("3/7");
+    // The tally and the time are one comma run, never two facts apart by space alone (rightpanel-15).
+    const facts = container.querySelector("[data-tally]")!.parentElement!;
+    expect(facts.hasAttribute("data-row-facts")).toBe(true);
+    expect(facts.className).toContain("[&>span:not(:last-child)]:after:content-[',']");
     const none = fixtureMeta("n", { status: "running", tasks: { done: 0, total: 0 } });
     const other = render(<AgentRowView meta={none} status={agentStatus(none)} onOpen={() => {}} />);
     expect(other.container.querySelector("[data-tally]")).toBeNull();

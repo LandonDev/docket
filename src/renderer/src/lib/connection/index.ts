@@ -26,6 +26,7 @@ export {
   registry,
   localEnvironment,
   webEnvironment,
+  webEnvironmentNamed,
   savedEnvironment,
   pageProfile,
   localServerPort,

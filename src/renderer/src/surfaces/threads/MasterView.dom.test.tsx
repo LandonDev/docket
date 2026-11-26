@@ -1555,12 +1555,13 @@ describe("the master view", () => {
     await pick(await within(dialog).findByRole("combobox", { name: "Add a step" }), "Shell command");
     const addStep = within(dialog).getByRole("button", { name: "Add step" });
     expect(addStep.hasAttribute("disabled")).toBe(true);
-    // Plain words, no exit codes: "Command" and "Folder (the project's if empty)".
-    expect(within(dialog).getByLabelText("Command").getAttribute("placeholder")).toBe("Command");
-    expect(within(dialog).getByLabelText("Working directory").getAttribute("placeholder")).toBe("Folder (the project's if empty)");
-    fireEvent.change(within(dialog).getByLabelText("Step name"), { target: { value: "Smoke test" } });
+    // A label a field, plain words, no exit codes in a placeholder: the pass rule is the field's hint.
+    expect(within(dialog).getByText("Command").tagName).toBe("LABEL");
+    expect(within(dialog).getByLabelText("Command").getAttribute("placeholder")).not.toMatch(/exit|,/);
+    expect(within(dialog).getByLabelText("Folder").getAttribute("placeholder")).toBe("The project");
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Smoke test" } });
     fireEvent.change(within(dialog).getByLabelText("Command"), { target: { value: "bun run smoke" } });
-    fireEvent.change(within(dialog).getByLabelText("Working directory"), { target: { value: "/srv/plugin" } });
+    fireEvent.change(within(dialog).getByLabelText("Folder"), { target: { value: "/srv/plugin" } });
     fireEvent.click(addStep);
     expect(ids()).toEqual(["land", "release", "deploy", "shell"]);
     expect(dialog.querySelector("[data-rule-step='shell'] [data-rule-line]")?.textContent).toBe("bun run smoke");
@@ -1727,7 +1728,7 @@ describe("Stop, archive and delete a batch thread from the board", () => {
     expect(toasts).toEqual([]);
   });
 
-  it("a Delete the host refuses says why in a toast and the row stays", async () => {
+  it("a Delete the host refuses says why in the confirm, which stays open, and the row stays", async () => {
     seed([meta({ id: "c-done", title: "Finished", status: "idle", createdAt: 1 })]);
     link.fail.set("session.delete", "forbidden: session.delete needs admin");
     renderView();
@@ -1737,8 +1738,12 @@ describe("Stop, archive and delete a batch thread from the board", () => {
     expect(within(dialog).getByText("Its transcript is gone for good.")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete thread" }));
     await flush();
-    await waitFor(() => expect(toasts).toEqual([{ message: "Couldn't delete it", description: "Finished: Forbidden: session.delete needs admin" }]));
-    expect(screen.getByRole("button", { name: /Finished/ })).toBeTruthy();
+    // The confirm waits for the host's answer: the refusal is its red line, in words, and no toast repeats it.
+    await waitFor(() => expect(within(dialog).getByText(/^This computer's key may not do that/)).toBeTruthy());
+    expect(dialog.textContent).not.toContain("session.delete");
+    expect(toasts).toEqual([]);
+    // The row is still on the board, behind the open confirm.
+    expect(screen.getByRole("button", { name: /Finished/, hidden: true })).toBeTruthy();
   });
 
   it("Remove from queue whose answer names the thread as failed says why; Archive reaches the row's own host", async () => {

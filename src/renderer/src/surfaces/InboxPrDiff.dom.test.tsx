@@ -10,24 +10,36 @@ describe("InboxPrDiff", () => {
   it("says once, in one line, that a diff too large to show lists its files alone", () => {
     const diff = { additions: 1, deletions: 0, files: [{ path: "src/a.ts", additions: 1, deletions: 0, status: "modified" }], patch: "", truncated: true } as unknown as GithubPrDiff;
     render(<InboxPrDiff diff={diff} />);
-    expect(screen.getByText("Too large to show in full; the files appear without their diffs.")).toBeTruthy();
+    expect(screen.getByText("Too large to show the diffs")).toBeTruthy();
   });
 
-  it("inks code through the theme's tokens: no status colour and no fixed opacity is written into a line", () => {
-    const patch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,3 +1,3 @@\n const Kept = 1;\n-const Old = 1;\n+export const New = 2;";
-    const diff = { additions: 1, deletions: 1, files: [{ path: "src/a.ts", additions: 1, deletions: 1, status: "modified" }], patch, truncated: false } as unknown as GithubPrDiff;
+  it("draws a file's patch as the transcript's diff: DiffLine rows, a gap between hunks, no coloured bar", () => {
+    const patch = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,3 +1,3 @@\n const Kept = 1;\n-const Old = 1;\n+export const New = 2;\n@@ -20,1 +20,1 @@\n-a\n+b";
+    const diff = { additions: 2, deletions: 2, files: [{ path: "src/a.ts", additions: 2, deletions: 2, status: "modified" }], patch, truncated: false } as unknown as GithubPrDiff;
     const { container } = render(<InboxPrDiff diff={diff} />);
-    const code = [...container.querySelectorAll<HTMLElement>("span.whitespace-pre")];
-    expect(code.map((line) => line.textContent)).toEqual(["const Kept = 1;", "const Old = 1;", "export const New = 2;"]);
-    for (const line of code) expect(line.innerHTML).not.toMatch(/text-success|text-warning|opacity-70/);
-    const classes = (line: HTMLElement, word: string) => [...line.querySelectorAll("span")].find((span) => span.textContent === word && !span.children.length)!.className;
-    // A changed line: a keyword and a type name each take their token (foreground and muted in light).
-    expect(classes(code[2], "export")).toBe("text-(--pr-code-keyword)");
-    expect(classes(code[2], "New")).toBe("text-(--pr-code-type)");
-    // A context line is dimmed by the theme's token, and its words fall back to their own ink where the theme names none.
-    expect(code[0].firstElementChild!.className).toBe("text-muted-foreground opacity-(--diff-context-dim)");
-    expect(classes(code[0], "const")).toBe("text-[var(--diff-context-strong,var(--pr-code-keyword))]");
-    expect(classes(code[0], "Kept")).toBe("text-[var(--diff-context-strong,var(--pr-code-type))]");
+    const lines = [...container.querySelectorAll<HTMLElement>("[data-diff-line]")];
+    expect(lines.map((line) => line.dataset.diffLine)).toEqual(["ctx", "del", "add", "del", "add"]);
+    expect(lines[2].textContent).toContain("export const New = 2;");
+    // One gap between the two hunks, none before the first.
+    expect(container.querySelectorAll("[data-diff-gap]")).toHaveLength(1);
+    // A change is marked by its tint and its mark alone: no 2px bar at its left edge.
+    expect(container.querySelector(".w-0\\.5")).toBeNull();
+  });
+
+  it("maps a patch's lines to the diff body's rows", async () => {
+    const { prDiffRows } = await import("./InboxPrDiff");
+    expect(
+      prDiffRows([
+        { kind: "hunk", text: "@@ -1 +1 @@", oldNumber: null, newNumber: null },
+        { kind: "context", text: "a", oldNumber: 1, newNumber: 1 },
+        { kind: "hunk", text: "@@ -9 +9 @@", oldNumber: null, newNumber: null },
+        { kind: "add", text: "b", oldNumber: null, newNumber: 9 },
+      ]),
+    ).toEqual([
+      { type: "ctx", oldNo: 1, newNo: 1, text: "a" },
+      { type: "gap", text: "" },
+      { type: "add", oldNo: undefined, newNo: 9, text: "b" },
+    ]);
   });
 
   it("turns one chevron with its file instead of swapping glyphs", () => {

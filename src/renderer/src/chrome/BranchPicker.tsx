@@ -1,3 +1,4 @@
+import { dialogErrorWords } from "../lib/dialogErrorWords";
 import { registry } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
 import { ChevronDown, GitBranch } from "./icons";
@@ -149,8 +150,7 @@ export function BranchPicker({
     dismiss(true);
   };
 
-  const failMessage = (err: unknown) =>
-    err instanceof Error ? err.message : String(err);
+  const failMessage = (err: unknown) => dialogErrorWords(err);
 
   const run = async (pending: PendingSwitch) => {
     if (busy || blocked) return;
@@ -160,8 +160,8 @@ export function BranchPicker({
       await applySwitch(pending);
       finishSwitch();
     } catch (err) {
-      const message = failMessage(err);
-      if (isCheckoutBlockedByChanges(message)) {
+      // git's own text decides; the person reads it worded (dialogErrorWords).
+      if (isCheckoutBlockedByChanges(err instanceof Error ? err.message : String(err))) {
         setOpen(false);
         setQuery("");
         setError(null);
@@ -171,26 +171,28 @@ export function BranchPicker({
         setBlocked(pending);
         return;
       }
-      setError(message);
+      setError(failMessage(err));
       setBusy(false);
       search.current?.focus();
     }
   };
 
+  /** True once the switch landed; the dialog then plays its exit and runs `finishSwitch`. */
   const resolveBlocked = async (
     kind: "stash" | "commit",
     work: () => Promise<unknown>,
-  ) => {
-    if (!blocked || blockedBusy) return;
+  ): Promise<boolean> => {
+    if (!blocked || blockedBusy) return false;
     setBlockedBusy(kind);
     setBlockedError(null);
     try {
       await work();
       await applySwitch(blocked);
-      finishSwitch();
+      return true;
     } catch (err) {
       setBlockedError(failMessage(err));
       setBlockedBusy(null);
+      return false;
     }
   };
 
@@ -304,17 +306,18 @@ export function BranchPicker({
             creating={blocked.kind === "create"}
             busy={blockedBusy}
             error={blockedError}
-            onStash={() => {
-              void resolveBlocked("stash", () =>
+            onStash={() =>
+              resolveBlocked("stash", () =>
                 gitStash(environmentId, cwd, `WIP before switching to ${blocked.name}`),
-              );
-            }}
-            onCommit={(message) => {
-              void resolveBlocked("commit", async () => {
+              )
+            }
+            onCommit={(message) =>
+              resolveBlocked("commit", async () => {
                 await gitStageAll(environmentId, cwd);
                 await gitCommit(environmentId, cwd, message);
-              });
-            }}
+              })
+            }
+            onSwitched={finishSwitch}
             onCancel={() => {
               if (blockedBusy) return;
               setBlocked(null);

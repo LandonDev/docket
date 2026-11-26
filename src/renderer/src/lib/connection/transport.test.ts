@@ -62,6 +62,13 @@ describe("Transport", () => {
     await expect(t.open()).resolves.toBe(hello);
   });
 
+  it("keeps the host's own name from its hello", async () => {
+    const t = make();
+    const p = t.open();
+    FakeSocket.instances[FakeSocket.instances.length - 1].receive({ ...HELLO, name: "The box" });
+    expect(await p).toMatchObject({ name: "The box" });
+  });
+
   it("carries the ticket or cookie route URL untouched", () => {
     const t = make("wss://box.example/ws?ticket=abc");
     void t.open().catch(() => undefined);

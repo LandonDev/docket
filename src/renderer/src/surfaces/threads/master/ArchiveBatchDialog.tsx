@@ -1,6 +1,7 @@
+import { dialogErrorWords } from "../../../lib/dialogErrorWords";
 import { useState } from "react";
 import { CheckRow } from "../../../chrome/DialogField";
-import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../../chrome/ConfirmDialog";
 import { Modal, useModalClose } from "../../../chrome/Modal";
 import { archiveCopy, type ArchiveWhich } from "./boardActions";
 
@@ -42,7 +43,7 @@ function Body({ which, count, resources, onCancel, onConfirm, pending, setPendin
       if (close) close(onCancel);
       else onCancel();
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };

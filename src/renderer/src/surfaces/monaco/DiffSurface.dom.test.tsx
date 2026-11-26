@@ -29,6 +29,8 @@ const h = vi.hoisted(() => ({
   // Nothing to stage once the index has the text.
   stageChunkText: vi.fn((o: string, c: string, _p: number): string | null => (o === c ? null : c)),
 }));
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error: toastError }) }));
 vi.mock("../../lib/editorFlush", () => ({ registerEditorFlusher: () => () => {} }));
 vi.mock("../../lib/fs", () => ({
   gitFileDiff: h.gitFileDiff, gitStageContents: h.stage, notifyGitChanged: vi.fn(),
@@ -139,6 +141,16 @@ describe("Monaco review header", () => {
     expect(h.stageChunkText).toHaveBeenCalledWith("one\ntwo\nthree\n", "one\nTWO\nthree\n", 4);
     // The index now has the change: nothing is left to stage there.
     await waitFor(() => expect(stage().disabled).toBe(true));
+  });
+
+  it("a refused stage says so as Word: Detail, its reason worded, never the raw text in the title", async () => {
+    h.changes = [change(2, 2, 2, 2)];
+    h.stage.mockRejectedValueOnce(new Error("not connected"));
+    const { getByRole } = render(<DiffSurface path="/repo/src/file.ts" cwd="/repo" />);
+    const stage = () => getByRole<HTMLButtonElement>("button", { name: "Stage change" });
+    await waitFor(() => expect(stage().disabled).toBe(false));
+    fireEvent.click(stage());
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Couldn't stage the change", { description: "Its host is not connected" }));
   });
 
   it("a review opened against HEAD, as the Changes section opens one, offers Stage", async () => {

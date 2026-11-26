@@ -9,6 +9,7 @@ import { wantOutbox } from "../../lib/outboxWant";
 import { useTranscriptHost } from "../transcriptSession";
 import type { ApprovalDecision } from "../../lib/harness";
 import { cn } from "../../lib/cn";
+import { registerToastSeat } from "../../lib/toastAnchor";
 import { type Block } from "../../lib/session";
 
 type Approval = NonNullable<Block["approval"]>;
@@ -79,6 +80,8 @@ function HeldLine({ n, act }: { n: number; act: string }) {
  * clears the table's clipped frame; the mark at its 12px inset; the verdict
  * a 32px row at 34px. The amber mark is drawn here alone: the call's row
  * above keeps its tool icon while this line asks.
+ * Waiting, it seats the toast stack above itself (`registerToastSeat`), so
+ * another thread's toast never covers Allow and Deny.
  * A click draws the verdict at once, before the host's decided row comes
  * back, so a second click can send nothing more; a decision the host never
  * took puts the buttons back and says so in a toast.
@@ -122,7 +125,7 @@ export function ApprovalCard({
   }
   const words = choiceWords(approval);
   return (
-    <div data-slot="approval" className="flex min-h-7 in-data-[table]:min-h-8 min-w-0 items-center gap-2 in-data-[table]:px-3 in-data-[table]:py-1.5 font-sans">
+    <div ref={registerToastSeat} data-toast-seat="" data-slot="approval" className="flex min-h-7 in-data-[table]:min-h-8 min-w-0 items-center gap-2 in-data-[table]:px-3 in-data-[table]:py-1.5 font-sans">
       <span data-approval-mark className="flex w-3.5 shrink-0 justify-center">
         <StatusMark state="waiting" word={false} />
       </span>

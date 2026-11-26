@@ -20,8 +20,11 @@ export type UpdateRowState =
 /** A download in hand outranks one to start, which outranks the note that
  *  an update just landed; otherwise the row offers a check with the running
  *  version, and says Checking… while a check the person asked for runs
- *  (`manual`; the background probes keep the row still). */
-export function updateRowState(snapshot: UpdaterSnapshot, notice: InstalledUpdate | null, manual = false): UpdateRowState {
+ *  (`manual`; the background probes keep the row still). A build that cannot
+ *  apply a release (unpackaged: `dev:prod`, a dev instance) draws no row
+ *  until a code-only update is known: its check would answer nothing. */
+export function updateRowState(snapshot: UpdaterSnapshot, notice: InstalledUpdate | null, manual = false): UpdateRowState | null {
+  if (snapshot.canApply === false && !snapshot.codeSubject) return null;
   if (snapshot.phase === "ready") return snapshot.codeSubject ? { kind: "ready", subject: snapshot.codeSubject } : { kind: "ready" };
   if (snapshot.phase === "downloading") return { kind: "downloading", percent: snapshot.percent ?? 0 };
   const retry = canRetry(snapshot);
@@ -60,7 +63,8 @@ function Version({ version }: { version?: string }) {
  * version at its end (asks the feed), "Checking…" with the spinner while
  * that runs, "Updated to 1.0.N" (opens What's new, ✕ dismisses), "Update
  * to 1.0.N" or "Retry update" (installs; What's new as the hover action
- * when there are notes), "Downloading" with its percentage, "Restart to
+ * when there are notes), "Downloading" with its percentage (a progress
+ * bar with nothing to press), "Restart to
  * update" (a code-only update names its commit on hover). The glyph is
  * the accent while there is something to do; there is no tinted fill.
  */
@@ -129,7 +133,22 @@ export function UpdateRow({
         />
       );
     case "downloading":
-      return <RailRow icon={ArrowDownCircle} label="Downloading" trailing={`${state.percent}%`} />;
+      // Nothing to press while the bytes come: a progress bar laid out as a
+      // row (RailRow's glyph, inset and type), never a button.
+      return (
+        <div
+          role="progressbar"
+          aria-label="Downloading the update"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={state.percent}
+          className="flex h-7 items-center gap-2 rounded-md px-3 text-[13px] text-muted-foreground"
+        >
+          <ArrowDownCircle aria-hidden className="size-4 shrink-0" />
+          <span className="min-w-12 flex-1 truncate">Downloading</span>
+          <span className="shrink-0 text-xs tabular-nums">{state.percent}%</span>
+        </div>
+      );
     case "ready":
       return (
         <RailRow

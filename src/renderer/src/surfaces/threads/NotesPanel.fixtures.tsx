@@ -35,5 +35,5 @@ export default [
   { name: "loading", props: { ...base, loading: true, text: "", updatedAt: null } },
   { name: "empty", props: { ...base, text: "", updatedAt: null } },
   { name: "editing, the thread wrote meanwhile", props: { ...base, editing: true, draft: notes, remoteChanged: true, saving: "saved" as const } },
-  { name: "save failed", props: { ...base, editing: true, draft: notes, saving: "failed" as const } },
+  { name: "save failed", props: { ...base, editing: true, draft: notes, saving: "failed" as const, why: "no answer", onRetry: () => {} } },
 ];

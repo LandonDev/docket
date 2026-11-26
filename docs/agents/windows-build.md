@@ -249,8 +249,11 @@ src/main/windowFrame.ts (`frameOptions`), used by windows.ts:
   keeps the drawn ones, 40px tall at the bar's top, the live row's line. The bar is the drag region, as on the Mac.
 - The glyphs take the ink of the app's theme. Only the page knows its theme, so it writes the
   shell colour to its `theme-color` and main reads `did-change-theme-color` (`isDarkColor`).
-- No menu bar (`setMenuBarVisibility(false)`), so Alt reveals nothing; the menu still exists and
-  its accelerators run, Ctrl where the Mac has ⌘.
+- No native menu bar (`setMenuBarVisibility(false)`); the menu still exists and its accelerators
+  run, Ctrl where the Mac has ⌘. A lone Alt opens the in-app bar in its place
+  (chrome/MenuBar.tsx `menuBarPlace`, [menu-bar.md](menu-bar.md)), the way to the rows with no
+  key: Open File…, Show Logs, Force Reload, the profile. Read in code and tested in jsdom; not
+  yet seen on the rig.
 - **No Mica.** The plan named it; docs/DESIGN.md has one neutral palette and no glass, and it wins.
   The shell is the opaque `sidebar` tone on every platform.
 - **Reduced motion.** Chromium on Windows reports `prefers-reduced-motion: reduce` whenever

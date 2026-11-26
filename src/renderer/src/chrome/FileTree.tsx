@@ -6,7 +6,6 @@ import { environmentOfCwd } from "../lib/tcserver/projects";
 import { applyBeforeMove, applyWillRename } from "../lib/editorRename";
 import { onFileEvent, watchCwd } from "../lib/projectWatch";
 import {
-  ChevronDown,
   ChevronRight,
   ClipboardPaste,
   Copy,
@@ -21,7 +20,10 @@ import {
   Terminal,
   Trash2,
 } from "./icons";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
+import { Empty, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
+import { DISCLOSURE_CHEVRON } from "@renderer/components/ui/disclosure";
+import { TruncateTip } from "@renderer/components/tip";
 import { Input } from "@renderer/components/ui/input";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
@@ -124,6 +126,7 @@ type TreeCtxValue = {
   onCreateCancel: (id: number) => void;
   onRenameCommit: (path: string, raw: string) => Promise<void>;
   onRenameCancel: () => void;
+  onRetry: (path: string) => Promise<void>;
 };
 
 const TreeCtx = createContext<TreeCtxValue | null>(null);
@@ -657,6 +660,8 @@ export function FileTree({
           onCreateCancel,
           onRenameCommit,
           onRenameCancel,
+          // Asks the host for the folder again; only a listing that came back redraws the tree, a second failure keeps the line.
+          onRetry: (path) => refreshDir(path).then(() => setEpoch((n) => n + 1), () => {}),
         }}
       >
         <RowsContextMenu
@@ -699,10 +704,10 @@ export function FileTree({
           </div>
           <div
             ref={lockOverscroll}
-            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none pt-1"
+            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none px-1 pt-1"
           >
             {opError ? (
-              <p className="px-3 py-1 text-xs leading-4 text-destructive">
+              <p className="px-2 py-1 text-xs leading-4 text-destructive">
                 {opError}
               </p>
             ) : null}
@@ -785,18 +790,23 @@ function TreeChildren({
   const folders = entries?.filter((e) => e.isDir) ?? [];
   const files = entries?.filter((e) => !e.isDir) ?? [];
   const pad = { paddingLeft: 28 + depth * 12 };
+  // The checkout itself lists nothing: one Empty in the tree's place.
+  const bare = depth === 0 && !loading && !error && !show && entries?.length === 0;
 
   return (
     <>
-      {error ? (
-        <p className="truncate pr-2 text-xs text-muted-foreground" style={pad}>
-          {error}
-        </p>
+      {error ? <FailedLine path={parent} depth={depth} /> : null}
+      {bare ? (
+        <Empty className="flex-none py-6">
+          <EmptyHeader>
+            <EmptyTitle>No files</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : null}
       {show && ctx.creating?.isDir ? row : null}
       {loading && !error
         ? Array.from({ length: depth === 0 ? 3 : 1 }, (_, i) => (
-            <div key={i} data-slot="tree-skeleton" className="flex h-7.5 items-center pr-2" style={pad}>
+            <div key={i} data-slot="tree-skeleton" className="flex h-7 items-center pr-2" style={pad}>
               <Skeleton className="h-3" style={{ width: `${[60, 44, 52][i]}%` }} />
             </div>
           ))
@@ -888,39 +898,30 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
           onCancel={onRenameCancel}
         />
       ) : (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                role="treeitem"
-                data-path={entry.path}
-                aria-expanded={entry.isDir ? open : undefined}
-                aria-selected={selected}
-                aria-current={selected || undefined}
-                onClick={onClick}
-                data-menu-id={menuIdOf(entry)}
-                style={{ paddingLeft: 8 + depth * 12 }}
-                className={`flex h-7.5 w-full justify-start gap-1 rounded-none pr-2 text-left text-[14px] font-normal leading-none ${
-                  selected
-                    ? "bg-muted hover:bg-muted aria-expanded:bg-muted"
-                    : "hover:bg-foreground/5 aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/5"
-                } ${cutPath === entry.path ? "opacity-50" : ""}`}
-              />
-            }
-          >
-            <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
-              {entry.isDir ? (
-                open ? (
-                  <ChevronDown className="size-3.5" />
-                ) : (
-                  <ChevronRight className="size-3.5" />
-                )
-              ) : null}
-            </span>
-            <span className="shrink-0">
-              <FileTypeIcon name={entry.name} isDir={entry.isDir} isOpen={open} />
-            </span>
+        // The panel's row (Item size="xs"): 28px, 13px, rounded, on the 12px inset; the whole name on hover only while it is cut.
+        <Button
+          variant="ghost"
+          role="treeitem"
+          data-path={entry.path}
+          aria-expanded={entry.isDir ? open : undefined}
+          aria-selected={selected}
+          aria-current={selected || undefined}
+          onClick={onClick}
+          data-menu-id={menuIdOf(entry)}
+          style={{ paddingLeft: 8 + depth * 12 }}
+          className={`flex h-7 w-full justify-start gap-1 rounded-lg pr-2 text-left text-[13px] font-normal leading-none ${
+            selected
+              ? "bg-muted hover:bg-muted aria-expanded:bg-muted"
+              : "hover:bg-foreground/5 aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/5"
+          } ${cutPath === entry.path ? "opacity-50" : ""}`}
+        >
+          <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
+            {entry.isDir ? <ChevronRight className={`size-3 ${DISCLOSURE_CHEVRON} ${open ? "rotate-90" : ""}`} /> : null}
+          </span>
+          <span className="shrink-0">
+            <FileTypeIcon name={entry.name} isDir={entry.isDir} isOpen={open} />
+          </span>
+          <TruncateTip text={entry.name}>
             <span
               className={`min-w-0 truncate ${
                 entry.ignored ? "italic text-muted-foreground" : (gitColor ?? "")
@@ -928,9 +929,8 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
             >
               {entry.name}
             </span>
-          </TooltipTrigger>
-          <TooltipContent>{entry.path}</TooltipContent>
-        </Tooltip>
+          </TruncateTip>
+        </Button>
       )}
       {entry.isDir && open ? (
         <TreeChildren
@@ -942,6 +942,30 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
         />
       ) : null}
     </div>
+  );
+}
+
+/** A folder the host could not list: one red line in its rows' place, with Retry (DESIGN "Loading and empty states"). */
+function FailedLine({ path, depth }: { path: string; depth: number }) {
+  const { onRetry } = useTree();
+  const [busy, setBusy] = useState(false);
+  return (
+    <p role="alert" className="flex h-7 items-center gap-2 pr-2 text-xs text-destructive" style={{ paddingLeft: depth === 0 ? 8 : 28 + depth * 12 }}>
+      <span className="min-w-0 truncate">Couldn't list this folder</span>
+      <Button
+        variant="ghost"
+        size="xs"
+        className="ml-auto shrink-0"
+        disabled={busy}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          setBusy(true);
+          void onRetry(path).finally(() => setBusy(false));
+        }}
+      >
+        <BusyLabel busy={busy} label="Retry" />
+      </Button>
+    </p>
   );
 }
 
@@ -1015,12 +1039,10 @@ function NameRow({
     <div>
       <div
         style={{ paddingLeft: 8 + depth * 12 }}
-        className="flex h-7.5 w-full items-center gap-1 bg-muted pr-2"
+        className="flex h-7 w-full items-center gap-1 rounded-lg bg-muted pr-2"
       >
         <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
-          {isDir ? (
-            <ChevronRight className="size-3.5" />
-          ) : null}
+          {isDir ? <ChevronRight className="size-3" /> : null}
         </span>
         <span className="shrink-0">
           <FileTypeIcon name={leaf} isDir={isDir} />
@@ -1051,7 +1073,7 @@ function NameRow({
             }
           }}
           onBlur={() => finish(issue === null || issue.severity !== "error")}
-          className="h-5 flex-1 rounded-md bg-background px-1 py-0 text-[14px] leading-none"
+          className="h-5 flex-1 rounded-md bg-background px-1 py-0 text-[13px] leading-none"
         />
       </div>
       {showIssue ? (

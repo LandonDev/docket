@@ -109,7 +109,9 @@ describe("BuildView", () => {
     expect(status()).toBeNull();
     expect(document.querySelector("[data-slot=build-log]")).toBeNull();
     expect(screen.getByText("bun run build")).toBeTruthy();
-    expect(screen.getByText("detected")).toBeTruthy();
+    // The source never trails the command as a word (rightpanel-17): its hover says where it came from.
+    expect(screen.queryByText("detected")).toBeNull();
+    expect(document.querySelector("[data-build-command]")!.textContent).toBe("bun run build");
     // The section's top row: 36px on the panel's 12px inset, as Changes, Build, Notes and Files all draw it.
     const top = screen.getByRole("button", { name: "Build" }).closest('[data-slot="section-top"]')!;
     expect(top.className).toContain("h-9");
@@ -209,6 +211,24 @@ describe("BuildView", () => {
 });
 
 describe("BuildView's tooltips", () => {
+  it("puts no tip on a project's command that fits, nor an absolute path on an output or the branch (rightpanel-18)", async () => {
+    resetTooltips();
+    await tooltipChunk.load();
+    act(() => warmTooltips());
+    view({
+      run: run({ outputs: [{ path: "build/libs/plugin.jar", abs: "/w/plugin/build/libs/plugin.jar", size: 10, mtimeMs: now, fresh: true }] }),
+    });
+    expect(document.querySelector("[data-build-command]")!.getAttribute("data-slot")).toBeNull();
+    expect(document.querySelector('[data-output="build/libs/plugin.jar"] [data-slot="tooltip-trigger"]')).toBeNull();
+    expect(document.querySelector('[data-slot="section-top"] [data-slot="tooltip-trigger"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("/w/plugin");
+    cleanup();
+    // A detected command says where it came from on its hover alone.
+    view({ effective: { command: "bun run build", outputs: "", source: "detected" } });
+    expect(document.querySelector("[data-build-command]")!.getAttribute("data-slot")).toBe("tooltip-trigger");
+    resetTooltips();
+  });
+
   it("warming keeps the log's scroller: the provider holds the top row alone", async () => {
     resetTooltips();
     view({ run: run({ status: "running", endedAt: undefined }), lines: Array.from({ length: 50 }, (_, i) => `line ${i}`) });

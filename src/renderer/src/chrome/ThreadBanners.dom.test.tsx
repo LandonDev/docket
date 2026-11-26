@@ -3,12 +3,14 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionMeta } from "../lib/tcserver/types";
 
-const { metas, notes } = vi.hoisted(() => ({
+const { metas, notes, approvals } = vi.hoisted(() => ({
   metas: [] as SessionMeta[],
+  approvals: new Map<string, unknown>(),
   notes: new Map<string, { text: string; updatedAt: number | null; path: string | null }>(),
 }));
 vi.mock("../lib/tcserver/store", () => ({
   useSessionMetas: () => metas,
+  usePendingApprovals: () => approvals,
   sessionFromMeta: (m: SessionMeta) => ({ harness: m.provider, model: m.model, modelSettings: {} }),
 }));
 const { killBackground, continueSession } = vi.hoisted(() => ({ killBackground: vi.fn(() => Promise.resolve()), continueSession: vi.fn(() => Promise.resolve()) }));
@@ -32,6 +34,7 @@ afterEach(() => {
   cleanup();
   metas.length = 0;
   notes.clear();
+  approvals.clear();
 });
 
 describe("the needs-you banner", () => {
@@ -54,6 +57,15 @@ describe("the needs-you banner", () => {
     notes.set("One", { text: "## State\n\n- stuck\n", updatedAt: 1, path: null });
     render(<ThreadBanners projectId="p1" onOpen={() => {}} />);
     expect(screen.getByRole("alert").textContent).toBe("Needs you2 threadsOpen first");
+  });
+});
+
+describe("the needs-you banner beside the approval toasts", () => {
+  it("says nothing of a thread whose approval a toast already carries", () => {
+    metas.push(meta("Clean the build folder"));
+    approvals.set("Clean the build folder", {});
+    const { container } = render(<ThreadBanners projectId="p1" onOpen={() => {}} />);
+    expect(container.textContent).not.toContain("Clean the build folder");
   });
 });
 

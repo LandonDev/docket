@@ -42,6 +42,27 @@ export type UpdaterSnapshot = {
 /** The newest release's page, for when the updater cannot finish on its own (no release carries a .dmg). */
 export const MANUAL_DOWNLOAD_URL = "https://github.com/LandonDev/docket/releases/latest";
 
+/** The feed could not be reached: no network, a refused or timed-out request, an HTTP error. */
+export const FEED_UNREACHABLE = `${APP_NAME} could not reach the update feed.`;
+/** The bytes that came do not match the release's checksum or signature. */
+export const DOWNLOAD_DAMAGED = "The download was damaged.";
+/** Anything else electron-updater says. */
+export const UPDATE_FAILED = "The update did not download.";
+
+/**
+ * electron-updater's own text (`net::ERR_…`, a sha512 mismatch, a stack's
+ * first line) in three plain sentences; main's worded install failures
+ * (updateInstall.ts, "The update …") and the renderer's own lines pass as
+ * they are. The raw text stays in main's log, never on screen.
+ */
+export function updateFailureWords(error: string | undefined, fallback = UPDATE_FAILED): string {
+  const text = (error ?? "").trim();
+  if (/^(The (downloaded )?update|The app was still running|The download did not start|This dev instance)/.test(text)) return text;
+  if (/sha512|sha256|checksum|signature/i.test(text)) return DOWNLOAD_DAMAGED;
+  if (/net::|ENOTFOUND|ECONN|ETIMEDOUT|EAI_AGAIN|getaddrinfo|socket|network|timed? ?out|HttpError|\b[45]\d\d\b/i.test(text)) return FEED_UNREACHABLE;
+  return fallback;
+}
+
 /** An error with a version to retry: the button downloads it again. */
 export function canRetry(snapshot: UpdaterSnapshot): boolean {
   return (
@@ -185,26 +206,26 @@ export async function runUpdateFlow(
   if (snapshot.phase === "available") {
     announceUpdateAvailable(snapshot.availableVersion!);
     if (!manual) return snapshot;
-    const detail = snapshot.notes ? `\n\n${snapshot.notes}` : "";
+    // The notes are What's New's (the row's hover action), never pasted here whole.
     const yes = await ask(
-      `Release ${snapshot.availableVersion} is available (you have ${snapshot.currentVersion}).${detail}\n\nDownload it now?`,
+      `Release ${snapshot.availableVersion} is available. You have ${snapshot.currentVersion}.\n\nDownload it now?`,
       { title: "Update available", kind: "info" },
     );
     return yes ? installPendingUpdate(onProgress) : snapshot;
   }
   if (manual && canRetry(snapshot)) {
     const yes = await ask(
-      `Release ${snapshot.availableVersion} did not install. ${snapshot.error}\n\nDownload it again?`,
+      `Release ${snapshot.availableVersion} did not install. ${updateFailureWords(snapshot.error)}\n\nDownload it again?`,
       { title: "Update failed", kind: "warning", okLabel: "Download" },
     );
     return yes ? installPendingUpdate(onProgress) : snapshot;
   }
   if (manual && snapshot.phase === "error") {
-    await message(`Couldn't check for updates.\n\n${snapshot.error}`, {
+    await message(`Couldn't check for updates.\n\n${updateFailureWords(snapshot.error, FEED_UNREACHABLE)}`, {
       title: APP_NAME,
     });
   } else if (manual && snapshot.phase !== "idle") {
-    await message("You're on the latest release.", { title: APP_NAME });
+    await message(`${APP_NAME} is up to date.`, { title: APP_NAME });
   }
   return snapshot;
 }
@@ -244,7 +265,7 @@ export async function installPendingUpdate(
       : { ...snapshot, phase: "error", error: "The download did not start." };
   onProgress?.(result);
   if (result.phase === "error") {
-    await message(`Couldn't download the update.\n\n${result.error}`, {
+    await message(`Couldn't download the update.\n\n${updateFailureWords(result.error)}`, {
       title: APP_NAME,
     });
   }

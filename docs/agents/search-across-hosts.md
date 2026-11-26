@@ -12,10 +12,16 @@
   it has not stamped yet) into one row on the newer copy (`search.project`
   matches carry `mtime`), folds each file's name and matching lines into
   one row (`foldFileHits`: the first line, `+N more` for the others; a name
-  hit opens at its first line), leads a thread hit with its tinted type
+  hit opens at its first line), folds a thread's message hits on one host
+  into one row the same way (`foldMessageHits`: its best match, which opens
+  there, `+N more`), draws a message or note snippet as prose
+  (`plainSnippet`: no markdown marks; `snippetAround` cuts on a word's
+  edge), searches a loaded thread's person's and model's words alone as the
+  host's index does (`turnText`; tool rows and plans are not messages), leads a thread hit with its tinted type
   glyph (`ConversationHit.threadType`, chat when absent), marks each hit
-  with the host glyph when more than one host is paired, and, with two or more hosts paired, says "box:
-  1.2 s" per host at the foot (skipped when offline). Filters are typed in the box (`host:` and `type:` take a
+  with the host glyph when more than one host is paired, and, with two or more hosts paired, says "box"
+  then "1.2 s" in muted per host at the foot, no colon (`hostTimingWord`;
+  "skipped" when offline, "failed" in red, the reason in its tooltip). Filters are typed in the box (`host:` and `type:` take a
   comma list, `project:` a name) or ticked in the field's filter menu
   (chrome/SearchFiltersMenu.tsx), which writes the same tokens
   (`setQueryToken`); no other chrome. Each host token first matches a whole

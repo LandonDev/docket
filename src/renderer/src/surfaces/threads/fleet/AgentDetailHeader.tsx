@@ -40,11 +40,8 @@ export function AgentDetailHeader({
         />
         <AgentNumbersLine
           className="mt-1"
-          lead={[
-            <ModelLine key="model" meta={meta} />,
-            <HostGlyph key="host" environmentId={meta.environmentId} />,
-            branch,
-          ]}
+          lead={[<HostGlyph key="host" environmentId={meta.environmentId} />, branch]}
+          facts={[<ModelLine key="model" meta={meta} />]}
           parts={parts}
         />
       </div>

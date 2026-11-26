@@ -81,7 +81,8 @@ function dismissBootSplash() {
       requestAnimationFrame(() => requestAnimationFrame(() => performance.mark("tc:rail-complete")));
     });
     splash.classList.add("boot-splash-out");
-    window.setTimeout(() => splash.remove(), 180);
+    // The fade is 120ms (index.html); the cover leaves a frame or two after it.
+    window.setTimeout(() => splash.remove(), 150);
   };
   // useLayoutEffect runs before paint. Two frames later the app is on
   // screen, so the fade reveals UI instead of the desktop blur.

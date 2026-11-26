@@ -176,7 +176,8 @@ function emptyLabel({
   fileCount: number;
   matchCount: number;
 }): string | null {
-  if (error && fileCount === 0) return error;
+  // The host's own text stays in its log; the note says what did not happen.
+  if (error && fileCount === 0) return "Couldn't list this project's files";
   if (!looksLikeProject(cwd)) return "Open a project to search files";
   if (loading && fileCount === 0) return "Indexing files…";
   if (fileCount === 0) return "No files found";

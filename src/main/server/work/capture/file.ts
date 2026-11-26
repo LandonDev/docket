@@ -41,8 +41,14 @@ export function homeOf(ctx: Pick<WorkCtx, 'db'>, sector: SectorKey): { id: strin
 export function captureState(ctx: Pick<WorkCtx, 'db' | 'lifeos' | 'host'>): CaptureState {
   const last = ctx.db.prepare('SELECT value FROM work_capture_state WHERE key = ?').get(LAST_KEY) as { value: string } | undefined
   const homes = (ctx.db.prepare("SELECT DISTINCT sector FROM workspaces WHERE kind = 'work' AND sector IS NOT NULL").all() as { sector: string }[]).map((r) => r.sector)
+  // Each sector's job by its workspace's name, the first made where one sector has two (homeOf's order).
+  const jobs: { sector: SectorKey; name: string }[] = []
+  for (const row of ctx.db.prepare("SELECT sector, name FROM workspaces WHERE kind = 'work' AND sector IS NOT NULL ORDER BY created_at").all() as { sector: SectorKey; name: string | null }[]) {
+    const name = row.name?.trim()
+    if (name && !jobs.some((j) => j.sector === row.sector)) jobs.push({ sector: row.sector, name })
+  }
   const lifeos = ctx.lifeos.state?.()
-  return { host: ctx.host, last: last && last.value !== '' ? last.value : null, homes, connected: ctx.lifeos.connected(), ...(lifeos ? { lifeos } : {}) }
+  return { host: ctx.host, last: last && last.value !== '' ? last.value : null, homes, jobs, connected: ctx.lifeos.connected(), ...(lifeos ? { lifeos } : {}) }
 }
 
 /**

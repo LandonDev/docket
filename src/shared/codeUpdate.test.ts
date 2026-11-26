@@ -57,9 +57,11 @@ describe('the words', () => {
   })
 
   it('says a fallback and a refusal in one plain line', () => {
-    expect(fellBackLine(A, '1.0.371')).toBe('Code update aaaaaaa did not start. Running 1.0.371.')
-    expect(refusedLine(A, 'needs a full release: node_modules changed')).toBe('Code update aaaaaaa needs a full release: node_modules changed.')
-    expect(refusedLine(A, 'main/index.js is not the file the manifest names')).toBe('Code update aaaaaaa was not taken: main/index.js is not the file the manifest names.')
+    // No commit id and no file name on screen: the log keeps them.
+    expect(fellBackLine('1.0.371')).toBe('The last update did not start. Running 1.0.371.')
+    expect(refusedLine('needs a full release: node_modules changed')).toBe('This update needs a full release.')
+    expect(refusedLine('main/index.js is not the file the manifest names')).toBe('This update was not taken.')
+    expect(refusedLine('this code did not start here')).toBe('This update did not start last time.')
   })
 })
 

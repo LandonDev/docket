@@ -8,6 +8,7 @@ import { ErrorLine } from "../../chrome/ConfirmDialog";
 import { keyHint } from "../../lib/keys";
 import { connectingWords, lifeosDownWords } from "../shell/lifeosWords";
 import type { LifeosStateName } from "@shared/contract-work-lifeos";
+import type { SectorKey } from "@shared/work";
 import { choiceLabel, SECTOR_CHOICES, type DraftFile, type SectorChoice } from "./draft";
 
 /**
@@ -21,6 +22,8 @@ export interface CaptureViewProps {
   text: string;
   files: readonly DraftFile[];
   sector: SectorChoice;
+  /** his jobs by their workspaces' names (`CaptureState.jobs`); the sector's word where none names one */
+  jobs?: readonly { sector: SectorKey; name: string }[];
   /** offline: LifeOS cannot take a capture here now (`lifeos` says why); silent: this computer's host did not answer the window's ask */
   status: "ready" | "offline" | "silent";
   /** the host's LifeOS state while offline; none from a host a build behind */
@@ -48,8 +51,6 @@ export interface CaptureViewProps {
   onDrop?(event: DragEvent<HTMLDivElement>): void;
 }
 
-const OPTIONS = SECTOR_CHOICES.map((value) => ({ value, label: choiceLabel(value) }));
-
 /**
  * Why nothing can be filed, in the rule's words with this computer named (docs/DESIGN.md "The capture window"); `retry`
  * where it is silence, which asking again can mend. A host a build behind names no state: its old words stand.
@@ -62,6 +63,12 @@ export function captureDown(p: Pick<CaptureViewProps, "status" | "lifeos" | "hos
   if (p.lifeos === "connecting" || p.lifeos === "connected") return { words: connectingWords(host), retry: false };
   return { words: lifeosDownWords(p.lifeos, false, host), retry: p.lifeos === "unreachable" };
 }
+
+/**
+ * The field's height in whole 22px lines: 14px over the first line and 8px under the last, so the empty field is one
+ * line (44px) and each line he types adds 22px, up to twelve (286px), then it scrolls. The window follows the page.
+ */
+export const FIELD_LINES = "min-h-11 max-h-[17.875rem]";
 
 export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(function CaptureView(p, field) {
   // Held while nothing can be filed: LifeOS away, or this computer's host silent (Retry stands beside them).
@@ -79,12 +86,12 @@ export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(fun
         ref={field}
         aria-label="Capture"
         placeholder="Capture…"
-        rows={2}
+        rows={1}
         value={p.text}
         onChange={(e) => p.onText(e.target.value)}
         onKeyDown={p.onKeyDown}
         onPaste={p.onPaste}
-        className="field-sizing-content max-h-66 min-h-[3.75rem] w-full resize-none overflow-x-hidden overflow-y-auto bg-transparent px-4 pt-3.5 pb-2 text-sm leading-[22px] text-foreground outline-none placeholder:text-faint-foreground"
+        className={`field-sizing-content ${FIELD_LINES} w-full resize-none overflow-x-hidden overflow-y-auto bg-transparent px-4 pt-3.5 pb-2 text-sm leading-[22px] text-foreground outline-none placeholder:text-faint-foreground`}
       />
       {p.files.length ? (
         <ul aria-label="Files" className="flex flex-col px-2 pb-2">
@@ -117,8 +124,8 @@ export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(fun
         // A state, not a fault: muted, and no press here (ruling 29); the fix is on Connections.
         <p className="px-4 pb-2 text-xs text-muted-foreground">{down.words}</p>
       ) : null}
-      <div className="flex h-12 items-center gap-2 border-t border-border px-3">
-        <ChoiceToggle label="Job" value={p.sector} options={OPTIONS} onChange={p.onSector} />
+      <div className="flex h-12 items-center gap-2 border-t border-border px-4">
+        <ChoiceToggle label="Job" fit value={p.sector} options={SECTOR_CHOICES.map((value) => ({ value, label: choiceLabel(value, p.jobs) }))} onChange={p.onSector} />
         <span className="flex-1" />
         <Button variant="secondary" size="sm" disabled={off} onClick={() => p.onFile(true)}>
           Start thread

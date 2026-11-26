@@ -116,13 +116,15 @@ export function versionLine(bundleVersion: string, stagedCommit?: string | null)
   return stagedCommit ? `${bundleVersion} + ${stagedCommit.slice(0, 7)}` : bundleVersion
 }
 
-/** "Code update 3f9c2ab did not start. Running 1.0.371." */
-export function fellBackLine(commit: string, bundleVersion: string): string {
-  return `Code update ${commit.slice(0, 7)} did not start. Running ${bundleVersion}.`
+/** "The last update did not start. Running 1.0.371." No commit id: the log
+ *  (codeUpdates.ts) names it. */
+export function fellBackLine(bundleVersion: string): string {
+  return `The last update did not start. Running ${bundleVersion}.`
 }
 
-/** "Code update 3f9c2ab needs a full release: node_modules changed." */
-export function refusedLine(commit: string, line: string): string {
-  const short = commit.slice(0, 7)
-  return line.startsWith('needs ') ? `Code update ${short} ${line}.` : `Code update ${short} was not taken: ${line}.`
+/** "This update needs a full release." Boot's reason (a file name, "node_modules
+ *  changed") stays in the log, never in the toast. */
+export function refusedLine(line: string): string {
+  if (line.startsWith('needs ')) return 'This update needs a full release.'
+  return line === 'this code did not start here' ? 'This update did not start last time.' : 'This update was not taken.'
 }

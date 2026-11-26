@@ -10,6 +10,8 @@ import { workspaceTabsStore } from "../stores/workspace";
 import { newTab } from "../lib/layout";
 import { loadToast } from "./toastSync";
 import { ApprovalToasts, HiddenApprovalToasts } from "./ApprovalToasts";
+import { ChatFooter } from "../surfaces/threads/chatSlots";
+import { refreshToastAnchor } from "../lib/toastAnchor";
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { warning: vi.fn(), dismiss: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
@@ -110,17 +112,33 @@ describe("HiddenApprovalToasts", () => {
     expect(toast.dismiss).toHaveBeenCalledExactlyOnceWith("approval:approval:7");
   });
 
-  it("hides the focused conversation's approval and restores it when focus leaves", async () => {
+  it("gives the thread on screen no toast for its own ask, wherever the focus is; a page over the board brings it", async () => {
     const tab = newTab("approval");
     workspaceTabsStore.setState({ tabs: [tab], activeTabId: tab.id });
-    focusStore.setState({ composerFocused: true });
+    focusStore.setState({ composerFocused: false });
+    // The focused pane's footer holds the stack: its thread is on screen.
+    const board = render(<div data-board><ChatFooter slots={{ transcript: null, strip: null, composer: null, anchor: "approval" }} /></div>);
     mount();
     await send(request("approval"));
     expect(toast.warning).not.toHaveBeenCalled();
-    await act(async () => { focusStore.setState({ composerFocused: false }); });
+    // A click in the transcript or the right panel moves the focus; the card is still on screen.
+    await act(async () => { focusStore.setState({ composerFocused: true }); focusStore.setState({ composerFocused: false }); });
+    expect(toast.warning).not.toHaveBeenCalled();
+    // Inbox over the board: the board turns inert and App asks the stack again.
+    const host = board.container.querySelector<HTMLElement>("[data-board]")!;
+    await act(async () => { host.setAttribute("inert", ""); refreshToastAnchor(); await loadToast(); });
     expect(toast.warning).toHaveBeenCalledTimes(1);
-    await act(async () => { focusStore.setState({ composerFocused: true }); });
+    await act(async () => { host.removeAttribute("inert"); refreshToastAnchor(); await loadToast(); });
     expect(toast.dismiss).toHaveBeenCalledExactlyOnceWith("approval:approval:7");
+    board.unmount();
+  });
+
+  it("toasts another thread's approval while one thread is on screen", async () => {
+    const board = render(<ChatFooter slots={{ transcript: null, strip: null, composer: null, anchor: "stream" }} />);
+    mount();
+    await send(request("approval"));
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    board.unmount();
   });
 });
 

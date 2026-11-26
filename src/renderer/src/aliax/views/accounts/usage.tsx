@@ -12,7 +12,10 @@ import { Spinner } from "@renderer/components/ui/spinner";
 import { cn } from "@renderer/lib/cn";
 import { headroomLook, type HeadroomLook } from "@renderer/lib/headroom";
 import { fillFor, onPaceLeft, percentLeft, toneFor, untilLabel } from "@aliax/lib/accounts";
-import { keyStatus, resetWords, shortDay, type RowAction, type RowLine } from "./rowLine";
+import { keyStatus, noteWords, resetWords, shortDay, type RowAction, type RowLine } from "./rowLine";
+import { CELL, CELLS, SPAN, cellSkeleton, spacer, UsageCellsSkeleton } from "./usageSkeleton";
+
+export { UsageCellsSkeleton };
 
 /*
  * What an account row says, drawn once: its usage columns (UsageBars), its
@@ -24,25 +27,8 @@ import { keyStatus, resetWords, shortDay, type RowAction, type RowLine } from ".
 /** A row shows at most this many bars: the windows, then Rate. */
 export const MAX_BARS = 4;
 
-/**
- * The page's container (accounts.tsx): from 48rem wide the rows are a table,
- * every usage column 8.5rem (a bar over "Resets Thu 12:00 PM") with the
- * account's name taking what is left; under it each row stacks its columns
- * under the name across the row's width.
- */
-const CELL = "flex min-w-0 flex-1 basis-0 flex-col gap-1 @3xl/accounts:w-34 @3xl/accounts:flex-none";
-/**
- * The cells' box. Stacked under the name, the cells wrap as many to a line as
- * hold a whole column (8.5rem: two in a 400px window), so a label and its
- * reset are never cut to "We…" and "Resets 1…"; the tracks are filled, not
- * fitted, so a row with fewer cells keeps the page's column widths. From
- * 48rem they are the table's fixed columns in one line.
- */
-const CELLS = "grid grid-cols-[repeat(auto-fill,minmax(min(8.5rem,100%),1fr))] gap-3 @3xl/accounts:flex";
 /** The bars' box: the window columns and Rate, growing by how many it holds under 48rem. */
 const GROW = "min-w-0 flex-[var(--grow)_1_0%] @3xl/accounts:flex-none";
-/** The status words of a row with no windows, over the window columns it stands in for (`--span`). */
-const SPAN = "min-w-0 flex-[var(--span)_1_0%] @3xl/accounts:flex-none @3xl/accounts:w-[calc(var(--span)*8.5rem+(var(--span)-1)*0.75rem)]";
 
 const RATE_FILL: Record<HeadroomLook["tone"], ProgressFill> = { muted: "muted", ok: "muted", low: "warning", limited: "warning" };
 const RATE_TEXT: Record<HeadroomLook["tone"], string> = {
@@ -125,69 +111,11 @@ function WindowDetail({ w, now }: { w: UsageWindow; now: number }) {
   );
 }
 
-/**
- * An empty column that keeps a row's cells on the page's columns. Stacked
- * there is no table to line up with, so one that ends a row is hidden
- * (`trailing`): it would start an empty grid line and its gap.
- */
-const spacer = (key: string, trailing = false) => (
-  <span key={key} aria-hidden data-slot="usage-cell" className={cn(CELL, trailing ? "@max-3xl/accounts:hidden" : null)} />
-);
-
-/** One window's cell while its report loads: the 16px label line, the 4px bar, the 16px reset line. */
-const cellSkeleton = (key: number) => (
-  <span key={key} data-slot="usage-cell" className={CELL}>
-    <span className="flex h-4 items-center">
-      <Skeleton className="h-3 w-full" />
-    </span>
-    <Skeleton className="h-1 w-full" />
-    <span className="flex h-4 items-center">
-      <Skeleton className="h-3 w-2/3" />
-    </span>
-  </span>
-);
-
 /** The reset times a row's bars already say under them, as words: the state line never says one twice. */
 export function barResets(report: UsageReport | undefined, columns: BarColumns, now: number): string[] {
   return (report ? drawnWindows(report.windows, now).slice(0, columns.windows) : []).flatMap((w) => (w.resetsAt !== undefined && w.resetsAt > now ? [resetWords(w.resetsAt, now)] : []));
 }
 
-/**
- * The bars while their report loads, in the shape that lands: each cell its
- * 16px label line, the 4px bar and its 16px reset line, 4px apart, inside the
- * button's 6px above and below (none when `readOnly`: the picker's bars sit in
- * no button), so a row neither shrinks on Refresh nor grows when the report
- * arrives. A key's row lands as one line of words over the window columns
- * (Pay as you go, Key revoked), so its skeleton is that one 16px line.
- */
-export function UsageCellsSkeleton({
-  cells,
-  keyed,
-  readOnly = false,
-  className,
-}: {
-  cells: number;
-  /** A key's row: one line over `keyed.span` window columns, then Rate's column when the page has one. */
-  keyed?: { span: number; rate: boolean };
-  readOnly?: boolean;
-  className?: string;
-}) {
-  if (keyed) {
-    return (
-      <span data-slot="usage-cells" className={cn("flex items-start gap-3", readOnly ? null : "py-1.5", className)} aria-busy="true">
-        <span data-slot="usage-words-skeleton" className={cn(SPAN, "flex h-4 items-center")} style={{ "--span": keyed.span } as CSSProperties}>
-          <Skeleton className="h-3 w-24 max-w-full" />
-        </span>
-        {keyed.rate ? spacer("rate", true) : null}
-      </span>
-    );
-  }
-  return (
-    <span data-slot="usage-cells" className={cn(CELLS, readOnly ? null : "py-1.5", className)} aria-busy="true">
-      {Array.from({ length: cells }, (_, i) => cellSkeleton(i))}
-    </span>
-  );
-}
 
 /**
  * One column per usage window, each its bar over the time it resets, then
@@ -235,7 +163,11 @@ export function UsageBars({
   const rate = headroom ? headroomLook(headroom, now) : null;
   const count = windows.length + (rate ? 1 : 0);
   const status = keyed && !loading ? keyStatus(shape) : null;
-  const note = keyed || loading ? null : drawn.length === 0 ? (shape.rateLimit ? "No usage yet" : (shape.note ?? shape.extra ?? "Usage unavailable")) : null;
+  // A note in the page's words; an expired session's is the state line's to say (Session expired, with Sign in), never the cell's too.
+  const said = shape.expired ? null : (shape.note ?? shape.extra ?? null);
+  const worded = said ? noteWords(said) : null;
+  const note = keyed || loading ? null : drawn.length === 0 ? (shape.rateLimit ? "No usage yet" : shape.expired ? null : (worded?.text ?? "Usage unavailable")) : null;
+  const noteCode = note !== null && worded?.text === note ? worded.code : undefined;
   const words: ReactNode =
     loading && (keyed || drawn.length === 0) ? (
       <span className="flex h-4 items-center">
@@ -294,7 +226,13 @@ export function UsageBars({
           )}
           style={{ "--span": span } as CSSProperties}
         >
-          {words}
+          {noteCode ? (
+            <Tip label={`Status ${noteCode}`}>
+              <span>{words}</span>
+            </Tip>
+          ) : (
+            words
+          )}
         </span>
       ) : null}
       {count > 0 ? (
@@ -435,7 +373,8 @@ export function RowFacts({
               {plan.detail.map((f, i) => (
                 <Fragment key={f.text}>
                   {i > 0 ? ", " : null}
-                  <span className={f.warning ? "text-warning" : undefined}>{f.text}</span>
+                  {/* A fact never breaks inside itself ("renews Nov / 12"): the line wraps at the commas. */}
+                  <span className={cn("whitespace-nowrap", f.warning ? "text-warning" : undefined)}>{f.text}</span>
                 </Fragment>
               ))}
             </span>

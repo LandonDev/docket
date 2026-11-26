@@ -313,7 +313,8 @@ describe('SessionReview Undo and Keep', () => {
     const before = status.mock.calls.length
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Undo' })))
     await act(async () => undefined)
-    expect(toastError).toHaveBeenCalledWith('Undo failed', { description: 'git refused' })
+    // "Couldn't undo" over the reason worded, never the raw text as it came.
+    expect(toastError).toHaveBeenCalledWith("Couldn't undo", { description: 'Git refused' })
     expect(status.mock.calls.length).toBe(before + 1)
   })
 

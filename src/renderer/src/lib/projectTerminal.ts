@@ -27,8 +27,11 @@ export type ProjectTerminalDock = {
 export const DOCK_SIZE_DEFAULT = 220;
 
 const DOCK_SIZE_MIN = 88;
+/** What the main view keeps over the dock: the title bar with its shelf (72px) and a thread's least, a
+ *  composer under a few lines of transcript (240px). */
+const DOCK_MAIN_FLOOR = 72 + 240;
 
-/** A height between the minimum and 70% of the viewport's. */
+/** A height between the minimum and 70% of the viewport's, less where the main view would fall under its floor. */
 export function clampDockSize(
   value: number,
   viewport: { width: number; height: number } = {
@@ -36,7 +39,7 @@ export function clampDockSize(
     height: 800,
   },
 ): number {
-  const max = Math.max(DOCK_SIZE_MIN, Math.floor(viewport.height * 0.7));
+  const max = Math.max(DOCK_SIZE_MIN, Math.min(Math.floor(viewport.height * 0.7), viewport.height - DOCK_MAIN_FLOOR));
   if (!Number.isFinite(value)) return DOCK_SIZE_DEFAULT;
   return Math.min(max, Math.max(DOCK_SIZE_MIN, Math.round(value)));
 }

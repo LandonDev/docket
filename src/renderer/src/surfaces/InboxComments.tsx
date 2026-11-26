@@ -20,6 +20,8 @@ import {
   type InboxProvider,
 } from "../lib/githubTasks";
 import { AgentMarkdown } from "./AgentMarkdown";
+import { FailLine } from "./FailLine";
+import { Facts } from "./settings/hosts/Facts";
 
 export type InboxReplyTarget = {
   id: string;
@@ -72,9 +74,7 @@ export function InboxComments({
     return null;
   }
   if (!thread) {
-    if (error) {
-      return <p className="text-xs text-destructive">{error}</p>;
-    }
+    if (error) return <FailLine words="Couldn't load the comments" detail={error} />;
     if (loading) return <CommentsPending />;
     return null;
   }
@@ -90,10 +90,10 @@ export function InboxComments({
     <section className="flex flex-col gap-2 border-t border-border pt-6">
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <h2 className="font-medium">{label}</h2>
-        {thread.truncated ? <span>the latest, more on {moreOn}</span> : null}
+        {thread.truncated ? <span>Latest shown, more on {moreOn}</span> : null}
         {loading ? <Spinner aria-label="Loading comments" className="size-3" /> : null}
       </div>
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {error ? <FailLine words="Couldn't load the comments" detail={error} /> : null}
       <ol className="flex flex-col gap-2">
         {thread.comments.map((comment) => (
           <li key={comment.id}>
@@ -186,9 +186,9 @@ export function InboxCommentForm({
         className="max-h-40 resize-none overflow-x-hidden overflow-y-auto px-3 leading-5 text-foreground"
       />
       <div className="flex items-start gap-3">
-        <p className="min-w-0 flex-1 pt-1 text-xs text-destructive">
-          {error}
-        </p>
+        <div className="min-w-0 flex-1 pt-1">
+          {error ? <FailLine words="Couldn't post the comment" detail={error} /> : null}
+        </div>
         <Button type="submit" size="sm" variant="secondary" disabled={!canPost}>
           <BusyLabel busy={posting} label={replyTo ? "Reply" : "Comment"} busyLabel="Posting…" />
         </Button>
@@ -228,12 +228,8 @@ function InboxComment({
   const time = formatRelativeTime(comment.createdAt);
   const review = githubReviewStateLabel(comment.state);
   const location = commentLocation(comment);
-  const meta = [
-    review,
-    location,
-    comment.resolved ? "Resolved" : "",
-    time,
-  ].filter((part) => part.length > 0);
+  const reviewTone =
+    comment.state === "APPROVED" ? "text-success" : comment.state === "CHANGES_REQUESTED" ? "text-destructive" : "";
   const hasBody = comment.body.trim().length > 0;
   const hasReplies = !nested && comment.replies.length > 0;
   const canReply =
@@ -244,7 +240,7 @@ function InboxComment({
   const inner = (
     <>
       <header
-        className={`flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground ${
+        className={`flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 text-xs text-muted-foreground ${
           nested ? "" : "px-3 py-2"
         } ${!nested && (hasBody || hasReplies) ? "border-b border-border" : ""}`}
       >
@@ -256,33 +252,25 @@ function InboxComment({
             comment.authorAvatarUrl,
           )}
         />
-        {meta.map((part, index) =>
-          comment.url && part === time ? (
-            <Tip
-              key={`${part}-${index}`}
-              label={provider === "linear" ? "Open in Linear" : "Open on GitHub"}
-            >
-              <Button variant="link" size="xs" onClick={() => void openUrl(comment.url)} className="h-auto shrink-0 p-0 text-[length:inherit] font-normal tabular-nums text-inherit">
-                {part}
-              </Button>
-            </Tip>
-          ) : (
-            <span
-              key={`${part}-${index}`}
-              className={
-                part === review && comment.state === "APPROVED"
-                  ? "text-success"
-                  : part === review && comment.state === "CHANGES_REQUESTED"
-                    ? "text-destructive"
-                    : comment.resolved && part === "Resolved"
-                      ? "text-success"
-                      : "min-w-0 truncate"
-              }
-            >
-              {part}
-            </span>
-          ),
-        )}
+        {/* Review state, place, Resolved and time: one comma run, never facts set apart by space alone. */}
+        <Facts
+          className="[&>span]:min-w-0 [&>span]:max-w-full [&>span]:truncate"
+          parts={[
+            review ? <span className={reviewTone}>{review}</span> : null,
+            location,
+            comment.resolved ? <span className="text-success">Resolved</span> : null,
+            time && comment.url ? (
+              <Tip label={provider === "linear" ? "Open in Linear" : "Open on GitHub"}>
+                {/* A 24px target over the 16px line, as every link in a line of facts. */}
+                <Button variant="link" size="xs" onClick={() => void openUrl(comment.url)} className="relative h-auto p-0 text-[length:inherit] font-normal tabular-nums text-inherit after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']">
+                  {time}
+                </Button>
+              </Tip>
+            ) : (
+              time
+            ),
+          ]}
+        />
         {canReply ? (
           <Button
             variant="link"
@@ -294,7 +282,7 @@ function InboxComment({
                 threadId: (comment.threadId ?? "").trim(),
               })
             }
-            className="h-auto shrink-0 p-0 text-[length:inherit] font-normal text-inherit hover:text-foreground hover:no-underline"
+            className="relative ms-1 h-auto shrink-0 p-0 text-[length:inherit] font-normal text-inherit after:absolute after:inset-x-0 after:-inset-y-1 after:content-[''] hover:text-foreground hover:no-underline"
           >
             Reply
           </Button>
@@ -356,7 +344,7 @@ function InboxCommentPerson({
   avatarUrl: string;
 }) {
   return (
-    <span className="inline-flex min-w-0 items-center gap-1.5">
+    <span className="inline-flex min-w-0 items-center gap-2">
       <Avatar name={name} src={avatarUrl} size={20} />
       <span className="min-w-0 truncate font-medium text-foreground">{name}</span>
     </span>

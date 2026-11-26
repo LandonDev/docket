@@ -7,7 +7,7 @@ import { minuteAge } from "../lib/duration";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
 import type { HarnessId } from "../lib/session";
 import * as serverCommands from "../lib/tcserver/commands";
-import { sessionFromMeta, useSessionMetas } from "../lib/tcserver/store";
+import { sessionFromMeta, usePendingApprovals, useSessionMetas } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { stateLine } from "@shared/notes";
 import { useThreadNotes } from "../lib/threadNotes";
@@ -48,12 +48,15 @@ export type BannerThreads = {
  * a thread by id, so switching to its project first buys nothing. Needs-you
  * stays scoped to `projectId` (null for every root). The thread already on
  * screen is left out where it says the state itself: its strip offers Stop
- * and Continue, its question and its own failure ride the transcript.
+ * and Continue, its question and its own failure ride the transcript. A
+ * thread waiting on an approval (`approvals`, the store's pending index) is
+ * left out of Needs you too: its toast already asks, with Allow and Deny.
  */
 export function bannerThreads(
   metas: readonly SessionMeta[],
   projectId: string | null,
   activeSessionId: string | undefined,
+  approvals: ReadonlyMap<string, unknown> = new Map(),
 ): BannerThreads {
   const allPaused: SessionMeta[] = [];
   const recovery: SessionMeta[] = [];
@@ -64,7 +67,7 @@ export function bannerThreads(
       // Its own failure's card carries Continue; a failed descendant's does not.
       if (m.treeCanContinue && !(m.id === activeSessionId && m.status === "error")) recovery.push(m);
     }
-    if (ROOT(m, projectId) && m.status === "waiting" && m.id !== activeSessionId) {
+    if (ROOT(m, projectId) && m.status === "waiting" && m.id !== activeSessionId && !approvals.has(m.id)) {
       needsYou.push(m);
     }
   }
@@ -121,10 +124,11 @@ export function pausedText(paused: readonly Pick<SessionMeta, "title">[], held: 
  */
 export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
   const metas = useSessionMetas();
+  const approvals = usePendingApprovals();
   // One pass per meta change, never per render: the lists feed the buttons below.
   const { paused, recovery, needsYou, batchPaused } = useMemo(
-    () => bannerThreads(metas, projectId, activeSessionId),
-    [activeSessionId, metas, projectId],
+    () => bannerThreads(metas, projectId, activeSessionId, approvals),
+    [activeSessionId, metas, projectId, approvals],
   );
   const [busy, setBusy] = useState<Kind | "stop" | null>(null);
   const [failed, setFailed] = useState<Record<Kind, number>>({ recovery: 0, paused: 0, "needs-you": 0, watching: 0 });

@@ -62,7 +62,7 @@ class FakeResizeObserver {
 
 /** The sidebar's shape: the scroller in state through a callback ref, the
  *  whole column unmounted while Settings shows (Sidebar.tsx). */
-function Column({ shown, scope = null, active }: { shown: boolean; scope?: string | null; active?: string }) {
+function Column({ shown, scope = null, active, onNewChat = () => {} }: { shown: boolean; scope?: string | null; active?: string; onNewChat?: (projectId: string | null) => void }) {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const ref = useCallback((el: HTMLDivElement | null) => setScroller(el), []);
   if (!shown) return null;
@@ -75,7 +75,7 @@ function Column({ shown, scope = null, active }: { shown: boolean; scope?: strin
         activeSessionId={active}
         onSelectProject={() => {}}
         onOpenSession={() => {}}
-        onNewChat={() => {}}
+        onNewChat={onNewChat}
         onNewProject={() => {}}
         onRenameSession={(id, title) => h.renamed.push([id, title])}
         onDeleteSession={() => {}}
@@ -398,5 +398,20 @@ describe("the column's host glyphs", () => {
     h.metas = [{ ...chat(0), environmentId: "env_box" }, chat(1)];
     render(<Column shown />);
     expect(list()).not.toContain("[&_[data-host-glyph]]:hidden");
+  });
+});
+
+describe("the home with no chat", () => {
+  it("says No chats once and offers New chat, never a column that says nothing", async () => {
+    h.metas = [];
+    const onNewChat = vi.fn();
+    render(<Column shown onNewChat={onNewChat} />);
+    await act(async () => {});
+    expect(screen.getAllByText("No chats")).toHaveLength(1);
+    expect(screen.getByText("No chats").closest('[data-slot="empty"]')).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    });
+    expect(onNewChat).toHaveBeenCalledWith(null);
   });
 });

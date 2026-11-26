@@ -208,10 +208,17 @@ describe("SearchView across hosts", () => {
     expect(hostOf(note)).toBe("box");
     expect(project.textContent).toContain("gateway-kit");
 
-    // Every host asked: both answered, each with its time.
+    // Every host asked: both answered, each its name then its time in muted, no colon.
     const footer = view.getByLabelText("Hosts searched");
-    expect(footer.textContent).toMatch(/^This Mac: \d+ ms(box|This Mac)/);
-    expect(footer.textContent).toMatch(/box: \d+ ms/);
+    // Each host is its name, then 4px on its muted time: two spans, no colon.
+    expect(footer.textContent).not.toContain(":");
+    const hosts = [...footer.querySelectorAll<HTMLElement>("[data-host-state]")];
+    expect(hosts.map((host) => host.firstElementChild!.textContent).sort()).toEqual(["This Mac", "box"]);
+    for (const host of hosts) {
+      expect(host.className).toContain("gap-1");
+      expect(host.firstElementChild!.className).toContain("text-foreground");
+      expect(host.lastElementChild!.textContent).toMatch(/^\d+ ms$/);
+    }
     // The hosts are one comma run, never set apart by space alone.
     const run = footer.querySelector<HTMLElement>("[data-slot=facts]")!;
     expect(run.children).toHaveLength(2);
@@ -277,13 +284,35 @@ describe("SearchView across hosts", () => {
     const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...p} />);
     await search(view, "gateway type:thread");
     expect(kinds(view)).toEqual(["conversation"]);
-    expect(view.getByLabelText("Hosts searched").textContent).toContain("box: skipped (offline)");
+    const skipped = view.getByLabelText("Hosts searched").querySelector<HTMLElement>('[data-host-state="skipped"]')!;
+    expect(skipped.textContent).toBe("boxoffline");
+    expect(skipped.lastElementChild!.className).not.toContain("text-destructive");
 
     h.statuses = new Map([["env_box", { transport: "open", fresh: true }]]);
     await search(view, "gateway host:box");
     expect(kinds(view)).toEqual(["message", "content", "note"]);
     expect(view.getByLabelText("Hosts searched").textContent).not.toContain("This Mac");
     view.unmount();
+  });
+
+  it("when no host answers it says so, naming the offline one, and a failure is a red word with no raw text", async () => {
+    h.statuses = new Map();
+    h.invokeOn.mockImplementation(() => Promise.reject(new Error("EPIPE: broken pipe, write")));
+    h.searchProject.mockImplementation(() => Promise.reject(new Error("EPIPE: broken pipe, write")));
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    // A word nothing on this window matches, so the hosts alone could answer.
+    await search(view, "zzqx");
+    const empty = view.container.querySelector('[data-slot="empty"]')!;
+    expect(empty.textContent).toContain("No host answered");
+    expect(empty.textContent).toContain("box is offline");
+    const footer = view.getByLabelText("Hosts searched");
+    expect(footer.textContent).not.toContain("EPIPE");
+    expect(footer.textContent).not.toContain(":");
+    const failed = footer.querySelector<HTMLElement>('[data-host-state="failed"]')!;
+    expect(failed.lastElementChild!.textContent).toBe("failed");
+    expect(failed.lastElementChild!.className).toContain("text-destructive");
+    view.unmount();
+    h.statuses = new Map([["env_box", { transport: "open", fresh: true }]]);
   });
 
   it("with one host there is no host mark, no host: hint and no footer", async () => {
@@ -312,8 +341,12 @@ describe("SearchView across hosts", () => {
     expect(menuItem(menu, "app")).toBeTruthy();
     // RowsMenu data: every row names its id and leads with a glyph; groups
     // are parted by a separator, never by margin.
-    const items = [...menu.querySelectorAll('[role="menuitemcheckbox"]')];
+    const items = [...menu.querySelectorAll('[role="menuitemcheckbox"], [role="menuitemradio"]')];
     expect(items.every((el) => el.getAttribute("data-menu-row") && el.querySelector("svg"))).toBe(true);
+    // Project is one choice: its rows are radios, the type and host rows checks.
+    expect(menuItem(menu, "Any").getAttribute("role")).toBe("menuitemradio");
+    expect(menuItem(menu, "app").getAttribute("role")).toBe("menuitemradio");
+    expect(menuItem(menu, "Files").getAttribute("role")).toBe("menuitemcheckbox");
     expect(menu.querySelectorAll('[data-slot="dropdown-menu-separator"]')).toHaveLength(2);
     expect(menu.querySelector(".mt-2")).toBeNull();
 
@@ -336,6 +369,29 @@ describe("SearchView across hosts", () => {
       fireEvent.click(menuItem(menu, "app"));
     });
     expect(input.value).toBe("gateway type:thread,note,project project:app ");
+    menu = view.baseElement.querySelector('[data-slot="dropdown-menu-content"]') as HTMLElement;
+    expect(menuItem(menu, "app").getAttribute("aria-checked")).toBe("true");
+    expect(menuItem(menu, "Any").getAttribute("aria-checked")).toBe("false");
+    view.unmount();
+  });
+
+  it("the filter menu says a typed project:name that is not this one as its own picked row", async () => {
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "gateway project:foo");
+    const input = view.container.querySelector("input") as HTMLInputElement;
+    const menu = await openFilters(view);
+    expect(menuItem(menu, "foo").getAttribute("aria-checked")).toBe("true");
+    expect(menuItem(menu, "Any").getAttribute("aria-checked")).toBe("false");
+    expect(menuItem(menu, "app").getAttribute("aria-checked")).toBe("false");
+    // Picking Any drops the token; picking the row already picked asks nothing.
+    await act(async () => {
+      fireEvent.click(menuItem(menu, "foo"));
+    });
+    expect(input.value).toBe("gateway project:foo");
+    await act(async () => {
+      fireEvent.click(menuItem(menu, "Any"));
+    });
+    expect(input.value).toBe("gateway ");
     view.unmount();
   });
 
@@ -480,6 +536,31 @@ describe("SearchView across hosts", () => {
       fireEvent.click(view.getByRole("button", { name: "Clear filters" }));
     });
     expect((view.container.querySelector("input") as HTMLInputElement).value).toBe("nomatch");
+    view.unmount();
+  });
+
+  it("folds a thread's message hits into one row with +N more, its snippet as prose", async () => {
+    h.invokeOn.mockImplementation((env: string, method: string) =>
+      Promise.resolve({
+        hits:
+          method === "search_sessions" && env === "env_box"
+            ? [
+                { sessionId: "s-box", seq: 2, role: "assistant", snippet: "## What I found **two** gateway faults", ts: 1, rank: -4 },
+                { sessionId: "s-box", seq: 5, role: "assistant", snippet: "the gateway again", ts: 1, rank: -3 },
+                { sessionId: "s-box", seq: 9, role: "user", snippet: "fix the gateway", ts: 1, rank: -2 },
+              ]
+            : [],
+        truncated: false,
+      }),
+    );
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "gateway type:thread");
+    const messages = rows(view).filter((row) => row.dataset.kind === "message");
+    expect(messages).toHaveLength(1);
+    expect(messages[0].textContent).toContain("What I found two gateway faults");
+    expect(messages[0].textContent).not.toMatch(/##|\*\*/);
+    expect(messages[0].querySelector("[data-more]")?.textContent).toBe("+2 more");
+    expect(messages[0].textContent?.match(/Box thread/g)).toHaveLength(1);
     view.unmount();
   });
 

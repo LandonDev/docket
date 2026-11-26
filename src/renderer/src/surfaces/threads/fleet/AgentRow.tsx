@@ -194,7 +194,8 @@ export function AgentRowView({
                 className={cn("min-w-0", toned && "**:data-[slot=status-detail]:text-current")}
               />
             </span>
-            <span className="ms-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground tabular-nums">
+            {/* The tally and the time are one comma run ("3/7, 2m 31s"), the comma drawn after all but the last. */}
+            <span data-row-facts className="ms-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground tabular-nums [&>span:not(:last-child)]:after:content-[',']">
               {tally ? <span data-tally>{tally.short}</span> : null}
               <AgentClock meta={meta} state={state} />
             </span>

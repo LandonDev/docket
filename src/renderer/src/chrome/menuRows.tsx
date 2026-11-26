@@ -68,7 +68,8 @@ export type MenuRow =
       busy?: boolean;
     }
   | { kind: "sep" }
-  | { kind: "label"; label: string }
+  /** A group's heading. With `radio`, the group's rows are radios (one of them, never none): `radio` is the picked row's id, and a pick names the row as any item's does. */
+  | { kind: "label"; label: string; radio?: string }
   /** A line that is not a verb (the ⋯ menu's host and cost). */
   | { kind: "note"; id: string; content: ReactNode }
   | {

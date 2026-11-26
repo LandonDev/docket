@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { APP_NAME, OS_APP_NAME } from './appName'
-import { MAIN_MENU_IDS, MENU_COMMANDS, MENU_TREE, EMPTY_MENU_STATE, RENDERER_MENU_IDS, inAppMenus, resolveMenu, sameMenuState, type MenuNode, type MenuState, EDITOR_KEY_IDS, LIVE_KEY_IDS, LIVE_OFF_IDS, WORK_ONLY_IDS } from './menuTree'
+import { MAIN_MENU_IDS, MENU_COMMANDS, MENU_TREE, EMPTY_MENU_STATE, RENDERER_MENU_IDS, inAppMenus, resolveMenu, runsInMain, sameMenuState, type MenuNode, type MenuState, EDITOR_KEY_IDS, LIVE_KEY_IDS, LIVE_OFF_IDS, WORK_ONLY_IDS } from './menuTree'
 
 /** What Electron gives a role when the tree names none (macOS). */
 const ROLE_DEFAULTS: Record<string, [string, string?]> = {
@@ -424,5 +424,28 @@ describe('inAppMenus', () => {
         if (item.kind === 'separator') expect(menu.items[i - 1].kind).toBe('item')
       })
     }
+  })
+})
+
+describe("inAppMenus in a Windows desktop window", () => {
+  const menus = inAppMenus(MENU_TREE, 'desktop')
+  const ids = menus.flatMap((m) => m.items.flatMap((i) => (i.kind === 'item' ? [i.id] : [])))
+
+  it('adds Help, and keeps the rows a browser drops: the only way to the ones with no key', () => {
+    expect(menus.map((m) => m.label)).toEqual(['File', 'Edit', 'View', 'Go', 'Threads', 'Help'])
+    for (const id of ['open_file', 'new_window', 'new_terminal', 'toggle_terminal', 'show_logs', 'profile_host', 'force_reload', 'whats_new']) expect(ids).toContain(id)
+  })
+
+  it('leaves Quit and every role out, and shows the key a PC has', () => {
+    expect(ids).not.toContain('quit')
+    const labels = menus.flatMap((m) => m.items.flatMap((i) => (i.kind === 'item' ? [i.label] : [])))
+    for (const label of ['Undo', 'Close Window', 'Reload Window', 'Developer Tools']) expect(labels).not.toContain(label)
+    const view = menus.find((m) => m.label === 'View')!
+    expect(view.items.find((i) => i.kind === 'item' && i.id === 'full_screen')).toMatchObject({ accelerator: 'F11' })
+  })
+
+  it("names main's rows a window may ask for: all of them but Quit", () => {
+    expect(MAIN_MENU_IDS.filter(runsInMain)).toEqual(['profile_host', 'show_logs', 'force_reload'])
+    expect(runsInMain('toggle_sidebar')).toBe(false)
   })
 })

@@ -1,6 +1,7 @@
+import { dialogErrorWords } from "../../../lib/dialogErrorWords";
 import { useState } from "react";
 import { Input } from "@renderer/components/ui/input";
-import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../../chrome/ConfirmDialog";
 import { Modal, useModalClose } from "../../../chrome/Modal";
 import * as commands from "../../../lib/tcserver/commands";
 
@@ -30,7 +31,7 @@ function RenameForm({ sessionId, title, onClose, pending, setPending }: Props & 
       setPending(false);
       done();
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };

@@ -450,6 +450,11 @@ export function menuStateSender(): ((state: { open: string[]; disabled: string[]
   return isWebMode() ? undefined : window.api?.menu?.setState;
 }
 
+/** Asks main to run one of its own menu rows (src/shared/menuTree.ts `runsInMain`), from a desktop window's in-app bar. */
+export function runMainMenu(id: string): void {
+  if (!isWebMode()) window.api?.menu?.run(id);
+}
+
 export type PtyDataPayload = { id: string; data: Uint8Array };
 export type PtyExitPayload = { id: string; code: number | null };
 

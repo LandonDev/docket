@@ -16,12 +16,13 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
-import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { useNow } from "@aliax/lib/accounts";
 import { AccountRow, barColumns, type BarColumns } from "./accounts/row";
-import { UsageCellsSkeleton } from "./accounts/usage";
+import { AccountsSkeleton } from "./accounts/usageSkeleton";
+
+export { AccountsSkeleton };
 import { STATIC_WARN_MS, type OwnerView, type RowAction } from "./accounts/rowLine";
 
 /** The mark each section leads with: the harness's, or Meta's vendor mark. */
@@ -125,9 +126,7 @@ function ProviderSection({ service, props, now, columns }: { service: ServiceVie
         </span>
       }
       description={
-        !service.installed ? (
-          "Not installed"
-        ) : run ? (
+        run ? (
           <span className="flex items-center gap-2">
             <Spinner className="size-3" />
             Converting {Math.min(run.done + 1, run.total)} of {run.total} to one-year tokens
@@ -182,7 +181,10 @@ function ProviderSection({ service, props, now, columns }: { service: ServiceVie
           <AlertDescription>{service.notice}</AlertDescription>
         </Alert>
       ) : null}
-      {!service.installed ? null : service.profiles.length === 0 ? (
+      {/* Not installed is the section's one line in a row's place, 8px under its heading as rows are. */}
+      {!service.installed ? (
+        <PageEmpty>Not installed</PageEmpty>
+      ) : service.profiles.length === 0 ? (
         <PageEmpty>{keyed ? "No keys saved" : "No accounts saved"}</PageEmpty>
       ) : (
         service.profiles.map((p) => (
@@ -235,39 +237,3 @@ export function AccountsView(props: AccountsViewProps) {
   );
 }
 
-/** The page's shape while the services load: three sections of two rows, the usage columns at their table width. */
-export function AccountsSkeleton() {
-  return (
-    <div className="@container/accounts flex flex-col gap-6">
-      {[0, 1, 2].map((section) => (
-        <div key={section} aria-busy="true" aria-label="Loading" className="flex flex-col">
-          {/* PageSection's 20px heading line, then its 8px to the rows. */}
-          <div data-slot="heading-skeleton" className="flex h-5 items-center">
-            <Skeleton className="h-3 w-24" />
-          </div>
-          <div className="mt-2 flex flex-col">
-            {[0, 1].map((row) => (
-              // An AccountRow's shape: the dot, the 20px name over its 16px line, the bars, the switch and ⋯.
-              <div key={row} data-slot="account-row-skeleton" className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
-                <Skeleton className="size-2 rounded-full" />
-                <div className="flex flex-1 flex-col gap-0.5">
-                  <span className="flex h-5 items-center">
-                    <Skeleton className="h-3.5 w-36" />
-                  </span>
-                  <span className="flex h-4 items-center">
-                    <Skeleton className="h-3 w-24" />
-                  </span>
-                </div>
-                <UsageCellsSkeleton cells={3} className="order-last basis-full ps-5 @3xl/accounts:order-none @3xl/accounts:basis-auto @3xl/accounts:ps-0" />
-                <span className="flex items-center gap-2">
-                  <Skeleton className="h-[18px] w-8 rounded-full" />
-                  <Skeleton className="size-7 rounded-md" />
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}

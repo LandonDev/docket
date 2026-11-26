@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { formatReleaseDate, NO_RELEASE_NOTES, releaseNotesTitle } from "../lib/releaseNotes";
-import { presentReleaseNotes, type ReleaseNotesPresentation } from "../lib/releaseNotesParse";
+import { listedNotes, presentReleaseNotes, type ReleaseNotesPresentation } from "../lib/releaseNotesParse";
 import { AgentMarkdown } from "../surfaces/AgentMarkdown";
 import { Modal } from "./Modal";
 
@@ -13,7 +13,8 @@ type Props = {
 
 /**
  * Use the running build's notes by default. Feed notes with a changelog
- * heading drop that heading. Plain feed notes show as written.
+ * heading drop that heading. Plain notes show as written, or as a list when
+ * they are commit subjects joined by "; " (`listedNotes`).
  */
 function resolveNotes(
   version: string,
@@ -24,7 +25,7 @@ function resolveNotes(
     presentReleaseNotes(version, markdown) ?? {
       version,
       date: null,
-      markdown: markdown.trim(),
+      markdown: listedNotes(markdown),
     }
   );
 }

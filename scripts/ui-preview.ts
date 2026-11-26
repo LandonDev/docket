@@ -385,7 +385,10 @@ export function positionPreviewDetails(): void {
       if (!stack) continue
       const box = frame.getBoundingClientRect()
       const anchor = frame.querySelector('[data-toast-anchor]')?.getBoundingClientRect()
-      const bottom = Math.max(16, anchor ? box.bottom - anchor.top + 8 : 16)
+      // A waiting card over the footer seats the stack above itself (components/ui/toaster.tsx seatRect).
+      const card = anchor ? frame.querySelector('[data-toast-seat]')?.getBoundingClientRect() : undefined
+      const top = anchor && card && card.height > 0 && card.top < anchor.top ? card.top : anchor?.top
+      const bottom = Math.max(16, anchor && top !== undefined ? box.bottom - top + 8 : 16)
       const right = Math.max(16, anchor ? box.right - anchor.right + 16 : 16)
       const width = Math.max(0, Math.min(340, (anchor?.width ?? box.width) - 32))
       for (const viewport of ['', 'mobile-']) {

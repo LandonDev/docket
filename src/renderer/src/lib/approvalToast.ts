@@ -1,4 +1,3 @@
-import { leafIds, type WorkspaceTab } from "./layout";
 import { pendingApprovalIndex, sessionDisplayTitle, type Block, type Session } from "./session";
 import { toolCallLabel } from "../surfaces/transcriptActivity";
 import { humanName } from "./toolPhrase";
@@ -55,45 +54,6 @@ export function pendingApprovalForSession(
   if (!block?.approval) return null;
   const { label, tool } = labelsForApproval(block, session.cwd);
   return { sessionId: session.id, requestId: block.approval.requestId, label, tool, block };
-}
-
-/** True when the conversation pane for this session is focused and active. */
-export function isSessionConversationFocused(
-  sessionId: string,
-  activeTabId: string,
-  tabs: WorkspaceTab[],
-  composerFocused: boolean,
-): boolean {
-  const tab = tabs.find((entry) => entry.id === activeTabId);
-  if (!tab) return false;
-  if (!leafIds(tab.layout).includes(sessionId)) return false;
-  if (tab.focusedId !== sessionId) return false;
-  return composerFocused;
-}
-
-export function hiddenApprovalNotices(
-  sessions: Session[],
-  activeTabId: string,
-  tabs: WorkspaceTab[],
-  composerFocused: boolean,
-): Array<PendingApprovalNotice & { session: Session }> {
-  const notices: Array<PendingApprovalNotice & { session: Session }> = [];
-  for (const session of sessions) {
-    const pending = pendingApprovalForSession(session);
-    if (!pending) continue;
-    if (
-      isSessionConversationFocused(
-        session.id,
-        activeTabId,
-        tabs,
-        composerFocused,
-      )
-    ) {
-      continue;
-    }
-    notices.push({ ...pending, session });
-  }
-  return notices;
 }
 
 // The store's pending-approval index reads approvals through this module.

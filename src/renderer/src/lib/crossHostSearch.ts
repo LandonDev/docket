@@ -287,6 +287,7 @@ export function mergeCrossHost(
   merged = scoreMessages(merged);
   merged = dedupePairedFiles(merged, options.pairs);
   merged = foldFileHits(merged, options.pairs);
+  merged = foldMessageHits(merged);
   if (options.types && options.types.length > 0) {
     const wanted = new Set(options.types);
     merged = merged.filter((hit) => wanted.has(kindOf(hit)));
@@ -392,6 +393,32 @@ export function foldFileHits(hits: AppSearchHit[], pairs: readonly ProjectPair[]
     if (emitted.has(key)) continue;
     emitted.add(key);
     out.push(foldedRow(groups.get(key)!));
+  }
+  return out;
+}
+
+/** One row per thread, as files fold: a thread's message hits (on one host)
+ *  become its first, best one, which opens at that message, with `more`
+ *  counting the rest. Its name is said once, on that row. A row stands where
+ *  its thread's first hit stood. */
+export function foldMessageHits(hits: AppSearchHit[]): AppSearchHit[] {
+  const counts = new Map<string, number>();
+  const keyOf = (hit: MessageHit) => `${hit.host ?? ""}:${hit.sessionId}`;
+  for (const hit of hits) {
+    if (hit.kind === "message") counts.set(keyOf(hit), (counts.get(keyOf(hit)) ?? 0) + 1);
+  }
+  const out: AppSearchHit[] = [];
+  const emitted = new Set<string>();
+  for (const hit of hits) {
+    if (hit.kind !== "message") {
+      out.push(hit);
+      continue;
+    }
+    const key = keyOf(hit);
+    if (emitted.has(key)) continue;
+    emitted.add(key);
+    const more = counts.get(key)! - 1;
+    out.push(more > 0 ? { ...hit, more } : hit);
   }
   return out;
 }
@@ -561,12 +588,23 @@ export function notePreview(title: string, body: string): string {
   return "";
 }
 
-/** The footer's line for one host: "box: 1.2 s", "mac: skipped (offline)". */
-export function hostTimingLabel(row: HostProgress): string {
-  if (row.state === "skipped") return `${row.name}: skipped${row.detail ? ` (${row.detail})` : ""}`;
-  if (row.state === "failed") return `${row.name}: failed${row.detail ? ` (${row.detail})` : ""}`;
-  if (row.state === "searching") return `${row.name}: …`;
-  return `${row.name}: ${formatSeconds(row.elapsedMs)}`;
+/** What the footer says after a host's name: its time ("1.2 s"), "offline"
+ *  when it was skipped, "failed" (its raw reason is the tooltip's), "…" while
+ *  it searches. Two spans on screen, never "box: 1.2 s". */
+export function hostTimingWord(row: HostProgress): string {
+  if (row.state === "skipped") return row.detail ?? "skipped";
+  if (row.state === "failed") return "failed";
+  if (row.state === "searching") return "…";
+  return formatSeconds(row.elapsedMs);
+}
+
+/** Every host skipped as offline, said as one line: "The box is offline",
+ *  "The box and Studio are offline"; null when none was. */
+export function offlineLine(progress: readonly HostProgress[]): string | null {
+  const names = progress.filter((row) => row.state === "skipped" && row.detail === "offline").map((row) => row.name);
+  if (names.length === 0) return null;
+  if (names.length === 1) return `${names[0]} is offline`;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} are offline`;
 }
 
 export function formatSeconds(ms: number): string {

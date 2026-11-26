@@ -48,4 +48,21 @@ describe("ChoiceToggle", () => {
     );
     expect(screen.getByRole("group", { name: "Host" })).toBeTruthy();
   });
+
+  it("fit: shrinks to the row, the chosen label whole, a long one cut, a short one capped but never shrunk", () => {
+    const options = [{ value: "a", label: "Purdue Esports" }, { value: "b", label: "UnifyPlatforms" }, { value: "c", label: "Life" }];
+    render(<ChoiceToggle label="Pick" fit value="a" options={options} onChange={() => {}} />);
+    expect(group().className).toContain("min-w-0");
+    expect(button("Purdue Esports").className).toContain("data-pressed:max-w-none");
+    expect(button("UnifyPlatforms").className).toMatch(/(^| )shrink( |$)/);
+    expect(button("UnifyPlatforms").querySelector("span.truncate")?.textContent).toBe("UnifyPlatforms");
+    expect(button("Life").className).toContain("max-w-18");
+    expect(button("Life").className).toContain("shrink-0");
+  });
+
+  it("without fit, draws its labels as they are", () => {
+    render(<ChoiceToggle label="Pick" value="a" options={OPTIONS} onChange={() => {}} />);
+    expect(button("Alpha").querySelector("span.truncate")).toBeNull();
+    expect(button("Alpha").className).not.toContain("max-w-18");
+  });
 });

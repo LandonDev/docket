@@ -7,6 +7,7 @@ import {
   registry,
   savedEnvironment,
   webEnvironment,
+  webEnvironmentNamed,
   trackLastSeen,
   type EnvLink,
 } from "../connection";
@@ -79,6 +80,10 @@ export function initServerLink(): void {
     registry.add(webEnvironment(webSocketUrl(), location.hostname));
     // A refused cookie (expired, revoked) is sign-in again, never a retry loop.
     const off = registry.subscribe(() => {
+      // The host's own name from its hello, in the address's place.
+      const env = registry.environment(WEB_ENVIRONMENT_ID);
+      const named = env && webEnvironmentNamed(env, registry.statusOf(WEB_ENVIRONMENT_ID).lastHello);
+      if (named) registry.update(named);
       if (leaving || registry.statusOf(WEB_ENVIRONMENT_ID).transport !== "unauthorized") return;
       leaving = true;
       off();

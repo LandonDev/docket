@@ -71,7 +71,8 @@ describe("ThreadBatchToasts", () => {
     const [title] = vi.mocked(toast.error).mock.calls[0];
     const opts = options(vi.mocked(toast.error).mock.calls[0]);
     expect(title).toBe("Stopped 1");
-    expect(opts.description).toBe("2 failed: Search (harness not responding)");
+    // The count, then the first thread and its reason worded (failureReason), never "(raw)".
+    expect(opts.description).toBe("2 failed. Search: Harness not responding");
     expect(opts.duration).toBe(Infinity);
     expect(opts.closeButton).toBe(true);
     opts.action!.onClick();
@@ -80,7 +81,7 @@ describe("ThreadBatchToasts", () => {
     expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(2);
     const second = options(vi.mocked(toast.error).mock.calls[1]);
     expect(second.id).toBe(`${opts.id}:c`);
-    expect(second.description).toBe("link down");
+    expect(second.description).toBe("Its host is not connected");
     expect(second.closeButton).toBe(true);
     second.action!.onClick();
     expect(onOpen).toHaveBeenLastCalledWith("c", "local");

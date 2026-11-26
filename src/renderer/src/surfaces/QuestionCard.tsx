@@ -7,6 +7,7 @@ import { QuestionCard as Card, type Question } from "../components/ui/question-c
 import { StatusMark } from "../components/ui/status";
 import { loadToast } from "../components/ui/toaster";
 import { NoticeLine } from "./transcript/NoticeLine";
+import { registerToastSeat } from "../lib/toastAnchor";
 
 /** The transcript's card frame, the held review's: full width, the lg radius
  *  and a 12px inset. The type is the card's own. */
@@ -85,7 +86,8 @@ export function QuestionCard({
     <>
       <Collapsible open={!done}>
         {/* Kept while the host has not taken the answer, so a refusal reopens it as it was. */}
-        <CollapsibleContent keepMounted={question.answers === undefined} className="collapsible-auto">
+        {/* Open, it seats the toast stack above itself: another thread's toast never covers Back, Skip and Next. */}
+        <CollapsibleContent ref={done ? undefined : registerToastSeat} data-toast-seat={done ? undefined : ""} keepMounted={question.answers === undefined} className="collapsible-auto">
           <Card
             className={cn(QUESTION_SHAPE, enter && QUESTION_ENTER)}
             icon={<StatusMark state="waiting" word={false} />}

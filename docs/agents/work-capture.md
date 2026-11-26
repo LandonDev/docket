@@ -102,7 +102,15 @@ A frame change in the main process, kept small:
   dead key) owns every key until it ends; a dragged link or words land in the
   field as typed, only files are the window's. The last state
   the host gave is kept in localStorage, so the window is whole the instant
-  it shows. A state ask the host did not answer is not a sign-out: the line
+  it shows. The state names his jobs (`CaptureState.jobs`: each sector's Work
+  workspace on this host by its name, the first made where a sector has two),
+  so the Job toggle reads "Purdue Esports", not "Purdue"; the sector's word
+  stands only where no workspace names it, and a host a build behind sends
+  none. A file whose job has no workspace here is refused in the window's own
+  name for the computer ("No Cosmic workspace on this Mac to keep the file
+  in"). The page's body wears the `popover` fill and the window opens at
+  `CAPTURE_MIN_HEIGHT`, 92px, the empty page's own height (a one-line field
+  over the 48px foot), so no band shows under the foot. A state ask the host did not answer is not a sign-out: the line
   says "This Mac did not answer" (This PC on Windows) with Retry, the page's
   own refresh, and keeps the draft and the last state; File, Start thread and
   Return are held until it answers (Return asks again, filing nothing). A LifeOS

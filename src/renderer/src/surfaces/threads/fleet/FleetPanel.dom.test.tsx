@@ -75,10 +75,10 @@ describe("FleetSectionsView", () => {
     expect(screen.getByText("No subagents")).toBeTruthy();
   });
 
-  it("says the empty state's second line when given one (a master's board note)", () => {
-    render(<FleetSectionsView sections={[]} onOpen={() => {}} emptyLine="Batch threads are on the board" />);
-    expect(screen.getByText("No subagents")).toBeTruthy();
-    expect(screen.getByText("Batch threads are on the board")).toBeTruthy();
+  it("says no more than its title: the Empty explains nothing (rightpanel-26)", () => {
+    const { container } = render(<FleetSectionsView sections={[]} onOpen={() => {}} />);
+    expect(container.querySelector('[data-slot="empty-description"]')).toBeNull();
+    expect(container.textContent).toBe("No subagents");
   });
 });
 

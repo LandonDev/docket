@@ -7,6 +7,8 @@ import {
   ContextMenuGroup,
   ContextMenuItem,
   ContextMenuLabel,
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
   ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuSub,
@@ -21,6 +23,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
@@ -50,6 +54,8 @@ const PARTS = {
     Group: DropdownMenuGroup,
     Row: DropdownMenuItem,
     Check: DropdownMenuCheckboxItem,
+    Radios: DropdownMenuRadioGroup,
+    Radio: DropdownMenuRadioItem,
     Sep: DropdownMenuSeparator,
     Label: DropdownMenuLabel,
     Shortcut: DropdownMenuShortcut,
@@ -61,6 +67,8 @@ const PARTS = {
     Group: ContextMenuGroup,
     Row: ContextMenuItem,
     Check: ContextMenuCheckboxItem,
+    Radios: ContextMenuRadioGroup,
+    Radio: ContextMenuRadioItem,
     Sep: ContextMenuSeparator,
     Label: ContextMenuLabel,
     Shortcut: ContextMenuShortcut,
@@ -73,7 +81,7 @@ const PARTS = {
 /** The rows of one menu. A label heads a group that runs to the next
  *  separator or label (Base UI wants a group label inside its group). */
 export function MenuRows({ items, onPick, kind }: { items: readonly MenuRow[]; onPick: (id: string) => void; kind: MenuRowsKind }) {
-  const { Group, Label, Sep } = PARTS[kind];
+  const { Group, Label, Sep, Radios } = PARTS[kind];
   const out: ReactNode[] = [];
   for (let index = 0; index < items.length; index++) {
     const item = items[index]!;
@@ -82,12 +90,20 @@ export function MenuRows({ items, onPick, kind }: { items: readonly MenuRow[]; o
     } else if (item.kind === "label") {
       let end = index + 1;
       while (end < items.length && items[end]!.kind !== "sep" && items[end]!.kind !== "label") end++;
+      const rows = items.slice(index + 1, end).map((row, offset) => (
+        <Row key={rowKey(row, index + 1 + offset)} item={row} onPick={onPick} kind={kind} radio={item.radio !== undefined} />
+      ));
       out.push(
         <Group key={`group-${index}`}>
           <Label>{item.label}</Label>
-          {items.slice(index + 1, end).map((row, offset) => (
-            <Row key={rowKey(row, index + 1 + offset)} item={row} onPick={onPick} kind={kind} />
-          ))}
+          {item.radio === undefined ? (
+            rows
+          ) : (
+            // A pick of the row already picked asks nothing: a radio is unticked only by picking another.
+            <Radios value={item.radio} onValueChange={(value: unknown) => value !== item.radio && onPick(String(value))}>
+              {rows}
+            </Radios>
+          )}
         </Group>,
       );
       index = end - 1;
@@ -133,8 +149,8 @@ function rowKey(row: MenuRow, index: number): string {
   return row.kind === "item" || row.kind === "sub" || row.kind === "note" ? row.id : `${row.kind}-${index}`;
 }
 
-function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => void; kind: MenuRowsKind }) {
-  const { Row: Item, Check, Shortcut, Sub, SubTrigger, SubContent } = PARTS[kind];
+function Row({ item, onPick, kind, radio = false }: { item: MenuRow; onPick: (id: string) => void; kind: MenuRowsKind; radio?: boolean }) {
+  const { Row: Item, Check, Radio, Shortcut, Sub, SubTrigger, SubContent } = PARTS[kind];
   if (item.kind === "sep" || item.kind === "label") return null;
   if (item.kind === "note") {
     return (
@@ -185,8 +201,11 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
       ) : null}
     </>
   );
-  const row =
-    item.checked !== undefined ? (
+  const row = radio ? (
+    <Radio data-menu-row={item.id} value={item.id} disabled={item.disabled} closeOnClick={!item.keepOpen} aria-description={item.reason}>
+      {body}
+    </Radio>
+  ) : item.checked !== undefined ? (
       <Check data-menu-row={item.id} checked={item.checked} disabled={item.disabled} closeOnClick={!item.keepOpen} onCheckedChange={() => onPick(item.id)} aria-description={item.reason}>
         {body}
       </Check>
@@ -336,3 +355,5 @@ export function PopoverBody({
 export { BranchRows } from "./BranchRows";
 // ModelPicker's field and list, shown only in its open popover (chrome/ModelRows.tsx).
 export { ModelRows } from "./ModelRows";
+// The context meter's popover body (chrome/ContextMeter.tsx), drawn only while its popover is open.
+export { ContextBreakdown } from "./ContextBreakdown";

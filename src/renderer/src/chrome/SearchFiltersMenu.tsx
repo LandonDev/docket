@@ -32,6 +32,7 @@ const KIND_ICON: Record<SearchKind, MenuIcon> = {
  * `host:` and `project:` tokens out of it, and ticking a box rewrites that
  * token in the field. No token means every box of its group is ticked;
  * the last ticked box of a group stays, since none would read as every one.
+ * Project is one choice (Any, this project, or the one typed), drawn as radios.
  */
 export function SearchFiltersMenu({
   query,
@@ -109,10 +110,15 @@ export function SearchFiltersMenu({
         });
       }
     }
-    out.push({ kind: "sep" }, { kind: "label", label: "Project" });
-    out.push({ kind: "item", id: "project:any", label: "Any", icon: Folder, checked: projectValue === "any", keepOpen: true });
+    // One project or any: radios, so a typed project:name that is not this
+    // one is its own row, picked, and Any is unticked only by picking another.
+    out.push({ kind: "sep" }, { kind: "label", label: "Project", radio: `project:${projectValue}` });
+    out.push({ kind: "item", id: "project:any", label: "Any", icon: Folder, keepOpen: true });
     if (hereToken && here) {
-      out.push({ kind: "item", id: "project:here", label: here, icon: Folder, checked: projectValue === "here", keepOpen: true });
+      out.push({ kind: "item", id: "project:here", label: here, icon: Folder, keepOpen: true });
+    }
+    if (projectValue === "other" && parsed.project) {
+      out.push({ kind: "item", id: "project:other", label: parsed.project, icon: Folder, keepOpen: true });
     }
     return out;
   };
@@ -121,7 +127,7 @@ export function SearchFiltersMenu({
     const [group, value] = [id.slice(0, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
     if (group === "type") toggleType(value as SearchKind);
     else if (group === "host") toggleHost(value);
-    else if (group === "project") setProject(value === "here" ? "here" : "any");
+    else if (group === "project" && value !== "other") setProject(value === "here" ? "here" : "any");
   };
 
   return (

@@ -7,6 +7,7 @@ const ROOT = "/repo";
 
 const state = vi.hoisted(() => ({
   dirs: new Map<string, FsEntry[]>(),
+  failing: new Set<string>(),
 }));
 
 function entry(path: string, isDir = false): FsEntry {
@@ -15,7 +16,10 @@ function entry(path: string, isDir = false): FsEntry {
 
 vi.mock("../lib/fs", () => ({
   basename: (path: string) => path.slice(path.lastIndexOf("/") + 1),
-  listDir: async (_env: string, path: string) => state.dirs.get(path) ?? [],
+  listDir: async (_env: string, path: string) => {
+    if (state.failing.has(path)) throw new Error("server router not bound (fs.listPath)");
+    return state.dirs.get(path) ?? [];
+  },
   copyPath: vi.fn(),
   createPath: vi.fn(),
   deletePath: vi.fn(),
@@ -145,6 +149,75 @@ describe("FileTree", () => {
     // Each verb with its glyph, and the file tree's real keys.
     expect((await row("Rename")).el.querySelector("svg")).toBeTruthy();
     expect((await row("Rename")).el.querySelector("kbd")?.textContent).toBe("F2");
+  });
+
+  it("draws its rows on the panel's grid: 28px, 13px, rounded, inside the 12px inset", async () => {
+    await mount();
+    const readme = screen.getByRole("treeitem", { name: /README\.md/ });
+    expect(readme.className).toContain("h-7");
+    expect(readme.className).not.toContain("h-7.5");
+    expect(readme.className).toContain("text-[13px]");
+    expect(readme.className).toContain("rounded-lg");
+    expect(readme.className).not.toContain("rounded-none");
+    // The scroller's 4px and the row's own 8px make the panel's 12px inset.
+    expect(screen.getByRole("tree").parentElement!.className).toContain("px-1");
+    expect(readme.style.paddingLeft).toBe("8px");
+  });
+
+  it("turns one ChevronRight for a folder's fold, never swaps glyphs", async () => {
+    await mount();
+    const src = screen.getByRole("treeitem", { name: /src/ });
+    const before = src.querySelector("svg")!;
+    const chevron = () => src.querySelector("svg")!.getAttribute("class") ?? "";
+    expect(chevron()).toContain("transition-transform");
+    expect(chevron()).not.toContain("rotate-90");
+    fireEvent.click(src);
+    await screen.findByText("app.ts");
+    // The same glyph, turned: a swap would mount a new svg.
+    expect(src.querySelector("svg")).toBe(before);
+    expect(chevron()).toContain("rotate-90");
+  });
+
+  it("puts no tooltip on a name that fits, and never the absolute path", async () => {
+    const { container } = await mount();
+    expect(container.querySelector('[data-slot="tooltip-trigger"]')).toBeNull();
+    expect(screen.queryByText(`${ROOT}/README.md`)).toBeNull();
+  });
+
+  it("says an empty checkout with one Empty", async () => {
+    const root = "/empty-checkout";
+    state.dirs.set(root, []);
+    render(<FileTree cwd={root} onOpenFile={vi.fn()} />);
+    expect(await screen.findByText("No files")).toBeTruthy();
+    expect(screen.queryAllByRole("treeitem")).toHaveLength(0);
+  });
+
+  it("says a failed list as one red line with Retry, never the host's raw words", async () => {
+    const root = "/failing-checkout";
+    state.failing.add(root);
+    state.dirs.set(root, [entry(`${root}/README.md`)]);
+    render(<FileTree cwd={root} onOpenFile={vi.fn()} />);
+    const line = await screen.findByRole("alert");
+    expect(line.textContent).toContain("Couldn't list this folder");
+    expect(line.className).toContain("text-destructive");
+    expect(screen.queryByText(/router|fs\.listPath/)).toBeNull();
+    expect(screen.queryByText("No files")).toBeNull();
+    state.failing.delete(root);
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("README.md")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the line when Retry fails again", async () => {
+    const root = "/still-failing";
+    state.failing.add(root);
+    render(<FileTree cwd={root} onOpenFile={vi.fn()} />);
+    const line = await screen.findByRole("alert");
+    const retry = within(line).getByRole("button", { name: "Retry" });
+    fireEvent.click(retry);
+    await vi.waitFor(() => expect((retry as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.getByRole("alert").textContent).toContain("Couldn't list this folder");
+    state.failing.delete(root);
   });
 
   describe("the rename field", () => {

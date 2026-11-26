@@ -210,7 +210,9 @@ describe("AccountsView", () => {
     it("shows each key masked from its account id, and its state in the status column", () => {
       keyed();
       expect(screen.getByText("LLM_1607…")).toBeTruthy();
-      expect(screen.getByText("LLM_2214…")).toBeTruthy();
+      // An unnamed key goes by its own name alone: the mask would name it twice.
+      expect(screen.getByText("Meta key …9QzT")).toBeTruthy();
+      expect(screen.queryByText("LLM_2214…")).toBeNull();
       expect(document.body.textContent).not.toContain("1607339912");
       expect(screen.getByText("Pay as you go").className).toContain("text-muted-foreground");
       expect(screen.getByText("Key revoked").className).toContain("text-warning");
@@ -403,6 +405,41 @@ describe("an account row's two facts on a line", () => {
     expect(row.querySelector("[data-slot=plan-line]")!.textContent).toMatch(/^Max 20x \$200\/mo, renews /);
     const description = row.querySelector("[data-slot=item-description]")!;
     expect(description.querySelector(".gap-2, .gap-x-2")).toBeNull();
+  });
+  it("keeps each plan fact whole, so a narrow row breaks at the commas only", () => {
+    const DAY = 24 * HOUR;
+    props.usage = { "claude-code": [{ ...report, plan: { name: "Max 20x", monthlyUsd: 200, renewsAt: NOW + 7 * DAY } }] };
+    render(<AccountsView {...props} />);
+    const plan = document.querySelector("[data-slot=plan-line]")!;
+    const facts = [...plan.querySelectorAll(":scope > span:last-child > span")];
+    expect(facts.length).toBeGreaterThan(0);
+    for (const fact of facts) expect(fact.className).toContain("whitespace-nowrap");
+  });
+});
+
+describe("a provider's own words in the usage cell", () => {
+  it("says a failed read as plain words, its status code on hover alone", () => {
+    props.usage = { "claude-code": [{ profileName: "a@x.com", windows: [], note: "usage unavailable (502)" }] };
+    render(<AccountsView {...props} />);
+    expect(screen.getByText("Usage unavailable")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("502");
+    expect(document.body.textContent).not.toContain("usage unavailable");
+  });
+
+  it("leaves an expired session to the state line: the cell does not say it again", () => {
+    props.usage = { "claude-code": [{ profileName: "a@x.com", windows: [], expired: true, note: "session expired. Add the account again" }] };
+    render(<AccountsView {...props} />);
+    expect(screen.getByText("Session expired")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/session expired\. Add/i);
+  });
+});
+
+describe("an uninstalled provider", () => {
+  it("says Not installed in a row's place, 8px under its heading as rows sit", () => {
+    render(<AccountsView {...props} />);
+    const line = screen.getByText("Not installed");
+    expect(line.getAttribute("data-slot")).toBe("page-empty");
+    expect(line.parentElement!.className).toContain("mt-2");
   });
 });
 

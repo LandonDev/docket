@@ -55,3 +55,15 @@ export function hostOf(origin: string): string {
     return origin;
   }
 }
+
+/**
+ * A failed step's line beside its Retry button: the host's reason without a
+ * closing "Retry." (the button says it) and without an exit code ("The
+ * installer stopped with code 1603" is "The LifeOS installer did not finish").
+ */
+export function stepReasonWords(reason: string | undefined): string {
+  const text = (reason ?? "").trim().replace(/\s*Retry\.?$/i, "").trim();
+  if (/^the installer stopped with code -?\d+$/i.test(text)) return "The LifeOS installer did not finish";
+  return text.replace(/\.$/, "") || "It did not finish";
+}
+

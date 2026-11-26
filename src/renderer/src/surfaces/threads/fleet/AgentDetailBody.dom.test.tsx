@@ -77,7 +77,11 @@ describe("AgentDetailHeader", () => {
     expect(line.textContent).not.toContain("·");
     expect(line.textContent).toContain("feature-x");
     // The words and numbers are one comma run, never facts apart by space alone.
-    expect(line.querySelector('[data-slot="agent-facts"]')?.textContent).toBe("feature-x, +140 −12, 3/7 tasks, $0.12");
+    // The model line is the run's first fact: "Opus 5.5 High 200k, feature-x, …" (rightpanel-14).
+    const facts = line.querySelector('[data-slot="agent-facts"]')!;
+    expect(facts.firstElementChild?.querySelector("[data-model-line]")).not.toBeNull();
+    const model = facts.querySelector("[data-model-line]")!.textContent!;
+    expect(facts.textContent).toBe(`${model}, feature-x, +140 −12, 3/7 tasks, $0.12`);
     expect(line.querySelector("[data-model-effort]")?.textContent).toBe("High");
     expect(line.querySelector(".text-success")?.textContent).toBe("+140");
     expect(line.querySelector(".text-destructive")?.textContent).toBe("−12");
@@ -87,7 +91,7 @@ describe("AgentDetailHeader", () => {
     const meta = fixtureMeta("sol", { provider: "codex", model: "gpt-6.1-sol", reasoning: "xhigh" });
     const { container } = render(<AgentDetailHeader meta={meta} status={agentStatus(meta)} parts={[]} />);
     const line = container.querySelector("[data-slot=agent-numbers]")!;
-    expect(line.firstElementChild?.hasAttribute("data-model-line")).toBe(true);
+    expect(line.querySelector('[data-slot="agent-facts"]')!.firstElementChild?.firstElementChild?.hasAttribute("data-model-line")).toBe(true);
     expect(line.querySelector("[data-model-name]")?.textContent).toBe("GPT-6.1 Sol");
     expect(line.querySelector("[data-model-effort]")?.textContent).toBe("Extra high");
   });
@@ -112,7 +116,8 @@ describe("AgentDetailBody", () => {
     const field = view.getByPlaceholderText("Steer this agent…") as HTMLInputElement;
     fireEvent.change(field, { target: { value: "use the cache" } });
     fireEvent.submit(field.closest("form")!);
-    await waitFor(() => expect(view.getByRole("alert").textContent).toBe("Couldn't steer: No live harness"));
+    await waitFor(() => expect(view.getByRole("alert").textContent).toBe("Couldn't steer. It has already finished."));
+    expect(view.getByRole("alert").textContent).not.toContain("harness");
     expect(field.value).toBe("use the cache");
     expect(view.getByRole("alert").className).toContain("text-destructive");
     // Typing again clears the line; a send that lands clears the field.

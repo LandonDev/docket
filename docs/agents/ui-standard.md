@@ -108,8 +108,8 @@
   subagent line is open in the board's place: that thread's sections and
   section memory on the pane's open state and width, read on its own host,
   the child's own view `bare`; Back hands it back to the master; an
-  `AgentDetail` inside Agents moves nothing), and a master's empty Agents
-  says "Batch threads are on the board"; a toggle in place slides it in from the edge or back
+  `AgentDetail` inside Agents moves nothing), and an empty Agents is one
+  Empty, "No subagents", its title alone; a toggle in place slides it in from the edge or back
   out over the thread on transform and opacity (`usePaneMotion` in
   surfaces/threads/ThreadView.tsx), the thread taking its width at once;
   the composer's slash menu moves on the popup recipe (`POPUP_MOTION`,

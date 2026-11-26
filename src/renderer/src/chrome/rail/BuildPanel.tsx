@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { TruncateTip, useTruncated } from "@renderer/components/tip";
 import type { BuildRun, BuildTarget, EffectiveBuild, RemoteStatus } from "@server/shared/build";
 import { ChoiceSelect, type Choice } from "@renderer/components/choice-select";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
@@ -201,7 +202,8 @@ export function BuildView({
   const running = run?.status === "running";
   const options: Choice<string>[] = targets.map((t) => ({ value: t.branch, label: t.branch, group: TARGET_GROUP[t.kind] }));
   if (chosen && !options.some((o) => o.value === chosen)) options.unshift({ value: chosen, label: chosen });
-  const where = targets.find((t) => t.branch === chosen)?.cwd ?? (chosen ? `${chosen} builds in its own worktree` : null);
+  // A target with no checkout of its own says so on hover; one with a checkout needs no tip (its path never shows).
+  const where = !chosen || targets.some((t) => t.branch === chosen && t.cwd) ? null : `${chosen} builds in its own worktree`;
 
   // The provider holds the top row alone, never the log's scroller: the lazy
   // provider remounts what it wraps when the tooltips warm.
@@ -210,20 +212,18 @@ export function BuildView({
       <TooltipProvider>
         <div data-slot="section-top" className="flex h-9 shrink-0 items-center gap-2 px-3">
           {chosen ? (
-            <Tooltip>
-              <TooltipTrigger render={<span className="flex min-w-0 flex-1" />}>
-                <ChoiceSelect
-                  label="Build branch"
-                  size="sm"
-                  value={chosen}
-                  options={options}
-                  disabled={running || targets.length < 2}
-                  onChange={onPick}
-                  className="w-full min-w-0"
-                />
-              </TooltipTrigger>
-              {where ? <TooltipContent>{where}</TooltipContent> : null}
-            </Tooltip>
+            where ? (
+              <Tooltip>
+                <TooltipTrigger render={<span className="flex min-w-0 flex-1" />}>
+                  <BranchSelect chosen={chosen} options={options} disabled={running || targets.length < 2} onPick={onPick} />
+                </TooltipTrigger>
+                <TooltipContent>{where}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="flex min-w-0 flex-1">
+                <BranchSelect chosen={chosen} options={options} disabled={running || targets.length < 2} onPick={onPick} />
+              </span>
+            )
           ) : (
             <span className="flex-1" />
           )}
@@ -262,19 +262,36 @@ export function BuildView({
   );
 }
 
+function BranchSelect({ chosen, options, disabled, onPick }: { chosen: string; options: Choice<string>[]; disabled: boolean; onPick: (branch: string) => void }) {
+  return <ChoiceSelect label="Build branch" size="sm" value={chosen} options={options} disabled={disabled} onChange={onPick} className="w-full min-w-0" />;
+}
+
+/** Where a command not set on the project came from, said on its hover alone (never a word after it). */
+const COMMAND_ORIGIN: Partial<Record<EffectiveBuild["source"], string>> = { detected: "Found in this checkout", workspace: "From the workspace's Build settings" };
+
 /** The run's state in the status vocabulary with its detail, the command under it. Before a run, the command alone.
  *  The detail is one comma run ("exit 1, 1m 2s"), and names the run's branch only when the select above does not. */
 function StatusRow({ run, own, chosen, effective }: { run: BuildRun | null; own: string | null; chosen: string | null; effective: EffectiveBuild | undefined }) {
   const running = run?.status === "running";
   const now = useNow(running);
   const command = effective?.command ?? run?.command;
+  const origin = effective ? COMMAND_ORIGIN[effective.source] : undefined;
+  // The whole command on hover only while it is cut; where it came from, when not the project's.
+  const { ref: commandRef, cut } = useTruncated(command ?? "");
+  const tip = cut && origin ? `${origin}: ${command}` : cut ? command : origin;
+  const commandText = <span ref={commandRef} className="min-w-0 truncate font-mono" data-build-command />;
   const commandLine = command ? (
     <span className="flex min-w-0 items-baseline text-xs text-muted-foreground">
-      <Tooltip>
-        <TooltipTrigger render={<span className="min-w-0 truncate font-mono" />}>{command}</TooltipTrigger>
-        <TooltipContent>{command}</TooltipContent>
-      </Tooltip>
-      {effective && effective.source !== "project" ? <span className="ml-1 shrink-0">{effective.source}</span> : null}
+      {tip ? (
+        <Tooltip>
+          <TooltipTrigger render={commandText}>{command}</TooltipTrigger>
+          <TooltipContent>{tip}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <span ref={commandRef} className="min-w-0 truncate font-mono" data-build-command>
+          {command}
+        </span>
+      )}
     </span>
   ) : (
     <Skeleton className="h-3 w-40" />
@@ -426,13 +443,13 @@ function OutputRow({ output, onReveal }: { output: BuildRun["outputs"][number]; 
         className="min-h-7 flex-nowrap py-0 hover:bg-foreground/5"
       >
         <ItemContent className="min-w-0">
-          <Tooltip>
-            <TooltipTrigger render={<span className="flex min-w-0 items-baseline" />}>
+          {/* The output's place in the checkout on hover only while the name or folder is cut; never its absolute path. */}
+          <TruncateTip text={output.path}>
+            <span className="flex min-w-0 items-baseline">
               <span className={cn("min-w-0 truncate text-[13px]", output.fresh ? "text-foreground" : "text-muted-foreground")}>{name}</span>
               {folder ? <span className="ml-2 min-w-0 shrink-[1000] truncate text-xs text-muted-foreground">{folder}</span> : null}
-            </TooltipTrigger>
-            <TooltipContent>{output.abs}</TooltipContent>
-          </Tooltip>
+            </span>
+          </TruncateTip>
         </ItemContent>
         <ItemActions>
           <span className="text-xs text-muted-foreground tabular-nums">{output.fresh ? fmtSize(output.size) : "Not rebuilt"}</span>

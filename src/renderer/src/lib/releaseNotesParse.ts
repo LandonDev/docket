@@ -1,3 +1,4 @@
+import { KNOWN_APP_NAMES } from "@shared/appName";
 import { BUNDLED_RELEASE } from "./bundledRelease";
 import type { ReleaseNotesDocument, ReleaseNotesTabSource } from "./releaseNotes";
 
@@ -72,8 +73,39 @@ export function presentReleaseNotes(
   return {
     version: release.source.version,
     date: match?.[1] ?? null,
-    markdown: match
-      ? release.markdown.slice(match[0].length).trimStart()
-      : release.markdown,
+    markdown: listedNotes(
+      match ? release.markdown.slice(match[0].length).trimStart() : release.markdown,
+    ),
   };
+}
+
+/** How many of a release's commit subjects What's New lists before "and N more". */
+export const NOTES_LISTED = 20;
+
+/**
+ * A release cut by scripts/release.ts carries every commit subject since the
+ * last one, joined by "; " into one paragraph. Notes with no heading or list
+ * of their own and more than one such part become a list, led without the
+ * old "Core" marker under either of the app's names, cut at NOTES_LISTED with
+ * "and N more". Notes written as markdown pass as they are.
+ */
+/** The old releases' leading marker, under either of the app's names. */
+const CORE_MARKER = new RegExp(`^(${KNOWN_APP_NAMES.join("|")}) Core;\\s*`);
+
+export function listedNotes(markdown: string, cap = NOTES_LISTED): string {
+  const text = markdown.trim();
+  if (/^\s*(#|[-*+] |\d+\. )/m.test(text)) return text;
+  const body = text.replace(CORE_MARKER, "");
+  // A subject's own "; " stays inside it: where subjects end with a stop,
+  // only "; " after one parts them.
+  const joint = /[.!?];\s/.test(body) ? /(?<=[.!?]);\s+/ : /;\s+/;
+  const parts = body
+    .split(joint)
+    .map((part) => part.trim().replace(/;$/, ""))
+    .filter(Boolean);
+  if (parts.length < 2) return parts[0] ?? "";
+  const rest = parts.length - cap;
+  const listed = rest > 0 ? parts.slice(0, cap) : parts;
+  const items = listed.map((part) => `- ${part}`).join("\n");
+  return rest > 0 ? `${items}\n\nand ${rest} more` : items;
 }

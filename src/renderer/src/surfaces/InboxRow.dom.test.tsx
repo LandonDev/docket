@@ -122,6 +122,10 @@ describe("InboxRow", () => {
     const view = render(<InboxRow item={pr()} active={false} showSource={false} onSelect={() => {}} />);
     expect(title(view.container).className).toContain("leading-5");
     expect(view.container.querySelector("[data-row-line]")?.className).toContain("leading-4");
+    // The line's facts sit 8px from the host glyph and the status, never 12.
+    const line = view.container.querySelector("[data-row-line]")!.className.split(/\s+/);
+    expect(line).toContain("gap-2");
+    expect(line).not.toContain("gap-3");
   });
 
   it("takes the list's roving tab stop and keys", () => {

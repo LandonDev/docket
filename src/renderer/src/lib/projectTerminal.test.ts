@@ -143,8 +143,16 @@ describe("patchProjectTerminals", () => {
 describe("clampDockSize", () => {
   it("clamps a height to the minimum and 70% of the viewport's", () => {
     expect(clampDockSize(10, { width: 1000, height: 400 })).toBe(88);
-    expect(clampDockSize(900, { width: 1000, height: 400 })).toBe(280);
+    expect(clampDockSize(2000, { width: 1600, height: 1200 })).toBe(840);
     expect(clampDockSize(Number.NaN)).toBe(220);
+  });
+
+  it("leaves the main view its bar and a composer's room at the window's least height", () => {
+    // 520 high: 70% would be 364 and leave 84px over the dock; the floor keeps 312.
+    expect(clampDockSize(900, { width: 800, height: 520 })).toBe(208);
+    expect(clampDockSize(900, { width: 1280, height: 800 })).toBe(488);
+    // A window shorter than the floor and the least dock keeps the least dock.
+    expect(clampDockSize(900, { width: 1000, height: 380 })).toBe(88);
   });
 });
 

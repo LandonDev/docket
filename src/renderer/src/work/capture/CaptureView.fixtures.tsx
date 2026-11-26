@@ -13,6 +13,21 @@ const base: Omit<CaptureViewProps, "onText" | "onSector" | "onRemoveFile" | "onF
 export const fixtures = [
   { name: "Empty, on the last sector", props: base },
   { name: "Words", props: { ...base, text: "Book the arena for the spring LAN\nAsk about the second court and the parking", canFile: true } },
+  { name: "Three lines", props: { ...base, text: "Book the arena for the spring LAN\nAsk about the second court and the parking\nSend the plan to the club leads", canFile: true } },
+  {
+    name: "His jobs' names",
+    props: {
+      ...base,
+      jobs: [
+        { sector: "cosmic", name: "CosmicGames" },
+        { sector: "hypixel", name: "Hypixel Studio" },
+        { sector: "purdue", name: "Purdue Esports" },
+        { sector: "ref", name: "Refereeing" },
+        { sector: "unify", name: "UnifyPlatforms" },
+        { sector: "life", name: "Life" },
+      ],
+    },
+  },
   {
     name: "Files, unsorted",
     props: {
@@ -26,7 +41,7 @@ export const fixtures = [
       ],
     },
   },
-  { name: "No workspace for the file", props: { ...base, sector: "cosmic", files: [{ id: "a", name: "Loot table.xlsx", path: "/a" }], error: "No Cosmic workspace on this computer to keep the file in" } },
+  { name: "No workspace for the file", props: { ...base, sector: "cosmic", files: [{ id: "a", name: "Loot table.xlsx", path: "/a" }], error: "No Cosmic workspace on this Mac to keep the file in" } },
   { name: "Not signed in to LifeOS", props: { ...base, text: "Call the ref assigner", status: "offline", lifeos: "signed-out", host: "This Mac", canFile: true } },
   { name: "LifeOS did not answer", props: { ...base, text: "Call the ref assigner", status: "offline", lifeos: "unreachable", host: "This Mac", onRetry: () => {}, canFile: true } },
   { name: "The sign-in waits", props: { ...base, text: "Call the ref assigner", status: "offline", lifeos: "pairing", host: "This Mac", canFile: true } },

@@ -1,14 +1,18 @@
+import { dialogErrorWords } from "../lib/dialogErrorWords";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { ItemButton, ItemContent, ItemMedia, ItemTitle } from "@renderer/components/ui/item";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator } from "@renderer/components/ui/breadcrumb";
 import { Skeleton } from "@renderer/components/ui/skeleton";
-import { DialogFooter, ErrorLine, errorText } from "./ConfirmDialog";
-import { Folder, FolderPlus } from "./icons";
+import { DialogFooter, ErrorLine } from "./ConfirmDialog";
+import { ArrowUpLong, Folder, FolderPlus } from "./icons";
 import { Modal, useModalClose } from "./Modal";
 import { cn } from "../lib/cn";
 import { registry, useEnvironments } from "../lib/connection";
+import { useHostRead } from "../lib/connection/hostRead";
+import { NO_ANSWER } from "../lib/connection/openRead";
+import { nameInLine } from "../lib/hostWords";
 import { createPath, listDir, type FsEntry } from "../lib/fs";
 
 /**
@@ -42,8 +46,18 @@ export function crumbsFor(root: string, dir: string): { label: string; path: str
   return crumbs;
 }
 
+/** The caller's act on another computer, as the dialog's title: "Open a
+ *  project on the box", "Add a workspace on the box", "Choose a folder on
+ *  the box"; a host with no name known is "another computer", never its id. */
+export function remoteFolderTitle(title: string | undefined, hostName: string | undefined): string {
+  const act = title === "Add workspace" ? "Add a workspace" : title === "Choose folder" ? "Choose a folder" : "Open a project";
+  return `${act} on ${hostName ? nameInLine(hostName) : "another computer"}`;
+}
+
 type Props = {
   environmentId: string;
+  /** The caller's words for the pick (Open project, Add workspace, Choose folder): the title says that act. */
+  title?: string;
   onClose: () => void;
   /** The folder chosen; the caller makes the workspace. */
   onPick: (path: string) => void;
@@ -53,8 +67,8 @@ export function RemoteFolderDialog(props: Props) {
   const environment = useEnvironments().find((e) => e.id === props.environmentId);
   const [pending, setPending] = useState(false);
   return (
-    <Modal onClose={props.onClose} busy={pending} title={`Add a workspace on ${environment?.name ?? props.environmentId}`} size="md">
-      <FolderPicker {...props} pending={pending} setPending={setPending} />
+    <Modal onClose={props.onClose} busy={pending} title={remoteFolderTitle(props.title, environment?.name)} size="md">
+      <FolderPicker {...props} hostName={environment?.name} pending={pending} setPending={setPending} />
     </Modal>
   );
 }
@@ -73,9 +87,18 @@ function FolderSkeleton() {
   );
 }
 
-function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: Props & { pending: boolean; setPending: (on: boolean) => void }) {
+function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPending }: Props & { hostName?: string; pending: boolean; setPending: (on: boolean) => void }) {
   const close = useModalClose();
-  const [workRoot, setWorkRoot] = useState<WorkRoot | null>(null);
+  // The work root is a host read: it waits for the link, and past 10 s says the host did not answer, with Retry.
+  const link = useMemo(() => registry.linkOf(environmentId), [environmentId]);
+  const rootRead = useHostRead(link, () => link.request<WorkRoot>("workspace.root"), environmentId);
+  const workRoot = rootRead.value ?? null;
+  const host = hostName ? nameInLine(hostName) : "another computer";
+  const rootError = rootRead.error
+    ? rootRead.error === NO_ANSWER
+      ? `${host.charAt(0).toUpperCase()}${host.slice(1)} did not answer`
+      : dialogErrorWords(new Error(rootRead.error), hostName)
+    : null;
   const [dir, setDir] = useState<string | null>(null);
   const [entries, setEntries] = useState<FsEntry[] | null>(null);
   const [typed, setTyped] = useState("");
@@ -103,34 +126,23 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
       } catch (err) {
         if (n !== latest.current) return;
         setEntries([]);
-        setError(errorText(err));
+        setError(dialogErrorWords(err));
       }
     },
     [environmentId],
   );
 
   useEffect(() => {
-    let live = true;
-    registry
-      .linkOf(environmentId)
-      .request<WorkRoot>("workspace.root")
-      .then((root) => {
-        if (!live) return;
-        const start = root.exists ? root.root : root.home;
-        setWorkRoot(root);
-        setDir(start);
-        setTyped(start);
-        void load(start);
-      })
-      .catch((err) => live && setError(errorText(err)));
-    return () => {
-      live = false;
-    };
-  }, [environmentId, load]);
+    if (!workRoot) return;
+    const start = workRoot.exists ? workRoot.root : workRoot.home;
+    setDir(start);
+    setTyped(start);
+    void load(start);
+  }, [workRoot, load]);
 
   const crumbs = useMemo(() => (workRoot && dir ? crumbsFor(workRoot.root, dir) : []), [dir, workRoot]);
   const up = dir ? parentOf(dir) : null;
-  const loading = !workRoot && !error;
+  const loading = !workRoot && !rootError;
 
   const makeFolder = async (e: FormEvent) => {
     e.preventDefault();
@@ -143,7 +155,7 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
       setPending(false);
       pick(made);
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };
@@ -167,8 +179,8 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
                 ) : null}
                 {workRoot && up && crumbs.length === 1 && crumbs[0].path !== workRoot.root ? (
                   <BreadcrumbItem>
-                    <BreadcrumbLink aria-label="Parent folder" onClick={() => void load(up)}>
-                      ..
+                    <BreadcrumbLink aria-label="Up a folder" onClick={() => void load(up)}>
+                      <ArrowUpLong className="size-3.5" />
                     </BreadcrumbLink>
                   </BreadcrumbItem>
                 ) : null}
@@ -272,7 +284,18 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
             )}
           </>
         ) : null}
-        <ErrorLine error={error} />
+        {rootError ? (
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <ErrorLine error={rootError} />
+            </div>
+            <Button variant="secondary" size="sm" className="-my-1.5 shrink-0" onClick={() => void rootRead.retry()}>
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <ErrorLine error={error} />
+        )}
       </div>
       <DialogFooter onCancel={onClose} confirmLabel="Use this folder" onConfirm={choose} disabled={!typed.trim() || pending} />
     </>

@@ -1,3 +1,4 @@
+import { failureReason } from "../lib/threadActionFailure";
 import { useRef } from "react";
 import { dismissBatchNotice, useBatchNotices, type BatchNotice } from "../lib/threadBatch";
 import { useToastSync } from "./toastSync";
@@ -43,7 +44,8 @@ export function BatchNoticesToasts({ onOpen, notices }: Props & { notices: reado
       const readRest = (restId: string) => !dismissedRest.has(restId);
       toast.error(title, {
         id,
-        description: `${notice.failed.length} failed: ${first.title} (${first.error})`,
+        // The count, then the first thread and its reason worded; each other failure is its own toast under it.
+        description: `${notice.failed.length} failed. ${first.title}: ${failureReason(first.error) || "It did not answer"}`,
         duration: Infinity,
         // A failure stays until it is read; its close dismisses it unread.
         closeButton: true,
@@ -58,7 +60,7 @@ export function BatchNoticesToasts({ onOpen, notices }: Props & { notices: reado
         if (!readRest(restId)) return;
         toast.error(f.title, {
           id: restId,
-          description: f.error,
+          description: failureReason(f.error) || undefined,
           duration: Infinity,
           closeButton: true,
           onDismiss: () => dismissedRest.add(restId),

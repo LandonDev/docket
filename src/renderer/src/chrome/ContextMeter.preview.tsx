@@ -2,7 +2,7 @@
 // ContextMeterPreview draws the real panel in an open popover. Polling and Compact need interaction.
 import type { ComponentProps } from "react";
 import { Popover, PopoverContent } from "../components/ui/popover";
-import { ContextBreakdown } from "./ContextMeter";
+import { ContextBreakdown } from "./ContextBreakdown";
 
 export function ContextMeterPreview(props: ComponentProps<typeof ContextBreakdown>) {
   return (

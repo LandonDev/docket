@@ -15,16 +15,16 @@ describe("InboxListEmpty", () => {
   it("narrowed: says the filters are narrowing it and clears them", () => {
     const onClearFilters = vi.fn();
     const { getByText, getByRole } = view({ narrowed: true, onClearFilters });
-    expect(getByText("No matching issues")).toBeTruthy();
+    expect(getByText("Nothing matches")).toBeTruthy();
     expect(getByText("Filters are narrowing this list")).toBeTruthy();
     fireEvent.click(getByRole("button", { name: "Clear filters" }));
     expect(onClearFilters).toHaveBeenCalledOnce();
   });
 
-  it("Linear: names where the issues come from, with no button", () => {
-    const { getByText, queryByRole } = view({ source: "linear" });
+  it("Linear: says so in its title alone, with no button", () => {
+    const { getByText, queryByRole, container } = view({ source: "linear" });
     expect(getByText("No Linear issues")).toBeTruthy();
-    expect(getByText("Open issues from your Linear teams show here.")).toBeTruthy();
+    expect(container.querySelector('[data-slot="empty-description"]')).toBeNull();
     expect(queryByRole("button")).toBeNull();
   });
 
@@ -34,10 +34,19 @@ describe("InboxListEmpty", () => {
     expect(getByText("Add a GitHub repository as a workspace.")).toBeTruthy();
   });
 
-  it("GitHub: names where issues and pull requests come from", () => {
-    const { getByText, queryByRole } = view();
+  it("GitHub across every workspace: the title alone, no line explaining it", () => {
+    const { getByText, queryByRole, container } = view();
     expect(getByText("No issues or pull requests")).toBeTruthy();
-    expect(getByText("Open issues and pull requests from your GitHub workspaces show here.")).toBeTruthy();
+    expect(container.querySelector('[data-slot="empty-description"]')).toBeNull();
     expect(queryByRole("button")).toBeNull();
+  });
+
+  it("scoped: names the one workspace and offers the rest as its action", () => {
+    const onShowAll = vi.fn();
+    const { getByText, getByRole, container } = view({ scopedTo: "temp-code", onShowAll });
+    expect(getByText("Nothing open in temp-code")).toBeTruthy();
+    expect(container.textContent).not.toContain("GitHub workspaces show here");
+    fireEvent.click(getByRole("button", { name: "Show all workspaces" }));
+    expect(onShowAll).toHaveBeenCalledOnce();
   });
 });

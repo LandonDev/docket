@@ -8,7 +8,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
-import { NO_ROOM_LABEL, rightPanel } from "../lib/rightPanel";
+import { NO_ROOM_KEY, NO_ROOM_LABEL, rightPanel } from "../lib/rightPanel";
 import { sessionStore } from "../lib/tcserver/store";
 import { agentsCue } from "../lib/threads/agents";
 import { FakeMetaLink, wireMeta } from "../test/fakeMetaLink";
@@ -151,6 +151,9 @@ describe("AgentsCueView", () => {
     fireEvent.mouseEnter(el);
     fireEvent.mouseMove(el);
     await waitFor(() => expect(screen.getByText(NO_ROOM_LABEL)).toBeTruthy(), { timeout: 1500 });
+    // The way to make room and its key, so even an amber Needs you is never a silent press (rightpanel-06).
+    expect(NO_ROOM_LABEL).toBe("No room: hide the sidebar");
+    expect(screen.getByText(NO_ROOM_LABEL).parentElement!.querySelector("kbd")!.textContent).toBe(NO_ROOM_KEY);
   });
 
   it("renders every preview fixture, the zero one with no cue beside ⋯ and Panel", () => {

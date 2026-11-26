@@ -1,3 +1,4 @@
+import { dialogErrorWords } from "../../lib/dialogErrorWords";
 import { keyHint, modOrCtrl } from "../../lib/keys";
 import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
@@ -43,6 +44,7 @@ import {
   type GitPr,
 } from "../../lib/fs";
 import { refreshGitSnapshot, useGitIndex } from "../../lib/gitIndexStore";
+import { gitErrorWords } from "../../lib/gitErrorWords";
 import { generateCommitMessage, generatePrContent } from "../../lib/harness";
 import { openUrl } from "../../lib/native";
 import { editorLabelFor, openInEditor } from "../../lib/openInEditor";
@@ -51,7 +53,7 @@ import type { OpenFileFn } from "../../lib/search";
 import { environmentOfCwd, projectForCwd } from "../../lib/tcserver/projects";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import { IconAction } from "../../surfaces/transcript/IconAction";
-import { confirmAction, errorText } from "../ConfirmDialog";
+import { confirmAction } from "../ConfirmDialog";
 import { FileTypeIcon } from "../FileTypeIcon";
 import { AgainstCommits, AgainstFileRow, AgainstHead, useAgainst, type AgainstModel } from "./ChangesAgainst";
 import { BranchPicker } from "../BranchPicker";
@@ -267,7 +269,7 @@ export function ChangesPanel({
       await op();
     } catch (e) {
       ok = false;
-      setError(errorText(e));
+      setError(dialogErrorWords(e));
     } finally {
       notifyGitChanged();
       if (touched) {
@@ -290,7 +292,7 @@ export function ChangesPanel({
 
   const openCreatedPr = async (): Promise<void> => {
     const content = await generatePrContent(cwd);
-    if (!content) throw new Error("Could not prepare the pull request");
+    if (!content) throw new Error("Couldn't prepare the pull request");
     const url = await gitPrCreate(environmentId, cwd, content.title, content.body, content.base, content.head);
     await openUrl(url.trim());
   };
@@ -323,7 +325,7 @@ export function ChangesPanel({
       void loadHunks(environmentId, cwd, file.relative, side)
         .then((set) => setHunks((prev) => (key in prev ? { ...prev, [key]: set } : prev)))
         .catch((e) => {
-          setError(errorText(e));
+          setError(dialogErrorWords(e));
           drop(key);
         });
     },
@@ -380,7 +382,7 @@ export function ChangesPanel({
       try {
         setMessage(await generateCommitMessage(cwd));
       } catch (e) {
-        setError(errorText(e));
+        setError(dialogErrorWords(e));
       } finally {
         setBusy(null);
       }
@@ -561,7 +563,7 @@ export function ChangesView({
       )}
       {error ? (
         <p role="alert" className="shrink-0 px-3 pb-2 text-xs break-words text-destructive">
-          {error}
+          {gitErrorWords(error)}
         </p>
       ) : null}
       {/* A native scroller, as the rail's and the board's virtual lists have. */}
@@ -830,7 +832,7 @@ function FileRow({
                 aria-label={open ? `Hide ${hunksName}` : `Show ${hunksName}`}
                 aria-expanded={open}
                 onClick={() => actions.toggleHunks(file, side)}
-                className="size-4 rounded-sm text-muted-foreground after:absolute after:-inset-1 after:content-[''] hover:text-foreground"
+                className="size-4 rounded-sm text-muted-foreground after:absolute after:-inset-1 after:content-[''] hover:bg-transparent hover:text-foreground active:bg-transparent aria-expanded:bg-transparent"
               >
                 <ChevronRight className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
               </Button>
@@ -901,7 +903,7 @@ function HunkRows({ file, side, fold, busy, actions }: { file: GitChangedFile; s
   }
   const staged = side === "staged";
   if (fold.hunks.length === 0) {
-    return <p className="flex h-7 items-center pl-8 text-xs text-muted-foreground">{staged ? "Nothing to unstage line by line" : "Nothing to stage line by line"}</p>;
+    return <p className="flex h-7 items-center pl-8 text-xs text-muted-foreground">{staged ? "No lines to unstage" : "No lines to stage"}</p>;
   }
   return (
     <div className="flex flex-col">

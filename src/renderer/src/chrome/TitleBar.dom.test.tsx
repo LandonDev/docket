@@ -9,6 +9,7 @@ import type { SessionMeta } from "../lib/tcserver/types";
 import { buildHeaderModel, orderModel } from "../lib/threadHeaderModel";
 import type { ThreadHeaderProps } from "./ThreadHeader";
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
+import { keyHint } from "../lib/keys";
 import { TabVisitNav, TitleBar, TrafficLightSpacer, tabScrollBehavior } from "./TitleBar";
 import { chipThreadsOf } from "./ShellTitleBar";
 import { newSession } from "../lib/session";
@@ -110,7 +111,9 @@ describe("TitleBar", () => {
     fireEvent.pointerEnter(toggle, { pointerType: "mouse" });
     fireEvent.mouseEnter(toggle);
     fireEvent.mouseMove(toggle);
-    await waitFor(() => expect(screen.getByText("No room for the panel")).toBeTruthy(), { timeout: 1500 });
+    // It says how to make room, with the sidebar's key (rightpanel-06).
+    await waitFor(() => expect(screen.getByText("No room: hide the sidebar")).toBeTruthy(), { timeout: 1500 });
+    expect(screen.getByText("No room: hide the sidebar").parentElement!.querySelector("kbd")!.textContent).toBe(keyHint("mod+B"));
   });
 
   it("New thread stays out of the chips' tablist, and the Plan chip sits before the thread menu", () => {

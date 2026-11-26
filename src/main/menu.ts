@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, globalShortcut, ipcMain, Menu, shell, type MenuItemConstructorOptions, type WebContents } from 'electron'
-import { EDITOR_KEY_IDS, EMPTY_MENU_STATE, MENU_TREE, resolveMenu, sameMenuState, WORK_ONLY_IDS, type MenuNode, type MenuState } from '../shared/menuTree'
+import { EDITOR_KEY_IDS, EMPTY_MENU_STATE, MENU_TREE, resolveMenu, runsInMain, sameMenuState, WORK_ONLY_IDS, type MenuNode, type MenuState } from '../shared/menuTree'
 import { createWindow } from './windows'
 import { hostProfileRunning, profileHost } from './server/doctorProfile'
 
@@ -141,6 +141,10 @@ export function receiveMenuState(contents: WebContents, raw: unknown): void {
 export function registerMenu(): void {
   apply(NO_WINDOW)
   ipcMain.on('menu:state', (event, state: unknown) => receiveMenuState(event.sender, state))
+  // A Windows window has no native bar to click: its in-app bar asks for main's own rows by id.
+  ipcMain.on('menu:run', (_event, id: unknown) => {
+    if (typeof id === 'string' && runsInMain(id)) dispatch(id)
+  })
   app.on('browser-window-focus', applyFocusedMenu)
   // A window that lost the focus to no other window of ours (minimized, the last one hidden): the menu goes back to the
   // rows that need no window. Asked a turn later, since a blur comes before the next window's focus.

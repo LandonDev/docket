@@ -20,13 +20,13 @@ bindServer({
       if (path.endsWith("/loading")) return pending;
       if (path.endsWith("/failed")) throw new Error("The folder could not be listed.");
       if (path.endsWith("/src")) return [entry(path + "/routes.ts")] as T;
-      if (path.endsWith("/drafts")) return [] as T;
+      if (path.endsWith("/drafts") || path.endsWith("/empty")) return [] as T;
       return [entry(path + "/src", true), entry(path + "/drafts", true), entry(path + "/README.md")] as T;
     },
   }),
 });
 
-function Tree({ state = "tree" }: { state?: "tree" | "loading" | "failed" | "create" | "rename" }) {
+function Tree({ state = "tree" }: { state?: "tree" | "loading" | "failed" | "empty" | "create" | "rename" }) {
   const cwd = "/guide/" + state;
   const frame = useRef<HTMLDivElement>(null);
   saveExpanded(cwd, new Set([cwd, cwd + "/src", cwd + "/drafts"]));
@@ -48,7 +48,7 @@ function Tree({ state = "tree" }: { state?: "tree" | "loading" | "failed" | "cre
   return <div ref={frame} className="min-h-0 flex-1"><FileTree cwd={cwd} onOpenFile={noop} /></div>;
 }
 
-export function FilesPreview({ state }: { state?: "tree" | "loading" | "failed" | "create" | "rename" } = {}) {
+export function FilesPreview({ state }: { state?: "tree" | "loading" | "failed" | "empty" | "create" | "rename" } = {}) {
   return <Tree state={state} />;
 }
 
@@ -56,6 +56,7 @@ export default [
   { name: "Expanded folders, including an empty folder", props: { state: "tree" } },
   { name: "First read", props: { state: "loading" } },
   { name: "Failed read", props: { state: "failed" } },
+  { name: "Empty checkout", props: { state: "empty" } },
   { name: "New file name", props: { state: "create" } },
   { name: "Rename issue", props: { state: "rename" } },
 ];

@@ -303,7 +303,7 @@ async function drive(): Promise<void> {
   cdp = await attach(180_000)
   const after = await statusOf(cdp)
   check('throws: the app came back on the bundle’s code', after.current === VERSION && !after.code?.running, JSON.stringify(after.code))
-  check('throws: it says so once', after.code?.notice === fellBackLine(THROWS, VERSION), String(after.code?.notice))
+  check('throws: it says so once', after.code?.notice === fellBackLine(VERSION), String(after.code?.notice))
   check('throws: no staged code ran in this launch', proof('main') === '', proof('main'))
   check('throws: the state names the failed tree and no current one', !state().current && state().failed?.commit === THROWS && /^threw: proof: this tree throws/.test(state().failed?.why ?? ''), JSON.stringify(state()))
   const swept = await until('the failed tree to be removed', 30_000, () => !existsSync(join(CODE, THROWS)))
@@ -323,7 +323,7 @@ async function drive(): Promise<void> {
   cdp = await attach(180_000)
   const last = await statusOf(cdp)
   check('dies: the next launch runs the bundle’s code', last.current === VERSION && !last.code?.running, JSON.stringify(last.code))
-  check('dies: it says so once', last.code?.notice === fellBackLine(DIES, VERSION), String(last.code?.notice))
+  check('dies: it says so once', last.code?.notice === fellBackLine(VERSION), String(last.code?.notice))
   check('dies: the state names the failed tree and no current one', !state().current && state().failed?.commit === DIES, JSON.stringify(state()))
   check('dies: the app answers', (await cdp.eval<string>('window.api.app.version()')) === VERSION)
 

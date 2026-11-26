@@ -67,6 +67,13 @@ describe("the disclosure chevron", () => {
     expect(found).toEqual(ALLOWED);
   });
 
+  it("never swaps ChevronDown for ChevronRight on a fold: the one glyph turns (FileTree's folders did)", () => {
+    const swap = /\?\s*\(?\s*<Chevron(?:Down|Right)\b[^>]*\/>\s*\)?\s*:\s*\(?\s*<Chevron(?:Right|Down)\b/;
+    expect(swap.test("open ? (\n  <ChevronDown className=\"size-3.5\" />\n) : (\n  <ChevronRight className=\"size-3.5\" />\n)")).toBe(true);
+    const found = walk(root).filter((path) => swap.test(readFileSync(path, "utf8"))).map((path) => relative(root, path));
+    expect(found).toEqual([]);
+  });
+
   it("refuses each hand-made form", () => {
     expect(chevronProblem('<ChevronRight className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />')).toBeNull();
     expect(chevronProblem('<ChevronDown className="size-3 shrink-0" />')).toBeNull();

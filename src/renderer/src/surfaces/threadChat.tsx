@@ -490,7 +490,7 @@ export function useThreadChat({
       <WorkingStrip session={chrome} onStop={stop} onResume={resume} onStart={start} />
     ),
     composer: composerOf(opts),
-    anchor: focused && visible,
+    anchor: focused && visible ? sessionId : undefined,
     placement,
   });
   const renderChat = (opts?: ChatOpts) => <ChatColumn slots={renderSlots(opts)} />;

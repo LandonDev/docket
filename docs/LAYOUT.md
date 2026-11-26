@@ -132,8 +132,8 @@ the project has one, the agents cue while a subagent of the thread on
 screen is live (the two are one control size: the quiet 24px
 `ROW_CONTROL`, 12px words, the glyph 8px from them), then two ghost icon buttons, each with a `Tooltip`: the ⋯
 thread menu, then the panel toggle (`aria-pressed` while the right panel
-is open, "Panel ⌘⇧R"; disabled with "No room for the panel" while the
-thread's row is too narrow for it), last because it is nearest the panel
+is open, "Panel ⌘⇧R"; disabled with "No room: hide the sidebar ⌘B" (the key through
+`keyHint`, `NO_ROOM_LABEL` and `NO_ROOM_KEY`) while the thread's row is too narrow for it), last because it is nearest the panel
 it opens. The end group is right-aligned, so ⋯ and Panel keep their places
 while the cues come and go. After the agents cue sits the computer cue
 (chrome/ComputerCue.tsx, the same `ROW_CONTROL`), while a computer session
@@ -142,7 +142,7 @@ this desktop can draw is live in the shown thread's tree
 alone, so it needs no panel mounted): the state's glyph, then "Using
 TextEdit" ("Using 2 apps" with sessions in several), "Needs you" in amber
 while a card waits, or "Waiting for the Mac" while a step is held. A click opens the panel on Computer and,
-pressed, closes it; it is `aria-disabled` with "No room for the panel"
+pressed, closes it; it is `aria-disabled` with the same "No room: hide the sidebar ⌘B"
 while the row is too narrow, and its hover warms the section's chunk. The agents cue (chrome/AgentsCue.tsx) is a
 quiet 24px control, the composer row's (`ROW_CONTROL`: 8px padding, 12px
 muted text, the `foreground/5` hover fill), counting every subagent of the
@@ -167,8 +167,7 @@ working on Claude Code and Codex". A click opens the right panel on Agents and t
 panel toggle's pressed fill, which it wears whenever the open panel shows
 Agents, by name or as its default (the panel reports the section it draws,
 `useShownSection` in lib/rightPanel.ts); a click then closes the panel. With no room
-for the panel it is disabled like the toggle, its tooltip "No room for the
-panel". It shows in every view (chat, board, plan, research,
+for the panel it is disabled like the toggle, its tooltip "No room: hide the sidebar ⌘B". It shows in every view (chat, board, plan, research,
 orchestration) with the panel open or closed, never on a subagent's tab,
 fades in on `--dur-fast` and leaves at once. The live chips, New thread and the end group
 share one 40px row box, so all of them sit on one 28px line at y 6. The
@@ -233,7 +232,7 @@ of the right panel's Changes section, not the header's.
 | Return toast | `AwayReturn` in `chrome/AwayReturn.tsx`, mounted once with the app's toasts | when a live `away` push turns a host's Away from on to off (never the state read at a link's open, so never at boot), each host's tally that lands in the next 3 s joins one sonner toast (`away-return`): "Decided without you in 4 threads" ("in 1 thread"), with Review. No decisions anywhere, no toast. Review opens `AwayReviewDialog` (the dialogs chunk): a `Modal` "Decided while you were away", one `ItemButton` per thread, most decisions first: its `TypeGlyph`, title, `HostGlyph` with two or more hosts, and "3 decisions" muted `tabular-nums`. A click opens the thread and closes the list |
 | Usage meter | `chrome/UsageMeter.tsx` on `src/shared/usageMeter.ts` (`meterFor`), the foot's last block | one 28px ghost row per provider with accounts, its own `railrow` container at the 12px inset, hovering and lit while open on `chrome-hover-ghost` (the hovered group's step in light, as the rail rows; dark holds the ghost button's 7%): the provider glyph, an 80px 4px `Progress` (56px in a rail under 15rem) of the pooled share (the mean room over every account routing could pick, each account's room its tighter of 5h and week; expired and unreported accounts left out; amber below 10%), then "in 2h" (the next refill) in 12px `text-muted-foreground`, or "Limited 3m" in `text-warning` while every account is throttled, on one line at any width; before any report an empty track and no text. A provider whose every account answered that its plan has no caps (Cursor's "no usage caps on this plan", `NO_CAPS_NOTE`) has no row; an account still unanswered, expired or whose poll failed keeps the empty track. No account name. Hover (the tooltip's delays), click or Enter opens a `Popover` to the right: the provider and "62% left", one row per usage window (5h, Week, each per-model cap) with its refill, percent and bar, and one muted foot line, "3 accounts with room". It moves on the `accounts` push alone |
 | Settings list | `SettingsNav` in `chrome/SettingsRail.tsx` | while settings are open the rail's list is the pages as 28px RailRows under RailHeadings, then the workspaces (another host's names its host as muted trailing text; two of one name on one host each name where they sit there: the shortest end of the parent folder's path that tells them apart, "work" or "me/work", else the whole path, `workspaceHint`), and Back as the foot's one row |
-| Workspace column | `chrome/Sidebar.tsx` | column two holds the workspace's project cards, then its loose chats and archived projects (`WorkspaceSessions`), under one 40px header (a 40px content box with its hairline under it, as the title bar's rows, so its buttons sit on the strip's y 6 line): the workspace's name (Chats at the home) in 13px medium, New thread (Tooltip ⌘N) and the workspace ⋯ menu. No tabs: files and changes are the right panel's Files and Changes sections; ⌘P still goes to a file. While the rail is collapsed the header is the column's top row (the traffic lights' room at its start on macOS; Back, Forward and the toggle are the title bar's) and the rail's foot sits under the threads. The column's own element scrolls the list (the virtualizer's scroll element, as state); across Settings and Back it keeps, per workspace, its offset (re-applied as the rows measure when the list first lays out shorter than it was, until it fits or the person scrolls), its list pages and the Chats fold, and does not replay the selection's reveal. A project card lists no thread rows of its own, only the read-only lines of `cardLines` for what needs saying; a project's threads are picked from the title bar's strip and its ⋯ menu's Recent threads…; only the Chats and Archived folds keep thread rows (a loose chat has no project to go to), each a 32px `ThreadRowView` leading with its type's tinted glyph (`TypeGlyph`, 12px in the 16px lead column) and ending in its status glyph; its subagents one step in, the lead column left empty, then the role's plain glyph. The thread rows are bare: no resting fill, `bg-chrome-hover` on hover and `bg-sidebar-group-selected` while selected; a fold's heading has no fill open or folded. A fold that follows the cards (`spaced` from `sidebarItems`, lib/sidebarRows.ts) starts 16px below them (`pt-3` on the list's 4px gap), a new group; at the home and in a workspace with no projects it starts at the top. A right-click on any thread row opens that thread's menu, and an inline rename ended by Enter or Escape gives focus back to the row's or card's ⋯ At the home the loose chats are no fold: the column's header already says Chats and holds New thread, so the rows stand under it with no heading (`headed` on the chats item). |
+| Workspace column | `chrome/Sidebar.tsx` | column two holds the workspace's project cards, then its loose chats and archived projects (`WorkspaceSessions`), under one 40px header (a 40px content box with its hairline under it, as the title bar's rows, so its buttons sit on the strip's y 6 line): the workspace's name (Chats at the home) in 13px medium, New thread (Tooltip ⌘N) and the workspace ⋯ menu. No tabs: files and changes are the right panel's Files and Changes sections; ⌘P still goes to a file. While the rail is collapsed the header is the column's top row (the traffic lights' room at its start on macOS; Back, Forward and the toggle are the title bar's) and the rail's foot sits under the threads. The column's own element scrolls the list (the virtualizer's scroll element, as state); across Settings and Back it keeps, per workspace, its offset (re-applied as the rows measure when the list first lays out shorter than it was, until it fits or the person scrolls), its list pages and the Chats fold, and does not replay the selection's reveal. A project card lists no thread rows of its own, only the read-only lines of `cardLines` for what needs saying; a project's threads are picked from the title bar's strip and its ⋯ menu's Recent threads…; only the Chats and Archived folds keep thread rows (a loose chat has no project to go to), each a 32px `ThreadRowView` leading with its type's tinted glyph (`TypeGlyph`, 12px in the 16px lead column) and ending in its status glyph; its subagents one step in, the lead column left empty, then the role's plain glyph. The thread rows are bare: no resting fill, `bg-chrome-hover` on hover and `bg-sidebar-group-selected` while selected; a fold's heading has no fill open or folded. A fold that follows the cards (`spaced` from `sidebarItems`, lib/sidebarRows.ts) starts 16px below them (`pt-3` on the list's 4px gap), a new group; at the home and in a workspace with no projects it starts at the top. A right-click on any thread row opens that thread's menu, and an inline rename ended by Enter or Escape gives focus back to the row's or card's ⋯ At the home the loose chats are no fold: the column's header already says Chats and holds New thread, so the rows stand under it with no heading (`headed` on the chats item); with no chat at all, the home's column is one `Empty`, "No chats" with New chat (`no-chats`). |
 | Project card | `ProjectCardView` / `ProjectCard` in `chrome/WorkspaceSessions.tsx` on `cardLines`, `cardCounts` and `projectCardAriaLabel` (lib/sidebarRows.ts) | one `ItemButton surface="group"` with no border or shadow, `rounded-lg`, `px-3 py-2`, on its own resting fill (`bg-sidebar-group`), `bg-sidebar-group-hover` on hover and `bg-sidebar-group-selected` while selected (`aria-current`) or pressed, 4px from the next card, never animated. A 20px line: the name always in 13px `font-medium` foreground (an unread thread says so by its own line's weight and in the card's accessible name, never by the name; a 6px dot before the time says it only while no unread line shows, its line past the page) and its last-active time in 12px muted `tabular-nums`, which gives way to ⋯ on hover and focus. A 16px branch line 2px under it: the branch glyph and the branch (else "local checkout"), then "worktree" in medium weight 4px on; a local checkout, the default, says no mode. Then 24px read-only lines in 12px, aligned under the name: each master with something to say as a block (its line with the batch's done tally, its working subagents in the fleet's words, its batch threads one step in with working as a dot, the master's line spinning while anything in the block works, since the block has one moving mark at its head, "N queued"), then the working roots (the spinner or the watching ring, the type's tinted glyph, the title, the host glyph while the column's threads span two or more hosts, the elapsed past 3 s; an implementation thread's tally and task 4px apart under it), the paused ones (Paused and the frozen elapsed, a `StatusMark` word and its muted detail), the unread ones (no mark, the title's weight); a thread housed in a master prints only in its block. One page of lines, then "N more" beside the button (a 28px row of 13px words, its label on the lines' titles at 52px: the 12px inset, the 12px mark and the 12px type glyph 8px apart; a thread list's "N more" is one of its 32px rows, its label on their titles at 36px). Last, a count line when there is something to count: "1 needs you" in amber and "N failed" in red with their glyphs, then "N dormant, N archived" as one muted comma run 8px on (a thread inside a master is never dormant), a glyph-led count 8px from the one before it; the menu's fleet switches, Pause all, Resume all and Stop all, act on the project and its linked copies through `requestThreadBatch` (a `projects` scope; Pause and Stop confirm), and its "Archive N dormant threads" (and the workspace menu's) counts those roots and takes each master it archives with its settled batch (lib/archiveDormant.ts, loaded when the row is picked), as a root takes its subagents, while a batch thread that still works stays, a root on the card and in the strip from then on; "No threads" for a project with none; paused is never counted. A click or Enter anywhere on it, a line included, selects the project (App's `onSelectProjectCard`); lines never open a thread. A double-click renames it in place; ⋯ and a right-click open the same menu. Its accessible name says what needs saying ("Alpha, 1 needs you, 2 working, 3 unread"). Dimmed under the offline tint when every copy's host is out of reach. The Archived fold's project rows keep `ProjectRowView`, a 32px fold, its threads one step in (16px) under its name |
 
 **Containers and items.** A container is a workspace row in the rail and a
@@ -428,7 +427,17 @@ views/accounts.tsx, views/accounts/row.tsx). It is the one page on the
 table width: `Page width="table"`, a 1,152px cap where the settings pages
 keep 672px, so on a wide pane the usage reads across instead of down. One
 section per provider, its heading with Add account (or Add key…) and the
-section's ⋯; one `PageRow` per account, no cards.
+section's ⋯; one `PageRow` per account, no cards. The title stands alone,
+with no line under it. A provider that is not installed says "Not installed"
+in a row's place under its heading (`PageEmpty`). An account another host
+refreshes reads "Refreshed by box" then "4m ago" muted. A usage cell says a
+provider's note in sentence case ("Usage unavailable", the status code on
+hover alone), and nothing when the state line already says why (Session
+expired). A plan's facts each stay whole, so a narrow row breaks at the
+commas only. While the pages' chunk loads, the window draws the
+page's own `AccountsSkeleton` under the title's bone (from the light module
+views/accounts/usageSkeleton.tsx), so nothing moves when the page lands;
+Stats' wait is the 672px column instead (`AliaxPagesFallback`).
 
 The rows are one container (`@container/accounts`). From 48rem of it each
 row is a table line: the colour dot, the name with its state line and plan
@@ -477,10 +486,19 @@ Tools used, each a `PageSection`; Cache hit rate and Busiest hours name
 their window in a description, and the rest read the last 30 days. A
 section with nothing to draw is one `PageEmpty` line ("Nothing yet" where
 its description already names the window, "Nothing in the last 30 days"
-elsewhere). While the first index runs the
-body is each section's skeleton at its real height, and the page's own line
-under the title gives the progress, once; a stats worker that is gone is
-one red 12px line there with Reindex, which restarts it. Colour follows
+elsewhere). The page's line says "12K turns in the last 30 days, updated
+5:30 PM" (`dayTime`: a weekday only for an earlier day); with no turns in
+the 30 days but older logs indexed, the body is one `Empty`, "Nothing in the
+last 30 days". While an index pass runs (the first, or a Reindex) the body
+is each section's skeleton at its real height, Pace as tall as the series
+the last bundle drew (two before any), and the page's own line under the
+title counts the pass, once; a stats worker that is gone ("Couldn't load the
+stats") or a refused Reindex ("Couldn't reindex") is one red 12px line there,
+the worker's own words on hover alone, with Reindex, which restarts it. Pace
+draws its legend once, at its head: "This cycle" and "Usual", or each
+provider's cycle by name when two share the section. A model no catalog this
+install shows is named by the shared catalog ("GPT-6.1 Sol"), else in title
+case, never by its raw id. Colour follows
 what a series is: Claude `--chart-1`, Codex `--chart-2`, a provider's
 second model `--chart-3` and `--chart-4` by its family, never its rank, the
 rest "Other", and a series that counts both providers (Top projects, Tools
@@ -555,8 +573,8 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   under 360px (`THREAD_MIN`), so in a narrow row the panel is drawn
   narrower, down to 260 (`panelFit`), and in a row narrower than 620 it is
   not drawn at all. Its stored open state stays, so it returns when the row
-  widens; meanwhile the title bar's toggle is disabled with "No room for the
-  panel" on hover, View › Show Panel is greyed and ⌘⇧R does nothing
+  widens; meanwhile the title bar's toggle is disabled with "No room: hide the
+  sidebar ⌘B" on hover (the way to make room, never a silent press), View › Show Panel is greyed and ⌘⇧R does nothing
   (ThreadView measures its row; `rightPanel.setRoom`, `usePanelRoom`). On
   `bg-sidebar` with the `border-border` hairline; a 40px header
   (`PanelHeader`), the title bar's row height, so its buttons sit 6px from
@@ -618,8 +636,7 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     master board's sections (Needs you, Working, Queued, Done,
     lib/threadGroups.ts), each top agent by its own state with its
     descendants indented 16px a level under it (three levels drawn), in a
-    native scroller; none is one Empty, "No subagents", on a master with
-    "Batch threads are on the board" under it (`MASTER_AGENTS_EMPTY`). A row's line one
+    native scroller; none is one Empty, "No subagents", its title alone. A row's line one
     is its state's glyph, its title across the whole line and the host
     glyph at its right edge; the model is the row's last line, the
     provider's logo, the model, its effort and its context window ("Opus
@@ -661,7 +678,10 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     pinned at the foot while there are changes: the generate button inside
     it, Commit (⌘↩) with a menu for Commit & push and Commit, push & create
     PR. Loading is skeleton rows, nothing is one Empty, "No changes", a
-    failure one red line. The scroll body is one virtual list
+    failure one red line in plain words (`gitErrorWords`,
+    lib/gitErrorWords.ts: "Git is busy in this checkout. Try again."),
+    never git's own line or a path. A fold with no hunks says "No lines to
+    stage" (or unstage). The scroll body is one virtual list
     (`changesItems.ts` through the rail's `VirtualRows`, on a native
     scroller as the rail's and the board's lists are): only the rows near
     the viewport mount, one `RowsContextMenu` serves them all, and a row
@@ -671,19 +691,28 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     leaves it out of every listing behind the section (git status and
     numstats, Stage all, Stash, the commit message's draft).
   - **Notes** (`NotesBody`): the state line ("Updated 2m ago", "Saving…",
-    "Save failed" as the failed `StatusMark`, as a file pane's header says it), Copy as brief and a pencil at the top; the pencil
+    "Save failed" as the failed `StatusMark` with its reason, "no answer" or "not allowed", and Retry beside it, as a file pane's header says it), Copy as brief and a pencil at the top; the pencil
     swaps the rendered notes (`AgentMarkdown size="compact"`) for the
     source in place and becomes Done (Escape too); a thread write while the
-    person types is one line with Load theirs. None is one Empty with
+    person types is one line with Load theirs. A save that failed keeps the
+    source open with his draft in it until a save lands. None is one Empty with
     "Start the notes".
   - **Files** (`FileTree`): New file, New folder and Collapse all as icon
     buttons over the tree; no root row (the project is the panel's
     context; its actions are the background's right-click menu), no diff
-    counts (Changes has them).
+    counts (Changes has them). Its rows are the panel's 28px, 13px rows on
+    the 12px inset, a folder led by the one disclosure chevron turning with
+    its fold, a name cut short whole on hover (`TruncateTip`, never a
+    path); an empty checkout is one Empty, "No files"; a folder the host
+    could not list is one red line, "Couldn't list this folder", with
+    Retry.
   - **Build** (`BuildPanel`): the target `Select` and Build or Cancel; one
     status row (`StatusMark`: Working with the time, Done, Failed with the
     exit code, Stopped; its detail one comma run, "exit 1, 1m 2s", naming
-    the run's branch only when the select shows another) over the command;
+    the run's branch only when the select shows another) over the command
+    (where a command not set on the project came from is its hover, never
+    a word after it; no tip shows a path, and a cut command or output is
+    whole on hover only while cut);
     "2 behind origin" with Fetch only when a fetch is due; the log; the
     outputs as rows that reveal the file. No command is one Empty with "Set
     one" (the workspace's Build settings) and no Build button beside it.
@@ -704,7 +733,8 @@ frame: a resizable list column (280px by default) whose head is `p-2` (the
 Inbox's GitHub and Linear tabs over its filter field, its filter menu and
 Refresh; Notes' field and New note), its rows `ItemButton sm` in `p-1`,
 2px apart, glyphs 12px in, a selected row `muted`; then the detail, a
-`max-w-5xl` column on a 32px inset with 24px between its sections (the meta
+`max-w-5xl` column on a 32px inset (16px while its pane is under 576px, a
+container query on the detail's scroller) with 24px between its sections (the meta
 line, the 16px title 8px under it, its facts 8px under that, the actions
 16px under them). An inbox row is two lines (20px over 16px, 54px); a note's
 three (its project and time, its title, its first words). The facts of a
@@ -716,17 +746,40 @@ tab stop: the selected row takes Tab, and ↑↓ in the field or on a row
 select the next row as a click would (`useRovingList`, hooks/useRovingList.ts),
 Home and End on a row. Nothing selected draws no detail, since the list
 already says why: its skeleton while it loads (`SurfaceSkeleton` kind
-`rows`, the row's own shape), else its one `EmptyState`, which says "No
-matching …" with Clear filters when the person narrowed it.
+`rows`, the row's own shape), else its one `EmptyState`, centred in the
+list's column in both pages, which says "Nothing matches" (Notes: "No
+matching notes") with Clear filters when the person narrowed it, "Nothing
+open in temp-code" with Show all workspaces when the Inbox shows one
+workspace of several, and else its title alone. A failure is one red 12px
+line under the list's head, rows listed or not (`FailLine`,
+surfaces/FailLine.tsx): plain words ("Couldn't load Linear issues",
+"Couldn't read owner/repo", "Couldn't make a note"), the program's own text
+on hover alone; a failed source hides its repos' lines. Notes with no note
+to show says a failed read as its `EmptyState` ("Couldn't load notes on the
+box") with Retry. The detail says its own failures the same way, one line a
+place ("Couldn't load this pull request", "Couldn't load the changes",
+"Couldn't load the comments", "Couldn't post the comment"). A comment's head
+is its author, 4px on one comma run of its facts (review state, place,
+Resolved, the time as a link), and Reply 8px after them; each link reaches
+24px tall. A note's title field is bare at rest and takes the field's ring
+on a bottom edge while focused.
 
 Search (surfaces/SearchView.tsx) is the field and the results under it:
 28px one-line rows on the field's columns (the list 12px in as the field's
 box, each row's 1px edge and 10px inset as the field's, so the glyphs and
 the words line up under the field's), the highlight following ↑↓ and
 the pointer only once it moves (`usePointerHighlight`), and its filters in
-the field's menu (chrome/SearchFiltersMenu.tsx: Type, Host and Project as
-checked `RowsMenu` rows that rewrite the typed tokens). With two or more
-hosts a foot says what each took, one comma run through `Facts`. Go to File and Go to Symbol are the same
+the field's menu (chrome/SearchFiltersMenu.tsx: Type and Host as checked
+`RowsMenu` rows, Project as radios: Any, this project, and a typed
+`project:` naming another as its own picked row; each rewrites the typed
+tokens). With two or more hosts a foot says what each took, one comma run
+through `Facts`: the host's name, then 4px on its time muted ("box 1.2 s"),
+"offline", or "failed" in red with the raw reason on hover alone. When no
+host answers, the one `EmptyState` says "No host answered", its line the
+offline hosts ("The box is offline"). While its chunk loads, Search draws its
+strip with the field's bone and nothing under it, as it opens. A message row is a thread's best match as prose (no
+markdown marks, cut on a word's edge), its other matches folded into "+N
+more", the thread's name once at its end. Go to File and Go to Symbol are the same
 list in a picker dialog (chrome/PickerDialog.tsx) whose rows are menu rows.
 
 ### The viewers
@@ -942,7 +995,8 @@ scroller reserves) and the column (`COLUMN_MAX_CLASS`, after the message
 list when it sits beside), and the empty thread (surfaces/EmptySession.tsx)
 uses the same gutter and column and the same class chain. The footer is the
 toast anchor (lib/toastAnchor.ts), so the stack sits above the box and the
-row under it alike.
+row under it alike; a waiting card in view above it seats the stack over
+itself (docs/DESIGN.md "Restraint").
 
 `+` (chrome/ComposerBar.tsx `AddMenu`) holds Attach files, Mention a file or
 thread and Skills and commands; the last two type `@` or `/` at the caret,
@@ -1099,7 +1153,9 @@ and is not remembered.
 One dock slot sits under the main view; it is bottom only (a dock saved on
 another side comes back at the bottom at the default height). It holds one
 of two things at a time, both in the same shell (chrome/DockFrame.tsx: the
-hairline on its top edge, the sash, double-click for the default size) and
+hairline on its top edge, the sash, double-click for the default size; its
+height is at most 70% of the window's and never leaves the main view under
+312px, the bar with its shelf and a composer's room, `clampDockSize`) and
 under the same 36px bar (chrome/DockBar.tsx): the project's terminals as
 `Tabs variant="line"` (the terminal glyph, the title, the cwd on hover, a
 close on the active or hovered tab, middle click closes, drag to reorder),
@@ -1169,11 +1225,20 @@ nothing under it repeats them.
 - **The body**: the editor, or for Markdown the preview and the source
   swapped in place. Loading is a `Skeleton` of code lines under the
   header's slot; a file that will not open is one `Empty` with Retry.
+  An image, a video or an audio file is the media viewer
+  (surfaces/MediaViewer.tsx): its facts are one comma run in the header
+  ("320 × 200, 2.0 KB"), a review's side led by its word ("Before, 320 ×
+  200, 1.0 KB"), an image's Fit and 100% beside them; an image that is
+  still loading is a bone in its box; a file that failed is one `Empty`
+  naming the host mid-line ("No such file on the box.") with Retry, which
+  spins until the host answers, and the header then shows no size and no
+  switch. The native players follow the theme's `color-scheme`.
 - **The diff** tints added and removed lines success and destructive at
   10% beside the gutter mark, never with a left bar (editorGit.ts
   `gitThemeSpec`); the hunk bar is a floating layer.
 - **⌘F** is surfaces/FindBar.tsx on Kobra components, rendered into
-  CodeMirror's panel at the top right: the field with its count inside, the
+  CodeMirror's panel at the top right: the field with its count inside (a
+  fixed 240px slot, so no count moves the controls to a second line), the
   case, word and regex toggles, Previous, Next and Close, and the replace
   row under it while replace shows. It opens from the keyboard, so it has no
   motion.
@@ -1202,7 +1267,12 @@ pieces it draws are surfaces/paneChrome.tsx.
   makes the group's panes equal. A sash between side-by-side panes keeps
   both at 360px or more (`clampSashBoundary`, the same `THREAD_MIN` the
   right panel yields to); where the pair is narrower than two of those it
-  parts evenly. Every resize handle shares `useSashKeys`: axis
+  parts evenly. A side-by-side group one of whose panes would be drawn
+  under 240px (`PANE_FLOOR`: a composer's row is cut to glyphs there) is
+  drawn top to bottom instead, the same panes, sizes and sash, and side by
+  side again once there is room (`stackCramped` in lib/layout.ts, at draw
+  time in PaneTree.tsx; the saved layout does not change, and the tree
+  renders again only when a resize crosses that line). Every resize handle shares `useSashKeys`: axis
   arrows move 2% of its container (Shift 10%), and double-click resets its size.
 - **The drop zone.** The half the pane will take, a box inset 4px with
   rounded corners, the hairline and a translucent muted fill, fading in at
@@ -1548,7 +1618,7 @@ favicon, the title, the host, the claim; the address in a tooltip).
 │ the orchestrator's transcript             │  │   Approve rm -rf build         48s │
 ├ composer ─────────────────────────────────┤  │ Working                             │
                                                │ ◌ Build the shell          ✳ Opus 5.5│
-                                               │   Editing HomeView.swift 3/7 2m 31s│
+                                               │   Editing HomeView… 3/7, 2m 31s      │
                                                │ Done                                │
                                                │ ✓ Find the row sizes  ✳ Opus 5.5 1m│
                                                └─────────────────────────────────────┘
@@ -1584,8 +1654,8 @@ favicon, the title, the host, the claim; the address in a tooltip).
   more hosts) at the line's right edge; nothing else. Line two, live rows
   only: the host's phrase while it works, else the state's word where the
   heading does not say it and what the state is about (a question or a
-  failure in its tone), then the task tally ("3/7") and the time, which
-  ticks only while live (`agentTime`). The last line, every row, is the
+  failure in its tone), then the task tally and the time as one comma
+  run ("3/7, 2m 31s"), the time ticking only while live (`agentTime`). The last line, every row, is the
   model in 12px muted (`ModelLine`, surfaces/threads/ModelMark.tsx): the
   provider's logo, the short model, its effort in the composer's words and
   the context window ("Opus 5.5 High 1M", "Sonnet 5.5 Low 200k"; a Claude

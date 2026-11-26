@@ -60,6 +60,12 @@ describe("updateRowState", () => {
     });
   });
 
+  it("draws no row in a build that cannot apply a release, until a code-only update is known", () => {
+    expect(updateRowState(snap({ phase: "current", canApply: false }), null)).toBeNull();
+    expect(updateRowState(snap({ phase: "checking", canApply: false }), null, true)).toBeNull();
+    expect(updateRowState(snap({ phase: "ready", canApply: false, codeSubject: "Fix" }), null)).toEqual({ kind: "ready", subject: "Fix" });
+  });
+
   it("says the update that just landed when there is nothing newer", () => {
     expect(updateRowState(snap({ phase: "current" }), { version: "1.0.10" })).toEqual({ kind: "updated", version: "1.0.10" });
   });
@@ -139,6 +145,9 @@ describe("UpdateRow", () => {
   it("downloading shows its percentage; ready restarts", () => {
     mount({ kind: "downloading", percent: 42 });
     expect(screen.getByText("42%")).toBeTruthy();
+    // Nothing to press while it downloads: a progress bar, not a button.
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("42");
     cleanup();
     const { onInstall } = mount({ kind: "ready" });
     fireEvent.click(screen.getByRole("button", { name: "Restart to update" }));

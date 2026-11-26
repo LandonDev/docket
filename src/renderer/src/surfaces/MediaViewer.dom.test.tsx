@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FileMedia } from "../lib/fs";
@@ -24,7 +26,7 @@ vi.mock("../lib/fileWatch", () => ({
 vi.mock("../lib/connection", () => ({
   registry: {
     primaryEnvironmentId: "local",
-    environment: (id: string) => (id === "env_box" ? { name: "box" } : undefined),
+    environment: (id: string) => (id === "env_box" ? { name: "The box" } : undefined),
   },
 }));
 
@@ -150,14 +152,18 @@ describe("MediaGate", () => {
     expect(fitItem.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("shows a delayed loading line until the image decodes, and again for a rewritten file", async () => {
+  it("shows a delayed bone in the image's box until it decodes, and again for a rewritten file (rightpanel-24)", async () => {
     fileMedia.mockImplementation(() => Promise.resolve(image));
     const { container } = mount("/repo/img/shot.png");
     await act(async () => {});
     let img = container.querySelector("img")!;
     expect(img.className).toContain("invisible");
     const line = container.querySelector('[role="status"]')!;
-    expect(line.textContent).toBe("Loading…");
+    // A load is a skeleton in the shape of what comes, never a spinner and a word.
+    expect(line.textContent).toBe("");
+    expect(line.getAttribute("aria-label")).toBe("Loading image");
+    expect(line.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+    expect(line.querySelector('[data-slot="spinner"]')).toBeNull();
     expect(line.className).toContain("[--tw-animation-delay:var(--dur-slow)]");
     await act(async () => {
       fireEvent.load(img);
@@ -170,7 +176,7 @@ describe("MediaGate", () => {
     await act(async () => {});
     img = container.querySelector("img")!;
     expect(img.className).toContain("invisible");
-    expect(container.querySelector('[role="status"]')!.textContent).toBe("Loading…");
+    expect(container.querySelector('[role="status"] [data-slot="skeleton"]')).not.toBeNull();
   });
 
   it("plays a video in a focused native player with controls and the hairline", async () => {
@@ -228,6 +234,11 @@ describe("MediaGate", () => {
     expect(after.contains(imgs[1])).toBe(true);
     expect(before.textContent).toContain("1.0 KB");
     expect(after.textContent).toContain("2.0 KB");
+    // "Before" and its facts are one comma sentence, the label in medium weight (Work's request).
+    const run = before.querySelector("[data-media-facts]")!;
+    expect([...run.children].map((c) => c.textContent)).toEqual(["Before", "1.0 KB"]);
+    expect(run.firstElementChild!.className).toContain("font-medium");
+    expect(run.className).toContain("[&>span:not(:last-child)]:after:content-[',']");
     const header = container.querySelector("header")!;
     expect(header.textContent).not.toContain("KB");
     expect(header.textContent).not.toContain("→");
@@ -266,14 +277,17 @@ describe("a media element that fails", () => {
   it("says a file the host no longer has is missing there, and Retry brings it back", async () => {
     const { container } = await failOn("/tmp/shot.png", image, () => Promise.resolve(null), "env_box");
     expect(container.textContent).toContain("Couldn’t open shot.png");
-    expect(container.textContent).toContain("No such file on box.");
+    // The host mid-line in lower case (`nameInLine`), and no size or size switch on a file that did not open.
+    expect(container.textContent).toContain("No such file on the box.");
     expect(container.querySelector("header")).not.toBeNull();
+    expect(container.querySelector("header")!.textContent).not.toContain("KB");
+    expect(container.querySelector('[aria-label="Image size"]')).toBeNull();
     // A Retry the host still refuses keeps the failure: never the text editor.
     await act(async () => {
       fireEvent.click(retry(container)!);
     });
     expect(container.querySelector('[data-testid="editor"]')).toBeNull();
-    expect(container.textContent).toContain("No such file on box.");
+    expect(container.textContent).toContain("No such file on the box.");
     fileMedia.mockImplementation(() => Promise.resolve(image));
     await act(async () => {
       fireEvent.click(retry(container)!);
@@ -282,9 +296,29 @@ describe("a media element that fails", () => {
     expect(retry(container)).toBeUndefined();
   });
 
+  it("spins the pressed Retry until the host answers (BusyLabel)", async () => {
+    const { container } = await failOn("/tmp/shot.png", image, () => Promise.resolve(null), "env_box");
+    let answer: (m: FileMedia | null) => void = () => {};
+    fileMedia.mockImplementation(() => new Promise((r) => (answer = r)));
+    const button = retry(container)!;
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(button.querySelector('[data-slot="spinner"]')).not.toBeNull();
+    await act(async () => answer(null));
+    expect((retry(container) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("follows the theme in its native controls: the page's colour scheme is set per theme (rightpanel-23)", () => {
+    const css = readFileSync(resolve(__dirname, "../index.css"), "utf8");
+    expect(css).toMatch(/html\s*\{\s*color-scheme:\s*dark;/);
+    expect(css).toMatch(/html\.theme-light\s*\{[^}]*color-scheme:\s*light;/);
+  });
+
   it("says the host is out of reach when it cannot be asked", async () => {
     const { container } = await failOn("/tmp/shot.png", image, () => Promise.reject(new Error("link down")), "env_box");
-    expect(container.textContent).toContain("box is out of reach.");
+    expect(container.textContent).toContain("The box is out of reach.");
     expect(retry(container)).toBeDefined();
   });
 

@@ -28,10 +28,53 @@ import {
   splitPane,
   splitSizesAtBoundary,
   clampSashBoundary,
+  stackCramped,
+  stackedKey,
   updateTerminalTab,
   equalizeSplit,
   type LayoutNode,
 } from "./layout";
+
+describe("stackCramped", () => {
+  const pane = (id: string): LayoutNode => ({ type: "leaf", id });
+  const row = (id: string, children: LayoutNode[], sizes = children.map(() => 1 / children.length)): LayoutNode => ({ type: "split", id, dir: "right", children, sizes });
+
+  it("leaves a split with room as it is: the same tree comes back", () => {
+    const tree = row("s", [pane("a"), pane("b")]);
+    expect(stackCramped(tree, 480)).toBe(tree);
+    expect(stackedKey(tree, 480)).toBe("");
+  });
+
+  it("lays a side-by-side pair top to bottom once a pane would fall under the floor, with the same panes and sizes", () => {
+    const tree = row("s", [pane("a"), pane("b")], [0.6, 0.4]);
+    // 0.4 × 590 = 236px, under the 240px floor.
+    const drawn = stackCramped(tree, 590);
+    expect(drawn).toMatchObject({ id: "s", dir: "down", sizes: [0.6, 0.4] });
+    expect(layoutLeaves(drawn).map((l) => [l.id, l.rect.w, l.rect.y])).toEqual([["a", 1, 0], ["b", 1, 0.6]]);
+    expect(stackedKey(tree, 590)).toBe("s");
+    // The stored tree is untouched: the split comes back with the room.
+    expect(tree).toMatchObject({ dir: "right" });
+    expect(stackCramped(tree, 600)).toBe(tree);
+  });
+
+  it("judges a nested group by its own share of the width, and a stacked group's children by the whole of it", () => {
+    const inner = row("inner", [pane("b"), pane("c")]);
+    const tree = row("outer", [pane("a"), inner]);
+    // 900 wide: the outer pair has 450 each; the inner pair would have 225 each, so it alone stacks.
+    expect(stackedKey(tree, 900)).toBe("inner");
+    // 400 wide: the outer stacks, and the inner pair then has the whole 400, 200 each: it stacks too.
+    expect(stackedKey(tree, 400)).toBe("outer inner");
+    // A narrow first pane (210 of 700) stacks the outer group, and the inner pair then has room at 350 each.
+    expect(stackedKey(row("outer", [pane("a"), inner], [0.3, 0.7]), 700)).toBe("outer");
+  });
+
+  it("leaves a top-to-bottom split and an unmeasured tree alone", () => {
+    const column: LayoutNode = { type: "split", id: "c", dir: "down", children: [pane("a"), pane("b")], sizes: [0.5, 0.5] };
+    expect(stackCramped(column, 100)).toBe(column);
+    const tree = row("s", [pane("a"), pane("b")]);
+    expect(stackCramped(tree, 0)).toBe(tree);
+  });
+});
 
 describe("clampSashBoundary", () => {
   it("keeps both panes at 360px where the group is wide enough", () => {

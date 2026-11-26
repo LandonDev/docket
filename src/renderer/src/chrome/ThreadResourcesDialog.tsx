@@ -1,3 +1,4 @@
+import { dialogErrorWords } from '../lib/dialogErrorWords'
 import { useEffect, useState } from 'react'
 import type { ThreadResource } from '@server/shared/contract-resources'
 import {
@@ -12,7 +13,7 @@ import {
   useThreadResources
 } from '../lib/threadResources'
 import { LoadingLine } from '../surfaces/SurfaceSkeleton'
-import { DialogFooter, ErrorLine, errorText } from './ConfirmDialog'
+import { DialogFooter, ErrorLine } from './ConfirmDialog'
 import { CheckRow } from './DialogField'
 import { Tip } from '../components/tip'
 import { Modal, ModalBody, useModalClose } from './Modal'
@@ -114,7 +115,7 @@ function ResourcesForm({
       setPicked(new Set(failed.map((f) => f.id)))
       setRemoved(true)
     } catch (err) {
-      setError(errorText(err))
+      setError(dialogErrorWords(err))
     } finally {
       setPending(false)
     }
@@ -196,7 +197,7 @@ function ArchiveBody({
       if (close) close(onArchived)
       else onArchived()
     } catch (err) {
-      setError(errorText(err))
+      setError(dialogErrorWords(err))
       setPending(false)
     }
   }

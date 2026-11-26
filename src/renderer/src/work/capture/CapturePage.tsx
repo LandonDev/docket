@@ -129,7 +129,7 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
     return () => ro.disconnect();
   }, [bridge]);
 
-  const refusal = draftRefusal(draft, state?.homes ?? []);
+  const refusal = draftRefusal(draft, state?.homes ?? [], thisComputer());
   const offline = state?.connected === false;
 
   const comeBack = (back: Draft, why: string) => {
@@ -244,6 +244,7 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
         text={draft.text}
         files={draft.files}
         sector={draft.sector}
+        jobs={state?.jobs}
         status={silent ? "silent" : offline ? "offline" : "ready"}
         lifeos={state?.lifeos}
         host={thisComputer()}

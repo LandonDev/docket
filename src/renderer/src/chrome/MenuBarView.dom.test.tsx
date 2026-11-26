@@ -174,6 +174,40 @@ describe("MenuBar while a menu is open", () => {
   });
 });
 
+describe("MenuBar in a Windows desktop window", () => {
+  const run = vi.fn();
+  afterEach(() => {
+    run.mockClear();
+    delete (window as { api?: unknown }).api;
+  });
+
+  it("lists Help, and sends main's own rows to main, never to the page's command map", async () => {
+    (window as { api?: unknown }).api = { menu: { run } };
+    const onCommand = vi.fn();
+    render(<MenuBar place="desktop" onCommand={onCommand} />);
+    tapAlt();
+    const bar = screen.getByRole("menubar", { name: "Menu bar" });
+    expect(within(bar).getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["File", "Edit", "View", "Go", "Threads", "Help"]);
+    fireEvent.click(menuButton("Help"));
+    fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: /Show Logs/ }));
+    expect(run).toHaveBeenCalledWith("show_logs");
+    expect(onCommand).not.toHaveBeenCalled();
+  });
+
+  it("sends a page's row to the command map, and greys Open File… while no Work file page is on screen", async () => {
+    (window as { api?: unknown }).api = { menu: { run } };
+    const onCommand = vi.fn();
+    render(<MenuBar place="desktop" onCommand={onCommand} />);
+    tapAlt();
+    fireEvent.click(menuButton("File"));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByRole("menuitem", { name: /Open File…/ }).getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /New Window/ }));
+    expect(onCommand).toHaveBeenCalledWith("new_window");
+    expect(run).not.toHaveBeenCalled();
+  });
+});
+
 describe("rowsOf", () => {
   it("ticks each kind's Away row as a checkbox row, and nothing else", () => {
     const threads = inAppMenus(MENU_TREE).find((m) => m.label === "Threads")!;

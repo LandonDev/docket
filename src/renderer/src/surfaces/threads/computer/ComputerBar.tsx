@@ -1,3 +1,4 @@
+import { failureReason } from "@renderer/lib/threadActionFailure";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { WinvmPoint, WinvmState } from "@server/shared/contract-work-winvm";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
@@ -103,7 +104,7 @@ function usePress(title: string) {
     pressing.current = true;
     setBusy(which);
     void run()
-      .catch((err: unknown) => loadToast().then((toast) => toast.error(failed, { description: err instanceof Error && err.message ? err.message : title })))
+      .catch((err: unknown) => loadToast().then((toast) => toast.error(failed, { description: failureReason(err) ? `${title}: ${failureReason(err)}` : title })))
       .finally(() => {
         pressing.current = false;
         setBusy(null);

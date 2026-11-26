@@ -228,8 +228,9 @@ routed to (aliax-core's `forward`). Two listeners:
   grant; the token response names its account and a token is filed only
   under that account. A Meta key is a key account (`kind: 'key'`, static, no
   owner, synced like a one-year token), added with the Meta section's Add key…
-  (AddKeyDialog → `aliax:profiles:addKey` → core's `saveApiKey`) and shown as
-  `LLM_1607…`; a refused key fails a turn as `key_invalid`. "Convert all to one-year tokens" in the Claude Code
+  (AddKeyDialog → `aliax:profiles:addKey` → core's `saveApiKey`) and shown
+  under the name he gave it as `LLM_1607…`, or by its own name alone ("Meta
+  key …9QzT") when he gave none; a refused key fails a turn as `key_invalid`. "Convert all to one-year tokens" in the Claude Code
   section's menu on the Accounts page converts every account; a grant
   another host refreshes (the box, from an
   earlier handoff) is taken back first over the peer link (`AccountSync.

@@ -335,6 +335,8 @@ describe("ChangesPanel", () => {
     expect(toggle.closest('[data-slot="item-media"]')!.className.split(/\s+/)).toEqual(expect.arrayContaining(["relative", "pointer-events-none"]));
     expect(toggle.closest("[data-fold-reveal]")!.className).toContain("group-hover/row:pointer-events-auto");
     expect(toggle.className).toContain("after:-inset-1");
+    // The disclosure chevron has no fill, open or hovered (DESIGN "Motion values"): it turns, nothing else.
+    expect(toggle.className.split(/\s+/)).toEqual(expect.arrayContaining(["aria-expanded:bg-transparent", "hover:bg-transparent"]));
     fireEvent.click(toggle);
     await act(() => new Promise((r) => setTimeout(r, 50)));
     // An open fold keeps its chevron, and its pointer, at rest.
@@ -510,14 +512,15 @@ describe("ChangesPanel", () => {
     expect(h.git.gitSync).not.toHaveBeenCalled();
   });
 
-  it("a failed step is one red line", async () => {
+  it("a failed step is one red line in plain words, never git's raw line or its path", async () => {
     h.index = indexOf({ files: [file("a.ts")] });
-    h.git.gitStageFile.mockImplementationOnce(() => Promise.reject(new Error("index.lock exists")));
+    h.git.gitStageFile.mockImplementationOnce(() => Promise.reject(new Error("fatal: Unable to create '/p/.git/index.lock': File exists.")));
     mount();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Stage" }));
     await flush();
-    expect(screen.getByRole("alert").textContent).toBe("index.lock exists");
+    expect(screen.getByRole("alert").textContent).toBe("Git is busy in this checkout. Try again.");
+    expect(screen.getByRole("alert").className).toContain("text-destructive");
   });
 });
 

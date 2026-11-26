@@ -76,7 +76,8 @@ describe("ActivitySection", () => {
     expect(document.body.textContent).not.toContain("bun run dev --port 5173");
     expect(rowOf("shell").className).toContain("min-h-7");
     expect(rowOf("shell").className).toContain("py-0");
-    expect(rowOf("dev").textContent).toContain("Dev server :5173");
+    expect(rowOf("dev").textContent).toContain("bun run dev");
+    expect(rowOf("dev").textContent).not.toContain("5173");
     // Live subagents carry the wait, so nothing is stale yet.
     expect(rowOf("monitor").querySelector(".text-warning")).toBeNull();
     expect(rowOf("shell").querySelector(".text-warning")).toBeNull();

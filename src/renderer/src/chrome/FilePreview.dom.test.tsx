@@ -22,7 +22,13 @@ describe("FilePreview", () => {
 
   it("names the file and its counts on one header row", () => {
     const { container } = render(<FilePreview preview={preview} status="accepted" cwd="/repo" />);
-    expect(container.textContent).toContain("src/app.ts");
+    // The name first and whole, the folder after it muted, cut first (rightpanel-20).
+    const name = [...container.querySelectorAll("span")].find((s) => s.textContent === "app.ts" && !s.children.length)!;
+    expect(name.className).toContain("shrink-0");
+    expect(name.className).toContain("text-foreground");
+    const folder = name.nextElementSibling as HTMLElement;
+    expect(folder.textContent).toBe("src");
+    expect(folder.className.split(" ")).toEqual(expect.arrayContaining(["truncate", "text-muted-foreground"]));
     const counts = container.querySelector("[data-slot=counts]")!;
     expect(counts.className).toContain("font-sans");
     expect(counts.className).toContain("gap-1");
@@ -77,6 +83,10 @@ describe("FilePreview", () => {
   it("says Rejected once refused and nothing while pending", () => {
     const { container, rerender } = render(<FilePreview preview={preview} status="rejected" cwd="/repo" />);
     expect(container.textContent).toContain("Rejected");
+    // His own no is the status vocabulary's Stopped, its square and its word (rightpanel-21).
+    const mark = container.querySelector('[data-slot="status-mark"]')!;
+    expect(mark.getAttribute("data-state")).toBe("stopped");
+    expect(mark.querySelector('[data-slot="status-word"]')!.textContent).toBe("Rejected");
     rerender(<FilePreview preview={preview} status="pending" cwd="/repo" />);
     expect(container.textContent).not.toContain("Rejected");
     expect(container.querySelector("svg.lucide-circle-dashed, [title]")).toBeNull();

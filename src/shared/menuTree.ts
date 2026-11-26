@@ -248,6 +248,11 @@ export const MENU_COMMANDS: MenuCommand[] = MENU_TREE.flatMap((section) => comma
  *  Window falls back to main only when no window is there to take it). */
 export const MAIN_MENU_IDS = ['quit', 'profile_host', 'show_logs', 'force_reload'] as const
 
+/** Main's rows a window's own menu bar may ask main to run (`menu:run`): all of them but Quit. */
+export function runsInMain(id: string): boolean {
+  return id !== 'quit' && (MAIN_MENU_IDS as readonly string[]).includes(id)
+}
+
 export const RENDERER_MENU_IDS: string[] = MENU_COMMANDS.map((c) => c.id).filter(
   (id) => !(MAIN_MENU_IDS as readonly string[]).includes(id)
 )
@@ -299,26 +304,30 @@ export interface InAppMenu {
 
 /** The menus of the in-app bar: the tree's command rows a page can run (no roles, no
  *  main ids, nothing desktop-only), toggles under their show label, a submenu's rows
- *  inline under its name; the app menu, Window and anything left empty go. */
-export function inAppMenus(tree: MenuSection[]): InAppMenu[] {
+ *  inline under its name; the app menu, Window and anything left empty go. In a
+ *  `desktop` window (Windows, whose native bar is hidden) the desktop-only rows and
+ *  main's own stay, Quit aside: the bar is the only way to the ones with no key. */
+export function inAppMenus(tree: MenuSection[], where: 'web' | 'desktop' = 'web'): InAppMenu[] {
   const main = MAIN_MENU_IDS as readonly string[]
+  const left = (item: MenuCommand): boolean =>
+    where === 'desktop' ? item.id === 'quit' : main.includes(item.id) || item.desktopOnly === true
   const rows = (items: MenuNode[], prefix = ''): InAppItem[] =>
     items.flatMap((item): InAppItem[] => {
       if (item.kind === 'separator') return [item]
       if (item.kind === 'submenu') return rows(item.items, `${prefix}${item.label} `)
-      if (item.kind !== 'command' || main.includes(item.id) || item.desktopOnly) return []
+      if (item.kind !== 'command' || left(item)) return []
       return [
         {
           kind: 'item',
           id: item.id,
           label: `${prefix}${item.label}`,
-          ...(item.accelerator ? { accelerator: item.accelerator } : {}),
+          ...(item.accelerator ? { accelerator: (where === 'desktop' && item.offMac) || item.accelerator } : {}),
           ...(item.checkbox ? { checkbox: true as const } : {})
         }
       ]
     })
   return tree
-    .filter((section) => section.label !== APP_NAME && !section.role)
+    .filter((section) => section.label !== APP_NAME && (where === 'desktop' || !section.role))
     .map((section) => ({
       label: section.label,
       // Separators only between rows: none leading, trailing or doubled.

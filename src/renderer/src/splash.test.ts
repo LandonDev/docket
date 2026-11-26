@@ -15,9 +15,20 @@ const dark = declarations(style, ":root");
 const splash = { dark, light: new Map([...dark, ...declarations(style, "html.theme-light")]) };
 
 describe("the boot splash", () => {
-  it("wears the app's background and foreground in the light theme", () => {
-    expect(splash.light.get("--boot-background")).toBe(resolve(app.light, "var(--background)"));
+  it("wears the chrome's fill and the app's foreground in the light theme, so a launch steps once", () => {
+    // The window's backing before the page paints is `sidebar` too (src/main/windowFrame.ts BACKING).
+    expect(splash.light.get("--boot-background")).toBe(resolve(app.light, "var(--sidebar)"));
     expect(splash.light.get("--boot-foreground")).toBe(resolve(app.light, "var(--foreground)"));
+  });
+
+  it("fades on the motion tokens, and not at all under reduced motion", () => {
+    const css = readFileSync(join(__dirname, "index.css"), "utf8");
+    const token = (name: string) => css.match(new RegExp(`${name}: ([^;]+);`))![1];
+    expect(style).toContain(`transition: opacity ${token("--dur-fast")} ${token("--ease-out")};`);
+    expect(style).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*#boot-splash \{\s*transition: none;/);
+    // The cover is removed after the fade, never before it ends.
+    const wait = Number(readFileSync(join(__dirname, "main.tsx"), "utf8").match(/splash\.remove\(\), (\d+)\)/)![1]);
+    expect(wait).toBeGreaterThanOrEqual(parseInt(token("--dur-fast")));
   });
 
   it("keeps the dark splash as it was: the white logo on its near-black ground", () => {

@@ -51,3 +51,13 @@ describe("the setup's rules", () => {
     expect(computerParts(row)).toEqual(["No accounts", "paused", "not synced yet"]);
   });
 });
+
+describe("stepReasonWords", () => {
+  it("drops the closing Retry. the button already says, and an installer's exit code", async () => {
+    const { stepReasonWords } = await import("./setupFlow");
+    expect(stepReasonWords("The box could not be saved. Retry.")).toBe("The box could not be saved");
+    expect(stepReasonWords("The installer stopped with code 1603")).toBe("The LifeOS installer did not finish");
+    expect(stepReasonWords(undefined)).toBe("It did not finish");
+    expect(stepReasonWords("Retry.")).toBe("It did not finish");
+  });
+});

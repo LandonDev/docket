@@ -65,3 +65,26 @@ describe("the inbox list while it first loads", () => {
     }
   });
 });
+
+describe("the inbox list's failures", () => {
+  it("says a source's failure as one red line, its raw text on hover alone", async () => {
+    const { InboxFailLines } = await import("./InboxView");
+    const view = render(<InboxFailLines words="Couldn't load Linear issues" detail="fetch failed: ECONNRESET" repos={[{ repo: "o/a", error: "HTTP 404" }]} />);
+    const lines = view.getAllByRole("alert");
+    // The source's line stands alone: a repo's line under a failed source says nothing new.
+    expect(lines).toHaveLength(1);
+    expect(lines[0].textContent).toBe("Couldn't load Linear issues");
+    expect(lines[0].className).toContain("text-destructive");
+    expect(view.container.textContent).not.toContain("ECONNRESET");
+  });
+
+  it("names a repo it could not read in red, no colon and no raw text", async () => {
+    const { InboxFailLines } = await import("./InboxView");
+    const view = render(<InboxFailLines words={null} detail={null} repos={[{ repo: "o/a", error: "gh: Could not resolve to a Repository" }]} />);
+    const line = view.getByRole("alert");
+    expect(line.textContent).toBe("Couldn't read o/a");
+    expect(line.textContent).not.toContain(":");
+    expect(line.className).toContain("text-destructive");
+    expect(line.className).not.toContain("text-muted-foreground");
+  });
+});

@@ -91,7 +91,10 @@
   popovers ride menuChunk (a first-paint surface that draws a menu or a
   popover by its parts imports them from components/ui/lazy-menus.tsx: a cold
   trigger of the same element until the chunk lands, no content), the branch
-  picker's list with them (chrome/BranchRows.tsx), every select rides
+  picker's list, the model picker's rows and the context meter's breakdown with them
+  (chrome/BranchRows.tsx, ModelRows.tsx, ContextBreakdown.tsx: a popover's body is drawn only while it
+  is open, by when the chunk is in), the Accounts page's bones with its own chunk (the window's fallback,
+  surfaces/SurfaceSkeleton.tsx, draws its rows alone), every select rides
   selectChunk: the composer's
   permission, thread type and model setting pickers and every ChoiceSelect
   (asking for the chunk as it mounts) draw a cold trigger of the same

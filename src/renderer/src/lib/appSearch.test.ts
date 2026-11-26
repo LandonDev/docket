@@ -9,6 +9,7 @@ import {
   hitsFromContentMatches,
   hitsFromSessionSearch,
   mergeHits,
+  plainSnippet,
   searchConversationTitles,
   searchRecentProjects,
   searchSessionMessages,
@@ -46,6 +47,26 @@ describe("snippetAround", () => {
     const snippet = snippetAround(text, "sidebar");
     expect(snippet.startsWith("…")).toBe(true);
     expect(snippet).toContain("sidebar chips");
+  });
+
+  it("starts and ends on a word's edge, never mid-word", () => {
+    const text = `${"lorem ipsumdolor ".repeat(6)}the gateway test ${"consectetur adipiscing ".repeat(6)}`;
+    const snippet = snippetAround(text, "gateway");
+    const words = new Set(text.split(" "));
+    const inner = snippet.replace(/^…/, "").replace(/…$/, "").split(" ");
+    expect(words.has(inner[0])).toBe(true);
+    expect(words.has(inner[inner.length - 1])).toBe(true);
+    expect(snippet).toContain("gateway");
+  });
+});
+
+describe("plainSnippet", () => {
+  it("drops heading, emphasis, code, quote, list and link marks", () => {
+    expect(plainSnippet("## What I found **two** things in `gateway.ts`")).toBe("What I found two things in gateway.ts");
+    expect(plainSnippet("…the room ## Find - first *one* and [the docs](https://x.y/z)")).toBe("…the room Find first one and the docs");
+    expect(plainSnippet("> quoted __bold__ line")).toBe("quoted bold line");
+    expect(plainSnippet("1. Step one, then 2. step two")).toBe("Step one, then 2. step two");
+    expect(plainSnippet("snake_case_name stays")).toBe("snake_case_name stays");
   });
 });
 
@@ -111,6 +132,17 @@ describe("searchSessionMessages", () => {
     expect(hits).toHaveLength(1);
     expect(hits[0]?.blockId).toBe("u1");
     expect(hits[0]?.preview.toLowerCase()).toContain("sidebar");
+  });
+
+  it("matches the person's and the model's words alone, as the host's index does: a tool row is no message hit", () => {
+    const blocks = [
+      { id: "t1", role: "tool", text: "", tool: { kind: "read", title: "Read", detail: "/srv/x/gateway.test.ts", preview: { path: "/srv/x/gateway.test.ts" } } },
+      { id: "p1", role: "plan", text: "gateway plan" },
+      { id: "a1", role: "assistant", text: "## Found\n\nThe **gateway** test is flaky." },
+    ] as never;
+    const hits = searchSessionMessages([{ id: "s", cwd: "/w", harness: "claude", title: "T", updatedAt: 1, blocks }], "gateway");
+    expect(hits.map((hit) => hit.blockId)).toEqual(["a1"]);
+    expect(hits[0]?.preview).toBe("Found The gateway test is flaky.");
   });
 });
 

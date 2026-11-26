@@ -217,9 +217,11 @@ theme, grouped in index.css under "Held in dark":
   light each is one of the three inks, which is the rule above.
 - A link is the accent in dark; an agent page's link keeps its sky blue
   there (`link-color`).
-- A diff's context line is dimmed in dark and steps back by ink in light;
-  the Inbox diff's code is green keywords and amber type names in dark and
-  the transcript's two inks in light.
+- A diff's context line is dimmed in dark and steps back by ink in light.
+  The Inbox's pull request diff draws the transcript's `DiffBody`, so its
+  code takes the transcript's inks in both themes; `--pr-code-keyword` and
+  `--pr-code-type` (once its green keywords and amber type names in dark)
+  are held but drawn by nothing.
 - A slide's ground is the bare canvas in dark and `stage` with a 16px inset
   in light; a raster add-on mark's tile is clear in dark.
 - The names work-kit reads and TempCode never defined (the date picker's
@@ -839,8 +841,8 @@ placement, the composer's row and a dialog's alike, its chevron 8px after
 the last word; in the composer's row, where both are muted, the name is
 medium and the effort regular. In a
 narrow row the title gives its width up first, down to 64px; then the name
-truncates, and the effort never does. The agent detail leads its numbers line with the same `ModelLine`, then
-the host and branch; queues use `effortWord` for effort names. A right
+truncates, and the effort never does. The agent detail's numbers line is the host glyph, then one comma run led
+by the same `ModelLine` ("Opus 5.5 High 200k, feature-x, +140 −12, 3/7 tasks"); queues use `effortWord` for effort names. A right
 panel Agents row says its model on a line of its own under everything else (`ModelLine`): the logo,
 the name, the effort and the context window ("Opus 5.5 High 1M", "Sonnet
 5.5 Low 200k"), each 4px from the next, only the name truncating. The
@@ -1038,7 +1040,7 @@ removes something from disk is ticked (worktrees, simulators, a project's
 cleanup); archiving alone loses nothing, so its verb is the primary. A thread's resources are a removal
 form of that kind; its dev servers live in the Activity section and the
 dev servers pane, never in a dialog.
-Every form or decision dialog has one shape: `Modal` (or `ModalPanel` when a parent holds it open), `ModalBody` and `DialogFooter`, whose `start` slot holds a quiet verb (Remove override, Delete) and whose children sit between Cancel and the confirm; `lib/dialogShapeGuard.test.ts` refuses a bare `DialogContent`, ui/dialog's `DialogFooter` or AlertDialog's content, header and footer outside the shells (ConfirmDialog, the pickers, the lightbox, the page viewer). A confirm's verb plays the exit too: `useConfirm()` answers at the click and drops its dialog after the exit, a `ConfirmDialog`'s `onConfirm` returns the work's promise (its rejection is the dialog's red line) and its required `onDone` runs once the exit has played, the verb spinning through it, so the caller clears its state there and never in `onConfirm`; a confirm whose work removes the thing it names (an account, a note) is held by that thing's owner, never inside the row it removes; and the first close a dialog starts wins, so a Cancel during that exit never replaces the verb. `chrome/Modal.tsx` and `chrome/ConfirmDialog.tsx` are thin shells on
+Every form or decision dialog has one shape: `Modal` (or `ModalPanel` when a parent holds it open), `ModalBody` and `DialogFooter`, whose `start` slot holds a quiet verb (Remove override, Delete) and whose children sit between Cancel and the confirm; `lib/dialogShapeGuard.test.ts` refuses a bare `DialogContent`, ui/dialog's `DialogFooter` or AlertDialog's content, header and footer outside the shells (ConfirmDialog, the pickers, the lightbox, the page viewer). A confirm's verb plays the exit too: `useConfirm()` answers at the click and drops its dialog after the exit, a `ConfirmDialog`'s `onConfirm` returns the work's promise (its rejection is the dialog's red line, worded by `dialogErrorWords`, lib/dialogErrorWords.ts: the link down or silent, a key the host refuses and git's first sentence in words, never the host's raw text) and its required `onDone` runs once the exit has played, the verb spinning through it, so the caller clears its state there and never in `onConfirm`; a confirm whose work removes the thing it names (an account, a note) is held by that thing's owner, never inside the row it removes; and the first close a dialog starts wins, so a Cancel during that exit never replaces the verb. `chrome/Modal.tsx` and `chrome/ConfirmDialog.tsx` are thin shells on
 `Dialog` and `AlertDialog`, and every form dialog has their one shape:
 `Modal`, `ModalBody` and `DialogFooter`, 448px or wider, a hairline over
 the footer, Cancel then the verb, an action of the dialog's own at the
@@ -4904,13 +4906,16 @@ day with one key, so it has no open or close motion: it is made hidden
 once the key is held and shown already painted, and it hides the moment
 Return is pressed. It is 680px wide, a fifth of the way down the display
 under the pointer, as tall as its page (no height transition). The window
-is the surface, on the `popover` fill of Work's theme, with the system's
+is the surface, on the `popover` fill of Work's theme (its page's body
+too, so the window shows no other fill), with the system's
 corners and shadow and no card inside it: the field (14/22 on 22px lines,
-16px inset, `faint-foreground` placeholder "Capture…", growing to twelve
-lines), the files he added as 28px rows (the file's glyph, its name, a
+16px inset, `faint-foreground` placeholder "Capture…", one line empty and
+22px more a line, growing to twelve lines; the empty window is 92px), the
+files he added as 28px rows (the file's glyph, its name, a
 ghost Remove), a red 12px line when something stops it, then a 48px row
-under a hairline: the job as a `ChoiceToggle` named "Job" (Unsorted first,
-then the six), and at the end Start thread (secondary, its key cap in
+under a hairline, 16px in as the field is: the job as a `ChoiceToggle` named
+"Job" (Unsorted first, then the six by his jobs' names, the chosen one whole
+and the others cut at 72px where the row is short), and at the end Start thread (secondary, its key cap in
 muted ink: the one key not plain) and File (primary): a capture on
 its way shows nothing, since the window is already gone and the next draft
 starts empty. While the host says LifeOS cannot take a capture, the line
@@ -5161,11 +5166,27 @@ No bullet points in the UI. A toast never covers a control: the stack sits
 8px above the focused thread's strip, 16px inside its column's right edge
 and no wider than that column less 16px a side (`toastInset` in
 components/ui/toaster.tsx, measured from the footer `ChatFooter` registers in
-lib/toastAnchor.ts); on a master view whose chat is folded, 8px above the
-board's foot (BatchFoot registers while the chat is folded, and a folded,
-inert column seats nothing); and 16px from the window's corner where no
-thread is focused. Confirmation dialogs only for destructive,
+lib/toastAnchor.ts); while that thread's waiting card (a question, an
+approval) is wholly in view, 8px above the card instead (`registerToastSeat`,
+`seatRect`), back above the strip once he answers or scrolls it away; on a
+master view whose chat is folded, 8px above the board's foot (BatchFoot
+registers while the chat is folded, and a folded, inert column seats
+nothing); and 16px from the window's corner where no thread is focused or a
+page (Inbox, Search, Settings, a Work view) lies over the board (App asks the
+stack again as the page opens and closes). Nothing is said twice: the thread
+on screen, the one whose footer holds the stack, gets no toast for its own
+approval wherever the focus sits, and a thread whose approval a toast carries
+is left out of the Needs you banner. Confirmation dialogs only for destructive,
 irreversible actions. Every spacing and timing value is a token we can name.
+
+A toast is one line, an optional second, at most one action, and leaves on
+its own, but for one kind: the held ask. An approval (chrome/ApprovalToasts.tsx),
+a computer's Allow and its asks (ComputerAllowToasts.tsx, ComputerAskToasts.tsx)
+and a Mac bridge card (MacBridgeCards.tsx) hold two presses (Allow and Deny,
+or the ask's own two), stay until answered or until the ask goes, and draw no
+close; the title opens the thread that asks, and the stack keeps the same seat
+as every toast. Whether a held ask gets a close, as a batch's failure toasts
+have, is the owner's call; until then it has none.
 
 ## Verifying without a dev instance
 

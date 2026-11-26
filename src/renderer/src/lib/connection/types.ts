@@ -46,6 +46,8 @@ export type Hello = {
   contract: number;
   caps: Capability[];
   key?: { id: string; name: string };
+  /** What the host calls itself ("The box"); absent on an older host. /ui names its one host by it, never by the page's address. */
+  name?: string;
   /** What the host runs (release number, version, commit, platform), for the deploy-drift mark. */
   build?: BuildFacts;
   /** What the host takes beyond the contract number (capabilities.ts HOST_FEATURES); absent on an older host. */

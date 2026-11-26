@@ -44,7 +44,8 @@ export type ThreadMenuHandlers = {
   onOpen?: (id: string) => void;
   onNewPass?: (id: string) => void;
   onArchive?: (id: string) => void;
-  onDelete?: (id: string) => void;
+  /** Its promise is the confirm's: a refusal is the dialog's red line. */
+  onDelete?: (id: string) => void | Promise<void>;
   /** The Type rows (App's onThreadTypeChange); the chat's context by default. */
   onSetType?: (id: string, threadType: ThreadType) => void;
   /** The options dialog's save (App's, which also updates its own copy). */
@@ -274,10 +275,11 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
         status={metaOf(id)?.status ?? session?.status}
         onCancel={close}
         onDone={close}
-        onConfirm={() => {
+        // The confirm waits for the answer: a refusal stays in the dialog as its red line.
+        onConfirm={async () => {
           const h = latest.current;
-          if (h.onDelete) h.onDelete(id);
-          else quiet(commands.remove(id), "delete it", id);
+          if (h.onDelete) await h.onDelete(id);
+          else await commands.remove(id);
         }}
       />
     );

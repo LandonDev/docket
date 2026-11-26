@@ -1,14 +1,17 @@
 import { keyHint } from "../lib/keys";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { MENU_TREE, inAppMenus, type InAppMenu } from "@shared/menuTree";
+import { MENU_TREE, inAppMenus, runsInMain, type InAppMenu } from "@shared/menuTree";
 import { Button } from "../components/ui/button";
 import { workCommands } from "../lib/appCommands";
 import { useAway } from "../lib/away";
 import { cn } from "../lib/cn";
+import { runMainMenu } from "../lib/native";
+import { workFilePort } from "../lib/workSwitch";
 import { RowsMenu, type MenuRow } from "./menuRows";
 
 /**
- * The menu bar a browser on /ui shows off macOS, opened by a lone Alt: the
+ * The menu bar a browser on /ui shows off macOS, and a Windows desktop
+ * window in its native bar's place, opened by a lone Alt: the
  * native menu's rows (src/shared/menuTree.ts `inAppMenus`), each with its
  * key. A pick goes to the app command map. It is a `menubar`: a lone Alt
  * focuses its first title, Left and Right (Home and End) move between the
@@ -51,10 +54,13 @@ type Props = {
   onCommand: (id: string) => void;
   /** Rows that would do nothing here, greyed. */
   disabled?: readonly string[];
+  /** Whose rows: a browser's (the default) or a Windows desktop window's, which also lists the
+   *  desktop-only rows and main's own (chrome/MenuBar.tsx `menuBarPlace`). */
+  place?: "web" | "desktop";
 };
 
-export function MenuBar({ onCommand, disabled }: Props) {
-  const menus = useMemo(() => inAppMenus(MENU_TREE), []);
+export function MenuBar({ onCommand, disabled, place = "web" }: Props) {
+  const menus = useMemo(() => inAppMenus(MENU_TREE, place), [place]);
   // Print… and Export… are live only while a Work editor on screen answers them (lib/appCommands.ts).
   const answered = useSyncExternalStore(workCommands.subscribe, () => `${workCommands.has("print")}${workCommands.has("export")}${workCommands.has("save_word")}${workCommands.has("share")}`);
   const off = useMemo(
@@ -180,8 +186,10 @@ export function MenuBar({ onCommand, disabled }: Props) {
     if (!pick || open || activeMenu) return;
     pendingPick.current = null;
     if (pick.back?.isConnected) pick.back.focus();
-    onCommand(pick.id);
-  }, [open, activeMenu, onCommand]);
+    // Main's own rows (the logs, a reload a hung page could not do, the profile) run in main.
+    if (place === "desktop" && runsInMain(pick.id)) runMainMenu(pick.id);
+    else onCommand(pick.id);
+  }, [open, activeMenu, onCommand, place]);
 
   if (!open && !activeMenu) {
     return null;
@@ -226,7 +234,8 @@ export function MenuBar({ onCommand, disabled }: Props) {
                 {key}
               </Button>
             }
-            rows={() => rowsOf(menu, off, { away_code: away.code, away_work: away.work })}
+            // Open File… is a Work file page's: greyed while none is on screen, as the native row is.
+            rows={() => rowsOf(menu, workFilePort.get()?.can() ? off : new Set([...off, "open_file"]), { away_code: away.code, away_work: away.work })}
             onPick={handlePick}
             onOpenChange={(next) => {
               if (next) setActiveMenu(key);

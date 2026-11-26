@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { loadToast } from "../components/ui/toaster";
 import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
-import { NO_ROOM_LABEL } from "../lib/rightPanel";
+import { NO_ROOM_KEY, NO_ROOM_LABEL } from "../lib/rightPanel";
 import { shortcutFor } from "../lib/settings";
 import { LazyPopover, RowsMenu, tidy, type MenuRow } from "./menuRows";
 import { HostGlyph } from "./HostGlyph";
@@ -138,7 +138,7 @@ export function ThreadMenu({
       {/* No room keeps the reason on hover, so the button stays hoverable (aria-disabled, not disabled). */}
       <Tip
         label={panel.room === false ? NO_ROOM_LABEL : "Panel"}
-        shortcut={panel.room === false ? undefined : shortcutFor("App", "Panel")}
+        shortcut={panel.room === false ? NO_ROOM_KEY : shortcutFor("App", "Panel")}
         side="bottom"
       >
         <Button

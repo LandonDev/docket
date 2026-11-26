@@ -1,3 +1,4 @@
+import { nameInLine } from "./hostWords";
 /**
  * Which host a path opens on. A path alone says nothing about where it
  * lives: `/tmp/shot.png` exists on the box when a box thread wrote it, and
@@ -41,5 +42,5 @@ export function openFailureText(message: string, hostName: string | null): strin
 
 /** A missing file, said the same way by the editor and the media viewer. */
 export function missingFileText(hostName: string | null): string {
-  return hostName ? `No such file on ${hostName}.` : "No such file.";
+  return hostName ? `No such file on ${nameInLine(hostName)}.` : "No such file.";
 }

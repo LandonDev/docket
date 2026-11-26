@@ -3,7 +3,7 @@ import { Button } from "../components/ui/button";
 import { FADE_IN } from "../components/ui/reveal";
 import { StatusMark } from "../components/ui/status";
 import { useComputerCue, type ComputerCue as Cue } from "../lib/computerSection";
-import { NO_ROOM_LABEL, rightPanel, useRightPanel, useShownSection, useShownThreadId } from "../lib/rightPanel";
+import { NO_ROOM_KEY, NO_ROOM_LABEL, rightPanel, useRightPanel, useShownSection, useShownThreadId } from "../lib/rightPanel";
 import { MorphText } from "../motion/MorphText";
 import { computerChunk } from "../surfaces/chunks";
 import { ROW_CONTROL } from "./composerRow";
@@ -42,7 +42,7 @@ export function ComputerCueView({
   return (
     // The fade rides a wrapper (`FADE_IN`), so the button keeps its hover fill on `--dur-hover`.
     <span className={`inline-flex ${FADE_IN}`}>
-      <Tip label={noRoom ? NO_ROOM_LABEL : cue.line} side="bottom">
+      <Tip label={noRoom ? NO_ROOM_LABEL : cue.line} shortcut={noRoom ? NO_ROOM_KEY : undefined} side="bottom">
         <Button
           variant="ghost"
           size="xs"

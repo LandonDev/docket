@@ -1,6 +1,7 @@
+import { dialogErrorWords } from "../../../lib/dialogErrorWords";
 import { useState } from "react";
 import type { BatchStepKind, BatchStepSpec } from "@server/shared/contract-batch";
-import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../../chrome/ConfirmDialog";
 import { Field, FieldRow } from "../../../chrome/DialogField";
 import { Tip } from "../../../components/tip";
 import { ChevronDown, ChevronUp, X } from "../../../chrome/icons";
@@ -79,7 +80,7 @@ function RulesForm({
       if (close) close(onClose);
       else onClose();
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };
@@ -171,22 +172,17 @@ function RulesForm({
           {shell ? (
             <div className="mt-1 flex flex-col gap-2" data-shell-draft>
               <div className="flex gap-2">
-                <Input aria-label="Step name" value={shell.name} onChange={(e) => setShell({ ...shell, name: e.target.value })} placeholder="Name, e.g. Smoke test" className="w-44 shrink-0" autoFocus />
-                <Input
-                  aria-label="Working directory"
-                  value={shell.cwd ?? ""}
-                  onChange={(e) => setShell({ ...shell, cwd: e.target.value })}
-                  placeholder="Folder (the project's if empty)"
-                  className="font-mono text-xs"
-                />
+                <Field label="Name" className="w-44 shrink-0">
+                  <Input value={shell.name} onChange={(e) => setShell({ ...shell, name: e.target.value })} placeholder="Smoke test" autoFocus />
+                </Field>
+                <Field label="Folder" className="flex-1">
+                  {/* Empty runs in the project's folder: the placeholder is that default. */}
+                  <Input value={shell.cwd ?? ""} onChange={(e) => setShell({ ...shell, cwd: e.target.value })} placeholder="The project" className="font-mono text-xs" />
+                </Field>
               </div>
-              <Input
-                aria-label="Command"
-                value={shell.run}
-                onChange={(e) => setShell({ ...shell, run: e.target.value })}
-                placeholder="Command"
-                className="font-mono text-xs"
-              />
+              <Field label="Command" hint="Passes when it exits with 0">
+                <Input value={shell.run} onChange={(e) => setShell({ ...shell, run: e.target.value })} placeholder="bun test" className="font-mono text-xs" />
+              </Field>
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="ghost" size="sm" onClick={() => setShell(null)}>
                   Cancel

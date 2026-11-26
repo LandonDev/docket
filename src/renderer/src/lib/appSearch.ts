@@ -59,6 +59,8 @@ export type MessageHit = Located & {
   score: number;
   /** The host's FTS rank (bm25, negative, lower is better) when it had one. */
   rank?: number;
+  /** The thread's other matching messages, folded into this row (foldMessageHits). */
+  more?: number;
 };
 
 /** A file that a paired project holds on more than one host folds into one
@@ -222,12 +224,41 @@ export function snippetAround(
       ? `${compact.slice(0, radius * 2)}…`
       : compact;
   }
-  const start = Math.max(0, index - radius);
-  const end = Math.min(compact.length, index + needle.length + radius);
+  // A cut lands on a word's edge: the start moves on to the next word, the
+  // end back to the last whole one, never past the match.
+  let start = Math.max(0, index - radius);
+  if (start > 0 && compact[start - 1] !== " ") {
+    const space = compact.indexOf(" ", start);
+    start = space >= 0 && space < index ? space + 1 : start;
+  }
+  let end = Math.min(compact.length, index + needle.length + radius);
+  if (end < compact.length && compact[end] !== " ") {
+    const space = compact.lastIndexOf(" ", end);
+    end = space > index + needle.length ? space : end;
+  }
   let snippet = compact.slice(start, end).trim();
   if (start > 0) snippet = `…${snippet}`;
   if (end < compact.length) snippet = `${snippet}…`;
   return snippet;
+}
+
+/**
+ * A snippet as prose, the way the transcript draws it: no heading, emphasis,
+ * code, quote or list marks, a link's words without its address. Rows of
+ * both the window's search and the hosts' (whose index keeps the raw
+ * markdown) read through it.
+ */
+export function plainSnippet(text: string): string {
+  return text
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(^|\s)#{1,6}\s+/g, "$1")
+    .replace(/(^|\s)>\s+/g, "$1")
+    .replace(/(^|\s)[-*+]\s+(?=\S)/g, "$1")
+    .replace(/^\d+\.\s+/, "")
+    .replace(/(\*\*|__|~~|`+)/g, "")
+    .replace(/(^|[\s(])[*_](\S(?:.*?\S)?)[*_](?=[\s.,;:!?)]|$)/g, "$1$2")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function searchConversationTitles(
@@ -297,7 +328,7 @@ export function searchSessionMessages(
         blockId: block.id,
         seq: block.seq,
         role: block.role,
-        preview: snippetAround(text, query),
+        preview: snippetAround(plainSnippet(text), query),
         score: 20 + recencyBonus(session.updatedAt),
       });
     }
@@ -527,20 +558,15 @@ export function groupedCount(grouped: GroupedHits): number {
   return flattenGrouped(grouped).length;
 }
 
+/** The person's and the model's words alone, as the host's index holds
+ *  them (turnIndex.ts `turnText`): a thread finds the same rows whether or
+ *  not this window has it loaded. Tool rows and plans are not messages. */
 function isSearchableRole(role: Block["role"]): boolean {
-  return role === "user" || role === "assistant" || role === "tool" || role === "plan";
+  return role === "user" || role === "assistant";
 }
 
 function blockSearchText(block: Block): string {
-  const parts: string[] = [];
-  if (block.text.trim()) parts.push(block.text);
-  if (block.tool?.title) parts.push(block.tool.title);
-  if (block.tool?.detail) parts.push(block.tool.detail);
-  if (block.tool?.preview?.query) parts.push(block.tool.preview.query);
-  if (block.tool?.preview?.path) parts.push(block.tool.preview.path);
-  if (block.tool?.preview?.output) parts.push(block.tool.preview.output);
-  if (block.tool?.preview?.title) parts.push(block.tool.preview.title);
-  return parts.join("\n");
+  return block.text;
 }
 
 export function recencyBonus(updatedAt: number): number {

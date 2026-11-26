@@ -24,8 +24,9 @@ export type ChatSlots = {
   /** The working strip; null where the view has no use for it. */
   strip: ReactNode;
   composer: ReactNode;
-  /** The pane holds the focus: the toast stack sits above this footer. */
-  anchor?: boolean;
+  /** The pane's thread while the pane holds the focus and shows: the toast
+   *  stack sits above this footer, and that thread gets no toast for its own ask. */
+  anchor?: string;
   /** Where the transcript's column sits (its message list's placement, which
    *  AgentTranscript reports), so the footer's column lands on it. */
   placement?: OutlinePlacement;
@@ -127,7 +128,7 @@ export function ChatFooter({
     [anchored],
   );
   return (
-    <ColumnBand bandRef={ref} placement={where} className={className} data-toast-anchor={slots.anchor ? "" : undefined} data-chat-footer={where}>
+    <ColumnBand bandRef={ref} placement={where} className={className} data-toast-anchor={slots.anchor || undefined} data-chat-footer={where}>
       {slots.strip}
       {slots.composer}
     </ColumnBand>

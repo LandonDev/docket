@@ -72,12 +72,6 @@ function PaceChart({ series }: { series: PaceSeries }) {
   }));
   return (
     <>
-      <ChartLegend
-        items={[
-          { label: "This cycle", color },
-          { label: "Usual", color: "var(--muted-foreground)" },
-        ]}
-      />
       <ChartFrame label={paceTitle(series)}>
         <ComposedChart data={data} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
           <CartesianGrid {...GRID} />
@@ -125,8 +119,31 @@ function RankedBars({ label, data, unit }: { label: string; data: { name: string
 
 /** A legend's line: 16px of 12px text and its 8px to the plot. */
 const LEGEND_PX = 24;
-/** A pace series' headline above its legend, the same 16px line and 8px. */
+/** A pace series' headline above its plot, the same 16px line and 8px. */
 const HEADLINE_PX = 24;
+/** Between two pace series (`gap-4`). */
+const PACE_GAP_PX = 16;
+
+/** Pace's height for `series` charts: its one legend, then each series' headline and plot. */
+export const paceHeight = (series: number): number => LEGEND_PX + series * (HEADLINE_PX + CHART_HEIGHT) + Math.max(0, series - 1) * PACE_GAP_PX;
+
+/** How many pace series the last bundle drew, so Pace's bone is that tall the next time the page loads (two before any). */
+let lastPaceCount = 2;
+/** For tests: the count a fresh window starts from. */
+export const resetPaceCount = (count = 2): void => {
+  lastPaceCount = count;
+};
+
+/**
+ * Pace's legend, once at its head: the cycle's line in each provider's
+ * colour, then the usual range. One provider's line is "This cycle"; with
+ * two, each is named by its provider, whose headline says which is whose.
+ */
+function PaceLegend({ pace }: { pace: readonly PaceSeries[] }) {
+  const colors = [...new Map(pace.map((p) => [p.service, SERVICE_SERIES[p.service as keyof typeof SERVICE_SERIES] ?? SERIES[0]])).entries()];
+  const cycle = colors.length === 1 ? [{ label: "This cycle", color: colors[0]![1] }] : colors.map(([service, color]) => ({ label: `${PROVIDER[service] ?? service} cycle`, color }));
+  return <ChartLegend items={[...cycle, { label: "Usual", color: "var(--muted-foreground)" }]} />;
+}
 
 /**
  * What each section holds once loaded, so the skeleton takes its shape and
@@ -135,7 +152,7 @@ const HEADLINE_PX = 24;
  * description lines Cache hit rate and Busiest hours carry.
  */
 export const SECTION_SKELETON: Record<(typeof HEADINGS)[number], { height: number; description?: boolean }> = {
-  Pace: { height: HEADLINE_PX + LEGEND_PX + CHART_HEIGHT },
+  Pace: { height: paceHeight(1) },
   "Daily output": { height: LEGEND_PX + CHART_HEIGHT },
   "Model mix": { height: LEGEND_PX + CHART_HEIGHT },
   "Top projects": { height: rankedHeight(RANKED_ROWS) },
@@ -149,7 +166,8 @@ function StatsSkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading" className="contents">
       {HEADINGS.map((h) => {
-        const shape = SECTION_SKELETON[h];
+        // Pace as tall as the last bundle drew it: a page lands with two to four series.
+        const shape = h === "Pace" ? { ...SECTION_SKELETON.Pace, height: paceHeight(lastPaceCount) } : SECTION_SKELETON[h];
         return (
           <Section
             key={h}
@@ -178,6 +196,14 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
   // A worker that is gone is the page's red line; its empty bundle states nothing.
   if (nothing && data.unavailable) return null;
   if (nothing) {
+    // Logs indexed but none in the window: the window is what is empty, not the machine.
+    if ((status?.rows ?? 0) > 0) {
+      return (
+        <Empty>
+          <EmptyTitle>Nothing in the last 30 days</EmptyTitle>
+        </Empty>
+      );
+    }
     return (
       <Empty>
         <EmptyTitle>Nothing to show yet</EmptyTitle>
@@ -185,6 +211,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
       </Empty>
     );
   }
+  if (data.pace.length > 0) lastPaceCount = data.pace.length;
 
   const t = data.totals;
   const cacheDenominator = t.cache_read + t.input + t.cache_write;
@@ -196,6 +223,8 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
         {data.pace.length === 0 ? (
           <PageEmpty>Needs three finished cycles</PageEmpty>
         ) : (
+          <>
+          <PaceLegend pace={data.pace} />
           <div className="flex flex-col gap-4">
             {data.pace.map((p) => {
               const line = paceLine(p);
@@ -210,6 +239,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
               );
             })}
           </div>
+          </>
         )}
       </Section>
 

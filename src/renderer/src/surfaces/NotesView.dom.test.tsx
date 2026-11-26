@@ -25,7 +25,7 @@ vi.mock("../lib/notes", async (importOriginal) => ({
 }));
 vi.mock("../lib/connection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/connection")>()),
-  registry: { primary: () => ({ environmentId: "local" }) },
+  registry: { primary: () => ({ environmentId: "local" }), environment: () => ({ name: "The box" }) },
 }));
 vi.mock("../hooks/useTabGroupLogos", () => ({ useTabGroupLogos: () => ({}) }));
 vi.mock("./AgentMarkdown", () => ({
@@ -232,5 +232,74 @@ describe("the notes view", () => {
     expect(label.className).toContain("font-medium");
     expect(view.container.querySelector("[data-note-detail]")!.className).toContain("gap-6");
     expect((view.getByLabelText("Note title") as HTMLElement).className).toContain("mt-2");
+  });
+
+  it("says a failed New note over the listed notes as one red line under the list's head", async () => {
+    const view = await mount();
+    vi.mocked(createNote).mockRejectedValueOnce(new Error("SQLITE_FULL: database or disk is full"));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "New note" }));
+    });
+    const line = view.getByRole("alert");
+    expect(line.textContent).toBe("Couldn't make a note");
+    expect(line.className).toContain("text-destructive");
+    expect(view.container.textContent).not.toContain("SQLITE_FULL");
+    // The notes stay listed under it.
+    expect(view.getByRole("button", { name: /Deploy/ })).toBeTruthy();
+  });
+
+  it("with no note to show, a failed load is the list's one empty state, the host named, with Retry", async () => {
+    const failed = Promise.reject(new Error("connect ECONNREFUSED 127.0.0.1:8787"));
+    failed.catch(() => {});
+    h.pending = failed;
+    try {
+      const view = await mount();
+      const empty = view.container.querySelector('[data-slot="empty"]')!;
+      expect(empty.textContent).toContain("Couldn't load notes on the box");
+      expect(view.container.textContent).not.toContain("ECONNREFUSED");
+      h.pending = null;
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Retry" }));
+      });
+      expect(view.queryByText("Couldn't load notes on the box")).toBeNull();
+      expect(view.getByRole("button", { name: /Deploy/ })).toBeTruthy();
+    } finally {
+      h.pending = null;
+    }
+  });
+
+  it("marks the title field's focus with the field's own edge, never the caret alone", async () => {
+    const view = await mount();
+    const title = (view.getByLabelText("Note title") as HTMLElement).className.split(/\s+/);
+    expect(title).toContain("focus-field");
+    // A bottom edge, clear at rest, that focus-field inks with the ring.
+    expect(title).toContain("border-b");
+    expect(title).toContain("border-transparent");
+  });
+
+  it("seats its empty state where the Inbox seats its own: centred in the list's column", async () => {
+    const saved = h.notes;
+    h.notes = [];
+    try {
+      const view = await mount();
+      const empty = view.container.querySelector('[data-slot="empty"]') as HTMLElement;
+      const scroller = empty.parentElement!.className.split(/\s+/);
+      expect(scroller).toContain("flex");
+      expect(scroller).toContain("flex-col");
+      expect(empty.className).toContain("flex-1");
+      expect(empty.className).toContain("justify-center");
+    } finally {
+      h.notes = saved;
+    }
+  });
+
+  it("insets its detail 16px in a narrow pane and 32px from 576px", async () => {
+    const view = await mount();
+    const detail = view.container.querySelector("[data-note-detail]")!;
+    expect(detail.parentElement!.className).toContain("@container/detail");
+    const classes = detail.className.split(/\s+/);
+    expect(classes).toContain("px-4");
+    expect(classes).toContain("@xl/detail:px-8");
+    expect(classes).not.toContain("px-8");
   });
 });

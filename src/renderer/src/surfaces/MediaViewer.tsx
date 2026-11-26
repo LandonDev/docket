@@ -17,10 +17,9 @@ import { displayPath } from "../lib/paths";
 import { missingFileText } from "../lib/pathHost";
 import { registry } from "../lib/connection";
 import { cn } from "../lib/cn";
-import { RotateCcw } from "../chrome/icons";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
-import { Spinner } from "../components/ui/spinner";
+import { Skeleton } from "../components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { FileHeader, fileFolder } from "./FileHeader";
 
@@ -72,36 +71,40 @@ export function nextMediaState(
 export function useFileMedia(
   path: string,
   environmentId?: string,
-): { state: MediaState; reload: () => void; failed: () => void } {
+): { state: MediaState; reload: () => Promise<void>; failed: () => void } {
   const [state, setState] = useState<MediaState>({ status: "pending" });
-  const ask = useRef<(why: "watch" | "retry" | "error") => void>(() => {});
+  const ask = useRef<(why: "watch" | "retry" | "error") => Promise<void>>(async () => {});
   useEffect(() => {
     let cancelled = false;
     setState({ status: "pending" });
     const host = environmentId ?? hostOfCwd(path);
     const remote = hostNameOf(host) !== null;
-    const load = (why: "watch" | "retry" | "error") =>
-      void fileMedia(host, path).then(
-        (media) => !cancelled && setState((prev) => nextMediaState(prev, media, why, remote)),
-        () => !cancelled && setState((prev) => nextMediaState(prev, undefined, why, remote)),
+    const load = (why: "watch" | "retry" | "error"): Promise<void> =>
+      fileMedia(host, path).then(
+        (media) => {
+          if (!cancelled) setState((prev) => nextMediaState(prev, media, why, remote));
+        },
+        () => {
+          if (!cancelled) setState((prev) => nextMediaState(prev, undefined, why, remote));
+        },
       );
     ask.current = load;
-    load("watch");
+    void load("watch");
     // A rewritten image (an agent regenerating a screenshot) gets a fresh
     // URL: the mtime rides in the query, so the element fetches again.
-    const unwatch = watchFile(path, () => load("watch"), host);
+    const unwatch = watchFile(path, () => void load("watch"), host);
     return () => {
       cancelled = true;
       unwatch();
     };
   }, [path, environmentId]);
   const reload = useCallback(() => ask.current("retry"), []);
-  const failed = useCallback(() => ask.current("error"), []);
+  const failed = useCallback(() => void ask.current("error"), []);
   return { state, reload, failed };
 }
 
 /** What the working file's body needs from the gate: the host's name (null here), its failure, Retry. */
-type MediaHost = { hostName: string | null; failure?: MediaFailure; attempt?: number; onReload?: () => void; onFailed?: () => void };
+type MediaHost = { hostName: string | null; failure?: MediaFailure; attempt?: number; onReload?: () => void | Promise<void>; onFailed?: () => void };
 const MediaHostContext = createContext<MediaHost>({ hostName: null });
 
 function hostNameOf(host: string): string | null {
@@ -198,11 +201,16 @@ export function mediaFacts(d: Dims, m: FileMedia): string[] {
   return d && m.kind !== "audio" ? [`${d.width} × ${d.height}`, formatBytes(m.size)] : [formatBytes(m.size)];
 }
 
-function Facts({ facts }: { facts: string[] }) {
+/** The facts as one comma sentence ("320 × 200, 2.0 KB"), led by `lead` in medium weight where a side names
+ *  itself ("Before, 320 × 200, 1.0 KB"): never facts set apart by space alone (DESIGN "Typography"). */
+function Facts({ facts, lead }: { facts: string[]; lead?: string }) {
+  const parts = lead ? [lead, ...facts] : facts;
   return (
-    <span className="flex shrink-0 items-center gap-2 tabular-nums text-muted-foreground">
-      {facts.map((fact) => (
-        <span key={fact}>{fact}</span>
+    <span data-media-facts className="flex shrink-0 items-center gap-1 tabular-nums text-muted-foreground [&>span:not(:last-child)]:after:content-[',']">
+      {parts.map((part, i) => (
+        <span key={part} className={i === 0 && lead ? "font-medium" : undefined}>
+          {part}
+        </span>
       ))}
     </span>
   );
@@ -237,7 +245,7 @@ export function MediaViewer({
   /** Bumped by each Retry, so the element loads again even at the same URL. */
   attempt?: number;
   /** Ask the host again; absent, a failure offers no Retry. */
-  onReload?: () => void;
+  onReload?: () => void | Promise<void>;
   /** The working file's element failed: ask the host why. */
   onFailed?: () => void;
   /** The size to open at; the fixtures render it statically. */
@@ -256,8 +264,9 @@ export function MediaViewer({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-background">
       <FileHeader folder={fileFolder(path, cwd)}>
-        {original ? null : <Facts facts={mediaFacts(dims, media)} />}
-        {media.kind === "image" ? (
+        {/* A file that failed shows no size and no size switch: neither has anything to act on. */}
+        {original || failure ? null : <Facts facts={mediaFacts(dims, media)} />}
+        {media.kind === "image" && !failure ? (
           <ToggleGroup
             size="sm"
             spacing={0}
@@ -316,9 +325,8 @@ function ReviewSide({
 }) {
   return (
     <section aria-label={label} className={cn("flex min-w-0 flex-1 flex-col", className)}>
-      <div className="flex h-8 shrink-0 items-center gap-2 px-3 text-xs">
-        <span className="font-medium text-muted-foreground">{label}</span>
-        <Facts facts={facts} />
+      <div className="flex h-8 shrink-0 items-center px-3 text-xs">
+        <Facts lead={label} facts={facts} />
       </div>
       <div className="min-h-0 flex-1">{children}</div>
     </section>
@@ -346,7 +354,7 @@ function MediaBody({
   fit: boolean;
   active: boolean;
   hostName: string | null;
-  onReload?: () => void;
+  onReload?: () => void | Promise<void>;
   onToggleFit: () => void;
   onDims: (d: Dims) => void;
   failure?: MediaFailure;
@@ -397,7 +405,7 @@ function MediaBody({
             )}
           />
         </div>
-        {loaded ? null : <LoadingLine />}
+        {loaded ? null : <ImageBones />}
       </div>
     );
   }
@@ -436,15 +444,17 @@ function MediaBody({
   );
 }
 
-/** Fades in only after --dur-slow, so an image that decodes at once never shows it. */
-function LoadingLine() {
+/** An image's load is a load, so a bone in the box it will fit into, never a spinner with a word (DESIGN "Loading and
+ *  empty states"). Fades in only after --dur-slow, so an image that decodes at once never shows it. */
+function ImageBones() {
   return (
     <div
       role="status"
-      className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 text-xs text-muted-foreground animate-in fade-in fill-mode-both duration-(--dur-base) [--tw-animation-delay:var(--dur-slow)]"
+      aria-label="Loading image"
+      data-image-bones
+      className="pointer-events-none absolute inset-4 animate-in fade-in fill-mode-both duration-(--dur-base) [--tw-animation-delay:var(--dur-slow)]"
     >
-      <Spinner aria-hidden="true" role="presentation" />
-      Loading…
+      <Skeleton className="size-full rounded-none" />
     </div>
   );
 }
@@ -460,8 +470,10 @@ function FailureState({
   media: FileMedia;
   name: string;
   hostName: string | null;
-  onReload?: () => void;
+  onReload?: () => void | Promise<void>;
 }) {
+  // The pressed Retry spins until the host answers: the line stays, then gives way to the file or a new cause.
+  const [busy, setBusy] = useState(false);
   const [title, line] =
     failure === "missing"
       ? [`Couldn’t open ${name}`, missingFileText(hostName)]
@@ -480,9 +492,16 @@ function FailureState({
       </EmptyHeader>
       {retry ? (
         <EmptyContent>
-          <Button variant="secondary" size="sm" onClick={onReload}>
-            <RotateCcw />
-            Retry
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void Promise.resolve(retry()).finally(() => setBusy(false));
+            }}
+          >
+            <BusyLabel busy={busy} label="Retry" />
           </Button>
         </EmptyContent>
       ) : null}

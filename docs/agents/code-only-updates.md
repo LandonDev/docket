@@ -192,8 +192,9 @@ quit). A quit and an open, a crash, a reboot or a release's own relaunch
 leave it waiting, still offered.
 
 A refusal is one plain line in the status (`CodeUpdateStatus.notice`), shown
-once as a toast and on the setting's row: "Code update 3f9c2ab needs a full
-release: node_modules changed."
+once as a toast and on the setting's row: "This update needs a full
+release." (`refusedLine`); the commit and boot's reason ("node_modules
+changed", a file name) go to the log alone.
 
 ## boot.js picks the code
 
@@ -259,8 +260,8 @@ builds before the bump.
   its first minute (the resume of cut threads, a first query over the real
   database) never settles, whatever it said.
 - **A crash or a hang.** A launch that finds `trying` runs the bundle's
-  code, records the tree as failed and says so once ("Code update 3f9c2ab
-  did not start. Running 1.0.371."). The sweep removes the tree.
+  code, records the tree as failed and says so once ("The last update
+  did not start. Running 1.0.371.", `fellBackLine`). The sweep removes the tree.
 - **A good tree that stops starting.** A tree that was good can break later
   (a file gone, data it cannot read). Every launch of a good tree counts a
   strike before it is required, and settling clears it. Two launches in a

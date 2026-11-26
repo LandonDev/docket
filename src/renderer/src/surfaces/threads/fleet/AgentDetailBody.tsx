@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { steerFailureWords } from "../../../lib/steerWords";
 import { ArrowUp } from "../../../chrome/icons";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
@@ -6,7 +7,6 @@ import { respondHarnessApproval } from "../../../lib/harness";
 import type { OpenFileFn } from "../../../lib/search";
 import * as commands from "../../../lib/tcserver/commands";
 import { asHarness } from "../../../lib/tcserver/store";
-import { failureReason } from "../../../lib/threadActionFailure";
 import {
   agentStatus,
   isLiveStatus,
@@ -72,8 +72,7 @@ export function AgentDetailBody({
       else await commands.send(session, body);
       setText((now) => (now.trim() === body ? "" : now));
     } catch (error) {
-      const why = failureReason(error);
-      setFailure(`Couldn't ${live ? "steer" : "send"}${why ? `: ${why}` : ""}`);
+      setFailure(steerFailureWords(error, live));
     } finally {
       setSending(false);
       inputRef.current?.focus();

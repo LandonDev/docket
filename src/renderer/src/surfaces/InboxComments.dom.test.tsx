@@ -60,8 +60,46 @@ describe("the inbox comments", () => {
     );
     expect(view.getByRole("heading", { name: "1 comment" })).toBeTruthy();
     expect(view.container.textContent).not.toContain("·");
-    expect(view.getByText("the latest, more on GitHub")).toBeTruthy();
+    expect(view.getByText("Latest shown, more on GitHub")).toBeTruthy();
     expect(view.getByText("src/gate.ts:12").className).not.toContain("text-success");
+  });
+
+  it("sets the author apart from one comma run of facts, Reply 8px on, each link a 24px target", () => {
+    const view = render(
+      <InboxComments
+        thread={{ comments: [comment({ url: "https://example.invalid/c1", resolved: true })], truncated: false }}
+        loading={false}
+        error={null}
+        cwd="/srv/app"
+        provider="github"
+        replyMode="thread"
+        onReply={() => {}}
+      />,
+    );
+    const header = view.container.querySelector("article header")!;
+    // 4px from the author to the facts, never facts set apart by space alone.
+    expect(header.className.split(/\s+/)).toContain("gap-x-1");
+    expect(header.className).not.toContain("gap-x-3");
+    const facts = header.querySelector('[data-slot="facts"]')!;
+    const parts = [...facts.children].map((part) => part.textContent);
+    expect(parts.slice(0, 3)).toEqual(["Approved", "src/gate.ts:12", "Resolved"]);
+    expect(parts[3]).toMatch(/ago/);
+    const reply = view.getByRole("button", { name: "Reply" });
+    expect(reply.className.split(/\s+/)).toContain("ms-1");
+    // Reply and the time link reach 4px past their 16px line, above and below.
+    for (const link of [reply, view.getByRole("button", { name: /ago/ })]) expect(link.className).toContain("after:-inset-y-1");
+    // The face 8px from its name.
+    expect(header.querySelector('[data-slot="avatar"]')!.parentElement!.className.split(/\s+/)).toContain("gap-2");
+  });
+
+  it("says a failed read in plain words, the raw text on hover alone", () => {
+    const view = render(
+      <InboxComments thread={null} loading={false} error="gh: HTTP 502 Bad Gateway (https://api.github.com/graphql)" cwd="/srv/app" provider="github" />,
+    );
+    const line = view.getByRole("alert");
+    expect(line.textContent).toBe("Couldn't load the comments");
+    expect(line.className).toContain("text-destructive");
+    expect(view.container.textContent).not.toContain("502");
   });
 
   it("offers Reply as a button that names the comment", () => {
@@ -100,6 +138,12 @@ describe("the inbox comments", () => {
     const posting = view.getByRole("button", { name: /Posting/ });
     expect(posting.querySelector('[data-slot="spinner"]')).not.toBeNull();
     await act(async () => finish());
+  });
+
+  it("says a failed post in plain words", () => {
+    const view = render(<InboxCommentForm replyTo={null} posting={false} error="GraphQL: Resource not accessible by integration" onCancelReply={() => {}} onSubmit={vi.fn()} />);
+    expect(view.getByRole("alert").textContent).toBe("Couldn't post the comment");
+    expect(view.container.textContent).not.toContain("GraphQL");
   });
 });
 

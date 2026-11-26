@@ -1,10 +1,11 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useSyncExternalStore } from "react";
 import { Button } from "@renderer/components/ui/button";
 import type { ApprovalDecision } from "../lib/harness";
-import { isSessionConversationFocused, type ApprovalToastNotice } from "../lib/approvalToast";
+import type { ApprovalToastNotice } from "../lib/approvalToast";
+// Loaded for its side effect: it gives the store the builder its pending-approval index reads.
+import "../lib/approvalToast";
 import { usePendingApprovals } from "../lib/tcserver/store";
-import { useFocus } from "../stores/focus";
-import { useWorkspaceTabs } from "../stores/workspace";
+import { seatedSession, subscribeToastAnchor } from "../lib/toastAnchor";
 import { useToastSync } from "./toastSync";
 
 type Notice = ApprovalToastNotice;
@@ -19,16 +20,16 @@ type Props = {
   ) => void;
 };
 
-/** Toasts for approvals pending in sessions the user is not looking at.
+/** Toasts for approvals pending in threads not on screen. The thread on
+ *  screen is the one whose footer holds the toast stack (focused pane, shown
+ *  tab, no page over the board): its card asks there, wherever the focus is.
  *  Subscribes to the store itself so App does not re-render per push. */
 export function HiddenApprovalToasts(rest: Omit<Props, "notices">) {
-  const tabs = useWorkspaceTabs((s) => s.tabs);
-  const activeTabId = useWorkspaceTabs((s) => s.activeTabId);
-  const composerFocused = useFocus((s) => s.composerFocused);
+  const onScreen = useSyncExternalStore(subscribeToastAnchor, seatedSession, () => null);
   const pending = usePendingApprovals();
   const notices = useMemo(
-    () => [...pending.values()].filter((notice) => !isSessionConversationFocused(notice.sessionId, activeTabId, tabs, composerFocused)),
-    [pending, activeTabId, tabs, composerFocused],
+    () => [...pending.values()].filter((notice) => notice.sessionId !== onScreen),
+    [pending, onScreen],
   );
   return <ApprovalToasts notices={notices} {...rest} />;
 }

@@ -1,11 +1,13 @@
-import { keyHint, modOrCtrl } from "../lib/keys";
+import { dialogErrorWords } from "../lib/dialogErrorWords";
+import { modOrCtrl } from "../lib/keys";
 import { WandSparkles } from "./icons";
 import { useRef, useState } from "react";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
-import { DialogFooter, ErrorLine, errorText } from "./ConfirmDialog";
+import { DialogFooter, ErrorLine } from "./ConfirmDialog";
 import { Tip } from "../components/tip";
-import { Modal } from "./Modal";
+import { Modal, useModalClose } from "./Modal";
+import { Field } from "./DialogField";
 import { generateCommitMessage } from "../lib/harness";
 
 type Busy = "stash" | "commit" | null;
@@ -16,8 +18,10 @@ type Props = {
   creating?: boolean;
   busy: Busy;
   error?: string | null;
-  onStash: () => void;
-  onCommit: (message: string) => void;
+  /** Each resolves true once the switch landed: the dialog plays its exit, then `onSwitched` runs. */
+  onStash: () => Promise<boolean>;
+  onCommit: (message: string) => Promise<boolean>;
+  onSwitched: () => void;
   onCancel: () => void;
 };
 
@@ -42,6 +46,7 @@ function Body({
   error,
   onStash,
   onCommit,
+  onSwitched,
   onCancel,
   generating,
   setGenerating,
@@ -52,6 +57,13 @@ function Body({
   const trimmed = message.trim();
   const waiting = Boolean(busy) || generating;
   const canCommit = trimmed.length > 0 && !waiting;
+  const close = useModalClose();
+  // The verb spins through the exit (busy stays set), so the dialog leaves as Cancel's does.
+  const settle = (landed: Promise<boolean>) =>
+    void landed.then((ok) => {
+      if (ok) (close ?? ((then: () => void) => then()))(onSwitched);
+    });
+  const commit = () => settle(onCommit(trimmed));
 
   const generate = async () => {
     if (waiting) return;
@@ -60,7 +72,7 @@ function Body({
     try {
       setMessage(await generateCommitMessage(cwd));
     } catch (err) {
-      setGenerateError(errorText(err));
+      setGenerateError(dialogErrorWords(err));
     } finally {
       setGenerating(false);
       field.current?.focus();
@@ -71,23 +83,23 @@ function Body({
     <>
       <div className="flex flex-col gap-4 px-5 py-4">
         <div className="relative">
+          <Field label="Commit message">
           <Textarea
             ref={field}
             autoFocus
             rows={1}
             value={message}
-            placeholder={`Message (${keyHint("mod+return")} to commit)`}
             disabled={waiting}
-            aria-label="Commit message"
             className="max-h-40 min-h-8 resize-none overflow-x-hidden overflow-y-auto py-1.5 pe-9"
             onChange={(event) => setMessage(event.target.value)}
             onKeyDown={(event) => {
               if (modOrCtrl(event) && event.key === "Enter" && canCommit) {
                 event.preventDefault();
-                onCommit(trimmed);
+                commit();
               }
             }}
           />
+          </Field>
           <Tip label="Generate commit message">
             <Button
               variant="ghost"
@@ -95,7 +107,7 @@ function Body({
               aria-label="Generate commit message"
               disabled={waiting}
               onClick={() => void generate()}
-              className="absolute end-1 top-1 text-muted-foreground"
+              className="absolute end-1 bottom-1 text-muted-foreground"
             >
               {generating ? <BusyLabel busy label="" /> : <WandSparkles />}
             </Button>
@@ -105,13 +117,13 @@ function Body({
       </div>
       <DialogFooter
         onCancel={onCancel}
-        confirmLabel="Stash & switch"
+        confirmLabel="Stash"
         pending={busy === "stash"}
         busy={waiting && busy !== "stash"}
-        onConfirm={onStash}
+        onConfirm={() => settle(onStash())}
       >
-        <Button variant="secondary" disabled={!canCommit} onClick={() => onCommit(trimmed)}>
-          <BusyLabel busy={busy === "commit"} label="Commit & switch" />
+        <Button variant="secondary" disabled={!canCommit} onClick={commit}>
+          <BusyLabel busy={busy === "commit"} label="Commit" />
         </Button>
       </DialogFooter>
     </>

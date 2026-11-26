@@ -8675,6 +8675,15 @@ public struct MsFormPhoneRow: Codable, Hashable, Sendable {
 }
 
 public struct CaptureState: Codable, Hashable, Sendable {
+    public struct Job: Codable, Hashable, Sendable {
+        public let sector: String
+        public let name: String
+
+        public init(sector: String, name: String) {
+            self.sector = sector
+            self.name = name
+        }
+    }
     public enum Lifeos: RawRepresentable, Codable, Hashable, Sendable {
         case off
         case signedOut
@@ -8716,19 +8725,21 @@ public struct CaptureState: Codable, Hashable, Sendable {
     public let host: String
     public let last: String?
     public let homes: [String]
+    public let jobs: [Job]?
     public let connected: Bool
     public let lifeos: Lifeos?
 
-    public init(host: String, last: String?, homes: [String], connected: Bool, lifeos: Lifeos? = nil) {
+    public init(host: String, last: String?, homes: [String], jobs: [Job]? = nil, connected: Bool, lifeos: Lifeos? = nil) {
         self.host = host
         self.last = last
         self.homes = homes
+        self.jobs = jobs
         self.connected = connected
         self.lifeos = lifeos
     }
 
     private enum CodingKeys: String, CodingKey {
-        case host, last, homes, connected, lifeos
+        case host, last, homes, jobs, connected, lifeos
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -8736,6 +8747,7 @@ public struct CaptureState: Codable, Hashable, Sendable {
         try container.encode(host, forKey: .host)
         try container.encode(last, forKey: .last)
         try container.encode(homes, forKey: .homes)
+        try container.encodeIfPresent(jobs, forKey: .jobs)
         try container.encode(connected, forKey: .connected)
         try container.encodeIfPresent(lifeos, forKey: .lifeos)
     }

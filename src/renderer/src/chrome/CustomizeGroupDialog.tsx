@@ -1,3 +1,4 @@
+import { dialogErrorWords } from "../lib/dialogErrorWords";
 import { useState } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -8,7 +9,7 @@ import { clearProjectLogo, pickImageFile, setProjectLogo } from "../lib/projectL
 import { PROJECT_MASCOTS, projectMascot } from "../lib/projectMascots";
 import { TAB_GROUP_COLORS } from "../lib/tabGroups";
 import { ColorPicker } from "./ColorPicker";
-import { DialogFooter, ErrorLine, errorText } from "./ConfirmDialog";
+import { DialogFooter, ErrorLine } from "./ConfirmDialog";
 import { Field, FieldRow } from "./DialogField";
 import { Pipette } from "./icons";
 import { Modal, useModalClose } from "./Modal";
@@ -112,7 +113,7 @@ function CustomizeForm({
       setPending(false);
       close ? close(onClose) : onClose();
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };

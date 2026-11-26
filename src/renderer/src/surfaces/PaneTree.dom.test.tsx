@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Session } from "../lib/session";
 
 const { state, openSettings } = vi.hoisted(() => ({
@@ -128,6 +128,45 @@ describe("PaneTree's sashes", () => {
     fireEvent.doubleClick(screen.getAllByRole("separator", { name: "Resize panes" })[1]);
     const layout = workspaceTabsStore.getState().tabs[0].layout as Extract<LayoutNode, { type: "split" }>;
     for (const size of layout.sizes) expect(size).toBeCloseTo(1 / 3);
+  });
+});
+
+describe("PaneTree in a narrow pane area", () => {
+  // jsdom lays nothing out: the tree's width is what the test says it is.
+  let width = 0;
+  let resized: (() => void) | undefined;
+  const widthOf = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => width });
+    vi.stubGlobal("ResizeObserver", class { constructor(cb: () => void) { resized = cb; } observe() {} disconnect() {} });
+  });
+  afterEach(() => {
+    if (widthOf) Object.defineProperty(HTMLElement.prototype, "clientWidth", widthOf);
+    vi.unstubAllGlobals();
+  });
+  const boxOf = (id: string) => {
+    const style = document.querySelector<HTMLElement>(`[data-pane-id="${id}"]`)!.style;
+    return [style.left, style.top, style.width, style.height];
+  };
+
+  it("draws two panes top to bottom while side by side would leave one under 240px, and side by side again with the room", () => {
+    state.session = thread("loading");
+    workspaceTabsStore.setState(initialWorkspaceTabsState([splitTab([0.5, 0.5])]));
+    width = 900;
+    tree();
+    expect(boxOf("p0")).toEqual(["0%", "0%", "50%", "100%"]);
+    expect(boxOf("p1")).toEqual(["50%", "0%", "50%", "100%"]);
+    // 440 wide: 220px each. The pair stacks, full width, with its sash across.
+    width = 440;
+    act(() => resized?.());
+    expect(boxOf("p0")).toEqual(["0%", "0%", "100%", "50%"]);
+    expect(boxOf("p1")).toEqual(["0%", "50%", "100%", "50%"]);
+    expect(screen.getByRole("separator", { name: "Resize panes" }).getAttribute("aria-orientation")).toBe("horizontal");
+    // The saved layout is untouched, and the row comes back with the room.
+    expect(workspaceTabsStore.getState().tabs[0].layout).toMatchObject({ dir: "right" });
+    width = 900;
+    act(() => resized?.());
+    expect(boxOf("p1")).toEqual(["50%", "0%", "50%", "100%"]);
   });
 });
 

@@ -1,3 +1,4 @@
+import { failureReason } from "../lib/threadActionFailure";
 import { sessionStore } from "../lib/tcserver/store";
 import { COMPOSER_SURFACE } from "./ComposerBar";
 import { ChevronRight } from "./icons";
@@ -125,9 +126,9 @@ export function SessionReview({
       // in the composer's field rather than on the page.
       if (status.files.length === 0 && hadFocus) input?.focus();
     } catch (e) {
-      const description = e instanceof Error ? e.message : String(e);
+      const description = failureReason(e) || undefined;
       void loadToast().then((toast) =>
-        toast.error(action === "undo" ? "Undo failed" : "Keep failed", {
+        toast.error(action === "undo" ? "Couldn't undo" : "Couldn't keep it", {
           description,
         }),
       );

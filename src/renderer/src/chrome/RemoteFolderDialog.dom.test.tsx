@@ -8,10 +8,11 @@ const fs = vi.hoisted(() => ({
   pending: null as null | Promise<void>,
   slow: {} as Record<string, Promise<void>>,
   created: [] as string[],
+  silent: false,
 }));
 
 vi.mock("../lib/connection", () => ({
-  registry: { linkOf: () => ({ request: () => Promise.resolve(fs.root) }) },
+  registry: { linkOf: () => ({ connected: true, onOpen: () => () => {}, request: () => (fs.silent ? new Promise(() => {}) : Promise.resolve(fs.root)) }) },
   useEnvironments: () => [{ id: "box", name: "The box" }],
 }));
 
@@ -37,15 +38,16 @@ describe("RemoteFolderDialog", () => {
     fs.pending = null;
     fs.slow = {};
     fs.created = [];
+    fs.silent = false;
   });
   afterEach(cleanup);
 
   it("shows the list's shape while it loads, then the folders without hidden ones, and walks into one", async () => {
     let release = () => {};
     fs.pending = new Promise<void>((r) => (release = r));
-    render(<RemoteFolderDialog environmentId="box" onClose={() => {}} onPick={() => {}} />);
+    render(<RemoteFolderDialog environmentId="box" title="Add workspace" onClose={() => {}} onPick={() => {}} />);
     await flush();
-    const dialog = screen.getByRole("dialog", { name: "Add a workspace on The box" });
+    const dialog = screen.getByRole("dialog", { name: "Add a workspace on the box" });
     const frame = dialog.querySelector("[data-remote-folders]")!;
     expect(frame.querySelectorAll("[data-slot=skeleton]")).toHaveLength(6);
     await act(async () => {
@@ -115,5 +117,32 @@ describe("RemoteFolderDialog", () => {
     await flush();
     expect(fs.created).toEqual(["/srv/agents/work/scratch"]);
     await waitFor(() => expect(onPick).toHaveBeenCalledWith("/srv/agents/work/scratch"));
+  });
+
+  it("titles itself with the caller's act on the host, in words, and never the host's id", async () => {
+    render(<RemoteFolderDialog environmentId="box" onClose={() => {}} onPick={() => {}} />);
+    await flush();
+    expect(screen.getByRole("dialog", { name: "Open a project on the box" })).toBeTruthy();
+    cleanup();
+    render(<RemoteFolderDialog environmentId="box" title="Choose folder" onClose={() => {}} onPick={() => {}} />);
+    await flush();
+    expect(screen.getByRole("dialog", { name: "Choose a folder on the box" })).toBeTruthy();
+    cleanup();
+    render(<RemoteFolderDialog environmentId="local" onClose={() => {}} onPick={() => {}} />);
+    await flush();
+    expect(screen.getByRole("dialog", { name: "Open a project on another computer" })).toBeTruthy();
+  });
+
+  it("a host that never answers says so past 10 s, with Retry, instead of loading for good", async () => {
+    vi.useFakeTimers();
+    fs.silent = true;
+    render(<RemoteFolderDialog environmentId="box" onClose={() => {}} onPick={() => {}} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_100);
+    });
+    expect(screen.getByText("The box did not answer")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.getByRole("dialog").querySelector("[data-remote-folders]")).toBeNull();
+    vi.useRealTimers();
   });
 });

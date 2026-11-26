@@ -31,7 +31,7 @@ export default [
   { name: "review, Before and After", props: { ...base, media: image, original: before } },
   { name: "video", props: { ...base, path: "/repo/clip.mp4", media: video } },
   { name: "audio", props: { ...base, path: "/repo/song.mp3", media: audio } },
-  { name: "missing on the box", props: { ...base, media: image, hostName: "box", onReload: "fn", failure: "missing" } },
-  { name: "box out of reach", props: { ...base, media: image, hostName: "box", onReload: "fn", failure: "unreachable" } },
+  { name: "missing on the box", props: { ...base, media: image, hostName: "The box", onReload: "fn", failure: "missing" } },
+  { name: "box out of reach", props: { ...base, media: image, hostName: "The box", onReload: "fn", failure: "unreachable" } },
   { name: "unsupported image", props: { ...base, path: "/repo/photo.heic", media: { ...image, mime: "image/heic" }, failure: "unsupported" } },
 ];

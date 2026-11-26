@@ -43,6 +43,14 @@ describe('the window', () => {
     expect(capturePlacement({ x: 100, y: 0, width: 600, height: 800 }, 50)).toMatchObject({ x: 116, width: 568, height: CAPTURE_MIN_HEIGHT })
   })
 
+  it("opens as tall as the empty page, the page's body on the popover fill, so no band shows under its foot", () => {
+    // The page's shot measures 92 empty (a 44px field and the 48px foot), 114 and 136 with two and three lines.
+    expect(CAPTURE_MIN_HEIGHT).toBe(44 + 48)
+    expect(clampHeight(44 + 48 + 22)).toBe(114)
+    expect(clampHeight(44 + 48 + 44)).toBe(136)
+    expect(readFileSync(join(__dirname, '../renderer/capture.html'), 'utf8')).toMatch(/<body class="bg-popover">/)
+  })
+
   it('holds its height between its bounds', () => {
     expect(clampHeight(10)).toBe(CAPTURE_MIN_HEIGHT)
     expect(clampHeight(9999)).toBe(CAPTURE_MAX_HEIGHT)

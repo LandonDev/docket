@@ -30,7 +30,7 @@ describe("hostForPath", () => {
 describe("openFailureText", () => {
   it("a missing file says where it is missing from", () => {
     const message = "/tmp/shot.png: ENOENT: no such file or directory, stat '/tmp/shot.png'";
-    expect(openFailureText(message, "The box")).toBe("No such file on The box.");
+    expect(openFailureText(message, "The box")).toBe("No such file on the box.");
     expect(openFailureText(message, null)).toBe("No such file.");
   });
 
@@ -41,7 +41,7 @@ describe("openFailureText", () => {
 
 describe("missingFileText", () => {
   it("names the host the file is missing from, and nothing on this machine", () => {
-    expect(missingFileText("The box")).toBe("No such file on The box.");
+    expect(missingFileText("The box")).toBe("No such file on the box.");
     expect(missingFileText(null)).toBe("No such file.");
   });
 });

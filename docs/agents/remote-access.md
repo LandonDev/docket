@@ -154,7 +154,10 @@
   Terminal, is left out of the list); a desktop-only surface reached anyway
   (a stored Appshots route) shows `DESKTOP_ONLY_LINE`
   ("Available in the desktop app") in `Empty`; Open project browses the
-  host's folders (`folderPickOn` in lib/fs.ts); a native ask is the app's
+  host's folders (`folderPickOn` in lib/fs.ts), titled with the caller's act
+  ("Open a project on the box", `remoteFolderTitle`); the page's one host
+  takes its own name from its hello (`Hello.name`, `webEnvironmentNamed` in
+  lib/connection/registry.ts), never the page's address; a native ask is the app's
   confirm dialog (`askRequest` → `confirmAction`) and a native message a
   sonner toast, never the browser's confirm or alert. A signed-out tab: `/ui`
   answers a refused cookie `302 /pair?signed-out` (no cookie: `/pair`), and

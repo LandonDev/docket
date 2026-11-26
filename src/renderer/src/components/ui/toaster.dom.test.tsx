@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadToast, TOAST_WIDTH, Toaster, toastInset } from "./toaster";
-import { toastAnchor } from "../../lib/toastAnchor";
+import { loadToast, seatRect, TOAST_WIDTH, Toaster, toastInset } from "./toaster";
+import { refreshToastAnchor, registerToastSeat, seatedSession, subscribeToastAnchor, toastAnchor, toastSeatOver } from "../../lib/toastAnchor";
+import { QuestionCard } from "../../surfaces/QuestionCard";
 import { ChatFooter } from "../../surfaces/threads/chatSlots";
 import { SplitShell } from "../../surfaces/threads/SplitShell";
 import { BatchFoot } from "../../surfaces/threads/master/BatchFoot";
@@ -78,7 +79,7 @@ describe("toastInset", () => {
 });
 
 describe("ChatFooter's toast anchor", () => {
-  const slots = (anchor: boolean) => ({ transcript: null, strip: <div />, composer: <div />, anchor });
+  const slots = (anchor: boolean) => ({ transcript: null, strip: <div />, composer: <div />, anchor: anchor ? "s1" : undefined });
 
   it("marks and registers only the focused pane's footer", () => {
     const view = render(<ChatFooter slots={slots(false)} />);
@@ -103,8 +104,85 @@ describe("ChatFooter's toast anchor", () => {
   });
 });
 
+describe("a waiting card's seat", () => {
+  const footer = { top: 752, bottom: 892, left: 272, right: 1168 };
+  const view = { top: 48, bottom: 752 };
+
+  it("sits the stack 8px above a card wholly in view, inside the footer's column", () => {
+    const card = { top: 520, bottom: 744, left: 336, right: 1104 };
+    const seat = seatRect(footer, card, view);
+    expect(seat).toEqual({ ...footer, top: 520 });
+    expect(toastInset(WINDOW, seat)).toEqual({ bottom: WINDOW.height - 520 + 8, right: 1440 - 1168 + 16, width: TOAST_WIDTH });
+    // No toast meets the card: its foot (Back, Skip, Next) stays clear.
+    expect(meets(toastBox(WINDOW, toastInset(WINDOW, seat)), card)).toBe(false);
+  });
+
+  it("gives the seat back to the footer when the card is scrolled out of view, cut by the scroller, or folded shut", () => {
+    expect(seatRect(footer, { top: 760, bottom: 980, left: 336, right: 1104 }, view)).toBe(footer);
+    expect(seatRect(footer, { top: 20, bottom: 240, left: 336, right: 1104 }, view)).toBe(footer);
+    expect(seatRect(footer, { top: 600, bottom: 800, left: 336, right: 1104 }, view)).toBe(footer);
+    expect(seatRect(footer, { top: 700, bottom: 700, left: 336, right: 1104 }, view)).toBe(footer);
+    expect(seatRect(footer, null, view)).toBe(footer);
+  });
+
+  it("a waiting question card seats the stack above itself; answered, back above the strip", async () => {
+    const question = { sessionId: "s1", requestId: "q1", questions: [{ header: "Route", question: "Which route?", options: [{ label: "West" }, { label: "River" }] }] };
+    const onAnswer = () => new Promise<void>(() => {});
+    const pane = render(
+      <div>
+        <QuestionCard question={question} onAnswer={onAnswer} />
+        <ChatFooter slots={{ transcript: null, strip: <div />, composer: <div />, anchor: "s1" }} />
+      </div>,
+    );
+    const anchor = toastAnchor()!;
+    expect(anchor).toBe(pane.container.querySelector("[data-toast-anchor]"));
+    const seat = toastSeatOver(anchor);
+    expect(seat).not.toBeNull();
+    expect(seat!.querySelector('[role="button"], button')).not.toBeNull();
+    await act(async () => {
+      screen.getByRole("button", { name: "Skip" }).click();
+    });
+    expect(toastSeatOver(anchor)).toBeNull();
+    pane.unmount();
+  });
+
+  it("only a card in the focused pane takes the seat", () => {
+    const other = render(<div><div ref={registerToastSeat} data-card /></div>);
+    const pane = render(<div><ChatFooter slots={{ transcript: null, strip: <div />, composer: <div />, anchor: "s1" }} /></div>);
+    expect(toastSeatOver(toastAnchor()!)).toBeNull();
+    other.unmount();
+    pane.unmount();
+  });
+});
+
+describe("a page over the board", () => {
+  it("an anchor whose parent turns inert gives up the seat after the refresh, and takes it back when inert goes", () => {
+    const view = render(<div data-board><ChatFooter slots={{ transcript: null, strip: <div />, composer: <div />, anchor: "s1" }} /></div>);
+    const board = view.container.querySelector<HTMLElement>("[data-board]")!;
+    const footer = board.querySelector<HTMLElement>("[data-toast-anchor]")!;
+    let asked = 0;
+    const stop = subscribeToastAnchor(() => asked++);
+    board.setAttribute("inert", "");
+    refreshToastAnchor();
+    expect(asked).toBe(1);
+    expect(toastAnchor()).toBeNull();
+    expect(seatedSession()).toBeNull();
+    board.removeAttribute("inert");
+    refreshToastAnchor();
+    expect(toastAnchor()).toBe(footer);
+    expect(seatedSession()).toBe("s1");
+    stop();
+    view.unmount();
+  });
+
+  it("App asks the stack again whenever a page opens or closes over the board", () => {
+    const app = readFileSync(resolve(__dirname, "../../App.tsx"), "utf8");
+    expect(app).toMatch(/useLayoutEffect\(refreshToastAnchor, \[searchViewOpen \|\| settingsOpen \|\| inboxViewOpen[^\]]*, workViewShown\]\)/);
+  });
+});
+
 describe("the master view's seat", () => {
-  const slots = { transcript: null, strip: <div />, composer: <div />, anchor: true };
+  const slots = { transcript: null, strip: <div />, composer: <div />, anchor: "m1" };
   const shell = (collapsed: boolean, foot: boolean) => (
     <SplitShell
       board={

@@ -2,6 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_RELEASE_NOTES } from "../lib/releaseNotes";
+import { listedNotes } from "../lib/releaseNotesParse";
 import { WhatsNewDialog, whatsNewLine } from "./WhatsNewDialog";
 
 afterEach(cleanup);
@@ -31,5 +32,20 @@ describe("WhatsNewDialog", () => {
     render(<WhatsNewDialog version="0.0.0-none" markdown="" onClose={vi.fn()} />);
     expect(screen.getByText(NO_RELEASE_NOTES)).toBeTruthy();
     expect(NO_RELEASE_NOTES).not.toMatch(/\.$/);
+  });
+
+  it("lists release.json-shaped notes, without the old Core marker, cut with and N more", () => {
+    const subjects = Array.from({ length: 23 }, (_, i) => `Change ${i + 1} lands.`);
+    render(<WhatsNewDialog version="9.9.8" markdown={`TempCode Core; ${subjects.join("; ")}`} onClose={vi.fn()} />);
+    // The markdown handed to the drawer (jsdom shows it raw until the worker parses it; the preview shows the list).
+    const text = screen.getByRole("dialog").querySelector("article")!.textContent!;
+    expect(text.split("\n").filter((line) => line.startsWith("- "))).toHaveLength(20);
+    expect(text.startsWith("- Change 1 lands.\n")).toBe(true);
+    expect(text).not.toContain("TempCode Core");
+    expect(text.trimEnd().endsWith("and 3 more")).toBe(true);
+    expect(listedNotes("- Already a list; with a semicolon")).toBe("- Already a list; with a semicolon");
+    expect(listedNotes("Bug fixes.")).toBe("Bug fixes.");
+    // A subject's own "; " stays inside it when subjects end with a stop.
+    expect(listedNotes("TempCode Core; Fix the gate; test in a.test.ts.; Docs say so.")).toBe("- Fix the gate; test in a.test.ts.\n- Docs say so.");
   });
 });

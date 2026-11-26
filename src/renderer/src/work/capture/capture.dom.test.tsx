@@ -7,6 +7,7 @@ import { captureHost } from "./client";
 import { CapturePage, type CaptureBridge } from "./CapturePage";
 import { CaptureKeyRow, type CaptureKeyApi, type CaptureKeyState } from "./CaptureKeyRow";
 import { choiceOfDigit, draftRefusal, stepChoice } from "./draft";
+import { CaptureView } from "./CaptureView";
 
 /* The capture window's page on a host and a main that stand in: what each
    key does, what is filed, what a failure brings back. */
@@ -121,6 +122,23 @@ describe("the capture window", () => {
     expect(filed[0]).toMatchObject({ sector: null });
   });
 
+  it("calls each job by its workspace's name, the sector's word only where no workspace names it", async () => {
+    state = { ...state, jobs: [{ sector: "purdue", name: "Purdue Esports" }, { sector: "life", name: "Life" }] };
+    await open();
+    expect(pressed()).toBe("Purdue Esports");
+    const job = screen.getByRole("group", { name: "Job" });
+    expect([...job.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Unsorted", "Cosmic", "Hypixel", "Purdue Esports", "Ref", "Unify", "Life"]);
+    // Seven long names in 680px: the track shrinks to the row, the chosen name whole, the others cut.
+    expect(job.className).toContain("min-w-0");
+    const chosen = within(job).getByRole("button", { name: "Purdue Esports" });
+    expect(chosen.className).toContain("data-pressed:shrink-0");
+    expect(chosen.className).toContain("data-pressed:max-w-none");
+    // A short name keeps its width: capped, never shrunk.
+    expect(within(job).getByRole("button", { name: "Life" }).className).toContain("max-w-18");
+    expect(within(job).getByRole("button", { name: "Life" }).className).toContain("shrink-0");
+    expect(chosen.querySelector("span")!.className).toContain("truncate");
+  });
+
   it("adds a dropped file with its path on this host, and refuses one whose sector has no workspace here", async () => {
     await open();
     const drop = Object.assign(new File(["x"], "plan.pdf"), { path: "/Users/l/plan.pdf" });
@@ -129,7 +147,7 @@ describe("the capture window", () => {
     expect(screen.getByRole("list", { name: "Files" }).textContent).toContain("plan.pdf");
     fireEvent.keyDown(field(), { key: "2", code: "Digit2", ctrlKey: true });
     fireEvent.keyDown(field(), { key: "Enter" });
-    expect(screen.getByRole("alert").textContent).toBe("No Cosmic workspace on this computer to keep the file in");
+    expect(screen.getByRole("alert").textContent).toBe("No Cosmic workspace on this Mac to keep the file in");
     expect(bridge.hide).not.toHaveBeenCalled();
     fireEvent.keyDown(field(), { key: "4", code: "Digit4", ctrlKey: true });
     fireEvent.keyDown(field(), { key: "Enter" });
@@ -356,6 +374,20 @@ describe("the draft", () => {
     expect(choiceOfDigit("Digit8")).toBeNull();
     expect(draftRefusal({ text: " ", files: [], sector: "life" }, [])).toBe("");
     expect(draftRefusal({ text: "x", files: [], sector: "cosmic" }, [])).toBeNull();
+    const file = [{ id: "a", name: "a.pdf", path: "/a" }];
+    expect(draftRefusal({ text: "", files: file, sector: "cosmic" }, [], "This PC")).toBe("No Cosmic workspace on this PC to keep the file in");
+    expect(draftRefusal({ text: "", files: file, sector: "cosmic" }, [])).toBe("No Cosmic workspace on this computer to keep the file in");
+  });
+
+  it("keeps the field to whole 22px lines: one line empty (14 + 22 + 8 = 44px), twelve at most (286px)", () => {
+    const { container } = render(<CaptureView text="" files={[]} sector="life" status="ready" error={null} canFile={false} onText={() => {}} onSector={() => {}} onRemoveFile={() => {}} onFile={() => {}} />);
+    const area = container.querySelector("textarea")!;
+    for (const cls of ["min-h-11", "max-h-[17.875rem]", "leading-[22px]", "pt-3.5", "pb-2", "field-sizing-content"]) expect(area.className).toContain(cls);
+    expect(area.getAttribute("rows")).toBe("1");
+    expect(14 + 22 + 8).toBe(44);
+    expect(14 + 12 * 22 + 8).toBe(17.875 * 16);
+    // The foot's inset is the field's: 16px.
+    expect(container.querySelector("[data-capture] > div.border-t")!.className).toContain("px-4");
   });
 });
 

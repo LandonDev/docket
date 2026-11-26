@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * and Send to agent showing a spinner while the start is pending.
  */
 
-const h = vi.hoisted(() => ({ item: null as unknown }));
+const h = vi.hoisted(() => ({ item: null as unknown, detailsFail: null as string | null }));
 
 vi.mock("../lib/inboxSelection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/inboxSelection")>()),
@@ -24,7 +24,8 @@ vi.mock("../lib/githubTasks", async (importOriginal) => ({
   peekGithubWorkItemDetails: () => null,
   peekGithubWorkItemThread: () => null,
   peekGithubPrDiff: () => null,
-  githubWorkItemDetails: () => Promise.resolve({ body: "The gate holds a merge.", author: "ana" }),
+  githubWorkItemDetails: () =>
+    h.detailsFail ? Promise.reject(new Error(h.detailsFail)) : Promise.resolve({ body: "The gate holds a merge.", author: "ana" }),
   githubWorkItemThread: () => Promise.resolve({ comments: [] }),
   githubPrDiff: () => Promise.resolve(null),
 }));
@@ -63,6 +64,7 @@ const item = (over: Record<string, unknown> = {}) => ({
 afterEach(() => {
   cleanup();
   h.item = null;
+  h.detailsFail = null;
 });
 
 async function mount(onStart?: () => Promise<void>) {
@@ -143,5 +145,40 @@ describe("the inbox detail", () => {
   it("draws nothing without a selection", async () => {
     const view = await mount();
     expect(view.container.querySelector("[role=region]")?.textContent).toBe("");
+  });
+
+  it("says a failed read in one plain line a place, the raw gh text on hover alone", async () => {
+    h.item = item();
+    h.detailsFail = "gh: HTTP 401: Bad credentials (https://api.github.com/graphql)";
+    const view = await mount();
+    const line = view.getByRole("alert");
+    expect(line.textContent).toBe("Couldn't load this pull request");
+    expect(line.className).toContain("text-destructive");
+    expect(view.container.textContent).not.toContain("Bad credentials");
+  });
+
+  it("names an issue's failed read as the issue's", async () => {
+    h.item = item({ kind: "issue", reviewDecision: "", baseRefName: "", headRefName: "" });
+    h.detailsFail = "exit status 1";
+    const view = await mount();
+    expect(view.getByRole("alert").textContent).toBe("Couldn't load this issue");
+  });
+
+  it("sets the header's facts 8px from the failed-checks mark, not 12", async () => {
+    h.item = item({ checks: { state: "failure", failed: 1, total: 2 } });
+    const view = await mount();
+    const line = view.container.querySelector("header > div") as HTMLElement;
+    expect(line.className.split(/\s+/)).toContain("gap-2");
+    expect(line.className.split(/\s+/)).not.toContain("gap-3");
+  });
+
+  it("insets its body 16px in a narrow pane and 32px from 576px", async () => {
+    h.item = item();
+    const view = await mount();
+    const body = view.container.querySelector("[data-inbox-detail]")!;
+    expect(body.parentElement!.className).toContain("@container/detail");
+    const classes = body.className.split(/\s+/);
+    expect(classes).toContain("px-4");
+    expect(classes).toContain("@xl/detail:px-8");
   });
 });

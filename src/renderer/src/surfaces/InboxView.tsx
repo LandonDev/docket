@@ -109,6 +109,7 @@ import {
 import { InboxPrDiff } from "./InboxPrDiff";
 import { Facts } from "./settings/hosts/Facts";
 import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "./SurfaceSkeleton";
+import { FailLine, rawError } from "./FailLine";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
@@ -308,6 +309,8 @@ export function InboxView({
   const revalidating = source === "github" ? refreshing : linear.loading;
   const authMessage = source === "github" ? githubAuthMessage : null;
   const sourceError = source === "linear" ? linear.error : authMessage;
+  // GitHub's sign-in line is the server's own words; Linear's error is a program's, kept for the tooltip.
+  const sourceWords = source === "linear" ? (linear.error ? "Couldn't load Linear issues" : null) : authMessage;
   const repoErrors = useMemo(
     () =>
       source === "github"
@@ -393,6 +396,11 @@ export function InboxView({
   );
 
   const narrowedByUser = searchInput.trim().length > 0 || filtersActive;
+  // The one workspace the list is narrowed to, by name, when the rest are a press away.
+  const scopedName =
+    source === "github" && effectiveScope === "current" && ghWorkspaces.length > 1
+      ? (projectOptions.find((option) => option.id === currentWorkspaceId)?.name ?? null)
+      : null;
   // The repo or team on each row only when the list holds more than one.
   const showSource = source === "linear" || (effectiveScope === "all" && ghWorkspaces.length > 1);
 
@@ -516,15 +524,17 @@ export function InboxView({
         ref={listLock}
         className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none"
       >
-        {sourceError && visibleItems.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-destructive">{sourceError}</p>
-        ) : loading && items.length === 0 ? (
+        {/* A failure is one red line under the list's head, whether or not older rows are still listed. */}
+        <InboxFailLines words={sourceWords} detail={sourceError} repos={repoErrors} />
+        {sourceError && visibleItems.length === 0 ? null : loading && items.length === 0 ? (
           <SurfaceSkeleton kind="rows" count={5} label="Loading inbox" />
         ) : visibleItems.length === 0 ? (
           <InboxListEmpty
             narrowed={narrowedByUser}
             source={source}
             githubWorkspaces={ghWorkspaces.length}
+            scopedTo={scopedName}
+            onShowAll={() => setScope("all")}
             onClearFilters={() => {
               setSearchInput("");
               onFiltersChange(DEFAULT_INBOX_FILTERS);
@@ -551,17 +561,8 @@ export function InboxView({
             })}
           </ul>
         )}
-        {authMessage && visibleItems.length > 0 ? (
-          <p className="px-3 py-2 text-xs text-destructive">{authMessage}</p>
-        ) : null}
-        {repoErrors.length > 0 && !(sourceError && visibleItems.length === 0)
-          ? repoErrors.map((repo) => (
-              <p key={repo.repo} className="px-3 py-1 text-xs text-muted-foreground">
-                {repo.repo}: {repo.error}
-              </p>
-            ))
-          : null}
-        {source === "github" && currentWorkspaceId && ghWorkspaces.length > 1 && !loading ? (
+        {/* The scope's loose toggle; an empty scoped list carries Show all workspaces as its own action. */}
+        {source === "github" && currentWorkspaceId && ghWorkspaces.length > 1 && !loading && (visibleItems.length > 0 || narrowedByUser) ? (
           <Button
             variant="ghost"
             size="sm"
@@ -622,7 +623,7 @@ export function InboxView({
         {list}
         <div
           ref={detailLock}
-          className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
+          className="@container/detail min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
         >
           <InboxDetailBody
             item={selected}
@@ -638,35 +639,57 @@ export function InboxView({
   );
 }
 
-/** The list with nothing to show: what narrowed it, or where items come from. */
+/** The list's failures under its head, listed rows or not: the source's own
+ *  (Linear's read, GitHub's sign-in) alone when there is one, else a line a
+ *  repo that could not be read; plain words, the raw text on hover. */
+export function InboxFailLines({
+  words,
+  detail,
+  repos,
+}: {
+  words: string | null;
+  detail: string | null;
+  repos: readonly { repo: string; error: string | null }[];
+}) {
+  if (words) return <FailLine words={words} detail={detail} className="px-3 py-2" />;
+  return repos.map((repo) => (
+    <FailLine key={repo.repo} words={`Couldn't read ${repo.repo}`} detail={repo.error} className="px-3 py-1" />
+  ));
+}
+
+/** The list with nothing to show: what narrowed it, the one workspace it
+ *  is scoped to (with the way out), or simply nothing open. */
 export function InboxListEmpty({
   narrowed,
   source,
   githubWorkspaces,
+  scopedTo = null,
+  onShowAll,
   onClearFilters,
 }: {
   narrowed: boolean;
   source: InboxSource;
   githubWorkspaces: number;
+  /** The workspace's name while the list shows it alone and others hold GitHub repos too. */
+  scopedTo?: string | null;
+  onShowAll?: () => void;
   onClearFilters: () => void;
 }) {
   if (narrowed) {
     return (
       <EmptyState
-        title="No matching issues"
+        title="Nothing matches"
         line="Filters are narrowing this list"
         action={{ label: "Clear filters", onClick: onClearFilters }}
       />
     );
   }
-  if (source === "linear") return <EmptyState title="No Linear issues" line="Open issues from your Linear teams show here." />;
+  if (source === "linear") return <EmptyState title="No Linear issues" />;
   if (githubWorkspaces === 0) return <EmptyState title="No GitHub workspaces" line="Add a GitHub repository as a workspace." />;
-  return (
-    <EmptyState
-      title="No issues or pull requests"
-      line="Open issues and pull requests from your GitHub workspaces show here."
-    />
-  );
+  if (scopedTo && onShowAll) {
+    return <EmptyState title={`Nothing open in ${scopedTo}`} action={{ label: "Show all workspaces", onClick: onShowAll }} />;
+  }
+  return <EmptyState title="No issues or pull requests" />;
 }
 
 export function InboxDetailPane({
@@ -687,7 +710,7 @@ export function InboxDetailPane({
     <div
       role="region"
       aria-label="Inbox"
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none text-foreground"
+      className="@container/detail flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none text-foreground"
     >
       <InboxDetailBody
         item={item}
@@ -785,7 +808,7 @@ export function InboxRow({
           <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{row.time}</span>
         ) : null}
       </span>
-      <span data-row-line className="flex min-w-0 items-center gap-3 ps-[22px] text-xs leading-4 text-muted-foreground">
+      <span data-row-line className="flex min-w-0 items-center gap-2 ps-[22px] text-xs leading-4 text-muted-foreground">
         {/* One comma run on one line: the ref keeps its width, the rest truncate. */}
         <Facts
           parts={row.line}
@@ -1029,7 +1052,8 @@ function InboxDetail({
         try {
           setThread(await linearIssueThread(environmentId, id, { force: true }));
         } catch (err: unknown) {
-          setPostError(err instanceof Error ? err.message : String(err));
+          // Posted; only the reload failed, which is the comments' line to say.
+          setThreadError(rawError(err));
         }
         return;
       }
@@ -1054,7 +1078,7 @@ function InboxDetail({
           ),
         );
       } catch (err: unknown) {
-        setPostError(err instanceof Error ? err.message : String(err));
+        setThreadError(rawError(err));
       }
     } catch (err: unknown) {
       setPostError(err instanceof Error ? err.message : String(err));
@@ -1065,9 +1089,10 @@ function InboxDetail({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-8">
+    // A narrow pane (under 576px) insets 16px a side, so the text keeps its room.
+    <div data-inbox-detail className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 @xl/detail:px-8">
       <header className="flex flex-col">
-        <div className="flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           {/* The mark 8px from the ref; the ref, its states and source one comma run. */}
           <span className="flex min-w-0 items-center gap-2">
             <InboxProviderMark provider={item.provider} className="size-3.5 shrink-0" />
@@ -1156,7 +1181,7 @@ function InboxDetail({
             {item.kind === "pr" ? "Review on GitHub" : linear ? "Open in Linear" : "Open on GitHub"}
           </Button>
         </div>
-        {startError ? <p className="mt-2 text-xs text-destructive">{startError}</p> : null}
+        {startError ? <FailLine words="Couldn't send this to an agent" detail={startError} className="mt-2" /> : null}
       </header>
       {isPr ? (
         <Tabs value={tab} onValueChange={(next) => setTab(next as "summary" | "code")}>
@@ -1178,7 +1203,7 @@ function InboxDetail({
         diffLoading ? (
           <ParagraphSkeleton />
         ) : diffError ? (
-          <p className="text-xs text-destructive">{diffError}</p>
+          <FailLine words="Couldn't load the changes" detail={diffError} />
         ) : prDiff ? (
           <InboxPrDiff key={`${item.projectPath}:${item.number}:${revision}`} diff={prDiff} />
         ) : (
@@ -1187,7 +1212,7 @@ function InboxDetail({
       ) : loading ? (
         <ParagraphSkeleton />
       ) : error ? (
-        <p className="text-xs text-destructive">{error}</p>
+        <FailLine words={isPr ? "Couldn't load this pull request" : "Couldn't load this issue"} detail={error} />
       ) : (
         <>
           {details?.body.trim() ? (

@@ -1,5 +1,6 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
+import { cn } from "@renderer/lib/cn";
 
 type ToggleChoice<T extends string> = {
   value: T;
@@ -21,6 +22,7 @@ function ChoiceToggle<T extends string>({
   options,
   onChange,
   disabled,
+  fit,
   "aria-labelledby": labelledBy,
 }: {
   label: string;
@@ -28,6 +30,9 @@ function ChoiceToggle<T extends string>({
   options: readonly ToggleChoice<T>[];
   onChange: (value: T) => void;
   disabled?: boolean;
+  /** Shrink to the row's room: the chosen label reads whole, the others are cut at 72px with an ellipsis (a long one
+   *  further if the row needs it), so a short one stays whole; each keeps its whole name for a reader. */
+  fit?: boolean;
   "aria-labelledby"?: string;
 }) {
   return (
@@ -43,12 +48,12 @@ function ChoiceToggle<T extends string>({
       size="xs"
       spacing={0.5}
       // 32px, a select's height, the choices filling it inside the 2px inset (26px, as a segmented tab fills its list).
-      className="h-8 rounded-lg border border-input p-0.5"
+      className={cn("h-8 rounded-lg border border-input p-0.5", fit && "min-w-0 max-w-full")}
     >
       {options.map((option) => {
         const item = (
-          <ToggleGroupItem key={option.value} value={option.value} disabled={option.disabled} className="h-full px-2">
-            {option.label}
+          <ToggleGroupItem key={option.value} value={option.value} disabled={option.disabled} className={cn("h-full px-2", fit && cn("min-w-0 max-w-18 data-pressed:max-w-none", option.label.length > 8 && "shrink data-pressed:shrink-0"))}>
+            {fit ? <span className="min-w-0 truncate">{option.label}</span> : option.label}
           </ToggleGroupItem>
         );
         // A disabled button takes no pointer, so its note hangs on a wrapper.

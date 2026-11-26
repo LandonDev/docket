@@ -100,7 +100,8 @@ export function activityRows(src: ActivitySources): ActivityRow[] {
     rest.push({
       key: `dev:${server.key}`,
       kind: "dev",
-      label: server.port ? `Dev server :${server.port.number}` : server.title,
+      // What it is in plain words ("Vite dev server"), never its port: the dev servers pane it opens shows that.
+      label: server.title || "Dev server",
       since: server.startedAt,
       stop: { type: "dev", server },
       open: "dev",

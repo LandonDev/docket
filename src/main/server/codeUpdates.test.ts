@@ -208,7 +208,7 @@ describe('the Mac', () => {
     m.updates.linkUp(BOX)
     await m.updates.idle()
     expect(h.calls).toEqual(['code.latest'])
-    expect(m.statuses.at(-1)).toEqual({ notice: 'Code update aaaaaaa needs a full release: node_modules changed.' })
+    expect(m.statuses.at(-1)).toEqual({ notice: 'This update needs a full release.' })
     expect(readState(join(userData, CODE_DIR)).current).toBeUndefined()
   })
 
@@ -462,11 +462,11 @@ describe('the Mac', () => {
     const after = pickCode({ ...input, pid: 300 })
     const m = mac(h.request, { boot: after.boot })
     m.updates.start()
-    expect(m.statuses.at(-1)).toEqual({ notice: 'Code update aaaaaaa did not start. Running 1.0.10.' })
+    expect(m.statuses.at(-1)).toEqual({ notice: 'The last update did not start. Running 1.0.10.' })
     expect(existsSync(join(userData, CODE_DIR, A))).toBe(false)
     m.updates.linkUp(BOX)
     await m.updates.idle()
-    expect(m.statuses.at(-1)?.notice).toBe('Code update aaaaaaa was not taken: this code did not start here.')
+    expect(m.statuses.at(-1)?.notice).toBe('This update did not start last time.')
     expect(m.boot.staged()).toBeNull()
   })
 

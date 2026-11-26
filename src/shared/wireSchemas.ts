@@ -1237,6 +1237,7 @@ export const CaptureStateSchema = z.object({
   host: z.string(),
   last: SectorKeySchema.nullable(),
   homes: z.array(SectorKeySchema),
+  jobs: z.array(z.object({ sector: SectorKeySchema, name: z.string() })).optional(),
   connected: z.boolean(),
   lifeos: z.enum(LifeosStateSchema.options.map((o) => o.shape.state.value) as [LifeosStateName, ...LifeosStateName[]]).optional()
 })

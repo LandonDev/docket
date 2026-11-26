@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProfileView, UsageReport } from "aliax-core/shared/types";
-import { keyStatus, limitOf, resetWords, rowLine } from "./rowLine";
+import { keyStatus, limitOf, noteWords, resetWords, rowLine } from "./rowLine";
 
 const NOW = Date.UTC(2026, 9, 27, 12);
 const DAY = 86_400_000;
@@ -105,8 +105,14 @@ describe("rowLine", () => {
     expect(rowLine(p({ owner: "env_box", syncedAt: NOW - 4 * 60_000 }), r(), box, undefined, NOW)).toEqual({
       text: "Refreshed by box",
       tone: "muted",
-      detail: "synced 4m ago",
+      detail: "4m ago",
     });
+  });
+
+  it("words a provider's note: sentence case, no closing period, its status code out of the words", () => {
+    expect(noteWords("usage unavailable (502)")).toEqual({ text: "Usage unavailable", code: "502" });
+    expect(noteWords("rate limited.")).toEqual({ text: "Rate limited" });
+    expect(keyStatus({ profileName: "k", windows: [], note: "usage unavailable (429)" } as never)).toEqual({ text: "Usage unavailable", tone: "muted" });
   });
 });
 

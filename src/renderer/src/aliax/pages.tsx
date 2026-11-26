@@ -15,7 +15,9 @@ import { ModalBody, ModalPanel } from "@renderer/chrome/Modal";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { displayName } from "@aliax/lib/accounts";
-import { compact, localDayTime } from "@aliax/lib/viz";
+import { compact } from "@aliax/lib/viz";
+import { dayTime } from "@renderer/lib/duration";
+import { Tip } from "@renderer/components/tip";
 import { AccountsSkeleton, AccountsView } from "@aliax/views/accounts";
 import { AddKeyDialog } from "@aliax/views/AddKeyDialog";
 import { StatsView } from "@aliax/views/stats";
@@ -151,7 +153,6 @@ export function AccountsPage(): React.JSX.Element {
     <Page
       title="Accounts"
       width="table"
-      description="The sign-ins and keys threads route through."
       actions={
         <Tooltip>
           <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Refresh usage" disabled={refreshing} onClick={() => void reload()} />}>
@@ -174,8 +175,8 @@ export function AccountsPage(): React.JSX.Element {
       {snapshot.given?.paused ? (
         <Alert variant="warning" className="mb-6">
           <AlertDescription>
-            Paused: {snapshot.given.giver} has not been in touch since{" "}
-            {new Date(snapshot.given.since).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.
+            Paused since {new Date(snapshot.given.since).toLocaleDateString(undefined, { month: "short", day: "numeric" })}, when {snapshot.given.giver} was last
+            in touch
           </AlertDescription>
         </Alert>
       ) : null}
@@ -275,13 +276,15 @@ export function AccountsPage(): React.JSX.Element {
 
 /**
  * History from the local session logs. The page owns the loading: the
- * bundle and the index status at mount, a 2.5 s poll while the first index
- * pass runs, and Reindex.
+ * bundle and the index status at mount, and a 2.5 s poll while an index
+ * pass runs, the first one or a Reindex, so the page's line counts it.
  */
 export function StatsPage(): React.JSX.Element {
   const [data, setData] = useState<StatsBundle | null>(null);
   const [status, setStatus] = useState<StatsStatus | null>(null);
   const [reindexing, setReindexing] = useState(false);
+  const [reindexError, setReindexError] = useState<string | null>(null);
+  const timer = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     const [bundle, next] = await Promise.all([window.aliax.stats(), window.aliax.statsStatus()]);
@@ -289,36 +292,57 @@ export function StatsPage(): React.JSX.Element {
     setStatus(next);
   }, []);
 
-  useEffect(() => {
-    void load();
-    // The first index pass walks thousands of files; poll until it settles.
-    const timer = setInterval(async () => {
+  // Polls the status until the pass settles, then reads the bundle once.
+  const watch = useCallback(() => {
+    if (timer.current !== null) return;
+    timer.current = window.setInterval(async () => {
       const next = await window.aliax.statsStatus();
       setStatus(next);
-      if (!next.indexing) {
+      if (!next.indexing && timer.current !== null) {
+        window.clearInterval(timer.current);
+        timer.current = null;
         setData(await window.aliax.stats());
-        clearInterval(timer);
       }
     }, 2500);
-    return () => clearInterval(timer);
-  }, [load]);
+  }, []);
+
+  useEffect(() => {
+    void load();
+    watch();
+    return () => {
+      if (timer.current !== null) window.clearInterval(timer.current);
+      timer.current = null;
+    };
+  }, [load, watch]);
 
   const reindex = async () => {
     setReindexing(true);
+    setReindexError(null);
+    // The pass answers when it is done: the poll counts it meanwhile.
+    watch();
     try {
-      await window.aliax.statsReindex();
+      const result = await window.aliax.statsReindex();
+      if (!result.ok) setReindexError(result.error);
       await load();
+    } catch (err) {
+      setReindexError(err instanceof Error ? err.message : String(err));
     } finally {
       setReindexing(false);
     }
   };
 
-  const description = data?.unavailable ? (
-    <span className="text-destructive">Couldn't load the stats: {data.unavailable}</span>
+  const failure = reindexError !== null ? { words: "Couldn't reindex", raw: reindexError } : data?.unavailable ? { words: "Couldn't load the stats", raw: data.unavailable } : null;
+  const description = failure ? (
+    // A failure in plain words; the worker's own text on hover alone.
+    <Tip label={<span className="min-w-0 break-words">{failure.raw}</span>}>
+      <span role="alert" className="text-destructive">
+        {failure.words}
+      </span>
+    </Tip>
   ) : status?.indexing
     ? `Indexing ${status.filesDone.toLocaleString()} of ${status.filesTotal.toLocaleString()} session logs`
     : data && data.totals.turns > 0
-      ? `From ${compact(data.totals.turns)} turns in your local session logs, updated ${localDayTime(data.generatedAt)}`
+      ? `${compact(data.totals.turns)} turns in the last 30 days, updated ${dayTime(data.generatedAt)}`
       : undefined;
 
   return (

@@ -27,7 +27,6 @@ import {
 } from "../lib/rightPanel";
 import type { OpenFileFn } from "../lib/search";
 import type { Session } from "../lib/session";
-import { isMasterThread } from "../lib/masterThread";
 import { projectForCwd } from "../lib/tcserver/projects";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
@@ -53,9 +52,6 @@ const ResultsSection = workOutboxChunk.surface("ResultsSection", <LoadingLine la
 const DebugPanel = lazy(() => import("../chrome/rail/DebugPanel"));
 // Listed for a dev build, and for any thread that asked for it ("Debug this file").
 const DEBUG_SECTION = import.meta.env.DEV;
-
-/** A master's Agents section lists its own subagents; its batch is on the board. */
-export const MASTER_AGENTS_EMPTY = "Batch threads are on the board";
 
 /** Each section's segment glyph; its name is the segment's label and tooltip. */
 const SECTION_ICON: Record<Section, IconComponent> = {
@@ -300,7 +296,9 @@ export function RightPanelFrame({
       />
       <div
         key={section}
-        className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-(--dur-fast) flex min-h-0 flex-1 flex-col overflow-hidden"
+        // A fade, so it stays under reduced motion (DESIGN "Reduced motion": fades stay).
+        data-section-body
+        className="animate-in fade-in-0 duration-(--dur-fast) flex min-h-0 flex-1 flex-col overflow-hidden"
       >
         {children}
       </div>
@@ -386,7 +384,6 @@ function SectionBody({
         <FleetList
           sessionId={session.id}
           parentCwd={session.cwd}
-          emptyLine={isMasterThread(session) ? MASTER_AGENTS_EMPTY : undefined}
           onOpenSession={onOpenSession}
           onOpenFile={onOpenFile}
           onOpenDiff={onOpenDiff}

@@ -242,8 +242,18 @@ function VariableRow({ variable: v, open, onExpand }: { variable: DebugVariable;
   );
 }
 
+/** A debug session's failure in plain words: never a host, a port or the adapter's raw line (DESIGN "Typography"). */
+export function debugErrorWords(raw: string): string {
+  const text = raw.trim();
+  if (/could not attach|connection refused|econnrefused|nothing (is )?listening/i.test(text)) return "Couldn't attach: nothing is listening for a debugger";
+  if (/timed out|no answer|did not answer/i.test(text)) return "The debugger didn't answer";
+  if (/not connected|connection closed|socket closed/i.test(text)) return "Its computer isn't answering";
+  const plain = text.length > 0 && text.length <= 120 && !/[/\\:()]|\w\.\w|\b\d{2,5}\b|\n/.test(text);
+  return plain ? text : "The debug session failed";
+}
+
 function ErrorLine({ text }: { text: string }) {
-  return <p className="shrink-0 px-3 py-1 text-xs break-words text-destructive">{text}</p>;
+  return <p className="shrink-0 px-3 py-1 text-xs break-words text-destructive">{debugErrorWords(text)}</p>;
 }
 
 function StopGlyph({ className }: { className?: string }) {

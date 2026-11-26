@@ -253,4 +253,15 @@ describe("one thread menu on every surface", () => {
     expect(await screen.findByText("Delete t1?")).toBeTruthy();
     expect(screen.getByText("Its transcript is gone for good.")).toBeTruthy();
   });
+
+  it("Delete waits for the host's answer: a refusal stays in the confirm as its red line", async () => {
+    thread("t1", { status: "idle" });
+    (commands as Record<string, unknown>).remove = vi.fn(() => Promise.reject(new Error("refused: the thread is moving")));
+    render(<Surfaces />);
+    fireEvent.contextMenu(screen.getByText("Row t1"));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Rail" })).getByText("Delete…"));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete thread" }));
+    expect(await screen.findByText("The thread is moving")).toBeTruthy();
+    expect(screen.getByText("Delete t1?")).toBeTruthy();
+  });
 });

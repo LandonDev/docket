@@ -21,17 +21,18 @@
     <script src="./boot.js"></script>
     <style>
       /* The splash paints before src/renderer/src/index.css loads, so its
-         colours are written here. Light's are that file's `background` and
-         `foreground` (src/renderer/src/splash.test.ts holds them equal);
-         dark's are held as they were. boot.js sets `theme-light` before this
-         paints. */
+         colours are written here. Light's are that file's `sidebar` (the
+         window's own backing, src/main/windowFrame.ts `BACKING`, so a launch
+         steps once, from the chrome's gray to the app) and `foreground`
+         (src/renderer/src/splash.test.ts holds them equal); dark's are held
+         as they were. boot.js sets `theme-light` before this paints. */
       :root {
         --boot-background: hsl(240 0% 9%);
         --boot-foreground: #ffffff;
       }
 
       html.theme-light {
-        --boot-background: oklch(1 0 0);
+        --boot-background: oklch(0.962 0.004 264);
         --boot-foreground: oklch(0.2 0.012 264);
       }
 
@@ -52,11 +53,18 @@
         align-items: center;
         justify-content: center;
         pointer-events: none;
-        transition: opacity 0.16s ease;
+        /* index.css's `--dur-fast` on `--ease-out`, written out: it is not loaded yet. */
+        transition: opacity 120ms cubic-bezier(0.16, 1, 0.3, 1);
       }
 
       #boot-splash.boot-splash-out {
         opacity: 0;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #boot-splash {
+          transition: none;
+        }
       }
 
       /* The mark is the icon's slabs as one shape (scripts/make-icons.ts):

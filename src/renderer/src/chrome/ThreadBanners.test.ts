@@ -73,6 +73,13 @@ describe("bannerThreads", () => {
     expect(result.needsYou).toEqual([]);
   });
 
+  it("leaves a thread waiting on an approval out of needs-you: its toast asks already", () => {
+    const approval = meta("a1", { status: "waiting" });
+    const question = meta("q1", { status: "waiting" });
+    const result = bannerThreads([approval, question], null, undefined, new Map([["a1", {}]]));
+    expect(result.needsYou).toEqual([question]);
+  });
+
   it("leaves the thread on screen out of paused, and out of recovery for its own failure", () => {
     const open = meta("o", { treeHasPaused: true, treeCanContinue: true, status: "error" });
     const other = meta("p", { treeHasPaused: true });

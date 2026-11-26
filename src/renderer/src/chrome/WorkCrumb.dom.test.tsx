@@ -17,14 +17,20 @@ const { WorkCrumb } = await import("./WorkCrumb");
 afterEach(cleanup);
 
 const crumb = () => document.querySelector("[data-work-crumb]");
+/** The crumb's one place: the dot, the name, the chevron, the glyph, in order. */
+const place = () => crumb()!.querySelector("[data-slot=breadcrumb-item]")!;
 
 describe("WorkCrumb", () => {
   it("ends on the thread's type glyph, after the chevron", () => {
     render(<WorkCrumb thread={{ projectId: "m-lan", environmentId: "local" }} type="research" />);
-    const kids = [...crumb()!.children];
+    const kids = [...place().children];
     expect(kids.at(-1)!.getAttribute("data-type-glyph")).toBe("research");
-    expect(kids.at(-2)!.tagName.toLowerCase()).toBe("svg");
+    expect(kids.at(-2)!.getAttribute("data-slot")).toBe("breadcrumb-separator");
     expect(crumb()!.textContent).toBe("Spring LAN");
+    // The shared Breadcrumb: a nav holding a list, the project a press that opens its page.
+    expect(crumb()!.tagName.toLowerCase()).toBe("nav");
+    expect(crumb()!.querySelector("ol")).toBeTruthy();
+    expect(crumb()!.querySelector("[data-slot=breadcrumb-link]")?.textContent).toBe("Spring LAN");
   });
 
   it("draws a chat's glyph too: the head is the one place a chat says its type", () => {

@@ -1,10 +1,11 @@
+import { dialogErrorWords } from "../../lib/dialogErrorWords";
 import { useCallback, useEffect, useState } from "react";
 import type { SetupPeek, SetupState, SetupStep, SetupStepRow } from "@server/shared/contract-devices";
 import { PageRow } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { StatusMark } from "../../components/ui/status";
-import { DialogFooter, errorText } from "../../chrome/ConfirmDialog";
+import { DialogFooter } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { giveSetupFolders, onDevicesPush, peekSetupLink, readSetupState, retrySetupStep, startSetup, type StepPush } from "../../lib/devicesClient";
@@ -12,7 +13,7 @@ import { pickFolders } from "../../lib/fs";
 import { thisDesktopInLine, thisDesktopName } from "../../lib/native";
 import { applyPlaceScheme } from "../../lib/placeScheme";
 import { allDone, givesText, landStep, stepTitle } from "../settings/hosts/computersText";
-import { hostOf, writeSeedsOnce } from "./setupFlow";
+import { hostOf, stepReasonWords, writeSeedsOnce } from "./setupFlow";
 
 /**
  * The computer's side of a setup link (docs/agents/pc-setup.md "On the PC"):
@@ -122,7 +123,7 @@ function Paste({
     try {
       onPeek(link.trim(), await peekSetupLink(link.trim()));
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
     } finally {
       setPending(false);
     }
@@ -186,7 +187,7 @@ function Confirm({
       // The steps begin from what the host has; before its first word, from the peek.
       onStarted((await readSetupState()) ?? { giver: peek.giver, origin: peek.origin, steps: [{ step: "link", state: "working" }], words: null, seeds: null, done: false });
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
     } finally {
       setPending(false);
     }
@@ -223,7 +224,7 @@ function Steps({ state, steps, onClose, onReread }: { state: SetupState; steps: 
       await work();
       await onReread();
     } catch (err) {
-      setErrors((prev) => ({ ...prev, [step]: errorText(err) }));
+      setErrors((prev) => ({ ...prev, [step]: dialogErrorWords(err) }));
     } finally {
       setBusy(null);
     }
@@ -244,10 +245,11 @@ function Steps({ state, steps, onClose, onReread }: { state: SetupState; steps: 
             data-state={step.state}
             title={stepTitle(step.step, state.giver)}
             description={step.step === "allow" && state.words && step.state !== "done" ? <span data-setup-words className="font-medium text-foreground">{state.words.join(" · ")}</span> : undefined}
-            error={errors[step.step] ?? (step.state === "failed" ? (step.reason ?? "It did not finish") : undefined)}
+            error={errors[step.step] ?? (step.state === "failed" ? stepReasonWords(step.reason) : undefined)}
           >
+            {/* One button weight in the list: Retry and Add folders… are both secondary. */}
             {step.state === "failed" ? (
-              <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void run(step.step, () => retrySetupStep(step.step))}>
+              <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => void run(step.step, () => retrySetupStep(step.step))}>
                 <BusyLabel busy={busy === step.step} label="Retry" />
               </Button>
             ) : step.step === "folders" && step.state === "waiting" && allowed ? (

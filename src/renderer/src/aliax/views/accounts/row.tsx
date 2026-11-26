@@ -37,6 +37,9 @@ export interface AccountRowProps {
   onEdited: () => void;
 }
 
+/** A key saved with no name of his: the one aliax gave it from the key's last four. */
+export const unnamedKey = (profile: ProfileView): boolean => !profile.nickname && /^Meta key …/.test(profile.name);
+
 export function AccountRow({ serviceId, profile, report, last, headroom, columns, now, owner, mint, billingUrl, switching, onUse, onAction, onSetupToken, onRemove, onEdited }: AccountRowProps) {
   const [editing, setEditing] = useState(false);
   const name = displayName(profile);
@@ -44,7 +47,8 @@ export function AccountRow({ serviceId, profile, report, last, headroom, columns
   const keyed = profile.kind === "key";
   // A key shows as `LLM_1607…`, built from the account id the main process adds; the key never reaches the page.
   const accountId = (profile as KeyProfileView).accountId;
-  const mask = keyed && accountId ? maskedKey(accountId) : null;
+  // Under a name he gave it; an unnamed key's own name ("Meta key …9QzT") is the one it goes by, never said twice.
+  const mask = keyed && accountId && !unnamedKey(profile) ? maskedKey(accountId) : null;
   const plan = planFacts(report?.plan, report?.banked);
   return (
     <PageRow

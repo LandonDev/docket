@@ -20,7 +20,8 @@ vi.mock("../lib/contextCache", () => ({
 
 import { TooltipProvider, tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import { menuChunk } from "../surfaces/chunks";
-import { ContextBreakdown, ContextMeter, memoryLabel } from "./ContextMeter";
+import { ContextBreakdown, memoryLabel } from "./ContextBreakdown";
+import { ContextMeter } from "./ContextMeter";
 import { warmMenus } from "./menuRows";
 
 afterEach(() => {

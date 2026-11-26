@@ -1,3 +1,4 @@
+import { keyHint } from "./keys";
 import { useSyncExternalStore } from "react";
 
 /**
@@ -72,8 +73,10 @@ export function sectionsCompact(count: number, width: number): boolean {
   return count * SEGMENT_PX + Math.max(0, count - 1) * SEGMENT_GAP_PX > width - HEADER_CHROME_PX;
 }
 
-/** The toggle's reason while a thread's row is too narrow for the panel. */
-export const NO_ROOM_LABEL = "No room for the panel";
+/** The toggle's reason while a thread's row is too narrow for the panel, and the way to make room: the sidebar's
+ *  key (App, Sidebar) beside it, so a press that cannot open the panel is never silent (rightpanel-06). */
+export const NO_ROOM_LABEL = "No room: hide the sidebar";
+export const NO_ROOM_KEY = keyHint("mod+B");
 
 /** What the thread's state says about it; `sectionsFor` reads nothing else. */
 export type PanelFacts = {

@@ -15,8 +15,9 @@ const symbols = Array.from({ length: 6 }, (_, i) => ({
   range: { startLineNumber: i + 1, startColumn: 1, endLineNumber: i + 1, endColumn: 2 },
 }));
 
+const answer = vi.hoisted(() => ({ next: null as null | (() => Promise<unknown>) }));
 vi.mock("../surfaces/monaco/lsp/providers", () => ({
-  workspaceSymbols: () => Promise.resolve(symbols),
+  workspaceSymbols: () => (answer.next ? answer.next() : Promise.resolve(symbols)),
 }));
 
 import { SymbolPicker } from "./SymbolPicker";
@@ -94,5 +95,27 @@ describe("SymbolPicker", () => {
     });
     const note = screen.getByText("Open a project to search symbols");
     expect(note.className.split(/\s+/)).toEqual(expect.arrayContaining(["h-7", "px-3", "text-[13px]", "text-muted-foreground"]));
+  });
+
+  it("says a missing or failed language server as such, never as no match", async () => {
+    answer.next = () => Promise.reject(Object.assign(new Error("no language server"), { symbolSearch: "none" }));
+    await mount();
+    expect(screen.getByText("No language server is running for this project")).toBeTruthy();
+    cleanup();
+    answer.next = () => Promise.reject(new Error("boom"));
+    await mount();
+    expect(screen.getByText("Couldn't search symbols")).toBeTruthy();
+    expect(screen.queryByText("No matching symbols")).toBeNull();
+    answer.next = null;
+  });
+
+  it("marks the typed words in a symbol's name, its container 4px after it", async () => {
+    answer.next = () => Promise.resolve([{ ...symbols[0], containerName: "Rail" }]);
+    await mount();
+    const row = screen.getAllByRole("option")[0];
+    expect(row.querySelector("mark")?.textContent).toBe("sym");
+    expect(row.querySelector(".ms-1")?.textContent).toBe("Rail");
+    expect(row.querySelector(".w-24")).toBeTruthy();
+    answer.next = null;
   });
 });

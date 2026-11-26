@@ -5,7 +5,7 @@ import { Spinner } from "./spinner";
 import { StatusMark, type ThreadState } from "./status";
 import { buttonVariants } from "./button";
 import { cn } from "@renderer/lib/cn";
-import { subscribeToastAnchor, toastAnchor } from "@renderer/lib/toastAnchor";
+import { subscribeToastAnchor, toastAnchor, toastAnchorVersion, toastSeatOver } from "@renderer/lib/toastAnchor";
 
 export type ToastApi = typeof Toast;
 
@@ -35,8 +35,9 @@ export const TOAST_WIDTH = 340;
 
 /**
  * Where the stack sits so a toast never covers a control: 8px above the
- * anchor's top (the focused thread's strip, above its composer; a master
- * board's foot while its chat is folded) and 16px inside its right edge
+ * anchor's top (the focused thread's strip, above its composer; a waiting
+ * card over that strip, `seatRect`; a master board's foot while its chat is
+ * folded) and 16px inside its right edge
  * (clear of the right panel), no wider than the column less 16px a side
  * (a master's chat beside its board is narrower than a toast); 16/16 from
  * the window's corner with no anchor. Never closer than 16px to either edge.
@@ -58,33 +59,62 @@ function viewport(): { width: number; height: number } {
   return { width: window.innerWidth, height: window.innerHeight };
 }
 
+type Rect = { top: number; bottom: number; left: number; right: number };
+
+/**
+ * What the stack sits above: a waiting card while it is wholly in view in its
+ * scroller (its top from the card, its sides from the anchor's column), else
+ * the anchor itself. A card scrolled out of view, cut by the scroller's edge
+ * or folded shut seats nothing, and the footer takes the stack back.
+ */
+export function seatRect(anchor: Rect, card: Rect | null, view: { top: number; bottom: number } | null): Rect {
+  if (!card || card.bottom - card.top <= 0 || card.top >= anchor.top) return anchor;
+  if (view && (card.top < view.top || card.bottom > view.bottom + 1)) return anchor;
+  return { ...anchor, top: card.top };
+}
+
+/** The nearest ancestor that scrolls: the transcript a card sits in. */
+function scrollerOf(el: HTMLElement): HTMLElement | null {
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    if (/auto|scroll/.test(getComputedStyle(node).overflowY)) return node;
+  }
+  return null;
+}
+
 /** The measured inset for the current anchor, kept as it resizes or moves. */
 function useToastInset(): ToastInset {
-  const anchor = useSyncExternalStore(subscribeToastAnchor, toastAnchor, () => null);
+  const version = useSyncExternalStore(subscribeToastAnchor, toastAnchorVersion, () => 0);
   const [inset, setInset] = useState<ToastInset>({ bottom: INSIDE, right: INSIDE, width: TOAST_WIDTH });
   useEffect(() => {
+    const anchor = toastAnchor();
+    const card = anchor ? toastSeatOver(anchor) : null;
+    const scroller = card ? scrollerOf(card) : null;
     let frame = 0;
     const measure = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const next = toastInset(viewport(), anchor?.getBoundingClientRect() ?? null);
+        const rect = anchor ? seatRect(anchor.getBoundingClientRect(), card?.getBoundingClientRect() ?? null, scroller?.getBoundingClientRect() ?? null) : null;
+        const next = toastInset(viewport(), rect);
         setInset((prev) => (prev.bottom === next.bottom && prev.right === next.right && prev.width === next.width ? prev : next));
       });
     };
     measure();
-    // The footer grows with the composer; its column narrows when a panel opens.
+    // The footer grows with the composer; its column narrows when a panel opens; a card grows and scrolls.
     const observer = anchor && typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
     if (anchor) {
       observer?.observe(anchor);
       if (anchor.parentElement) observer?.observe(anchor.parentElement);
     }
+    if (card) observer?.observe(card);
+    scroller?.addEventListener("scroll", measure, { passive: true });
     window.addEventListener("resize", measure);
     return () => {
       cancelAnimationFrame(frame);
       observer?.disconnect();
+      scroller?.removeEventListener("scroll", measure);
       window.removeEventListener("resize", measure);
     };
-  }, [anchor]);
+  }, [version]);
   return inset;
 }
 
@@ -101,8 +131,10 @@ function ToastGlyph({ state }: { state: ThreadState }) {
 }
 
 /** The one toast stack (sonner), mounted once in main.tsx. A toast is one
- *  line, an optional second line, at most one action, and leaves on its own.
- *  It sits above the focused thread's strip, never over a control. */
+ *  line, an optional second line, at most one action, and leaves on its own;
+ *  a held ask (an approval, a computer's Allow, a Mac bridge card) is the one
+ *  kind with two presses that stays until answered (docs/DESIGN.md
+ *  "Restraint"). It sits above the focused thread's strip, never over a control. */
 export function Toaster(props: ToasterProps) {
   const { width, ...offset } = useToastInset();
   return (

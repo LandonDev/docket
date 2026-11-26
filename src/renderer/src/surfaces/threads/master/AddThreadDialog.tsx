@@ -1,9 +1,10 @@
+import { dialogErrorWords } from "../../../lib/dialogErrorWords";
 import { modOrCtrl } from "../../../lib/keys";
 import { useEffect, useMemo, useState } from "react";
 import type { Reasoning } from "@server/shared/catalog";
-import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../../chrome/ConfirmDialog";
 import { Modal, useModalClose } from "../../../chrome/Modal";
-import { FieldRow } from "../../../chrome/DialogField";
+import { Field, FieldRow } from "../../../chrome/DialogField";
 import { ModelPicker } from "../../../chrome/ModelPicker";
 import { useEnvironments, useEnvironmentStatuses } from "../../../lib/connection/status";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../../../lib/models";
@@ -162,7 +163,7 @@ function AddThreadForm({
       if (!h.target || !("ensure" in h.target)) continue;
       ensureLinkedOn(h.id, h.target.ensure, true).then(
         (result) => live && setProbes((prev) => new Map(prev).set(h.id, probeOf(result))),
-        (err: unknown) => live && setProbes((prev) => new Map(prev).set(h.id, { state: "none", note: errorText(err) })),
+        (err: unknown) => live && setProbes((prev) => new Map(prev).set(h.id, { state: "none", note: dialogErrorWords(err) })),
       );
     }
     return () => {
@@ -214,7 +215,7 @@ function AddThreadForm({
       if (close) close(onClose);
       else onClose();
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };
@@ -230,6 +231,7 @@ function AddThreadForm({
     >
       {/* The rows carry their own 8px, so the brief and the rows sit 16px apart. */}
       <div className="flex flex-col gap-2 px-5 pt-4 pb-2">
+        <Field label="Brief">
         <Textarea
           autoFocus
           value={brief}
@@ -240,11 +242,10 @@ function AddThreadForm({
               void add();
             }
           }}
-          aria-label="Brief"
-          placeholder="What this thread should do, and what done looks like."
           disabled={pending}
           className="min-h-24 max-h-60 resize-none"
         />
+        </Field>
         <div className="flex flex-col">
           <FieldRow label="Type">
             <ChoiceToggle label="Type" value={type} options={types.map((t) => ({ value: t, label: THREAD_LABELS[t] }))} onChange={setType} />

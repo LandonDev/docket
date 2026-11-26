@@ -119,7 +119,7 @@ describe("FindBar", () => {
     const count = container.querySelector<HTMLElement>("[data-count]")!;
     expect(findField.contains(count)).toBe(true);
     expect(byLabel(container, "Find").contains(count)).toBe(false);
-    expect(count.className).toContain("shrink-0");
+    expect(count.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
     const controls = container.querySelector<HTMLElement>("[data-find-controls]")!;
     expect(controls.className).toContain("shrink-0");
     for (const label of ["Match case", "Match whole word", "Use regular expression", "Previous match", "Next match", "Close"]) {

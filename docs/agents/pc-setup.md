@@ -222,7 +222,7 @@ listens on nothing.
   row's name in any case (Windows keeps such names in one vault file).
 - **The lease.** Past `leaseUntil` the given rows join AccountsService's out
   list (`held`, also in `outMarks` for the gateway), and the Accounts page
-  says "Paused: <giver> has not been in touch since <date>"
+  says "Paused since <date>, when <giver> was last in touch"
   (`AccountsSnapshot.given`). A newer manifest lifts it.
 - **Tagged files.** A given Muse account's config dirs live under
   `muse-accounts/given/g<generation>/` (and `muse-work/config/given/…`), are

@@ -3,7 +3,7 @@ import { nativePlatform, thisDesktopName } from "../native";
 import { EnvLink } from "./link";
 import { Supervisor, type Clock, type ProbeTrigger } from "./supervisor";
 import type { Transport } from "./transport";
-import { IDLE_STATUS, type Environment, type EnvironmentStatus, type Route } from "./types";
+import { IDLE_STATUS, type Environment, type EnvironmentStatus, type Hello, type Route } from "./types";
 
 export const LOCAL_ENVIRONMENT_ID = "local";
 /** How long a key route waits for the primary link before its ticket mint fails as before. */
@@ -399,6 +399,13 @@ export function webEnvironment(socketUrl: string, name = "This host"): Environme
     routes: [{ url: socketUrl, kind: "tunnel", credential: "cookie" }],
     credentialRef: null,
   };
+}
+
+/** /ui's one host, named by its own hello once it has one ("The box"),
+ *  never the page's address; null when there is nothing to change. */
+export function webEnvironmentNamed(environment: Environment, hello: Hello | null | undefined): Environment | null {
+  const name = hello?.name?.trim();
+  return name && name !== environment.name ? { ...environment, name } : null;
 }
 
 /** A saved remote host as the main process lists it. */

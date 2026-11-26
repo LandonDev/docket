@@ -12,5 +12,5 @@ export default [
   { name: "A card waits: Needs you in amber", props: { cue: needs } },
   { name: "A step held in line: Waiting for the Mac", props: { cue: held } },
   { name: "Pressed: the panel is open on Computer", props: { cue: using, pressed: true } },
-  { name: "No room for the panel", props: { cue: using, room: false } },
+  { name: "No room: hide the sidebar", props: { cue: using, room: false } },
 ];

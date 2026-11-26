@@ -3,7 +3,7 @@ import { Button } from "../components/ui/button";
 import { FADE_IN } from "../components/ui/reveal";
 import { StatusMark } from "../components/ui/status";
 import { MorphText } from "../motion/MorphText";
-import { NO_ROOM_LABEL, rightPanel, useRightPanel, useShownSection, useShownThreadId } from "../lib/rightPanel";
+import { NO_ROOM_KEY, NO_ROOM_LABEL, rightPanel, useRightPanel, useShownSection, useShownThreadId } from "../lib/rightPanel";
 import { useAgentsCue, type AgentsCue as Cue } from "../lib/threads/agents";
 import { ROW_CONTROL } from "./composerRow";
 import { HarnessIcon } from "./HarnessIcon";
@@ -41,7 +41,7 @@ export function AgentsCueView({
   return (
     // The fade rides a wrapper (`FADE_IN`), so the button keeps its hover fill on `--dur-hover`.
     <span className={`inline-flex ${FADE_IN}`}>
-      <Tip label={noRoom ? NO_ROOM_LABEL : cue.line} side="bottom">
+      <Tip label={noRoom ? NO_ROOM_LABEL : cue.line} shortcut={noRoom ? NO_ROOM_KEY : undefined} side="bottom">
         <Button
           variant="ghost"
           size="xs"

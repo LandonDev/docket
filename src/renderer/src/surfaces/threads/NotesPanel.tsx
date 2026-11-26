@@ -1,7 +1,7 @@
 import { COPIED_MS } from "../../lib/clipboard";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { emptyNotes, notesAsBrief, notesEmpty } from "@shared/notes";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { StatusMark } from "@renderer/components/ui/status";
@@ -21,6 +21,14 @@ const SAVE_DEBOUNCE_MS = 700;
 
 type SaveState = "idle" | "saving" | "saved" | "failed";
 
+/** Why a save of the notes failed, in plain words, or null when the host said nothing he can act on. */
+export function notesSaveWhy(error: unknown): string | null {
+  const raw = error instanceof Error ? error.message : String(error);
+  if (/not connected|connection closed|socket closed|^closed\.?$|did not answer|timed out|no answer/i.test(raw)) return "no answer";
+  if (/^forbidden\b|not allowed|may not/i.test(raw)) return "not allowed";
+  return null;
+}
+
 /**
  * The thread's working notes: the right panel's Notes section
  * (surfaces/RightPanel.tsx). What the thread keeps for its next window and
@@ -35,6 +43,8 @@ export function NotesBody({ session }: { session: Session }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState<SaveState>("idle");
+  const [why, setWhy] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   // The text the edit began from; a push past it means the thread wrote
   // while the person typed.
   const baseRef = useRef<string>("");
@@ -43,20 +53,33 @@ export function NotesBody({ session }: { session: Session }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteChanged = editing && !!doc && doc.text !== baseRef.current;
 
+  // A failed save keeps the draft in sight: the source stays open, his words in it, until a save lands.
   const persist = useCallback(
-    async (text: string): Promise<void> => {
-      setSaving("saving");
+    async (text: string, again = false): Promise<void> => {
+      if (again) setRetrying(true);
+      else setSaving("saving");
       try {
         const saved = await saveNotes(session.environmentId, session.id, text);
         baseRef.current = saved.text;
         dirtyRef.current = false;
         setSaving("saved");
-      } catch {
+        setWhy(null);
+      } catch (error) {
         setSaving("failed");
+        setWhy(notesSaveWhy(error));
+        setEditing(true);
+      } finally {
+        if (again) setRetrying(false);
       }
     },
     [session.environmentId, session.id],
   );
+
+  const retry = (): void => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    void persist(draftRef.current, true);
+  };
 
   const beginEdit = (): void => {
     // A draft whose save failed comes back as it was, still to be saved.
@@ -64,6 +87,7 @@ export function NotesBody({ session }: { session: Session }) {
     const text = retry ? draft : doc?.text && doc.text.trim() ? doc.text : emptyNotes();
     baseRef.current = doc?.text ?? "";
     dirtyRef.current = retry;
+    draftRef.current = text;
     setDraft(text);
     setSaving("idle");
     setEditing(true);
@@ -89,7 +113,8 @@ export function NotesBody({ session }: { session: Session }) {
     timer.current = null;
     baseRef.current = doc?.text ?? "";
     dirtyRef.current = false;
-    setDraft(doc?.text ?? emptyNotes());
+    draftRef.current = doc?.text ?? emptyNotes();
+    setDraft(draftRef.current);
   };
 
   // Leaving the body (another section, the panel closing, a thread switch)
@@ -106,6 +131,7 @@ export function NotesBody({ session }: { session: Session }) {
     setSawId(session.id);
     setEditing(false);
     setSaving("idle");
+    setWhy(null);
   }
 
   return (
@@ -114,6 +140,9 @@ export function NotesBody({ session }: { session: Session }) {
       text={doc?.text ?? ""}
       updatedAt={doc?.updatedAt ?? null}
       saving={saving}
+      why={why}
+      retrying={retrying}
+      onRetry={retry}
       editing={editing}
       draft={draft}
       remoteChanged={remoteChanged}
@@ -142,6 +171,9 @@ export function NotesView({
   text,
   updatedAt,
   saving,
+  why = null,
+  retrying = false,
+  onRetry,
   editing,
   draft,
   remoteChanged,
@@ -156,6 +188,11 @@ export function NotesView({
   text: string;
   updatedAt: number | null;
   saving: SaveState;
+  /** Why the last save failed, in his words (`notesSaveWhy`); null when the host said nothing plain. */
+  why?: string | null;
+  /** A Retry is in flight: the failed line stays, its Retry spinning, until the answer. */
+  retrying?: boolean;
+  onRetry?: () => void;
   editing: boolean;
   draft: string;
   remoteChanged: boolean;
@@ -191,8 +228,15 @@ export function NotesView({
       <TooltipProvider>
         <div data-slot="section-top" className="flex h-9 shrink-0 items-center justify-between gap-2 px-3">
           {saving === "failed" ? (
-            // A failed save in the one status vocabulary, as a file pane's header says it.
-            <StatusMark state="failed" word="Save failed" className="min-w-0 text-xs" />
+            // A failed save in the one status vocabulary, as a file pane's header says it, with its reason and Retry.
+            <span className="flex min-w-0 items-center gap-2">
+              <StatusMark state="failed" word="Save failed" detail={why ?? undefined} className="min-w-0 text-xs" />
+              {onRetry ? (
+                <Button variant="ghost" size="xs" className="shrink-0" disabled={retrying} onClick={onRetry}>
+                  <BusyLabel busy={retrying} label="Retry" />
+                </Button>
+              ) : null}
+            </span>
           ) : (
             <span className="truncate text-xs tabular-nums text-muted-foreground">{state}</span>
           )}

@@ -861,22 +861,37 @@ const symbolRow = (sym: LspSymbol): WorkspaceSymbolRow => ({
     : { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
 });
 
+/** Why Go to Symbol has no rows that is not "no match": `none`, no language
+ *  server runs for the project; `failed`, every one that runs refused. */
+export type SymbolSearchFailure = Error & { symbolSearch: "none" | "failed" };
+const symbolFailure = (kind: "none" | "failed"): SymbolSearchFailure =>
+  Object.assign(new Error(kind === "none" ? "no language server" : "workspace/symbol failed"), { symbolSearch: kind });
+
+/** Rejects with a `SymbolSearchFailure` when no server could be asked or none answered. */
 export async function workspaceSymbols(projectId: string, query: string): Promise<WorkspaceSymbolRow[]> {
   const ij = settledIdea.get(projectId);
-  if (ij?.alive && ideaEligible(projectId)) {
-    const symbols = await ij.request<LspSymbol[] | null>("workspace/symbol", { query }).catch(() => null);
+  const asked = !!(ij?.alive && ideaEligible(projectId));
+  let answered = false;
+  if (asked) {
+    const symbols = await ij!.request<LspSymbol[] | null>("workspace/symbol", { query }).catch(() => undefined);
+    if (symbols !== undefined) answered = true;
     if (symbols?.length) return symbols.slice(0, 100).map(symbolRow);
   }
   const kinds: LangKind[] = ["web", "java"];
   const live = kinds.map((kind) => conns.get(`${projectId}:${kind}`)).filter((c) => c !== undefined);
+  let reached = asked;
   const results = await Promise.all(
     live.map(async (connP) => {
       const conn = await connP;
       if (!conn) return [];
-      const symbols = await conn.request<LspSymbol[] | null>("workspace/symbol", { query }).catch(() => null);
+      reached = true;
+      const symbols = await conn.request<LspSymbol[] | null>("workspace/symbol", { query }).catch(() => undefined);
+      if (symbols !== undefined) answered = true;
       return (symbols ?? []).slice(0, 60).map(symbolRow);
     }),
   );
+  if (!reached) throw symbolFailure("none");
+  if (!answered) throw symbolFailure("failed");
   return results.flat().slice(0, 100);
 }
 
@@ -1012,7 +1027,10 @@ export async function showHierarchy(
   const position = editor.getPosition();
   if (!model || !position) return;
   const res = await (variant === "callers" ? callHierarchy(model, position) : typeHierarchy(model, position));
-  if (!res) return;
+  if (!res) {
+    const { noHierarchyWords, sayAtCaret } = await import("./hierarchyMiss");
+    return sayAtCaret(editor, noHierarchyWords(variant));
+  }
   const { showRowsPopup, escapeHtml } = await import("./usages");
   showRowsPopup(
     editor,

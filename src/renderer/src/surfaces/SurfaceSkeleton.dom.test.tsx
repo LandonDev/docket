@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PAGE_SCROLLER } from "../components/page";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { AccountsSkeleton } from "../aliax/views/accounts/usageSkeleton";
 import { DIFF_ROWS_SKELETON_CAP, EmptyState, LoadingLine, PAGE_LIST_WIDTH, SurfaceSkeleton, type SkeletonKind } from "./SurfaceSkeleton";
 
 afterEach(cleanup);
@@ -48,15 +49,22 @@ describe("SurfaceSkeleton", () => {
     expect(scroller.querySelector("[data-skeleton-column]")).not.toBeNull();
   });
 
-  it("accounts: count account rows, each a dot, two usage bars and a switch", () => {
-    const { container } = render(<SurfaceSkeleton kind="accounts" count={3} />);
-    const rows = container.querySelectorAll("[data-skeleton-row]");
-    expect(rows).toHaveLength(3);
-    for (const row of rows) {
-      expect(row.querySelectorAll("[data-skeleton-bar]")).toHaveLength(2);
-      expect(row.querySelectorAll("[data-skeleton-switch]")).toHaveLength(1);
-      expect(row.querySelector(".rounded-full.size-2")).not.toBeNull();
-    }
+  it("accounts: the page's rows under its title, at the table's width, with no line the page does not draw", () => {
+    const { container } = render(<SurfaceSkeleton kind="accounts" />);
+    const page = render(<AccountsSkeleton />).container;
+    // The fallback's rows are AccountsSkeleton's, row for row, each with the box the usage bars will fill
+    // (56px: the cells' 44 inside the button's 6 above and below), so the page does not change shape when it lands.
+    const rows = container.querySelectorAll('[data-slot="account-row-skeleton"]');
+    expect(rows).toHaveLength(page.querySelectorAll('[data-slot="account-row-skeleton"]').length);
+    for (const row of rows) expect(row.querySelector("[data-skeleton-bars]")!.className).toContain("h-14");
+    expect(page.querySelector('[data-slot="usage-cells"]')!.className).toContain("py-1.5");
+    // The bars' bones are the page chunk's: the first paint carries none of the Accounts page's code.
+    expect(readFileSync(resolve(__dirname, "SurfaceSkeleton.tsx"), "utf8")).not.toMatch(/from "\.\.\/aliax/);
+    const column = container.querySelector("[data-skeleton-column]")!;
+    expect(column.className).toContain("max-w-6xl");
+    // The title's bone alone, then the rows 24px under it: no page line.
+    expect(column.children).toHaveLength(2);
+    expect(column.children[1]!.className).toContain("mt-6");
   });
 
   it("page: the title strip first, then the list at the Inbox's and Notes' own default width", () => {
@@ -113,6 +121,15 @@ describe("SurfaceSkeleton", () => {
     const { container } = render(<SurfaceSkeleton kind="search" count={5} />);
     expect(container.querySelector("[data-surface-skeleton]")!.children[0]!.hasAttribute("data-skeleton-strip")).toBe(true);
     expect(container.querySelectorAll("[data-skeleton-row]")).toHaveLength(5);
+  });
+
+  it("search opened empty: the strip holds the field's bone, and no result rows stand under it", () => {
+    const { container } = render(<SurfaceSkeleton kind="search" count={0} />);
+    const strip = container.querySelector("[data-skeleton-strip]")!;
+    expect(strip.querySelector("[data-skeleton-field]")!.className).toContain("h-8");
+    expect(container.querySelectorAll("[data-skeleton-row]")).toHaveLength(0);
+    // The window's fallback is that empty search.
+    expect(readFileSync(resolve(__dirname, "../App.tsx"), "utf8")).toContain('<SurfaceSkeleton kind="search" count={0} label="Loading search" />');
   });
 
   it("rows with three lines draws Notes' cards: its time, its title, its first words", () => {

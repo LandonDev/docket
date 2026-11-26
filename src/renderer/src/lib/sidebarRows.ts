@@ -26,6 +26,8 @@ export type SidebarItem =
   | { kind: "chats"; key: "chats"; threads: ThreadRow[]; spaced: boolean; headed: boolean }
   | { kind: "archived"; key: "archived"; groups: ProjectGroup[]; spaced: boolean }
   | { kind: "empty"; key: "empty" }
+  /** The home with no chat at all: one `Empty`, "No chats" with New chat. */
+  | { kind: "no-chats"; key: "no-chats" }
   /** A Work job (docs/DESIGN.md "The column"): its projects, one row each, then its threads, two lines each
    *  (work/shell/columnModel.ts), in place of the cards and the folds. */
   | { kind: "work-projects"; key: "work-projects" }
@@ -78,6 +80,7 @@ export function sidebarItems(
   if (groups.archived.length)
     items.push({ kind: "archived", key: "archived", groups: groups.archived, spaced });
   if (!items.length && !home && !work) items.push({ kind: "empty", key: "empty" });
+  if (!items.length && home && !work && workColumn === null) items.push({ kind: "no-chats", key: "no-chats" });
   if (workColumn === "chats") items.push({ kind: "work-archived", key: "work-archived" });
   return items;
 }
@@ -103,6 +106,7 @@ export function sessionItemIndex(items: readonly SidebarItem[], id: string): num
       case "work-threads":
         return item.items.some((i) => i.row.id === id || holds([i.row], id));
       case "empty":
+      case "no-chats":
       case "work-projects":
       case "work-archived":
         return false;

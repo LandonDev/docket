@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentProps,
@@ -19,6 +20,8 @@ import {
   layoutSashes,
   leaf,
   setSplitRatio,
+  stackCramped,
+  stackedKey,
   type LayoutNode,
   type PaneEdge,
   type WorkspaceTab,
@@ -181,7 +184,24 @@ function PaneTreeComponent({
     return handler;
   };
 
-  const tree = draft ?? layout;
+  // The tree's width decides one thing, whether a side-by-side group is drawn stacked (lib/layout.ts
+  // `stackCramped`), so a resize renders the tree again only when it crosses that line, never every frame.
+  const [paneWidth, setPaneWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = treeRef.current;
+    if (!el) return;
+    const read = () => {
+      const width = el.clientWidth;
+      setPaneWidth((was) => (stackedKey(layout, width) === stackedKey(layout, was) ? was : width));
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [layout]);
+
+  const tree = stackCramped(draft ?? layout, paneWidth);
   const leaves = layoutLeaves(tree);
   const sashes = layoutSashes(tree);
   const inSplit = leaves.length > 1;

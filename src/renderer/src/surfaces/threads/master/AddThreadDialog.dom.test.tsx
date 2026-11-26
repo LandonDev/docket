@@ -201,6 +201,14 @@ describe("AddThreadDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("names the brief with a label, not a placeholder", async () => {
+    render(<AddThreadDialog master={master} siblings={[]} onClose={() => {}} onAdded={() => {}} />);
+    await flush();
+    const brief = screen.getByLabelText("Brief");
+    expect(brief.getAttribute("placeholder")).toBeNull();
+    expect(screen.getByText("Brief").tagName).toBe("LABEL");
+  });
+
   it("adds on Ctrl+Enter in the brief as on ⌘↩, for /ui off macOS", async () => {
     render(<AddThreadDialog master={master} siblings={[]} onClose={() => {}} onAdded={() => {}} />);
     await flush();

@@ -63,7 +63,7 @@ describe("the move confirm's verb", () => {
       fireEvent.click(screen.getByRole("button", { name: "Move thread" }));
     });
     expect(moves.move).toHaveBeenCalledWith("s1", "env_box", { toastRefusal: false });
-    expect(within(screen.getByRole("alertdialog")).getByText("box is offline")).toBeTruthy();
+    expect(within(screen.getByRole("alertdialog")).getByText("Box is offline")).toBeTruthy();
     expect(onClose).not.toHaveBeenCalled();
   });
 

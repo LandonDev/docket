@@ -28,8 +28,10 @@ import {
 } from "react";
 import { Sidebar } from "./chrome/Sidebar";
 import { confirmAction } from "./chrome/ConfirmDialog";
+import { deleteThreadWords } from "./chrome/DeleteThreadDialog";
 import { actionFailed } from "./lib/threadActionToast";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
+import { refreshToastAnchor } from "./lib/toastAnchor";
 import { MoveToasts } from "./chrome/ThreadHostChip";
 import { requestThreadBatch, useBatchPending, type BatchScope } from "./lib/threadBatch";
 import { selectionFor } from "./lib/threadBatchSelection";
@@ -48,7 +50,7 @@ import { environment, environmentAt, environmentStore, stepEnvironment } from ".
 import { subscribeEnvironmentSwitch, workspaceToLandOn } from "./lib/environmentSwitch";
 import { markAllSeen } from "./lib/sessionSeen";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
-import { MenuBar } from "./chrome/MenuBar";
+import { MenuBar, menuBarPlace } from "./chrome/MenuBar";
 import { closeLightbox, isLightboxOpen, stepLightbox } from "./chrome/lightboxStore";
 import { fullWindowTarget, toggleFullScreen, useFullWindow } from "./lib/fullWindow";
 import { requestStage, usePopOut } from "./lib/popOut";
@@ -59,7 +61,6 @@ import {
 } from "./surfaces/HtmlRenderOverlay";
 import { perfMark } from "./lib/perfMarks";
 import { openStamps } from "./lib/openStamps";
-import { IS_MAC } from "./lib/platform";
 import { updateStore } from "./lib/updateStore";
 import { displayAttachments, prepareAttachments } from "./lib/attachments";
 import { basename, folderPickOn, notifyGitChanged, pickFolder, restoreSessionCheckout } from "./lib/fs";
@@ -316,12 +317,13 @@ import { isBareSeed, onWorkSearch, openWorkSearch, type WorkSearchSeed } from ".
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { codeCommandRefused, useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
+import { AliaxPagesFallback } from "./surfaces/AliaxPagesFallback";
 // Lazy surfaces (surfaces/chunks.ts): none of these is on the first-paint path.
 const DevServersPane = terminalChunk.surface("DevServersPane", <SurfaceSkeleton kind="terminal" label="Loading dev servers" />);
 const SettingsView = settingsChunk.surface("SettingsView", <SurfaceSkeleton kind="column" label="Loading settings" />);
-const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <SurfaceSkeleton kind="accounts" label="Loading accounts" />);
+const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <AliaxPagesFallback />);
 // The full-body views ride their own chunks: none is in the first paint.
-const SearchView = searchChunk.surface("SearchView", <SurfaceSkeleton kind="search" count={8} label="Loading search" />);
+const SearchView = searchChunk.surface("SearchView", <SurfaceSkeleton kind="search" count={0} label="Loading search" />);
 // The action-opened dialogs, mounted only while open (chrome/dialogs.ts).
 const ThreadBatchDialog = dialogsChunk.surface("ThreadBatchDialog");
 const FilePicker = pickersChunk.surface("FilePicker");
@@ -1915,7 +1917,7 @@ export default function App() {
         ? sessionDisplayTitle(summary.title, summary.harness)
         : "this session";
 
-      if (!options?.confirmed && !(await confirmAction({ title: `Delete “${label}”?`, action: "Delete", danger: true }))) return;
+      if (!options?.confirmed && !(await confirmAction({ ...deleteThreadWords(label, open?.status), danger: true }))) return;
       // Everything the next screen depends on, read before the delete: the
       // host's session-removed push lands ahead of its answer, after which
       // the deleted thread's project could no longer be known.
@@ -2220,8 +2222,8 @@ export default function App() {
         .then(({ revealInWindow }) => revealInWindow(navigation, openWorkThread))
         .then(() => finish(), (err: unknown) => {
           finish(false);
-          return import("./components/ui/toaster").then(({ loadToast }) => loadToast()).then((toast) => {
-            toast.error(err instanceof Error ? err.message : String(err));
+          return Promise.all([import("./components/ui/toaster").then(({ loadToast }) => loadToast()), import("./lib/threadActionFailure")]).then(([toast, { failureReason }]) => {
+            toast.error("Couldn't open it", { description: failureReason(err) || undefined });
           });
         })
         .catch((err: unknown) => console.warn("[reveal]", err));
@@ -2233,7 +2235,7 @@ export default function App() {
   const newWorkspaceEnvironmentId = useShell((s) => s.newWorkspaceEnvironmentId);
   /** Another host's folders, being browsed for a workspace there. */
   /** A folder browsed on another host (or at /ui), and where the pick goes. */
-  const [remoteFolderPick, setRemoteFolderPick] = useState<{ environmentId: string; onPick: (path: string) => void } | null>(null);
+  const [remoteFolderPick, setRemoteFolderPick] = useState<{ environmentId: string; title?: string; onPick: (path: string) => void } | null>(null);
   const adoptFolder = useCallback(
     (path: string, environmentId: string) => {
       // A folder the catalog knows just comes forward; a new one gets the
@@ -2250,7 +2252,7 @@ export default function App() {
     async (environmentId: string | undefined, onPick: (path: string, environmentId: string) => void, title?: string) => {
       const remote = folderPickOn(environmentId, registry.primaryEnvironmentId, isWebMode());
       if (remote) {
-        setRemoteFolderPick({ environmentId: remote, onPick: (path) => onPick(path, remote) });
+        setRemoteFolderPick({ environmentId: remote, title, onPick: (path) => onPick(path, remote) });
         return;
       }
       const path = await pickFolder(title);
@@ -3504,6 +3506,9 @@ export default function App() {
     if (devPaneOpen) applyDockGridStyle(el, devPaneSize);
     else applyDockGridStyle(el, visibleDock ? visibleDock.size : null);
   }, [visibleDock, devPaneOpen, devPaneSize]);
+  // A page over the board (or a Work view over the panes) makes the focused footer inert: the toast stack asks again
+  // and takes the window's corner, and finds the footer once the page closes (lib/toastAnchor.ts).
+  useLayoutEffect(refreshToastAnchor, [searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || computersViewOpen || !!workPlace || notesViewOpen || !!accountsPage, workViewShown]);
 
   const sessionActions = useMemo<SessionActions>(
     () => ({
@@ -3554,6 +3559,8 @@ export default function App() {
 
   // A thread's chat mounted outside a pane (a master board's child pane and
   // its New pass dialog) reaches the same handlers through the context.
+  // The in-app menu bar: at /ui off macOS, and in a Windows window, whose native bar is hidden.
+  const menuPlace = menuBarPlace();
   return (
     <SessionActionsContext.Provider value={sessionActions}>
     <div
@@ -3597,8 +3604,9 @@ export default function App() {
           aria-hidden={searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || computersViewOpen || !!workPlace || notesViewOpen || !!accountsPage}
           inert={searchViewOpen || settingsOpen || inboxViewOpen || outboxViewOpen || computersViewOpen || !!workPlace || notesViewOpen || !!accountsPage || undefined}
         >
-        {isWebMode() && !IS_MAC ? (
+        {menuPlace ? (
           <MenuBar
+            place={menuPlace}
             onCommand={(id) => {
               if (isAppCommandId(id)) executeMenu(id);
             }}
@@ -3849,6 +3857,7 @@ export default function App() {
       {remoteFolderPick ? (
         <RemoteFolderDialog
           environmentId={remoteFolderPick.environmentId}
+          title={remoteFolderPick.title}
           onClose={() => setRemoteFolderPick(null)}
           onPick={(path) => {
             setRemoteFolderPick(null);

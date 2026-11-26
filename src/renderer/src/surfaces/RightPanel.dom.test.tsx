@@ -28,8 +28,8 @@ vi.mock("../lib/computerSection", () => ({
 }));
 vi.mock("../hooks/useGitFileStatuses", () => ({ useGitFileStatuses: () => ({}) }));
 vi.mock("./threads/fleet/FleetPanel", () => ({
-  FleetList: (p: { sessionId: string; emptyLine?: string }) => (
-    <div data-testid="agents-body" data-thread={p.sessionId} data-empty-line={p.emptyLine}>
+  FleetList: (p: { sessionId: string }) => (
+    <div data-testid="agents-body" data-thread={p.sessionId}>
       agents
     </div>
   ),
@@ -65,7 +65,7 @@ vi.mock("../chrome/FileTree", () => ({
 
 import { rightPanel, useShownSection } from "../lib/rightPanel";
 import type { Session } from "../lib/session";
-import { MASTER_AGENTS_EMPTY, RightPanel } from "./RightPanel";
+import { RightPanel } from "./RightPanel";
 import { SessionActionsContext, type SessionActions } from "./threadChat";
 
 const session = { id: "s1", environmentId: "local", title: "T", cwd: "/p", projectId: "p1", status: "idle", blocks: [] } as unknown as Session;
@@ -483,14 +483,21 @@ describe("RightPanel on the thread a pane shows", () => {
     expect(screen.getByTestId("agents-body").getAttribute("data-thread")).toBe("sub");
   });
 
-  it("a master's own Agents section says its batch threads are on the board", () => {
+  it("fades a section's body in, and keeps the fade under reduced motion (rightpanel-07)", () => {
+    state.agents = [{ id: "a1", status: "done", parentId: "s1" } as unknown as SessionMeta];
+    rightPanel.open("s1", "agents");
+    const { container } = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    const body = container.querySelector<HTMLElement>("[data-section-body]")!;
+    expect(body.className.split(/\s+/)).toEqual(expect.arrayContaining(["animate-in", "fade-in-0", "duration-(--dur-fast)"]));
+    expect(body.className).not.toContain("motion-safe:");
+  });
+
+  it("a master's own Agents section lists its subagents with no note about the board", () => {
     state.agents = [{ id: "a1", status: "done", parentId: "s1" } as unknown as SessionMeta];
     rightPanel.open("s1", "agents");
     const master = { ...session, isMaster: true } as unknown as Session;
     render(<RightPanel session={master} onOpenFile={noop} onOpenDiff={noop} />);
-    expect(screen.getByTestId("agents-body").getAttribute("data-empty-line")).toBe(MASTER_AGENTS_EMPTY);
-    cleanup();
-    render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
-    expect(screen.getByTestId("agents-body").getAttribute("data-empty-line")).toBeNull();
+    expect(screen.getByTestId("agents-body").getAttribute("data-thread")).toBe("s1");
+    expect(screen.queryByText(/on the board/)).toBeNull();
   });
 });

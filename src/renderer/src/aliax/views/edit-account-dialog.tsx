@@ -1,8 +1,9 @@
+import { dialogErrorWords } from "@renderer/lib/dialogErrorWords";
 import { useEffect, useState } from "react";
 import type { ProfileView, ServiceId } from "aliax-core/shared/types";
 import { Dialog } from "@renderer/components/ui/dialog";
 import { Input } from "@renderer/components/ui/input";
-import { DialogFooter, ErrorLine, errorText } from "@renderer/chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "@renderer/chrome/ConfirmDialog";
 import { Field, FieldRow } from "@renderer/chrome/DialogField";
 import { ModalBody, ModalPanel } from "@renderer/chrome/Modal";
 import { ToggleGroup, ToggleGroupItem } from "@renderer/components/ui/toggle-group";
@@ -43,7 +44,7 @@ export function EditAccountDialog({
       onOpenChange(false);
       onSaved();
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
     } finally {
       setPending(false);
     }

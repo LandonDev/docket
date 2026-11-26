@@ -76,7 +76,10 @@ looks. If it ever reads as a flash, pass `instant` and it is gone.
   as `lib/appearance.ts` does, and sets the class. `boot.dom.test.ts` runs
   every combination of kind, choice and system against the library.
 - The splash (src/renderer/index.html) draws its logo as a mask in the
-  theme's ink, so it shows on white.
+  theme's ink, so it shows in light. Light's ground is `sidebar`, the
+  window's own backing (`BACKING.light`), so a light launch steps once,
+  from the chrome's gray to the app; its fade is `--dur-fast` on
+  `--ease-out`, written out there, and none under reduced motion.
 - `nativeTheme.themeSource` stays unset: native menus and dialogs follow the
   system.
 

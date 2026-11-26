@@ -1,3 +1,4 @@
+import { failureReason } from "../lib/threadActionFailure";
 import { useHostsOffline } from "./hostOffline";
 import {
   createContext,
@@ -30,7 +31,6 @@ import {
   Settings,
   Trash2,
 } from "./icons";
-import { ConfirmDialog } from "./ConfirmDialog";
 import { agentSummaryParts, leadStripped, modelLabel, type AgentSummary } from "../lib/threads/agents";
 import { AGENT_GLYPHS, THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes";
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
@@ -80,7 +80,6 @@ import { sessionStore } from "../lib/tcserver/store";
 import { archiveDormantThreads } from "../lib/archiveDormantThreads";
 import { dormantByType, dormantThreads, focusedTree, marksAtRest, threadStatus } from "../lib/threadStripModel";
 import { sameSet, useKept } from "../lib/keptValue";
-import { deleteProject } from "../lib/tcserver/projects";
 import { archiveLinked, projectHomeNow, renameLinked } from "../lib/projectHome";
 import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetas } from "../lib/tcserver/store";
@@ -91,6 +90,7 @@ import { isWorkThread, isWorkWorkspace } from "../lib/workRow";
 import { ProviderLead, TrailingType, markWords } from "./RowMarks";
 import { LIFEOS_CARD, openWorkView, useLifeosProjects, useWorkHosts, workColumnPort } from "../lib/workSwitch";
 import { loadToast } from "../components/ui/toaster";
+import { actionFailed } from "../lib/threadActionToast";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
 import {
   cardThreads,
@@ -104,6 +104,7 @@ import type { WorkColumnKind } from "../lib/sidebarRows";
 import { dialogsChunk, workShellChunk } from "../surfaces/chunks";
 import type { WorkProjectRow } from "../work/shell/columnModel";
 import { Skeleton } from "../components/ui/skeleton";
+import { EmptyState } from "../surfaces/SurfaceSkeleton";
 import { RAIL_SCROLL_MARGIN_PX, RailRows } from "./railRows";
 
 // A Work job's projects and threads, and Work Chats' archived row (work/shell/WorkColumnRows.tsx): Work's chunk,
@@ -146,9 +147,7 @@ type Props = {
 type Dialog =
   | { kind: "settings"; project: ProjectMeta }
   | { kind: "preamble"; project: ProjectMeta }
-  | { kind: "teardown"; project: ProjectMeta; action: "archive" | "delete" }
-  | { kind: "delete-project"; project: ProjectMeta };
-
+  | { kind: "teardown"; project: ProjectMeta; action: "archive" | "delete" };
 
 // --- clocks ---------------------------------------------------------------
 
@@ -1435,12 +1434,17 @@ const estimateItem = (item: SidebarItem): number => {
     case "empty":
     case "work-archived":
       return ROW_PX;
+    case "no-chats":
+      return NO_CHATS_PX;
     case "work-projects":
       return HEADING_PX + ROW_PX * 3;
     case "work-threads":
       return FOLD_GAP_PX + HEADING_PX + WORK_THREAD_PX * Math.min(item.items.length, SESSION_LIST_PAGE);
   }
 };
+
+/** The home's empty state: 24px in, its 20px title, 16px, the 28px New chat, 24px out. */
+const NO_CHATS_PX = 112;
 
 /** A Work thread's two lines (6px, 20px, 16px, 6px) and the list's 4px gap. */
 const WORK_THREAD_PX = 52;
@@ -1593,7 +1597,7 @@ export default function WorkspaceSessions({
     // A refusal says so (Work off on that host, a key that may not): never a click that does nothing.
     return port
       ? port.openProject(workspaceId, id.slice(LIFEOS_CARD.length)).catch((error: unknown) => {
-          void loadToast().then((toast) => toast.error(error instanceof Error ? error.message : String(error)));
+          void loadToast().then((toast) => toast.error("Couldn't open the project", { description: failureReason(error) || undefined }));
           return null;
         })
       : null;
@@ -1619,7 +1623,8 @@ export default function WorkspaceSessions({
   );
   // A linked project's name and archived state live on its settings home
   // (lib/projectHome.ts); the copies follow.
-  const rename = useCallback((id: string, name: string) => void renameLinked(id, name).catch(() => {}), []);
+  // A refusal is said in a toast, never swallowed.
+  const rename = useCallback((id: string, name: string) => void renameLinked(id, name).catch((err) => actionFailed("rename it", name, err)), []);
   const openSettings = useCallback(
     (project: ProjectMeta) => setDialog({ kind: "settings", project }),
     [],
@@ -1631,15 +1636,12 @@ export default function WorkspaceSessions({
   const teardownOrConfirm = useCallback(
     (project: ProjectMeta, action: "archive" | "delete") => {
       const at = projectHomeNow(project);
-      // A linked delete asks about the other copies; a linked archive whose
-      // home is offline says so instead of failing out of sight.
-      if (
-        (project.mode === "worktree" && project.branch) ||
-        (at.linked && (action === "delete" || at.blocked))
-      )
+      // Every delete asks through the one teardown dialog (a plain confirm
+      // when there is nothing to choose, its checks when there is); a linked
+      // archive whose home is offline says so instead of failing out of sight.
+      if (action === "delete" || (project.mode === "worktree" && project.branch) || (at.linked && at.blocked))
         setDialog({ kind: "teardown", project, action });
-      else if (action === "delete") setDialog({ kind: "delete-project", project });
-      else void archiveLinked(project, true).catch(() => {});
+      else void archiveLinked(project, true).catch((err) => actionFailed("archive it", project.name, err));
     },
     [],
   );
@@ -1652,7 +1654,7 @@ export default function WorkspaceSessions({
     [teardownOrConfirm],
   );
   const restore = useCallback(
-    (project: ProjectMeta) => void archiveLinked(project, false).catch(() => {}),
+    (project: ProjectMeta) => void archiveLinked(project, false).catch((err) => actionFailed("restore it", project.name, err)),
     [],
   );
   const toggleChats = useCallback(() => setChatsOpen((o) => !o), []);
@@ -1817,6 +1819,9 @@ export default function WorkspaceSessions({
         ) : null;
       case "work-archived":
         return archivedScope ? <WorkArchivedRow scope={archivedScope} onOpen={openSession} /> : null;
+      case "no-chats":
+        // The home holds no chat: one empty state, not a column that says nothing.
+        return <EmptyState title="No chats" action={{ label: "New chat", onClick: () => newChat(null) }} />;
       case "empty":
         return (
           <Button
@@ -1879,17 +1884,6 @@ export default function WorkspaceSessions({
           project={dialog.project}
           action={dialog.action}
           onClose={close}
-          onDone={close}
-        />
-      ) : null}
-      {dialog?.kind === "delete-project" ? (
-        <ConfirmDialog
-          title="Delete project"
-          body={`${dialog.project.name} and its threads are deleted for good.`}
-          confirmLabel="Delete"
-          danger
-          onCancel={close}
-          onConfirm={() => deleteProject(dialog.project.id)}
           onDone={close}
         />
       ) : null}

@@ -14,9 +14,10 @@ const FILES = ["src/app.ts", "src/main.ts", "README.md"].map((relative) => ({
   name: relative.slice(relative.lastIndexOf("/") + 1),
 }));
 
+const index = vi.hoisted(() => ({ fail: false }));
 vi.mock("../lib/fileIndex", () => ({
-  loadProjectFiles: () => Promise.resolve(FILES),
-  peekProjectFiles: () => FILES,
+  loadProjectFiles: () => (index.fail ? Promise.reject(new Error("ENOENT: rg not found at /usr/bin/rg")) : Promise.resolve(FILES)),
+  peekProjectFiles: () => (index.fail ? null : FILES),
   recentOpenedFiles: () => [],
   rankProjectFiles: (files: typeof FILES, query: string) =>
     files.filter((file) => file.relative.includes(query.trim())).map((file) => ({ ...file, positions: [] })),
@@ -60,5 +61,15 @@ describe("FilePicker", () => {
     expect(plain.hasAttribute("aria-activedescendant")).toBe(false);
     expect(plain.hasAttribute("aria-controls")).toBe(false);
     expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("says a listing that failed in its own words, never the host's raw text", async () => {
+    index.fail = true;
+    await act(async () => {
+      render(<FilePicker open cwd="/srv/app" onOpenFile={vi.fn()} onClose={vi.fn()} />);
+    });
+    expect(screen.getByText("Couldn't list this project's files")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("ENOENT");
+    index.fail = false;
   });
 });

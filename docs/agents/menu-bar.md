@@ -33,10 +33,15 @@ holds (`MenuState.editing`: Sidebar's ⌘B, Search's ⌘K, Go to File's ⌘P,
 Find's ⌘F), those rows lose their keys and Print… shows ⌘P
 ([work-editors.md](work-editors.md) "Who hears a key"). The in-app bar
 (chrome/MenuBarView.tsx, `inAppMenus`; it and the menu tree load from their own chunk,
-chrome/MenuBar.tsx, so no desktop window's first paint carries them) mounts only in web mode off macOS: a
+chrome/MenuBar.tsx, so no desktop window's first paint carries them) mounts in web mode off macOS and in
+a Windows desktop window (`menuBarPlace`): a
 desktop window on Linux has the native bar, and one on Windows has none
-(windows.ts hides it, so Alt reveals nothing; the menu's accelerators still
-run, Ctrl where the Mac has ⌘: [windows-build.md](windows-build.md)). It is a `menubar` named "Menu
+(windows.ts hides it; the menu's accelerators still
+run, Ctrl where the Mac has ⌘: [windows-build.md](windows-build.md)), so a lone Alt opens ours there. In a
+Windows window it lists every row but Quit and the roles (`inAppMenus(tree, 'desktop')`): the desktop-only
+rows a browser drops (Open File…, New Window, the terminal's) and Help with What's New and main's own rows,
+Show Logs, Force Reload and the profile, which it sends to main (`menu:run`, `runsInMain`; main runs those
+three ids and nothing else it is asked). Open File… is greyed while no Work file page is on screen. It is a `menubar` named "Menu
 bar": a lone Alt focuses its first title, Left, Right, Home and End move
 between the titles (one tab stop; while a menu is open Left and Right open
 its neighbour), and Escape with no menu open, or Alt again, closes it and

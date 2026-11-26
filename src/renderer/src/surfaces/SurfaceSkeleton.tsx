@@ -16,11 +16,11 @@ import { COLUMN_MAX_CLASS } from "./transcriptOutlineModel";
 export type SkeletonKind =
   /** A full page with a list column beside its content (Inbox, Notes; `lines` 3 for Notes): the title strip, the list's head and rows, the detail. */
   | "page"
-  /** Search: the title strip, then its result rows. */
+  /** Search: the title strip holding its field, then `count` result rows (none for a search opened empty). */
   | "search"
   /** A page in the one 672px column under the title strip (Settings, Stats). */
   | "column"
-  /** The Accounts page: the column with account rows (a dot, the name over its line, two usage bars, a switch). */
+  /** The Accounts page: its title over its sections' rows, each as tall as the row that lands (the usage bars' bones are the page's own, once its chunk is here). */
   | "accounts"
   /** A pane of text lines (the editor, release notes, an issue body). */
   | "pane"
@@ -42,8 +42,6 @@ const PROSE = [72, 48, 88, 36, 64, 56];
 export const PAGE_LIST_WIDTH = 280;
 /** The 40px title strip every full surface opens with (Search, Inbox, Notes, the pages). */
 const STRIP = "h-10 shrink-0 border-b border-border";
-/** A Switch's box (components/ui/switch.tsx), for a skeleton standing in for one. */
-const SWITCH_SKELETON = "h-[18px] w-8 rounded-full";
 const HUNK = [64, 40, 76, 52, 30];
 /** The most lines a diff's skeleton draws: past them the fold is already a screen's worth. */
 export const DIFF_ROWS_SKELETON_CAP = 8;
@@ -131,8 +129,8 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
               {listOf(8, lines)}
             </div>
             {/* Padded inside the detail's 1,024px column, as the Inbox's and Notes' details are. */}
-            <div data-skeleton-detail className="min-w-0 flex-1">
-              <div className="mx-auto w-full max-w-5xl px-8 pt-8">
+            <div data-skeleton-detail className="@container/detail min-w-0 flex-1">
+              <div className="mx-auto w-full max-w-5xl px-4 pt-8 @xl/detail:px-8">
                 <TextLine size={12} className="w-32" />
                 <span className="mt-2 flex h-6 items-center">
                   <Skeleton className="h-4 w-64 max-w-full" />
@@ -146,14 +144,64 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
         </>
       );
     case "search":
+      // The strip is the search's field, 12px in as the field is; rows only
+      // where a query is set, since an empty search lands as the field alone.
+      return (
+        <>
+          <div data-skeleton-strip className={`${STRIP} flex items-center px-3`}>
+            <Skeleton data-skeleton-field className="h-8 flex-1 rounded-lg" />
+          </div>
+          {count > 0 ? <div className="flex flex-col p-1">{rowsOf(count, 1)}</div> : null}
+        </>
+      );
+    case "accounts":
+      // The page's frame and title, then its sections' rows where the page
+      // draws them (aliax/views/accounts/usageSkeleton.tsx AccountsSkeleton):
+      // no line, since the page has none. The usage bars' bones stay with the
+      // page's chunk (6 kB the first paint does not carry); an empty box their
+      // height holds each row's, so nothing moves when the chunk lands.
       return (
         <>
           <div data-skeleton-strip className={STRIP} />
-          <div className="flex flex-col p-1">{rowsOf(count, 1)}</div>
+          <div data-skeleton-scroller className={PAGE_SCROLLER}>
+            <div data-skeleton-column className={`mx-auto w-full p-6 ${PAGE_WIDTH.table}`}>
+              <span className="flex h-6 items-center">
+                <Skeleton className="h-4 w-32" />
+              </span>
+              <div className="@container/accounts mt-6 flex flex-col gap-6">
+                {[0, 1, 2].map((section) => (
+                  <div key={section} className="flex flex-col">
+                    <div className="flex h-5 items-center">
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                    <div className="mt-2 flex flex-col">
+                      {[0, 1].map((row) => (
+                        <div key={row} data-slot="account-row-skeleton" className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+                          <Skeleton className="size-2 rounded-full" />
+                          <div className="flex flex-1 flex-col gap-0.5">
+                            <span className="flex h-5 items-center">
+                              <Skeleton className="h-3.5 w-36" />
+                            </span>
+                            <span className="flex h-4 items-center">
+                              <Skeleton className="h-3 w-24" />
+                            </span>
+                          </div>
+                          <span aria-hidden data-skeleton-bars className="order-last h-14 basis-full @3xl/accounts:order-none @3xl/accounts:basis-auto" />
+                          <span className="flex items-center gap-2">
+                            <Skeleton data-skeleton-switch className="h-[18px] w-8 rounded-full" />
+                            <Skeleton className="size-7 rounded-md" />
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </>
       );
     case "column":
-    case "accounts":
       // components/page.tsx's frame: the strip, then Page's column in the
       // page's own scroller, with its title, its line and rows in the shape
       // of the page it stands in for.
@@ -161,38 +209,18 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
         <>
           <div data-skeleton-strip className={STRIP} />
           <div data-skeleton-scroller className={PAGE_SCROLLER}>
-            <div data-skeleton-column className={`mx-auto w-full p-6 ${PAGE_WIDTH[kind === "accounts" ? "table" : "column"]}`}>
+            <div data-skeleton-column className={`mx-auto w-full p-6 ${PAGE_WIDTH.column}`}>
               <Skeleton className="h-4 w-32" />
               <Skeleton className="mt-2 h-3 w-64 max-w-full" />
-              {kind === "accounts" ? (
-                <div className="mt-6">
-                  <Skeleton className="h-3 w-24" />
-                  <div className="mt-2 flex flex-col">
-                    {Array.from({ length: count }, (_, i) => (
-                      <div key={i} data-skeleton-row className="flex items-center gap-3 py-3">
-                        <Skeleton className="size-2 rounded-full" />
-                        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                          <Skeleton className="h-3.5 w-32" />
-                          <Skeleton className="h-3 w-48 max-w-full" />
-                        </div>
-                        <Skeleton data-skeleton-bar className="h-6 w-[72px]" />
-                        <Skeleton data-skeleton-bar className="h-6 w-[72px]" />
-                        <Skeleton data-skeleton-switch className={SWITCH_SKELETON} />
-                      </div>
-                    ))}
+              <div className="mt-6 flex flex-col">
+                {Array.from({ length: count }, (_, i) => (
+                  <div key={i} className="flex items-center gap-3 py-3">
+                    <Skeleton className="h-3.5 w-32" />
+                    <span className="flex-1" />
+                    <Skeleton className="h-8 w-40 rounded-lg" />
                   </div>
-                </div>
-              ) : (
-                <div className="mt-6 flex flex-col">
-                  {Array.from({ length: count }, (_, i) => (
-                    <div key={i} className="flex items-center gap-3 py-3">
-                      <Skeleton className="h-3.5 w-32" />
-                      <span className="flex-1" />
-                      <Skeleton className="h-8 w-40 rounded-lg" />
-                    </div>
-                  ))}
-                </div>
-              )}
+                ))}
+              </div>
             </div>
           </div>
         </>

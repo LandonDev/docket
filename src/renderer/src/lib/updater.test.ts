@@ -248,7 +248,16 @@ describe("runUpdateFlow", () => {
 
     expect(mocks.ask).toHaveBeenCalledOnce();
     expect(mocks.ask.mock.calls[0][0]).toContain("Download it now?");
+    // The feed's notes are What's New's, never pasted into the ask.
+    expect(mocks.ask.mock.calls[0][0]).not.toContain("Notes");
     expect(result.phase).toBe("downloading");
+  });
+
+  it("words a failed check in its own sentence, never electron-updater's text", async () => {
+    mocks.check.mockResolvedValue(status({ phase: "error", error: "net::ERR_INTERNET_DISCONNECTED", latest: null }));
+    const { runUpdateFlow } = await import("./updater");
+    await runUpdateFlow(true);
+    expect(mocks.message.mock.calls[0][0]).toBe("Couldn't check for updates.\n\nDocket could not reach the update feed.");
   });
 
   it("offers to download a release again after a failed install, on a manual check", async () => {
@@ -277,7 +286,7 @@ describe("runUpdateFlow", () => {
     await runUpdateFlow(false);
     expect(mocks.message).not.toHaveBeenCalled();
     await runUpdateFlow(true);
-    expect(mocks.message).toHaveBeenCalledWith("You're on the latest release.", { title: "Docket" });
+    expect(mocks.message).toHaveBeenCalledWith("Docket is up to date.", { title: "Docket" });
   });
 
   it("leaves a running download alone", async () => {
@@ -317,5 +326,18 @@ describe("watchUpdateStatus", () => {
 
     expect(seen).toEqual(["ready"]);
     expect(mocks.remember).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateFailureWords", () => {
+  it("turns electron-updater's text into three plain sentences and keeps main's worded ones", async () => {
+    const { updateFailureWords, FEED_UNREACHABLE, DOWNLOAD_DAMAGED, UPDATE_FAILED } = await import("./updater");
+    expect(updateFailureWords("net::ERR_CONNECTION_RESET")).toBe(FEED_UNREACHABLE);
+    expect(updateFailureWords("HttpError: 404 \"method: GET url: https://github.com/…\"")).toBe(FEED_UNREACHABLE);
+    expect(updateFailureWords("sha512 checksum mismatch, expected abc, got def")).toBe(DOWNLOAD_DAMAGED);
+    expect(updateFailureWords("Error: EPERM: operation not permitted, rename '/Users/x/Library/Caches'")).toBe(UPDATE_FAILED);
+    expect(updateFailureWords(undefined)).toBe(UPDATE_FAILED);
+    expect(updateFailureWords("The downloaded update failed its signature check.")).toBe("The downloaded update failed its signature check.");
+    expect(updateFailureWords("weird", FEED_UNREACHABLE)).toBe(FEED_UNREACHABLE);
   });
 });

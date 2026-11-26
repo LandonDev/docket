@@ -4,7 +4,8 @@ import { MAX_PREVIEW_LINES } from "../lib/harness/preview";
 import { displayPath, resolveWorkspacePath } from "../lib/paths";
 import { RenderCache, cacheKey } from "../lib/renderCache";
 import type { ToolPreview, ToolPreviewLine } from "../lib/session";
-import { Counts } from "./rail/changeRows";
+import { StatusMark } from "../components/ui/status";
+import { Counts, FileName } from "./rail/changeRows";
 import { FileTypeIcon } from "./FileTypeIcon";
 
 type Status = "pending" | "accepted" | "rejected";
@@ -65,8 +66,9 @@ type Props = {
 };
 
 /** The file an edit asks to change, before the person approves it: one
- *  header row (the file, its counts, "Rejected" once refused) over the
- *  diff's lines. A pending edit says nothing; the approval under it does. */
+ *  header row (the file's name, its folder muted and cut first, as a
+ *  Changes row says it; its counts; Stopped's "Rejected" once refused) over
+ *  the diff's lines. A pending edit says nothing; the approval under it does. */
 export function FilePreview({ preview, status, cwd, onOpenFile }: Props) {
   const path = preview.path;
   const filePath = path ? (resolveWorkspacePath(path, cwd) ?? path) : undefined;
@@ -93,21 +95,18 @@ export function FilePreview({ preview, status, cwd, onOpenFile }: Props) {
         {filePath && onOpenFile ? (
           <Button
             variant="link"
-            className="h-auto min-w-0 shrink justify-start p-0 font-mono text-xs font-normal"
+            className="h-auto min-w-0 shrink justify-start p-0 font-normal"
+            aria-label={label}
             onClick={() => onOpenFile(filePath)}
           >
-            <span className="truncate">{label}</span>
+            <FileName relative={label} />
           </Button>
         ) : (
-          <span className="min-w-0 truncate font-mono text-xs text-foreground">
-            {label}
-          </span>
+          <FileName relative={label} />
         )}
         <span className="ms-auto flex shrink-0 items-center gap-2 text-xs">
           <Counts additions={added} deletions={deleted} />
-          {status === "rejected" ? (
-            <span className="font-sans text-muted-foreground">Rejected</span>
-          ) : null}
+          {status === "rejected" ? <StatusMark state="stopped" word="Rejected" /> : null}
         </span>
       </div>
       {showDiff ? (

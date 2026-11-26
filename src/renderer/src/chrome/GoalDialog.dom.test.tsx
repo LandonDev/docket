@@ -51,7 +51,8 @@ describe("GoalDialog", () => {
     expect(screen.getByRole("dialog").getAttribute("aria-busy")).toBe("true");
     fireEvent.keyDown(document.body, { key: "Escape" });
     await act(async () => refuse(new Error("not connected")));
-    expect(screen.getByText("not connected").className).toContain("text-destructive");
+    // The link's bare word, worded (dialogErrorWords).
+    expect(screen.getByText("Its host is not connected. Try again once it is back.").className).toContain("text-destructive");
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 

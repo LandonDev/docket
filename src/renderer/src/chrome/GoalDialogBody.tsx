@@ -1,3 +1,4 @@
+import { dialogErrorWords } from "../lib/dialogErrorWords";
 import { useEffect, useState } from "react";
 import { BusyLabel, Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
@@ -5,7 +6,7 @@ import { Textarea } from "../components/ui/textarea";
 import { goalEnterSubmits, goalStateOf } from "../lib/goalControl";
 import type { ThreadGoal } from "../lib/session";
 import { clearGoal, setGoal } from "../lib/tcserver/commands";
-import { DialogFooter, ErrorLine, errorText } from "./ConfirmDialog";
+import { DialogFooter, ErrorLine } from "./ConfirmDialog";
 import { goalDialog, useGoalDialog } from "./GoalDialog";
 import { ModalBody, ModalPanel } from "./Modal";
 
@@ -51,7 +52,7 @@ export function GoalDialog({
       close();
     } catch (err) {
       // A refused RPC writes no row on the thread: say it here.
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
     } finally {
       setRunning(null);
     }

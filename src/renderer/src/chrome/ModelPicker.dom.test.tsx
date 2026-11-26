@@ -260,6 +260,21 @@ describe("ModelPicker", () => {
     expect(onPick).toHaveBeenCalledTimes(1);
   });
 
+  it("the menu's Model picker opens it wherever the focus sits, the terminal and a select included", async () => {
+    seed("claude", [{ id: "claude-fable-5-1", label: "Fable 5.1", reasoning: EFFORTS, context: 1_000_000 }]);
+    render(
+      <>
+        <div className="docket-terminal" tabIndex={0} data-testid="term" />
+        <ModelPicker hotkeys harness="claude" model="claude:claude-fable-5-1" onChange={() => {}} />
+      </>,
+    );
+    act(() => screen.getByTestId("term").focus());
+    await act(async () => {
+      window.dispatchEvent(new Event("open_model_picker"));
+    });
+    expect(screen.getByRole("dialog", { name: "Model picker" })).toBeTruthy();
+  });
+
   it("says nothing it cannot know", async () => {
     seed("codex", [{ id: "gpt-a", label: "A", reasoning: ["low"], speedTiers: ["priority"] }]);
     picker("codex", "codex:gpt-a");

@@ -24,8 +24,10 @@ import { captureWindowRef } from './captureWindow'
 export const CAPTURE_WIDTH = 680
 /** index.css's `--popover` per theme as the window's backing (capture.test.ts holds them equal): oklch(0.24 0.004 270), white. */
 export const CAPTURE_BACKING = { dark: '#1e1f21', light: '#ffffff' } as const
-/** The window's height before the page says how tall it is, and its bounds after. */
-export const CAPTURE_MIN_HEIGHT = 112
+/** The window's height before the page says how tall it is, and its bounds after. The least is the empty page's own
+ *  height (a 44px field of one 22px line over the 48px foot; measured in the capture page's shot), so the empty window
+ *  shows no band under its foot; each line he types adds 22px. */
+export const CAPTURE_MIN_HEIGHT = 92
 export const CAPTURE_MAX_HEIGHT = 560
 /** Its top, as a share of the display's work area from the top: where Spotlight puts its field. */
 const TOP_SHARE = 0.22

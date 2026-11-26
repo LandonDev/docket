@@ -672,6 +672,32 @@ export function clampSashBoundary(
   return before + Math.min(pair - min, Math.max(min, boundary - before));
 }
 
+/** The least a side-by-side pane is drawn at: under it a composer's row is cut to glyphs. */
+export const PANE_FLOOR = 240;
+
+/**
+ * The tree as a pane area `widthPx` wide draws it: a side-by-side group
+ * whose narrowest pane would fall under `PANE_FLOOR` is laid top to bottom
+ * (the same panes, sizes and sash), and comes back side by side with the
+ * room. Nothing is saved; a tree with room comes back as it went in.
+ */
+export function stackCramped(node: LayoutNode, widthPx: number): LayoutNode {
+  if (node.type === "leaf" || widthPx <= 0) return node;
+  const row = node.dir === "right";
+  const stack = row && Math.min(...node.sizes) * widthPx < PANE_FLOOR;
+  const children = node.children.map((child, i) => stackCramped(child, row && !stack ? (node.sizes[i] ?? 0) * widthPx : widthPx));
+  if (!stack && children.every((child, i) => child === node.children[i])) return node;
+  return { ...node, dir: stack ? "down" : node.dir, children };
+}
+
+/** Which groups `stackCramped` stacks at `widthPx`, as one word: two widths that draw alike share it. */
+export function stackedKey(node: LayoutNode, widthPx: number): string {
+  const drawn = stackCramped(node, widthPx);
+  const ids = (was: LayoutNode, now: LayoutNode): string[] =>
+    was.type === "leaf" || now.type === "leaf" ? [] : [...(was.dir === now.dir ? [] : [was.id]), ...was.children.flatMap((child, i) => ids(child, now.children[i]))];
+  return ids(node, drawn).join(" ");
+}
+
 export function leafIds(node: LayoutNode): string[] {
   if (node.type === "leaf") return [node.id];
   return node.children.flatMap(leafIds);

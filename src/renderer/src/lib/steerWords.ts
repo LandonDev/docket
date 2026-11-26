@@ -21,3 +21,16 @@ export function steerTip(stamp: SteerStamp): string {
   const word = stamp.state === "queued" ? "Queued" : steerWord(stamp);
   return `${word} at ${clock(stamp.ts)}${stamp.state === "received" && stamp.how === "next-turn" ? ", as its own turn" : ""}`;
 }
+
+/**
+ * Why a steer (or a message, once the agent has settled) from the agent's sheet did not go, in plain words: the
+ * cause worded once, never the host's raw line (docs/DESIGN.md "Typography and text hierarchy").
+ */
+export function steerFailureWords(error: unknown, live: boolean): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const verb = live ? "Couldn't steer" : "Couldn't send";
+  if (/not connected|connection closed|socket closed|^closed\.?$|did not answer|timed out|no answer/i.test(raw)) return `${verb}. Its computer isn't answering.`;
+  if (/^forbidden\b|not allowed|may not|permission/i.test(raw)) return `${verb}. This computer may not message it.`;
+  if (/not running|no live harness|no (active |running )?turn|already (ended|finished|stopped)|has ended|unknown (session|thread)|no such (session|thread)|not found/i.test(raw)) return live ? `${verb}. It has already finished.` : `${verb}. This agent is gone.`;
+  return `${verb}. Try again.`;
+}

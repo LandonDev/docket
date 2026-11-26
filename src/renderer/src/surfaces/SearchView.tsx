@@ -28,6 +28,7 @@ import {
   groupHits,
   hitsFromContentMatches,
   hitsFromFileRanks,
+  plainSnippet,
   searchConversationTitles,
   searchRecentProjects,
   searchSessionMessages,
@@ -38,7 +39,8 @@ import { usePageEscape } from "../lib/pageEscape";
 import type { Environment, EnvironmentStatus } from "../lib/connection/types";
 import {
   browseHits,
-  hostTimingLabel,
+  hostTimingWord,
+  offlineLine,
   hostsMatching,
   mergeCrossHost,
   noteHits,
@@ -70,6 +72,7 @@ import { environmentOfCwd, hostOfCwd } from "../lib/tcserver/projects";
 import { sessionStore, useServerSessions, useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { EmptyState } from "./SurfaceSkeleton";
+import { Tip } from "../components/tip";
 
 /**
  * Search over every connected host at once. The field takes the words and
@@ -529,10 +532,7 @@ export function SearchView({
             action={{ label: "Clear filters", onClick: clearFilters }}
           />
         ) : failed && hits.length === 0 ? (
-          <EmptyState
-            title="Nothing could be searched"
-            line={progress.find((row) => row.state === "failed" || row.state === "skipped")?.detail}
-          />
+          <EmptyState title="No host answered" line={offlineLine(progress) ?? undefined} />
         ) : noResults ? (
           <EmptyState
             title="No results"
@@ -564,7 +564,8 @@ function isOnline(env: Environment, status: EnvironmentStatus | undefined): bool
   return status?.transport === "open";
 }
 
-/** How long each host took, muted, at the foot; a skipped or failed host says why. */
+/** Each host at the foot: its name, then 4px on its time muted, "offline",
+ *  or "failed" in red with the raw reason on hover alone. */
 export function HostFooter({ progress }: { progress: HostProgress[] }) {
   return (
     <div
@@ -575,8 +576,15 @@ export function HostFooter({ progress }: { progress: HostProgress[] }) {
       <Facts
         className="flex-nowrap"
         parts={progress.map((row) => (
-          <span key={row.environmentId} data-host-state={row.state} className={row.state === "failed" ? "text-destructive" : undefined}>
-            {hostTimingLabel(row)}
+          <span key={row.environmentId} data-host-state={row.state} className="inline-flex items-baseline gap-1">
+            <span className="text-foreground">{row.name}</span>
+            {row.state === "failed" && row.detail ? (
+              <Tip label={<span className="min-w-0 break-words">{row.detail}</span>}>
+                <span className="text-destructive">{hostTimingWord(row)}</span>
+              </Tip>
+            ) : (
+              <span className={row.state === "failed" ? "text-destructive" : undefined}>{hostTimingWord(row)}</span>
+            )}
           </span>
         ))}
       />
@@ -641,7 +649,7 @@ function ResultList({
                 {row.meta}
               </span>
             ) : null}
-            {(hit.kind === "file" || hit.kind === "content") && hit.more ? (
+            {(hit.kind === "file" || hit.kind === "content" || hit.kind === "message") && hit.more ? (
               <span data-more className="shrink-0 text-xs text-muted-foreground tabular-nums">
                 +{hit.more} more
               </span>
@@ -698,7 +706,7 @@ function rowCopy(hit: AppSearchHit, query: string): RowCopy {
     const notes = hit.role === "notes";
     return {
       icon: notes ? <StickyNote className="size-3.5" /> : <MessageSquare className="size-3.5" />,
-      title: <MatchText text={hit.preview || hit.title} query={query} />,
+      title: <MatchText text={plainSnippet(hit.preview) || hit.title} query={query} />,
       meta: hit.title,
       mono: false,
     };
@@ -725,7 +733,7 @@ function rowCopy(hit: AppSearchHit, query: string): RowCopy {
   if (hit.kind === "note") {
     return {
       icon: <StickyNote className="size-3.5" />,
-      title: <MatchText text={hit.preview || hit.title} query={query} />,
+      title: <MatchText text={plainSnippet(hit.preview) || hit.title} query={query} />,
       meta: hit.preview ? hit.title : "",
       mono: false,
     };

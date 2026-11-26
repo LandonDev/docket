@@ -18,7 +18,7 @@ seedPreviewThreads([meta], {
 });
 
 export function AgentDetailPreview({ failed = false }: { failed?: boolean }) {
-  return <AgentDetail agentId={agentId} parentCwd={previewCwd} onClose={noop} onOpenSession={noop} initialSettled initialSteer={failed ? { text: "Check the north trail too", failure: "Couldn't steer: The box did not answer." } : undefined} />;
+  return <AgentDetail agentId={agentId} parentCwd={previewCwd} onClose={noop} onOpenSession={noop} initialSettled initialSteer={failed ? { text: "Check the north trail too", failure: "Couldn't steer. Its computer isn't answering." } : undefined} />;
 }
 
 export default [

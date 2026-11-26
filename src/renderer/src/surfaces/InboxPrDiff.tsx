@@ -19,58 +19,10 @@ import {
   type PrDiffLine,
 } from "../lib/prDiff";
 import { EmptyState } from "./SurfaceSkeleton";
+import { DiffBody } from "./DiffBody";
+import type { DiffRow } from "./diffRows";
 import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
 import { cn } from "../lib/cn";
-
-const MAX_DISPLAY_LINES = 2000;
-
-const KEYWORDS = new Set([
-  "import",
-  "export",
-  "from",
-  "type",
-  "interface",
-  "const",
-  "let",
-  "var",
-  "function",
-  "return",
-  "if",
-  "else",
-  "for",
-  "while",
-  "switch",
-  "case",
-  "class",
-  "struct",
-  "enum",
-  "extends",
-  "implements",
-  "new",
-  "async",
-  "await",
-  "try",
-  "catch",
-  "throw",
-  "true",
-  "false",
-  "null",
-  "undefined",
-  "this",
-  "in",
-  "of",
-  "as",
-  "is",
-  "void",
-  "public",
-  "private",
-  "protected",
-  "static",
-  "default",
-  "package",
-  "def",
-  "func",
-]);
 
 type Props = {
   diff: GithubPrDiff;
@@ -116,7 +68,7 @@ export function InboxPrDiff({ diff }: Props) {
       </div>
       {diff?.truncated ? (
         <p className="text-xs text-muted-foreground">
-          Too large to show in full; the files appear without their diffs.
+          Too large to show the diffs
         </p>
       ) : null}
       <div className="flex flex-col gap-2">
@@ -188,126 +140,33 @@ function PrFileBody({ file }: { file: PrDiffFile }) {
   if (file.lines.length === 0) {
     return (
       <p className="border-t border-border px-3 py-3 text-xs text-muted-foreground">
-        No textual diff
+        No text changes
       </p>
     );
   }
-  const lines = file.lines.slice(0, MAX_DISPLAY_LINES);
-  const clipped = file.lines.length > lines.length;
+  // The transcript's own diff: the same lines, tints, numbers, gaps between hunks and cap.
   return (
-    <div className="inbox-pr-diff overflow-x-auto border-t border-border">
-      {lines.map((line, index) => (
-        <DiffLineRow
-          key={`${line.kind}-${line.oldNumber ?? ""}-${line.newNumber ?? ""}-${index}`}
-          line={line}
-        />
-      ))}
-      {clipped ? (
-        <p className="px-3 py-2 text-xs text-muted-foreground">
-          Diff truncated after {MAX_DISPLAY_LINES.toLocaleString()} lines
-        </p>
-      ) : null}
+    <div className="inbox-pr-diff border-t border-border">
+      <DiffBody rows={prDiffRows(file.lines)} inset />
     </div>
   );
 }
 
-function DiffLineRow({ line }: { line: PrDiffLine }) {
-  if (line.kind === "hunk") {
-    return (
-      <div className="bg-foreground/5 px-3 py-0.5 font-mono text-xs text-muted-foreground">
-        {line.text}
-      </div>
-    );
-  }
-  const bg =
-    line.kind === "add"
-      ? "bg-success/10"
-      : line.kind === "del"
-        ? "bg-destructive/10"
-        : "";
-  const bar =
-    line.kind === "add"
-      ? "bg-success"
-      : line.kind === "del"
-        ? "bg-destructive"
-        : "bg-transparent";
-  const mark = line.kind === "add" ? "+" : line.kind === "del" ? "−" : " ";
-  const markColor =
-    line.kind === "add"
-      ? "text-success"
-      : line.kind === "del"
-        ? "text-destructive"
-        : "text-transparent";
-
-  return (
-    <div className={`relative flex min-w-max items-baseline ${bg}`}>
-      <span className={`absolute inset-y-0 left-0 w-0.5 ${bar}`} />
-      <span className="w-10 shrink-0 pr-1 text-right font-mono text-xs tabular-nums text-muted-foreground">
-        {line.oldNumber ?? ""}
-      </span>
-      <span className="w-10 shrink-0 pr-1 text-right font-mono text-xs tabular-nums text-muted-foreground">
-        {line.newNumber ?? ""}
-      </span>
-      <span className={`w-3 shrink-0 text-center font-mono text-xs font-bold ${markColor}`}>
-        {mark}
-      </span>
-      <span className="whitespace-pre pr-3 font-mono text-xs leading-5">
-        {highlight(line.text, line.kind === "context")}
-      </span>
-    </div>
-  );
-}
-
-/** A pull request's code. In light it reads as the transcript's diff does:
- *  keywords in foreground, the rest muted, a context line muted throughout.
- *  Dark keeps the look it had, keywords green, type names amber and context
- *  dimmed, until the owner asks for the change there; the tokens carry both
- *  (index.css "Held in dark"). */
-function highlight(text: string, dimmed: boolean) {
-  const dim = dimmed ? "opacity-(--diff-context-dim)" : "";
-  const trimmed = text.trimStart();
-  if (
-    trimmed.startsWith("//") ||
-    trimmed.startsWith("///") ||
-    trimmed.startsWith("#")
-  ) {
-    return <span className={`text-muted-foreground ${dim}`}>{text}</span>;
-  }
-
-  const parts: { text: string; color: string }[] = [];
-  const regex = /\b([A-Za-z_][A-Za-z0-9_]*)\b/g;
-  let last = 0;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text))) {
-    if (match.index > last) {
-      parts.push({ text: text.slice(last, match.index), color: "" });
+/** A file's patch lines as the diff body's rows: a hunk's head is the gap
+ *  between hunks (none before the first), context is `ctx`. */
+export function prDiffRows(lines: readonly PrDiffLine[]): DiffRow[] {
+  const rows: DiffRow[] = [];
+  for (const line of lines) {
+    if (line.kind === "hunk") {
+      if (rows.length > 0) rows.push({ type: "gap", text: "" });
+      continue;
     }
-    const token = match[1];
-    const color = KEYWORDS.has(token)
-      ? dimmed
-        ? "text-[var(--diff-context-strong,var(--pr-code-keyword))]"
-        : "text-(--pr-code-keyword)"
-      : /^[A-Z]/.test(token)
-        ? dimmed
-          ? "text-[var(--diff-context-strong,var(--pr-code-type))]"
-          : "text-(--pr-code-type)"
-        : "";
-    parts.push({ text: token, color });
-    last = match.index + token.length;
+    rows.push({
+      type: line.kind === "context" ? "ctx" : line.kind,
+      oldNo: line.oldNumber ?? undefined,
+      newNo: line.newNumber ?? undefined,
+      text: line.text,
+    });
   }
-  if (last < text.length) parts.push({ text: text.slice(last), color: "" });
-
-  return (
-    <span className={`text-muted-foreground ${dim}`}>
-      {parts.map((part, index) =>
-        part.color ? (
-          <span key={index} className={part.color}>
-            {part.text}
-          </span>
-        ) : (
-          <span key={index}>{part.text}</span>
-        ),
-      )}
-    </span>
-  );
+  return rows;
 }

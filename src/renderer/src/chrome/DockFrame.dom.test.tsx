@@ -71,18 +71,18 @@ describe("DockFrame drag", () => {
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 500 });
     expect(document.documentElement.classList.contains("is-resizing")).toBe(true);
     expect(document.documentElement.classList.contains("is-reordering")).toBe(true);
-    // 0.7 of 800 is the bound, 560; the pointer goes well past it, rising fast.
+    // The bound at 800 high is 488: the main view keeps its 312px (clampDockSize); the pointer goes well past it, rising fast.
     handle.dispatchEvent(pointer("pointermove", { pointerId: 1, clientY: 100 }, 1000));
     handle.dispatchEvent(pointer("pointermove", { pointerId: 1, clientY: 0 }, 1020));
     handle.dispatchEvent(pointer("pointerup", { pointerId: 1 }, 1021));
     const [from, to, options] = vi.mocked(animate).mock.calls.at(-1)! as unknown as [number, number, { velocity: number; stiffness: number }];
-    expect(from).toBeGreaterThan(560);
-    expect(to).toBe(560);
+    expect(from).toBeGreaterThan(488);
+    expect(to).toBe(488);
     // The size grows as the pointer rises: 100px up in 20ms is +5,000px/s.
     expect(options.velocity).toBeCloseTo(5000);
     expect(options.stiffness).toBe(700);
-    expect(onSizePaint).toHaveBeenLastCalledWith(560);
-    expect(onSizeCommit).toHaveBeenLastCalledWith(560);
+    expect(onSizePaint).toHaveBeenLastCalledWith(488);
+    expect(onSizeCommit).toHaveBeenLastCalledWith(488);
     expect(document.documentElement.classList.contains("is-resizing")).toBe(false);
   });
 

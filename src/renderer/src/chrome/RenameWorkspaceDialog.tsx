@@ -1,7 +1,8 @@
+import { dialogErrorWords } from "../lib/dialogErrorWords";
 import { useState } from "react";
 import { WORKSPACE_NAME_MAX } from "@shared/domain";
 import { Input } from "@renderer/components/ui/input";
-import { DialogFooter, ErrorLine, errorText } from "./ConfirmDialog";
+import { DialogFooter, ErrorLine } from "./ConfirmDialog";
 import { Modal, useModalClose } from "./Modal";
 import { renameWorkspace } from "../lib/tcserver/projects";
 
@@ -32,7 +33,7 @@ function RenameForm({ workspaceId, name, onClose, onRenamed, pending, setPending
       setPending(false);
       done();
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };

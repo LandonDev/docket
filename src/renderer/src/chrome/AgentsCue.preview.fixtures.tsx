@@ -33,5 +33,5 @@ export default [
     name: "Pressed: the panel is open on Agents",
     props: { cue: agentsCue({ working: 2, waiting: 0, queued: 0, providers: ["claude"] }, false), pressed: true },
   },
-  { name: "No room for the panel", props: { cue: agentsCue({ working: 2, waiting: 0, queued: 0, providers: ["claude"] }, false), room: false } },
+  { name: "No room: hide the sidebar", props: { cue: agentsCue({ working: 2, waiting: 0, queued: 0, providers: ["claude"] }, false), room: false } },
 ];

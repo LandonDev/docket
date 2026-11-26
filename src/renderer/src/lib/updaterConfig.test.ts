@@ -53,8 +53,9 @@ describe("runUpdateFlow", () => {
       error: "network failed",
     });
     expect(message).toHaveBeenCalledOnce();
+    // Worded, never the raw text (which stays in the snapshot and main's log).
     expect(message).toHaveBeenCalledWith(
-      expect.stringContaining("network failed"),
+      "Couldn't check for updates.\n\nDocket could not reach the update feed.",
       expect.anything(),
     );
   });
@@ -68,7 +69,7 @@ describe("runUpdateFlow", () => {
       canApply: true,
     });
     expect(message).toHaveBeenCalledWith(
-      "You're on the latest release.",
+      "Docket is up to date.",
       expect.anything(),
     );
   });

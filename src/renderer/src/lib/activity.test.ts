@@ -62,7 +62,8 @@ describe("activityRows", () => {
       ["cron", "Scheduled wake-up (*/5 * * * *)", 50],
       ["shell", "Serve the app", 100],
       ["monitor", "tail the log", 200],
-      ["dev", "Dev server :5173", 300],
+      // A dev server by what it is, never its port (rightpanel-13).
+      ["dev", "bun run dev", 300],
       ["mac", "xcodebuild test", 400],
     ]);
     const byKind = Object.fromEntries(rows.map((r) => [r.kind, r]));

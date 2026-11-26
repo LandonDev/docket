@@ -1,3 +1,4 @@
+import { failureReason } from "../../lib/threadActionFailure";
 import { useEffect, useRef, useState } from "react";
 import { loadToast } from "../../components/ui/toaster";
 import { registerEditorFlusher } from "../../lib/editorFlush";
@@ -269,8 +270,8 @@ export function DiffSurface({
       const original = originalRef.current;
       if (original && original.getValue() !== head) original.setValue(head);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      void loadToast().then((toast) => toast.error(`Couldn't stage the change: ${message}`));
+      // "Word: Detail": what failed, then the host's reason worded (failureReason).
+      void loadToast().then((toast) => toast.error("Couldn't stage the change", { description: failureReason(error) || undefined }));
     } finally {
       setBusy(false);
       modifiedRef.current?.focus();

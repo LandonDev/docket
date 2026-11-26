@@ -11,6 +11,8 @@ import { emptyAccounts, type AccountPins } from '@server/shared/accounts'
 import { PreambleDialog } from './PreambleDialog'
 import { resetPlanSettingsForTests } from '../lib/tcserver/plans'
 
+const failed = vi.hoisted(() => [] as { verb: string; title: string; err: unknown }[])
+vi.mock('../lib/threadActionToast', () => ({ actionFailed: (verb: string, title: string, err: unknown) => failed.push({ verb, title, err }) }))
 // jsdom has no Web Animations; the settings sheet's scroll area asks for them.
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => []
 
@@ -70,6 +72,8 @@ let projectPlansFail = false
 let projectReviewFail = false
 // Every write refused, for a failed save.
 let writeFail = false
+// turnpass.set refused alone, after a create that went through.
+let turnPassFail = false
 
 // One object a state, as the registry keeps it: a hook that subscribes (useEnvironmentStatus) reads it on every render.
 const statuses = new Map<string, EnvironmentStatus>()
@@ -105,6 +109,8 @@ const linkFor = (slot: string): Link =>
       if (projectPlansFail && method === 'plans.get' && params.projectId) throw new Error('not connected')
       if (projectReviewFail && method === 'review.get' && params.projectId) throw new Error('unknown method')
       if (writeFail && !/\.(get|detect|list)$/.test(method) && method !== 'accounts.list') throw new Error('disk full')
+      if (turnPassFail && method === 'turnpass.set') throw new Error('forbidden: turnpass.set needs admin')
+      if (turnPassFail && method === 'project.create') return project(slot, { id: 'p_new', workspaceId: 'w_mac', name: String(params.name) })
       return null
     }
   }) as unknown as Link
@@ -117,6 +123,8 @@ beforeEach(() => {
   projectPlansFail = false
   projectReviewFail = false
   writeFail = false
+  turnPassFail = false
+  failed.length = 0
   resetPlanSettingsForTests()
   workspaceStore.reset()
   workspaceStore.hydrate([
@@ -424,6 +432,24 @@ describe('NewProjectDialog', () => {
     })
     await waitFor(() => expect(created).toHaveBeenCalledTimes(1))
     expect(writes().find((c) => c.method === 'project.create')?.params).toEqual({ workspaceId: 'w_mac', name: 'Search', mode: 'local' })
+  })
+})
+
+describe('NewProjectDialog when Completed turn does not save', () => {
+  it('closes on the created project, names the setting that did not save, and never offers Create again', async () => {
+    turnPassFail = true
+    const created = vi.fn()
+    render(<NewProjectDialog workspace={MAC_WS} onClose={() => {}} onCreated={created} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Local' }))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Search' } })
+    fireEvent.click(screen.getByRole('switch', { name: 'Checks' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    })
+    await waitFor(() => expect(created).toHaveBeenCalledTimes(1))
+    expect(writes().filter((c) => c.method === 'project.create')).toHaveLength(1)
+    expect(failed).toHaveLength(1)
+    expect(failed[0]).toMatchObject({ verb: 'save Completed turn', title: 'Search' })
   })
 })
 

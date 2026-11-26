@@ -227,7 +227,9 @@ const api = {
     onCommand: (cb: (id: string) => void): (() => void) =>
       on<[string]>('native:menu', (id) => cb(id)),
     /** What this window shows: main relabels the toggles and greys the idle rows. */
-    setState: (state: { open: string[]; disabled: string[]; editing?: string[] }): void => ipcRenderer.send('menu:state', state)
+    setState: (state: { open: string[]; disabled: string[]; editing?: string[] }): void => ipcRenderer.send('menu:state', state),
+    /** One of main's own rows (Show Logs, Force Reload, the profile), picked in the window's in-app bar on Windows. */
+    run: (id: string): void => ipcRenderer.send('menu:run', id)
   },
 
   dialog: {

@@ -1,3 +1,5 @@
+import { dialogErrorWords } from "../lib/dialogErrorWords";
+import { actionFailed } from "../lib/threadActionToast";
 import {
   useEffect,
   useState,
@@ -244,11 +246,13 @@ export function NewWorkspaceDialog({
     try {
       // This machine's folder dialog, or another host's folders over its link.
       const workspace = await createWorkspace(environmentId ?? registry.primary().environmentId, path);
-      if (passEnabled(pass)) await saveTurnPass(workspace.id, pass);
+      // Made is made: a setting the host then refuses is said by name, and
+      // the dialog closes on the workspace, so Add never makes a second one.
+      if (passEnabled(pass)) await saveTurnPass(workspace.id, pass).catch((err) => actionFailed("save Completed turn", workspace.name, err));
       setPending(false);
       closeThen(() => onCreated(workspace));
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };
@@ -312,12 +316,12 @@ export function NewProjectDialog({
           : {}),
       });
       if (pass && !samePass(pass, inherited)) {
-        await saveTurnPass(workspace.id, pass, project.id);
+        await saveTurnPass(workspace.id, pass, project.id).catch((err) => actionFailed("save Completed turn", project.name, err));
       }
       setPending(false);
       closeThen(() => onCreated(project));
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };
@@ -713,7 +717,7 @@ export function ProjectTeardownDialog({
       setPending(false);
       closeThen(onDone);
     } catch (err) {
-      setError(errorText(err));
+      setError(dialogErrorWords(err));
       setPending(false);
     }
   };

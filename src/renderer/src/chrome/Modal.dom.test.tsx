@@ -176,7 +176,8 @@ describe("ConfirmDialog", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    expect(await screen.findByText("disk full")).toBeTruthy();
+    // The dialog's one red-line wording (lib/dialogErrorWords.ts): a plain first word is raised.
+    expect(await screen.findByText("Disk full")).toBeTruthy();
     expect(screen.getByRole("alertdialog")).toBeTruthy();
   });
 });

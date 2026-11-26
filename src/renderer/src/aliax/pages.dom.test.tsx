@@ -11,6 +11,7 @@ import { registry } from '@renderer/lib/connection'
 import { accountsStore } from '@renderer/stores/accounts'
 import { meterFor } from '@shared/usageMeter'
 import { AccountsPage, StatsPage } from './pages'
+import { clockTime } from '@renderer/lib/duration'
 
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast: toasts }))
@@ -181,13 +182,13 @@ describe('AccountsPage', () => {
     current.updatedAt = 2
     current.given = { paused: false, giver: "Landon's MacBook", since }
     await act(async () => { link.push({ push: 'accounts', snapshot: current }) })
-    expect(screen.queryByText(/^Paused:/)).toBeNull()
+    expect(screen.queryByText(/^Paused/)).toBeNull()
     const paused = snapshot()
     paused.updatedAt = 3
     paused.given = { paused: true, giver: "Landon's MacBook", since }
     await act(async () => { link.push({ push: 'accounts', snapshot: paused }) })
     const day = new Date(since).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-    expect(screen.getByText(`Paused: Landon's MacBook has not been in touch since ${day}.`)).toBeTruthy()
+    expect(screen.getByText(`Paused since ${day}, when Landon's MacBook was last in touch`)).toBeTruthy()
   })
 
   it('the existing refresh reports each failed host once and leaves the control usable', async () => {
@@ -236,7 +237,9 @@ describe('AccountsPage', () => {
     await act(flush)
 
     expect(screen.getByRole('heading', { level: 1, name: 'Accounts' })).toBeTruthy()
-    expect(screen.getByText('The sign-ins and keys threads route through.')).toBeTruthy()
+    // The page explains nothing: the title stands alone, with no line under it.
+    expect(screen.queryByText('The sign-ins and keys threads route through.')).toBeNull()
+    expect(document.querySelector('[data-slot="page"] header p')).toBeNull()
     expect(screen.getByText('Claude Code')).toBeTruthy()
     expect(screen.getByText('Codex')).toBeTruthy()
     expect(screen.getByText('Main')).toBeTruthy()
@@ -409,6 +412,33 @@ describe('StatsPage', () => {
     expect(screen.getByText('No Claude Code or Codex session logs on this machine.')).toBeTruthy()
   })
 
+  it('counts a Reindex as it runs, and says a refused one in red with its reason on hover alone', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      render(<StatsPage />)
+      await act(flush)
+      await act(flush)
+      // The first pass is done: the poll has stopped.
+      await act(async () => { vi.advanceTimersByTime(2600) })
+      await act(flush)
+      let finish: (r: { ok: false; error: string }) => void = () => {}
+      aliax.statsReindex.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }) as never)
+      aliax.statsStatus.mockResolvedValue({ indexing: true, filesDone: 40, filesTotal: 900, rows: 10 })
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Reindex' })) })
+      await act(async () => { vi.advanceTimersByTime(2600) })
+      await act(flush)
+      expect(screen.getByText('Indexing 40 of 900 session logs')).toBeTruthy()
+      aliax.statsStatus.mockResolvedValue({ indexing: false, filesDone: 900, filesTotal: 900, rows: 10 })
+      await act(async () => { finish({ ok: false, error: 'SQLITE_BUSY: database is locked' }) })
+      await act(flush)
+      const line = screen.getByText("Couldn't reindex")
+      expect(line.className).toContain('text-destructive')
+      expect(document.body.textContent).not.toContain('SQLITE_BUSY')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('says how far indexing has got, and Reindex reindexes', async () => {
     aliax.statsStatus.mockResolvedValue({ indexing: true, filesDone: 120, filesTotal: 3400, rows: 0 })
     render(<StatsPage />)
@@ -429,8 +459,10 @@ describe('StatsPage', () => {
     render(<StatsPage />)
     await act(flush)
     await act(flush)
-    const line = screen.getByText(/exited \(1\)/)
+    const line = screen.getByText("Couldn't load the stats")
     expect(line.className).toContain('text-destructive')
+    // The worker's own words are the tooltip's alone.
+    expect(document.body.textContent).not.toContain('exited (1)')
     expect(line.closest('p')!.className).toContain('text-xs')
     expect(screen.queryByText('No Claude Code or Codex session logs on this machine.')).toBeNull()
     expect(screen.queryByText('Nothing to show yet')).toBeNull()
@@ -502,7 +534,9 @@ describe('StatsPage', () => {
     ])
     expect(screen.queryByText('Least headroom')).toBeNull()
     expect(screen.queryByText('Subscriptions')).toBeNull()
-    expect(screen.getByText(/^From 40 turns in your local session logs, updated /)).toBeTruthy()
+    // The window it counts, and the time alone today (dayTime), never a weekday on the day itself.
+    const line = screen.getByText(/^40 turns in the last 30 days, updated /)
+    expect(line.textContent).toBe(`40 turns in the last 30 days, updated ${clockTime(b.generatedAt)}`)
     expect(container.querySelectorAll('[data-chart]').length).toBe(6)
     expect(errors).not.toHaveBeenCalled()
   })

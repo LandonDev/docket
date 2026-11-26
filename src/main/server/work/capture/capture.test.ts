@@ -99,7 +99,7 @@ describe('filing', () => {
         }
       }
     ])
-    expect(captureState(ctx)).toEqual({ host: 'env_mac', last: 'purdue', homes: ['purdue', 'life'], connected: true })
+    expect(captureState(ctx)).toEqual({ host: 'env_mac', last: 'purdue', homes: ['purdue', 'life'], jobs: [{ sector: 'purdue', name: 'Purdue' }, { sector: 'life', name: 'Life' }], connected: true })
     expect(started).toEqual([])
   })
 
@@ -108,6 +108,13 @@ describe('filing', () => {
     await file({ text: 'https://example.com/article', sector: null })
     expect(sent[1]?.args).toMatchObject({ sector: 'life', title: 'https://example.com/article', source: { channel: 'Unsorted' } })
     expect(captureState(ctx).last).toBeNull()
+  })
+
+  it("names each job by its Work workspace's name, the first made where a sector has two, never a code workspace's", async () => {
+    db.prepare('UPDATE workspaces SET name = ? WHERE id = ?').run('Purdue Esports', 'ws-purdue')
+    db.prepare('INSERT INTO workspaces VALUES (?, ?, ?, ?, ?, ?)').run('ws-purdue-2', 'Purdue Later', join(root, 'Later'), 'work', 'purdue', 2)
+    const answer = (await capture.handle!(req('work.capture.state', {}), ctx, LOCAL)) as { result: unknown }
+    expect(CaptureStateSchema.parse(answer.result).jobs).toEqual([{ sector: 'purdue', name: 'Purdue Esports' }, { sector: 'life', name: 'Life' }])
   })
 
   /** Council round 8 (Opus rest 1, Sol rest 1): a connected flag alone made every down state read as a sign-out. */

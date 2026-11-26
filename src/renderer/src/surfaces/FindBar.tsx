@@ -125,7 +125,7 @@ export function FindBar(props: FindBarProps) {
               />
               <span
                 data-count={count.state}
-                className={cn("shrink-0 text-xs tabular-nums", missed ? "text-destructive" : "text-muted-foreground")}
+                className={cn("min-w-0 shrink truncate text-xs tabular-nums", missed ? "text-destructive" : "text-muted-foreground")}
               >
                 {count.text}
               </span>

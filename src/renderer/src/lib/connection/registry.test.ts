@@ -299,3 +299,15 @@ describe("environment zero", () => {
     expect("platform" in localEnvironment(4000, "")).toBe(false);
   });
 });
+
+describe("/ui's host name", () => {
+  it("takes the host's own name from its hello in the page address's place, once", async () => {
+    const { webEnvironment, webEnvironmentNamed } = await import("./registry");
+    const env = webEnvironment("wss://tc.example.com/ws", "tc.example.com");
+    const hello = { environmentId: "env_box", contract: 1, caps: [], name: "The box" };
+    expect(webEnvironmentNamed(env, hello)).toMatchObject({ name: "The box", routes: env.routes });
+    expect(webEnvironmentNamed({ ...env, name: "The box" }, hello)).toBeNull();
+    expect(webEnvironmentNamed(env, { ...hello, name: undefined })).toBeNull();
+    expect(webEnvironmentNamed(env, null)).toBeNull();
+  });
+});
