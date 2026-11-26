@@ -1,7 +1,9 @@
 import { digestLine, nowLine } from "@shared/work/digest";
 import type { TellRow } from "@shared/work/tell";
 import { clockTime, dayTime } from "../../lib/duration";
-import { jobNameNow } from "../jobName";
+import type { WorkspaceMeta } from "../../lib/tcserver/types";
+import { workspaceStore } from "../../lib/tcserver/workspaces";
+import { jobNameNow, jobNameOf } from "../jobName";
 import type { DigestView, MergedDay } from "./store";
 
 /**
@@ -144,6 +146,27 @@ export interface NowToast {
 /** A clock is never broken from its AM or PM: a narrow toast wraps "2:00 PM" whole ("Budget review starts at 2:00 PM"). */
 export const keepClock = (words: string): string => words.replace(/(\d) ([AP]M)\b/g, "$1\u00a0$2");
 
+/**
+ * A clash's detail with its jobs by their workspaces' names ("Wed Nov 26, 2:00 PM, Purdue Esports and Cosmic Games"):
+ * a host that wrote the sector's word ("Purdue", watch.ts before it took the name) is worded here, which mends a notice
+ * already saved. Its jobs are the line's last part, after its last comma; a part is renamed only where a Work workspace
+ * holds that sector, so a name a host already wrote stays as it is.
+ */
+export function tellDetail(row: Pick<TellRow, "kind" | "detail">, workspaces: readonly Pick<WorkspaceMeta, "kind" | "sector" | "name" | "environmentId">[] = workspaceStore.getSnapshot().workspaces): string | undefined {
+  const { detail } = row;
+  if (row.kind !== "clashes.new" || !detail) return detail;
+  const cut = detail.lastIndexOf(", ");
+  if (cut < 0) return detail;
+  const named = detail
+    .slice(cut + 2)
+    .split(" and ")
+    .map((part) => {
+      const sector = part.charAt(0).toLowerCase() + part.slice(1);
+      return /^[A-Z][a-z0-9_-]*$/.test(part) && workspaces.some((w) => w.kind === "work" && w.sector === sector) ? jobNameOf(sector, workspaces) : part;
+    });
+  return `${detail.slice(0, cut)}, ${named.join(" and ")}`;
+}
+
 /** One toast a row; past three, one toast for them all, which opens the list. */
 /**
  * A toast whose every thing is held work (a held act, a thread's request for his press): held is not Needs you, so it
@@ -153,7 +176,10 @@ export const heldOnly = (toast: Pick<NowToast, "rows">): boolean => toast.rows.l
 
 export function nowToasts(rows: readonly TellRow[]): NowToast[] {
   if (rows.length > FOLD_PAST) return [{ id: NOW_FOLD_TOAST, title: `${rows.length} things need you now`, rows: [...rows] }];
-  return rows.map((row) => ({ id: `${NOW_FOLD_TOAST}:${nameOf(row)}`, title: row.title, ...(row.detail ? { detail: row.detail } : {}), rows: [row] }));
+  return rows.map((row) => {
+    const detail = tellDetail(row);
+    return { id: `${NOW_FOLD_TOAST}:${nameOf(row)}`, title: row.title, ...(detail ? { detail } : {}), rows: [row] };
+  });
 }
 
 export interface SystemNotice {

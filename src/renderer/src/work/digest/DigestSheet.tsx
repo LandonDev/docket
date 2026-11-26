@@ -8,8 +8,9 @@ import { ROW_PRESS } from "../../components/ui/press";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { Skeleton } from "../../components/ui/skeleton";
 import { useEnvironments } from "../../lib/connection";
+import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { cn } from "../../lib/cn";
-import { emptyLine, listSections, rowWhen, unansweredLine } from "./notice";
+import { emptyLine, listSections, rowWhen, tellDetail, unansweredLine } from "./notice";
 import { useJobName } from "../jobName";
 import { routeOf } from "./open";
 import { loadDigest, type DigestView } from "./store";
@@ -25,6 +26,8 @@ const ROW = "-mx-2 w-[calc(100%+1rem)] flex-nowrap items-start gap-2 rounded-md 
 
 function RowBody({ row, now, day }: { row: TellRow; now: number; day: string }) {
   const jobName = useJobName();
+  // A clash's jobs by their workspaces' names, whatever word the host wrote.
+  const detail = tellDetail(row, useWorkspaces());
   return (
     <>
       {/* On the title's line: a 16px box on a 20px line. */}
@@ -36,7 +39,7 @@ function RowBody({ row, now, day }: { row: TellRow; now: number; day: string }) 
           {row.sector ? <span className="sr-only">{jobName(row.sector)}: </span> : null}
           {row.title}
         </span>
-        {row.detail ? <span className="text-xs leading-4 text-muted-foreground">{row.detail}</span> : null}
+        {detail ? <span className="text-xs leading-4 text-muted-foreground">{detail}</span> : null}
       </span>
       <span className="shrink-0 ps-2 text-xs leading-5 text-muted-foreground tabular-nums">{rowWhen(row, now, undefined, day)}</span>
     </>
@@ -46,7 +49,8 @@ function RowBody({ row, now, day }: { row: TellRow; now: number; day: string }) 
 function ListSkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading" className="flex flex-col">
-      <div className="flex h-7 items-center">
+      {/* On the titles' edge, where the day's heading lands. */}
+      <div className="flex h-7 items-center ps-6">
         <Skeleton className="h-3 w-24" />
       </div>
       {[52, 44, 60, 40].map((width, i) => (

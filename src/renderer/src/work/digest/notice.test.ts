@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TellRow } from "@shared/work/tell";
-import { carryLegacy, digestNotice, emptyLine, FOLD_PAST, forgetGone, keepClock, listSections, marked, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellingOf, tellingsOf, unansweredLine } from "./notice";
+import { carryLegacy, digestNotice, emptyLine, FOLD_PAST, forgetGone, keepClock, listSections, marked, nameOf, nowToasts, onlyToday, openInterrupts, refusedLine, rowWhen, systemNotices, tellDetail, tellingOf, tellingsOf, unansweredLine } from "./notice";
 import type { MergedDay } from "./store";
 
 /** What the desktop shows of the digest, as rules over made-up rows. */
@@ -259,5 +259,20 @@ describe("held interrupts", () => {
     expect(heldOnly({ rows: [row("held")] })).toBe(true);
     expect(heldOnly({ rows: [row("held"), row("meetings")] })).toBe(false);
     expect(heldOnly({ rows: [] })).toBe(false);
+  });
+});
+
+describe("a clash's detail", () => {
+  const ws = (sector: string, name: string) => ({ kind: "work" as const, sector, name, environmentId: "box" });
+  const jobs = [ws("purdue", "Purdue Esports"), ws("cosmic", "Cosmic Games")];
+  it("names its jobs by their workspaces, whatever word the host wrote, so a notice already saved reads right", () => {
+    expect(tellDetail({ kind: "clashes.new", detail: "Wed Nov 26, 2:00 PM, Purdue" }, jobs)).toBe("Wed Nov 26, 2:00 PM, Purdue Esports");
+    expect(tellDetail({ kind: "clashes.new", detail: "Wed Nov 26, second 1:30 AM, Purdue and Cosmic" }, jobs)).toBe("Wed Nov 26, second 1:30 AM, Purdue Esports and Cosmic Games");
+  });
+  it("leaves a name the host already wrote, a sector no workspace holds, and every other kind as they are", () => {
+    expect(tellDetail({ kind: "clashes.new", detail: "Wed Nov 26, 2:00 PM, Purdue Esports" }, jobs)).toBe("Wed Nov 26, 2:00 PM, Purdue Esports");
+    expect(tellDetail({ kind: "clashes.new", detail: "Wed Nov 26, 2:00 PM, Ref" }, jobs)).toBe("Wed Nov 26, 2:00 PM, Ref");
+    expect(tellDetail({ kind: "routines.done", detail: "Done, Purdue" }, jobs)).toBe("Done, Purdue");
+    expect(tellDetail({ kind: "clashes.new", detail: undefined }, jobs)).toBeUndefined();
   });
 });
