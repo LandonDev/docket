@@ -10,6 +10,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { Tip } from "../../components/tip";
 import { dayTime } from "../../lib/duration";
 import { OpenFailed } from "../canvas/FetchState";
+import { forgetWithItems } from "../canvas/gone";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { Comment, History, ZoomIn, ZoomOut } from "../icons";
 import { Notes, NotesSkeleton } from "./Notes";
@@ -40,6 +41,10 @@ const ZOOMS = [0.25, 0.5, 1, 2, 4];
 
 /** The scale Fit shows each item's picture at, as the stage last laid it out: Zoom in and out step from it, not from 100%. */
 const fitted = new Map<string, number>();
+// A closed item's fit goes with it (perf M11): the map holds the items open, keyed by item id.
+forgetWithItems(fitted, (key) => key);
+/** How many items' fits are kept (tests). */
+export const fittedSize = (): number => fitted.size;
 
 /** The zoom a step in or out lands on, from the scale shown now (Fit's own scale while it fits); none past either end. */
 export function stepZoom(zoom: Zoom, fitScale: number | undefined, dir: 1 | -1): number | undefined {

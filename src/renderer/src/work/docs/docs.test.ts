@@ -16,7 +16,8 @@ const said = vi.fn();
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: said }) }));
 
 const { changeId, decided, reviewOf } = await import("./review");
-const { NOT_SENT, NOT_TAKEN, docHost, forgetStores, frameHead, relaySocket, relayTiming, savesOf, servedBy, storedAll } = await import("./host");
+const { NOT_SENT, NOT_TAKEN, docHost, forgetStores, frameHead, relaySocket, relayTiming, savesOf, servedBy, storedAll, storesKept } = await import("./host");
+const { itemsGone } = await import("../canvas/gone");
 const { docThreads } = await import("./threads");
 const { docSavedLine, offlineWords, statusLineOf, presenceOf, undoWritten, writtenLine, CHANGED_SINCE, UNDO_ELSEWHERE } = await import("./DocumentCanvas");
 // The store a pause in his edits asks for is the save line's own test's: elsewhere it never comes.
@@ -327,6 +328,25 @@ describe("the relayed socket", () => {
     // The tab shown again: a new open, a new class, the same document.
     expect(savesOf(relaySocket("env_box", source)).now().storedAt).toBe(at);
     expect(savesOf(relaySocket("env_box", { ...source, id: "d-other" })).now().storedAt).toBeNull();
+    ws.close();
+  });
+
+  it("drops a document's kept store time once every item of it has closed (perf M11)", async () => {
+    const h = fakeHost();
+    const source = { at: "lifeos", table: "docs", id: "d-closed" } as const;
+    const Socket = relaySocket("env_box", source, "item-a");
+    relaySocket("env_box", source, "item-b");
+    const ws = await opened(Socket);
+    ws.send(state());
+    ws.send(update(1));
+    h.down(applied(), applied());
+    expect(await storedAll(Socket)).not.toBeNull();
+    const kept = storesKept();
+    itemsGone(["item-a"]);
+    expect(storesKept()).toBe(kept);
+    itemsGone(["item-b"]);
+    expect(storesKept()).toBe(kept - 1);
+    expect(savesOf(relaySocket("env_box", source)).now().storedAt).toBeNull();
     ws.close();
   });
 

@@ -3,6 +3,7 @@ import type { CanvasSource } from "@shared/work";
 import * as Y from "yjs";
 import { registry } from "../../lib/connection";
 import { PAUSE_MS } from "../canvas/calm";
+import { onItemsGone } from "../canvas/gone";
 
 /**
  * The host's side of a document, as the canvas and a project's page use it
@@ -312,8 +313,23 @@ const relayedOf = new WeakMap<object, Relayed>();
  */
 const lastStored = new Map<string, number>();
 const docKey = (env: string, source: CanvasSource): string => `${env}|${JSON.stringify(source)}`;
+/** The items each kept store time is of: once every one of a document's items has closed, its time goes (perf M11). */
+const storedBy = new Map<string, Set<string>>();
+onItemsGone((ids) => {
+  for (const [doc, items] of storedBy) {
+    for (const id of ids) items.delete(id);
+    if (items.size) continue;
+    storedBy.delete(doc);
+    lastStored.delete(doc);
+  }
+});
 /** Forgets every kept store time: a test's next open starts at nothing. */
-export const forgetStores = (): void => lastStored.clear();
+export const forgetStores = (): void => {
+  lastStored.clear();
+  storedBy.clear();
+};
+/** How many documents' store times are kept (tests). */
+export const storesKept = (): number => lastStored.size;
 
 /**
  * Hands the class a socket the host made with the open: its next socket for that schema takes it instead of asking
@@ -394,6 +410,10 @@ async function settleAll(socket: new (url: string) => WebSocket, store: boolean)
 export function relaySocket(env: string, source: CanvasSource, itemId?: string): new (url: string) => WebSocket {
   const link = () => registry.linkOf(env);
   const doc = docKey(env, source);
+  if (itemId) {
+    const items = storedBy.get(doc) ?? new Set<string>();
+    storedBy.set(doc, items.add(itemId));
+  }
   const relayed: Relayed = { open: new Set(), lost: null, dropped: false, arrived: new Set(), premade: null, pending: [], saves: { ...NO_SAVES, storedAt: lastStored.get(doc) ?? null }, told: new Set(), edits: 0, covered: 0, storeTimer: null, doc };
   const open = relayed.open;
   /**

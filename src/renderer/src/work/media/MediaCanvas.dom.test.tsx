@@ -62,7 +62,8 @@ vi.mock("./segments", async (original) => ({
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { dayTime } from "../../lib/duration";
 import { StateLine } from "../canvas/CanvasPane";
-import { Bar, Body, selectionChip, stepZoom } from "./MediaCanvas";
+import { itemsGone } from "../canvas/gone";
+import { Bar, Body, fittedSize, selectionChip, stepZoom } from "./MediaCanvas";
 import { levelFor, scaleOf } from "./Picture";
 import { FEED_FAILED, nativeErrorWords, playWords } from "./Player";
 import { Notes } from "./Notes";
@@ -656,6 +657,17 @@ describe("the media canvas", () => {
     fireEvent.load(again);
     await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(null));
     expect(again.className).not.toContain("invisible");
+  });
+
+  it("keeps a picture's fit only while its item is open (perf M11)", async () => {
+    const IMG: MediaVersion = { ...V3, id: "p1", name: "LAN poster.png", plays: [{ via: "image", url: "tempcode-asset://file/x/poster.png", width: 1080, height: 1350 }] };
+    host.view = { itemId: "item1", kind: "image", versions: [IMG], notes: [], mode: "writes", shared: false, rev: 1 };
+    render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
+    await waitFor(() => expect(fittedSize()).toBe(1));
+    itemsGone(["another"]);
+    expect(fittedSize()).toBe(1);
+    itemsGone([ITEM.id]);
+    expect(fittedSize()).toBe(0);
   });
 
   it("holds a bone in the picture's frame until its bytes land, under the picture, and never after", async () => {

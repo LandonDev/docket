@@ -50,6 +50,13 @@ export function onChange(account: string, fileId: string, fn: (name: string) => 
 
 export const watchedFiles = (): Watched[] => [...watched.values()]
 
+/** Told when a file's last item has closed and its poll is dropped: what a module keeps of the file goes with it. */
+const dropped = new Set<(account: string, fileId: string) => void>()
+export function onUnwatched(fn: (account: string, fileId: string) => void): () => void {
+  dropped.add(fn)
+  return () => void dropped.delete(fn)
+}
+
 /** One pass: each watched file whose items are all closed is dropped; the rest are read. */
 export async function pollOnce(ctx: WorkCtx, told: (w: Watched) => void): Promise<void> {
   const g = googleOf(ctx)
@@ -57,6 +64,7 @@ export async function pollOnce(ctx: WorkCtx, told: (w: Watched) => void): Promis
     for (const id of w.items) if (ctx.canvas.get(id)?.state !== 'open') w.items.delete(id)
     if (!w.items.size) {
       watched.delete(key)
+      for (const fn of [...dropped]) fn(w.account, w.fileId)
       continue
     }
     try {

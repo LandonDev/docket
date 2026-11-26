@@ -12,7 +12,7 @@ import type { Caller, ToolCtx, WorkCtx } from '../modules'
 import { slides } from '../slides'
 import type { DeckInfo } from '../slides/deck'
 import { slidesTools } from '../slides/tools'
-import { cachedSlidesMirror, PPTX_MIME } from './deckMirror'
+import { cachedSlidesMirror, mirrorsKept, PPTX_MIME } from './deckMirror'
 import { ensureSuggestionTables } from '../sheets/suggestions'
 import { GOOGLE_MIME } from './client'
 import { FakeGoogle, FAKE_TOKEN_URL } from './fake'
@@ -142,6 +142,19 @@ describe('the google wire', () => {
     return (out as { result: T }).result
   }
   const fakePptx = (title: string): Buffer => Buffer.concat([Buffer.from([0x50, 0x4b, 3, 4]), Buffer.from(title)])
+
+  it("drops a deck's kept read time once its item closes and the poll lets it go (perf M11)", async () => {
+    fake.setExport('deck1', PPTX_MIME, fakePptx('First title'))
+    const item = await openPresentation()
+    await slidesCall<DeckView>(item.id, 'work.slides.open')
+    const before = mirrorsKept()
+    expect(before).toBeGreaterThan(0)
+    await pollOnce(ctx, () => {})
+    expect(mirrorsKept()).toBe(before)
+    items.get(item.id)!.state = 'closed'
+    await pollOnce(ctx, () => {})
+    expect(mirrorsKept()).toBe(before - 1)
+  })
 
   it('opens the Drive PPTX export in the slide viewer, presents it, and reads a fresh mirror on Read again', async () => {
     fake.setExport('deck1', PPTX_MIME, fakePptx('First title'))

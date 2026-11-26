@@ -6,7 +6,7 @@ import { hasMagic } from '../pdf/file'
 import { GOOGLE_MIME } from './client'
 import type { GoogleSource } from './docs'
 import { GoogleFiles, googleOf } from './google'
-import { watch } from './poll'
+import { onUnwatched, watch } from './poll'
 
 export const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 
@@ -21,6 +21,15 @@ const fileKey = (source: GoogleSource): string => `${source.account.toLowerCase(
 export const mirrorUnreached = (source: GoogleSource): boolean => unreached.has(fileKey(source))
 /** When the copy shown of a deck Drive did not answer for was read from Drive; undefined while Drive answers. */
 export const mirrorReadAt = (source: GoogleSource): number | undefined => unreached.get(fileKey(source))
+// A deck no item holds open any more (its poll dropped): what this run kept of it goes (perf M11). An open again
+// reads Drive as a first open does; a copy Drive does not answer for then says when it was written.
+onUnwatched((account, fileId) => {
+  const key = `${account.toLowerCase()}/${fileId}`
+  readAt.delete(key)
+  unreached.delete(key)
+})
+/** How many decks' read times are kept (tests). */
+export const mirrorsKept = (): number => readAt.size + unreached.size
 
 class NotSlidesError extends Error {}
 
