@@ -1,6 +1,6 @@
 import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
 import { useLinkMay } from "../../lib/linkMay";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import type { FolderRef } from "@shared/work/files";
 import type { FormListRow, MsFormView } from "@shared/contract-work-msforms";
 import { Plus } from "../../chrome/icons";
@@ -107,14 +107,18 @@ export function Head({ env, workspace }: WorkViewProps) {
       align="end"
       rows={rows}
       onPick={pick}
-      trigger={
-        <Button variant="ghost" size="sm" disabled={making || !!linkDown}>
-          {making ? null : <Plus />}
-          {/* A Microsoft form takes 20 to 45 s: the press says each stage as the host starts it, as Files' state line does. */}
-          <BusyLabel busy={making} label="New form" busyLabel={stage ?? undefined} />
-        </Button>
-      }
+      trigger={<NewFormPress making={making} stage={stage} disabled={!!linkDown} />}
     />
+  );
+}
+
+/** New form, the header's press. A Microsoft form takes 20 to 45 s: the press says each stage as the host starts it, as Files' state line does. */
+export function NewFormPress({ making, stage, disabled = false, ...props }: { making: boolean; stage: string | null; disabled?: boolean } & ComponentProps<typeof Button>) {
+  return (
+    <Button variant="ghost" size="sm" {...props} disabled={making || disabled}>
+      {making ? null : <Plus />}
+      <BusyLabel busy={making} label="New form" busyLabel={stage ?? undefined} />
+    </Button>
   );
 }
 

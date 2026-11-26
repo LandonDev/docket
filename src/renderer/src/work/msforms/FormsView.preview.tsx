@@ -1,6 +1,7 @@
-import { useEffect } from "react";
 import type { FormListRow, MsFormView } from "@shared/contract-work-msforms";
-import { standUpView, Unsettled, usePressNamed, ViewAt } from "../kit.preview";
+import { JOB, standUpView, ViewAt } from "../kit.preview";
+import { ListChecks } from "../../chrome/icons";
+import { NewFormPress, View } from "./FormsView";
 
 /**
  * The Forms view as the column opens it, over a stand-in host, for `bun run ui:preview
@@ -37,25 +38,8 @@ function stand(state: State): void {
     if (method === "work.forms.list") return state === "failed" ? refused() : OURS;
     if (method === "work.msforms.list") return state === "failed" || state === "partly" ? refused() : { forms: MS, offered: true };
     if (method === "work.files.places") return PLACES;
-    // The make runs on: its press keeps saying the stage it is at.
-    if (method === "work.msforms.make") return new Promise(() => undefined);
     return undefined;
   });
-}
-
-/** Picks New form → Microsoft Form → the Teams folder, as his clicks would, once the menu has drawn each step. */
-function useMakeOne(on: boolean): void {
-  usePressNamed(on ? "New form" : null, 300);
-  useEffect(() => {
-    if (!on) return;
-    const pick = (words: string) => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((row) => row.textContent?.trim().startsWith(words))?.click();
-    const sub = setTimeout(() => pick("Microsoft Form"), 600);
-    const place = setTimeout(() => pick("Esports Team, Forms"), 900);
-    return () => {
-      clearTimeout(sub);
-      clearTimeout(place);
-    };
-  }, [on]);
 }
 
 let stood: State | null = null;
@@ -65,11 +49,26 @@ export function FormsPreview({ state = "list" }: { state?: State }) {
     stand(state);
     stood = state;
   }
-  useMakeOne(state === "making");
+  if (state === "making") return <Making />;
+  return <ViewAt view="forms" height={420} />;
+}
+
+/**
+ * A make in flight: the list under a header whose New form spins with the make's stage. The press is the view's own
+ * (`NewFormPress`); the header around it is drawn here, since the frame's Head keeps its make to itself and a static
+ * page cannot open the menu's submenu to start one.
+ */
+function Making() {
   return (
-    <>
-      <ViewAt view="forms" height={420} />
-      {state === "making" ? <Unsettled ms={1400} /> : null}
-    </>
+    <div className="relative flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background" style={{ maxWidth: 864, height: 420 }}>
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border ps-4 pe-2 text-[13px] font-medium">
+        <ListChecks className="size-3.5 text-muted-foreground" />
+        <span className="min-w-0 flex-1">Forms</span>
+        <NewFormPress making stage="Adding the questions…" />
+      </div>
+      <div className="min-h-0 flex-1">
+        <View env="local" workspace={JOB as never} sector={JOB.sector} lifeos={{} as never} startThread={() => undefined} />
+      </div>
+    </div>
   );
 }
