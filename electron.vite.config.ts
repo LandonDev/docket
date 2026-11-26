@@ -262,7 +262,10 @@ export default buildHeapHold(() => buildHosted()) ?? defineConfig({
         // worker has none of; its plain build carries a 30 kB table of names. Our own file asks the
         // document in the window and takes the table from the parse worker (lib/markdown.worker.ts),
         // so the first paint carries no table.
-        'decode-named-character-reference': resolve('src/renderer/src/lib/decodeNamed.ts')
+        'decode-named-character-reference': resolve('src/renderer/src/lib/decodeNamed.ts'),
+        // remark-gfm reads and writes GFM; the window only reads it. The writing half pulled mdast-util-to-markdown
+        // into the first paint (lib/remarkGfmRead.ts, its test holds the trees equal).
+        'remark-gfm': resolve('src/renderer/src/lib/remarkGfmRead.ts')
       }
     },
     define: { 'import.meta.env.TEMP_CODE_PROFILE': JSON.stringify(profiling ? '1' : '') },

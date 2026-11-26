@@ -86,7 +86,9 @@
   `out/bundle-map.json` (`bun run bundle:map` prints it); the sound engine
   (cuelume) is its own chunk, asked for at the first idle moment after launch
   (lib/sounds.ts `initSounds`), and micromark's table of character names
-  rides the parse worker's file alone (lib/decodeNamed.ts); and
+  rides the parse worker's file alone (lib/decodeNamed.ts); remark-gfm is
+  aliased to its reading half (lib/remarkGfmRead.ts: the window never
+  writes markdown, and the writer was 37 kB of the entry); and
   `scripts/check-bundle-size.ts` (`bun run check:bundle`, in `bun run
   build` and the release gate) fails when the index chunk's static closure
   passes 5 MiB + 16 KiB or holds one of the lazy modules (the Base UI primitives

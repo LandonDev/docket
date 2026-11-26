@@ -42,7 +42,8 @@ import { entryChunk, loadBundleMap, staticClosure, type BundleMap } from './bund
 // 2026-11-05: the menus and popovers drawn by their parts (components/ui/lazy-menus.tsx) took
 // Base UI's menu and popover out of it: 5,135.3 kB to 4,891.7 kB.
 // 2026-11-26: the entry stood at 5,128.5 kB of 5,136; the sound engine and the table of character names
-// left it (the performance sweep, .temp-code/plans/landed/PERF-docket.md).
+// left it (the performance sweep, .temp-code/plans/landed/PERF-docket.md). Later that day remark-gfm's writing
+// half left it too: 5,135.8 kB to 5,098.2 kB with the pass's rail and picker work in.
 export const BUDGET_BYTES = 5 * 1024 * 1024 + 16 * 1024
 
 /** Module ids (suffixes, matched against the end of the id) that must never
@@ -139,7 +140,9 @@ export const NEVER_IN_ENTRY = [
   // The sound engine is asked for at the first idle moment (lib/sounds.ts), and the table of character
   // names is the parse worker's alone: the window decodes `&amp;` through the document (lib/decodeNamed.ts).
   'node_modules/cuelume/dist/audio/engine.js',
-  'node_modules/character-entities/index.js'
+  'node_modules/character-entities/index.js',
+  // The window only reads markdown: remark-gfm's writing half is aliased away (lib/remarkGfmRead.ts).
+  'node_modules/mdast-util-to-markdown/lib/index.js'
 ]
 
 /**

@@ -220,6 +220,7 @@ export const GUARD_TESTS = [
   'src/renderer/src/lib/depthGuard.test.ts',
   'src/renderer/src/lib/dialogShapeGuard.test.ts',
   'src/renderer/src/lib/disclosureGuard.test.ts',
+  'src/renderer/src/lib/docketAsksGuard.test.ts',
   'src/renderer/src/lib/factsGuard.test.ts',
   'src/renderer/src/lib/focusGuard.test.ts',
   'src/renderer/src/lib/keysGuard.test.ts',
