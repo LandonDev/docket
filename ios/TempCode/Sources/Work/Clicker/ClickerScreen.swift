@@ -45,6 +45,8 @@ struct ClickerScreen: View {
     @State private var pressed = 0
     /// A press that could do nothing: the rigid tick.
     @State private var bumped = 0
+    /// End Show asks first: the slideshow closes for everyone watching it.
+    @State private var ending = false
 
     var body: some View {
         content
@@ -76,6 +78,11 @@ struct ClickerScreen: View {
             .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
             .sensoryFeedback(.impact(weight: .light), trigger: pressed)
             .sensoryFeedback(.impact(flexibility: .rigid), trigger: bumped)
+            .confirmationDialog("End the show?", isPresented: $ending, titleVisibility: .visible) {
+                Button("End Show", role: .destructive) { press(.end) }
+            } message: {
+                Text("The slideshow closes for everyone watching it.")
+            }
             .accessibilityIdentifier("clicker")
     }
 
@@ -246,7 +253,7 @@ struct ClickerScreen: View {
         .disabled(notesSize <= ClickerMetrics.notesSmallest)
         Button(show.blank ? "Unblank" : "Blank", systemImage: show.blank ? "rectangle" : "rectangle.fill") { press(.blank) }
         Divider()
-        Button("End Show", systemImage: "stop.fill", role: .destructive) { press(.end) }
+        Button("End Show…", systemImage: "stop.fill", role: .destructive) { ending = true }
     }
 
     /// Left steps on, right steps back: the horizontal travel must lead.

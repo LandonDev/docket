@@ -3584,7 +3584,9 @@ screen, and the phone carries the notes and the two presses.
 
 - **The bar** is the system's, inline: the deck's name. Trailing: More, with
   Larger Text and Smaller Text (the notes from 14 to 28 pt, kept across
-  launches), Blank or Unblank, then End Show under a divider, in red.
+  launches), Blank or Unblank, then End Show… under a divider, in red,
+  which asks first ("End the show?", "The slideshow closes for everyone
+  watching it.", End Show in red).
 - **Upright**, top to bottom: the slide's speaker notes in the document type
   at the size he chose, the 640 pt measure, scrolling on their own and back at
   the top on each slide, stopping 8 pt above the count line, its last line
