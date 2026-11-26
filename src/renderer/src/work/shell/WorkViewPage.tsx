@@ -252,7 +252,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           <DownEmpty live={WAITS} environmentId={environmentId} onRetry={noRetry} />
         ) : (
           <KeptRegion value={kept.scope}>
-            <ViewBoundary label={def.label} cause={linkDown} onRetry={() => def.chunk.load().then(() => setAttempt((n) => n + 1))}>
+            {/* Under the frame's own link line (Mail, Messages, Tasks, a meeting's page) the cause is said once, there: the body says only that the view did not load. */}
+            <ViewBoundary label={def.label} cause={actionLinkDown ? null : linkDown} onRetry={() => def.chunk.load().then(() => setAttempt((n) => n + 1))}>
               <Suspense fallback={def.bones?.(workspace) ?? <ViewSkeleton label={def.label} />}>
                 <View {...props} />
               </Suspense>
