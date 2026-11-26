@@ -198,3 +198,14 @@ describe("a press found by its old name", () => {
     expect(searchSettings("hosts", settingsList(MAC), { mac: "this Mac" }, [ADD_COMPUTER_RESULT]).map((result) => result.title)).toContain("Add a computer…");
   });
 });
+
+describe("a computer's rows by an old name", () => {
+  it("name the computer they were on, and list its jobs only where it holds some", () => {
+    const pair = searchSettings("pair a device", settingsList(MAC), { mac: "this Mac" });
+    expect(pair.map((result) => result.was)).toEqual(expect.arrayContaining(["Was “Hosts, the box, Pair a device…”"]));
+    expect(pair.every((result) => !result.was?.includes("host,") && !result.was?.includes("a host"))).toBe(true);
+    const jobs = (jobsOn: string[]) => searchSettings("access for each job", settingsList(MAC), { mac: "this Mac" }, [], { work: true, jobsOn }).filter((result) => result.row === "pc.jobs").map((result) => result.page);
+    expect(jobs([])).toEqual([]);
+    expect(jobs(["env_box"])).toEqual(["computer:env_box"]);
+  });
+});

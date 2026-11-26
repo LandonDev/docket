@@ -19,7 +19,7 @@ import { useSettingsKnown, tellSettingsList } from "../../../lib/settings/useLis
 import { useWorkHosts } from "../../../lib/workSwitch";
 import { SettingRow } from "../parts/SettingRow";
 import { useSaved, type Saved } from "../parts/useSaved";
-import { forgetUpgrade, runUpgrade, useUpgrade, type Upgrade } from "./winvmUpgrade";
+import { forgetUpgrade, retryUpgrade, runUpgrade, useUpgrade, type Upgrade } from "./winvmUpgrade";
 
 /**
  * Settings › Windows VM, "A Windows computer inside the box, for Office and Teams." (docs/agents/settings.md "The
@@ -161,8 +161,9 @@ export function WinvmPage() {
 /** Screen size's mark with the upgrade's store laid over it: saving while one runs (also on a page opened since), and
  *  a failure the page did not see itself, until his next change. */
 function screenMark(saved: Saved, upgrade: Upgrade | null): Saved {
-  if (upgrade?.phase === "running" && saved.state !== "slow") return { ...saved, state: "slow" };
+  if ((upgrade?.phase === "running" || upgrade?.phase === "unconfirmed") && saved.state !== "slow") return { ...saved, state: "slow" };
   if (upgrade?.phase === "failed" && !saved.error) return { ...saved, error: upgrade.reason };
+  if (upgrade?.phase === "unrestored" && !saved.error) return { ...saved, error: upgrade.failed };
   return saved;
 }
 
@@ -337,6 +338,7 @@ export function WinvmHost({ env }: { env: string }) {
         settingsError={settingsError && (settingsError.words ?? readWords(NO_ANSWER))}
         onRetrySettings={loadSettings}
         saved={{ ...savers, screen: screenMark(savers.screen, upgrade) }}
+        upgradeNote={upgrade?.phase === "unconfirmed" || upgrade?.phase === "unrestored" ? { words: upgrade.reason, retry: () => retryUpgrade(env) } : null}
         error={error}
         pressing={pressing}
         onPress={() => void press()}
@@ -363,6 +365,9 @@ export interface WinvmViewProps {
   /** their read failed before any answer: the screen's row says so, with Retry */
   settingsError?: string | null;
   onRetrySettings?: () => void | Promise<void>;
+  /** what Fits my window's upgrade left unsettled (an end not confirmed, a size not put back), under Screen size with
+   *  its Retry */
+  upgradeNote?: { words: string; retry: () => Promise<void> } | null;
   /** each select's save mark and refusal, on its own row */
   saved?: Partial<Record<keyof Changes, Saved>>;
   /** a refused press (Set up, Wake, Sleep), on the Windows row */
@@ -387,6 +392,7 @@ export function WinvmView({
   settingsError,
   onRetrySettings,
   saved = {},
+  upgradeNote = null,
   error,
   pressing,
   onPress,
@@ -430,6 +436,11 @@ export function WinvmView({
               >
                 <ChoiceSelect size="sm" label="Screen size" value={settings.screen} options={SCREENS} disabled={turning || state.state === "setting-up"} onChange={(v) => onScreen(v as WinvmScreen)} />
               </SettingRow>
+              {upgradeNote ? (
+                <PageError data-upgrade-note="" action={<RetryButton retry={upgradeNote.retry} />}>
+                  {upgradeNote.words}
+                </PageError>
+              ) : null}
               {live && settings.detail ? (
                 <SettingRow id="winvm.quality" saved={saved.detail}>
                   <ChoiceSelect size="sm" label="Picture quality" value={settings.detail} options={QUALITIES} onChange={(v) => onQuality(v as WinvmDetail)} />

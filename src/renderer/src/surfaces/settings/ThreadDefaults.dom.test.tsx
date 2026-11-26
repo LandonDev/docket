@@ -25,6 +25,7 @@ const state = vi.hoisted(() => ({
   inheritedFails: false,
   keeper: false,
   absent: false,
+  stale: false,
   links: null as { id: string; name: string }[] | null,
   inheritedReads: 0,
   plansFailed: false,
@@ -95,6 +96,7 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
   useThreadDefaults: (_env: string, id: string | null) =>
     state.failed || (state.absent && id !== null) ? undefined : { defaults: defaultsOf(), overridden: id === null ? state.overridden : state.overriding.has(id), home: state.home },
   useThreadDefaultsError: () => (state.failed ? { error: "The computer did not answer", retry: state.retry } : null),
+  useThreadDefaultsStale: () => (state.stale ? { error: "The computer did not answer", retry: state.retry } : null),
   useWorkspaceCatalog: () => ({
     workspaces: state.workspaces,
     defaults: new Map(state.workspaces.filter((w) => !state.unheard.includes(w.id) && !state.waiting.includes(w.id)).map((w) => [`local:${w.id}`, { overridden: state.overriding.has(w.id) }] as const)),
@@ -153,6 +155,7 @@ beforeEach(() => {
   state.inheritedFails = false;
   state.keeper = false;
   state.absent = false;
+  state.stale = false;
   state.links = null;
   state.load.mockReset();
   state.load.mockImplementation(async () => {});
@@ -622,5 +625,47 @@ describe("A place's own set: the dialog", () => {
     render(<ThreadDefaultsEditor workspaceId="w1" />);
     expect(screen.getByRole("heading", { name: "New threads" })).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Agent app" })).toBeTruthy();
+  });
+});
+
+describe("A refresh that failed over a held set", () => {
+  it("keeps New threads' rows, marked as last read, under the failure and its Retry", async () => {
+    state.stale = true;
+    render(<ThreadDefaultsPage />);
+    expect(screen.getByRole("combobox", { name: "Model" })).toBeTruthy();
+    expect(document.querySelector("[data-last-read]")!.textContent).toBe("As last read.");
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    });
+    expect(state.retry).toHaveBeenCalled();
+  });
+
+  it("marks a place's dialog the same way", async () => {
+    state.stale = true;
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("combobox", { name: "Model" })).toBeTruthy();
+    expect(dialog.querySelector("[data-last-read]")!.textContent).toBe("As last read.");
+    expect(within(dialog).getByRole("alert").textContent).toBe("This Mac did not answer.");
+    expect(within(dialog).getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("keeps a job's or a workspace's summary, saying it is as last read, with Retry", async () => {
+    state.stale = true;
+    render(<StartSetRow id="ws.threads" workspace={ALPHA} whose="workspace" may />);
+    expect(document.querySelector("[data-setting='ws.threads']")!.textContent).toContain("Same as New threads: ");
+    expect(document.querySelector("[data-setting='ws.threads']")!.textContent).toContain("(as last read)");
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    });
+    expect(state.retry).toHaveBeenCalled();
+  });
+
+  it("says nothing of the kind while the refresh is fine", () => {
+    render(<StartSetRow id="ws.threads" workspace={ALPHA} whose="workspace" may />);
+    expect(document.body.textContent).not.toContain("as last read");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

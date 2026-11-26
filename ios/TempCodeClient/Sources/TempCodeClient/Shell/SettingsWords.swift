@@ -111,7 +111,7 @@ public enum SignInWords {
     public static let linkHint = "In Docket's Settings, press \(route), then paste the link here."
     /// Add… makes a link for a device and a key only for a bot, so the Key tab is for a key this phone already
     /// holds; a new sign-in is the link (the council's round 7).
-    public static let keyHint = "A key this phone already holds, with its computer's address. To sign in anew, use Sign-In Link."
+    public static let keyHint = "Enter a key you already have and its computer's address. For a new sign-in, use Sign-In Link."
     /// The footer under a computer whose key was refused: the link's press, then this sheet again.
     public static let refusedKeyHint = "In Docket's Settings, press \(route), then sign in again."
 
@@ -120,11 +120,12 @@ public enum SignInWords {
         switch error {
         case .invalidPairingLink: return "That is not a sign-in link. Copy the whole link from the computer."
         case .invalidKey: return "That is not a key. Copy the whole key from the computer."
-        case .notAClientKey: return "That key is for a bot. Make a key for this phone on the computer."
+        // Add… makes a key only for a bot; a phone signs in with a link (the council's round 8).
+        case .notAClientKey: return "That key is for a bot. To sign in, use Sign-In Link."
         case .api(.unauthorized):
             return link
                 ? "That sign-in link is invalid or expired. Make a new one with \(route)."
-                : "The computer refused that key. To sign in anew, use Sign-In Link."
+                : "The computer refused that key. For a new sign-in, use Sign-In Link."
         case .api(let api): return sentence(api.message)
         case .keyStore: return "This phone could not keep the key. Try again."
         }

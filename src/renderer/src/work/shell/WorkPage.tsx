@@ -18,6 +18,7 @@ import { useLinksMay } from "../../lib/linkMay";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { OpenCue, SettingRow, SettingSection } from "../../surfaces/settings/parts/SettingRow";
 import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
+import { ListFilter, useListFilter } from "../../surfaces/settings/parts/ListFilter";
 import { StartAddressesRow } from "../clashes/StartPlaces";
 import { setWorkHome, workHome } from "./actions";
 import { GrantsRow, ToolsRow } from "./WorkPageSends";
@@ -89,6 +90,8 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
   useEffect(() => {
     for (const job of jobs) void workspaceStore.loadDefaults(job.environmentId, job.id);
   }, [key]);
+  // Past eight jobs, a find field over them: by a job's name or its computer's.
+  const filter = useListFilter(jobs, (job: WorkspaceMeta) => `${job.name} ${names(job.environmentId).name} ${computerInLine(names(job.environmentId))}`);
   if (jobs.length === 0) return null;
   const levelOf = (job: WorkspaceMeta) => defaults.get(scopeKey(job.environmentId, job.id))?.defaults.permission;
   // A read that failed is said even while an earlier answer is held (`defaultsStale`); a job with nothing held draws no row.
@@ -122,7 +125,8 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
       {/* While any set is out the line under the heading waits as one bone and no row says a line, as most will not. */}
       <SettingSection of={computer === undefined ? "work.access" : "pc.jobs"} description={!settled ? <Skeleton className="inline-block h-3 w-64 align-middle" /> : common ? accessWords(common) : undefined}>
         {failures}
-        {shown.map((job) => {
+        <ListFilter filter={filter} label="Find a job" />
+        {shown.filter((job) => filter.shown.includes(job)).map((job) => {
           const level = levelOf(job);
           // A job whose set is still out holds its name alone, and no way in yet.
           const opens = may(job.environmentId, "defaults.set") && !!level;

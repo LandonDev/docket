@@ -529,3 +529,15 @@ export function useThreadDefaultsError(
   if (error === undefined) return null;
   return { error, retry: () => void workspaceStore.loadDefaults(environmentId, workspaceId ?? null) };
 }
+
+/** Why the last refresh of a scope's defaults failed while an earlier answer is still held (`defaultsStale`), with a
+ *  retry; null while none has failed. The held set is then shown as last read, never as current. */
+export function useThreadDefaultsStale(
+  environmentId: string,
+  workspaceId: string | null | undefined,
+): { error: string; retry: () => void } | null {
+  const { defaultsStale } = useWorkspaceCatalog();
+  const error = defaultsStale.get(scopeKey(environmentId, workspaceId));
+  if (error === undefined) return null;
+  return { error, retry: () => void workspaceStore.loadDefaults(environmentId, workspaceId ?? null) };
+}

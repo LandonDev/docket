@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const store = vi.hoisted(() => ({
@@ -7,6 +7,8 @@ const store = vi.hoisted(() => ({
   errors: new Map<string, string>(),
   stale: new Map<string, string>(),
   loads: [] as string[],
+  /** The jobs listed, when a test lists other than JOBS. */
+  jobs: null as null | { id: string; name: string; kind: string; sector: string; environmentId: string }[],
 }));
 const JOBS = [
   { id: "j1", name: "Cosmic", kind: "work", sector: "cosmic", environmentId: "env_box" },
@@ -18,7 +20,7 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => {
   return {
     ...real,
     scopeKey: (env: string, id: string) => `${env}:${id}`,
-    useWorkspaces: () => JOBS,
+    useWorkspaces: () => store.jobs ?? JOBS,
     useWorkspaceCatalog: () => ({ defaults: store.defaults, defaultsErrors: store.errors, defaultsStale: store.stale }),
     workspaceStore: Object.assign(Object.create(real.workspaceStore), { loadDefaults: async (env: string, id: string) => void store.loads.push(`${env}:${id}`) }),
   };
@@ -38,6 +40,7 @@ afterEach(() => {
   store.defaults.clear();
   store.errors.clear();
   store.stale.clear();
+  store.jobs = null;
 });
 
 describe("Access for each job's new threads", () => {
@@ -102,5 +105,22 @@ describe("Access for each job's new threads", () => {
     // One computer's page: its jobs need no computer named, and its one level is said once.
     expect(document.querySelector('[data-job="j3"]')!.textContent).toBe("Purdue Esports");
     expect(screen.getByRole("button", { name: "New threads in Purdue Esports" })).toBeTruthy();
+  });
+
+  it("puts Find a job over more than eight jobs, on Work and on a computer's page, each found row still opening its dialog", () => {
+    store.jobs = Array.from({ length: 10 }, (_, i) => ({ id: `k${i}`, name: i === 4 ? "Purdue Esports" : `Job ${i}`, kind: "work", sector: "life", environmentId: "env_box" }));
+    for (const job of store.jobs) store.defaults.set(`env_box:${job.id}`, { defaults: { permission: "edits" } });
+    for (const computer of [undefined, "env_box"]) {
+      render(<JobsAccess computer={computer} />);
+      const find = screen.getByRole("searchbox", { name: "Find a job" });
+      fireEvent.change(find, { target: { value: "purdue" } });
+      expect([...document.querySelectorAll("[data-job]")].map((row) => row.getAttribute("data-job"))).toEqual(["k4"]);
+      expect(screen.getByRole("button", { name: "New threads in Purdue Esports" })).toBeTruthy();
+      cleanup();
+    }
+    // Eight or fewer: no field.
+    store.jobs = store.jobs.slice(0, 8);
+    render(<JobsAccess />);
+    expect(screen.queryByRole("searchbox")).toBeNull();
   });
 });

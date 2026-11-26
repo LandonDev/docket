@@ -9,7 +9,7 @@ import { homeEnvironmentId, usePublishHome } from "../lib/settings/pageHome";
 import { homeNote } from "../lib/settingsHome";
 import { nameInLine } from "../lib/hostWords";
 import { EFFORT_LABELS, effortLadder, modelForDefaults, modelOptions, normalizeDefaults, parseDefaultsScope, providerOptions, storedModelId, type DefaultsScope } from "../lib/tcserver/defaults";
-import { scopeKey, useThreadDefaults, useThreadDefaultsError, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
+import { scopeKey, useThreadDefaults, useThreadDefaultsError, useThreadDefaultsStale, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
 import type { ThreadDefaults, WorkspaceMeta } from "../lib/tcserver/types";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
@@ -48,6 +48,8 @@ const START_ON_CHOICES: { value: StartOn; label: string }[] = [
 function useDefaultsSet(environmentId: string, workspaceId: string | null) {
   const scope = useThreadDefaults(environmentId, workspaceId, true);
   const failure = useThreadDefaultsError(environmentId, workspaceId);
+  // A refresh that failed over a held answer: the rows stay, as last read, under the failure and its Retry.
+  const stale = useThreadDefaultsStale(environmentId, workspaceId);
   const draft = useDraft(scope?.defaults);
   const saved: Record<Row, Saved> = { app: useSaved(), model: useSaved(), effort: useSaved(), access: useSaved(), startOn: useSaved() };
   const cleared = useSaved();
@@ -58,9 +60,25 @@ function useDefaultsSet(environmentId: string, workspaceId: string | null) {
     draft.change(saved[row], normalizeDefaults(next, environmentId), (set) => workspaceStore.saveDefaults(environmentId, workspaceId, set));
   /** Drops the scope's own set: a workspace follows New threads again, New threads takes Docket's. */
   const clear = () => cleared.run(() => workspaceStore.saveDefaults(environmentId, workspaceId, null));
-  return { scope, failure, value: draft.value, saved, write, blocked, clear, cleared, may };
+  return { scope, failure, stale, value: draft.value, saved, write, blocked, clear, cleared, may };
 }
 type DefaultsSet = ReturnType<typeof useDefaultsSet>;
+
+/** The words that mark a held set whose refresh failed: its values are the last answer, not the current one. */
+export const AS_LAST_READ = "As last read";
+
+/** A failed refresh over a held set: the failure (said at the page's or the dialog's head, with Retry), and one muted
+ *  line over the rows saying they are the last answer. */
+function LastRead({ environmentId, stale }: { environmentId: string; stale: { error: string; retry: () => void } }) {
+  return (
+    <>
+      <ReadFailure computer={environmentId} error={stale.error} retry={stale.retry} />
+      <p data-last-read="" className="pb-1 text-xs text-muted-foreground">
+        {AS_LAST_READ}.
+      </p>
+    </>
+  );
+}
 
 /** The set's rows: on the New threads page each is its map row, in a dialog a field row. Effort only for a model
  *  with a ladder; Linked projects start on only on the one set, with two or more computers. */
@@ -106,6 +124,7 @@ function DefaultsRows({ set, environmentId, startOn, layout }: { set: DefaultsSe
   };
   return (
     <>
+      {set.stale ? <LastRead environmentId={environmentId} stale={set.stale} /> : null}
       {row(
         "app",
         "defaults.app",

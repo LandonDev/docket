@@ -622,6 +622,16 @@ const defaultsAnswer =
     if (workspaceId === null) return { defaults: { provider: "claude", model: "", reasoning: "high", permission: "edits" }, overridden: true, home };
     return { defaults: OWN_SET, overridden: true, home };
   };
+/** A scope's set answered once (the catalog's read), then no answer: the page's own refresh fails over the held set. */
+const answeredOnce = (answer: (params: unknown) => unknown) => {
+  const heard = new Set<string | null>();
+  return (params: unknown): unknown => {
+    const workspaceId = (params as { workspaceId?: string | null } | undefined)?.workspaceId ?? null;
+    if (heard.has(workspaceId)) throw new Error(NO_ANSWER);
+    heard.add(workspaceId);
+    return answer(params);
+  };
+};
 const reviewAnswer =
   (beforeMerge: boolean, home: typeof ON_THE_BOX) =>
   (params: unknown): unknown => {
@@ -645,6 +655,15 @@ const WORK_COMPUTERS = [
 ];
 const workJob = (id: string, name: string, sector: string) => ({ id, name, sector, kind: "work", path: `/srv/work/${name}`, git: false, createdAt: 1, environmentId: "env_box" });
 const JOBS = [workJob("j1", "Purdue Esports", "purdue"), workJob("j2", "Cosmic", "cosmic"), workJob("j3", "Hypixel", "hypixel"), workJob("j4", "Unify", "unify"), workJob("j5", "Referee", "ref")];
+/** The box's own jobs, past eight: its page's list takes Find a job. */
+const BOX_JOBS = [
+  ...JOBS,
+  workJob("j6", "Purdue Varsity", "purdue"),
+  workJob("j7", "Purdue Club", "purdue"),
+  workJob("j8", "Cosmic Prisons", "cosmic"),
+  workJob("j9", "Hypixel Shorts", "hypixel"),
+  workJob("j10", "Household", "life"),
+];
 const GRANT = (id: string, workspaceId: string, label: string, kind = "mail.send") => ({ id, workspaceId, kind, matcher: null, label, madeFrom: { at: "x", id }, routineId: null, createdAt: Date.now() - 86_400_000 * Number(id.slice(1)), removedAt: null });
 const tool = (name: string, words: string, rule: "runs" | "held" | "off" | null, changed = false) => ({ tool: name, words, description: "", hints: {}, suggested: "held" as const, rule, changed });
 const TOOL_CARDS: ToolRulesCard[] = [
@@ -856,13 +875,13 @@ const PAGES: Record<
     statuses: { env_box: { lastHello: helloOf(["read", "operate", "approve", "admin"], 397) } },
     body: () => <AsMac><OtherComputerPage environmentId="env_box" /></AsMac>,
   },
-  // The box with Work on and two jobs of its own: its Work section leads to their Access too.
+  // The box with Work on and ten jobs of its own: its page lists them, with Find a job.
   "computer-box-jobs": {
     title: "The box",
     description: <ComputerLine environmentId="env_box" />,
     environments: THREE_COMPUTERS,
     statuses: { env_box: { lastHello: helloOf(["read", "operate", "approve", "admin"], 397) } },
-    answers: { "env_box:work.get": { enabled: true }, "env_box:workspace.list": JOBS.slice(0, 2), "env_box:project.list": [], "env_box:defaults.get": { defaults: { provider: "claude", model: "", reasoning: "high", permission: "edits" }, overridden: false } },
+    answers: { "env_box:work.get": { enabled: true }, "env_box:workspace.list": BOX_JOBS, "env_box:project.list": [], "env_box:defaults.get": { defaults: { provider: "claude", model: "", reasoning: "high", permission: "edits" }, overridden: false } },
     body: () => <AsMac><BoxJobs><OtherComputerPage environmentId="env_box" /></BoxJobs></AsMac>,
   },
   "computer-box-offline": {
@@ -952,6 +971,28 @@ const PAGES: Record<
     answers: { "env_box:work.winvm.settings": () => Promise.reject(new Error(NO_ANSWER)) },
     body: () => <WithVmOn environmentId="env_box"><WinvmPage /></WithVmOn>,
   },
+  // Fits my window failed and the box would not put the old size back: the line under Screen size with its Retry.
+  "winvm-upgrade": {
+    title: "Windows VM",
+    description: settingsSectionDescription("winvm"),
+    environments: THREE_COMPUTERS,
+    body: () => (
+      <WinvmView
+        state={{ ...(ANSWERS["env_box:work.winvm.state"] as WinvmState), state: "awake", display: { device: "vga", width: 1280, height: 800, scale: 100, fit: false, detail: "sharp", canResize: false } }}
+        points={(ANSWERS["env_box:work.winvm.points"] as { points: WinvmPoint[] }).points}
+        settings={{ screen: "fit", detail: null }}
+        saved={{ screen: { state: "idle", error: "The box did not fit the Windows VM to your window.", run: async () => false } }}
+        upgradeNote={{ words: "The box did not put the screen size back to 1280 × 800.", retry: async () => {} }}
+        error={null}
+        pressing={false}
+        onPress={() => {}}
+        onSleepAfter={() => {}}
+        onScreen={() => {}}
+        onQuality={() => {}}
+        onPoints={() => {}}
+      />
+    ),
+  },
   // The display was read once; its read again failed: the values shown stand, with the line and Retry under them.
   "winvm-reread": {
     title: "Windows VM",
@@ -1022,6 +1063,13 @@ const PAGES: Record<
     description: <HomeLine page="defaults" />,
     body: () => <ThreadDefaultsPage />,
     answers: { ...EVERYWHERE_LISTS, "defaults.get": defaultsAnswer(ON_THE_BOX), "plans.get": { settings: DEFAULT_PLAN_SETTINGS, overridden: false, home: ON_THE_BOX } },
+  },
+  // The set was read once; its refresh got no answer: the rows stay, as last read, under the failure and Retry.
+  "defaults-stale": {
+    title: "New threads",
+    description: <HomeLine page="defaults" />,
+    body: () => <ThreadDefaultsPage />,
+    answers: { ...EVERYWHERE_LISTS, "defaults.get": answeredOnce(defaultsAnswer(ON_THE_BOX)), "plans.get": { settings: DEFAULT_PLAN_SETTINGS, overridden: false, home: ON_THE_BOX } },
   },
   "defaults-offline": {
     title: "New threads",
@@ -1122,6 +1170,13 @@ const PAGES: Record<
     // A Mac's window: the page's computer is this Mac, by its name.
     body: () => <AsMac><WorkspacePage workspaceId="w1" /></AsMac>,
     answers: { "project.list": [{ id: "p1", workspaceId: "w1", name: "settings-2", mode: "worktree", branch: "tc/settings-2", cwd: "/w", archived: false, createdAt: 1 }, { id: "p2", workspaceId: "w1", name: "unread-marks", mode: "worktree", branch: "tc/unread-marks", cwd: "/w", archived: false, createdAt: 1 }] },
+  },
+  // The workspace's start set was read once; its refresh got no answer: the summary stays, as last read, with Retry.
+  "workspace-stale": {
+    title: "temp-code",
+    description: "/srv/agents/work/temp-code, on this Mac",
+    body: () => <AsMac><WorkspacePage workspaceId="w1" /></AsMac>,
+    answers: { "defaults.get": answeredOnce(defaultsAnswer(ON_THE_BOX)) },
   },
   addons: { title: "Add-ons", description: <HomeLine page="addons" />, body: () => <AddonsPage /> },
   skills: { title: "Skills", description: <HomeLine page="skills" />, body: () => <SkillsPage /> },
@@ -1280,7 +1335,7 @@ export const GUARDED_PAGES: Partial<Record<SettingPage, { previews: (keyof typeo
     previews: ["sharing"],
     elsewhere: ["sharing.files", "sharing.apps", "sharing.devSites", "sharing.folders", "sharing.commands", "sharing.threads", "sharing.driven", "sharing.running", "sharing.allowed"],
   },
-  defaults: { previews: ["defaults"] },
+  defaults: { previews: ["defaults", "defaults-stale"] },
   reviews: { previews: ["reviews", "reviews-off"] },
   orchestration: { previews: ["orchestration"] },
   // The accounts themselves are the Accounts page's rows (aliax/pages.tsx), which this preview does not mount.
@@ -1288,7 +1343,7 @@ export const GUARDED_PAGES: Partial<Record<SettingPage, { previews: (keyof typeo
   addons: { previews: ["addons"] },
   skills: { previews: ["skills"] },
   job: { previews: ["job"] },
-  workspace: { previews: ["workspace", "workspace-work"] },
+  workspace: { previews: ["workspace", "workspace-work", "workspace-stale"] },
   archive: { previews: ["archive"] },
   work: { previews: ["work-off", "work", "work-given", "work-grants", "work-tools", "work-confirm"] },
   digest: { previews: ["digest", "digest-given"] },
@@ -1297,7 +1352,7 @@ export const GUARDED_PAGES: Partial<Record<SettingPage, { previews: (keyof typeo
   connections: { previews: ["connections", "connections-loading", "connections-refused"] },
 };
 
-/** The box's own link in the catalog, listing two jobs and answering each one's set. */
+/** The box's own link in the catalog, listing its jobs and answering each one's set. */
 function BoxJobs({ children }: { children: ReactNode }) {
   useState(() => workspaceStore.attach(linkFor("env_box")));
   return <>{children}</>;

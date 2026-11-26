@@ -229,8 +229,11 @@ through `useSaved`.
   a refused change goes back to the value last confirmed, its reason on its own row (a refused press's on the Windows
   row), and a read again does not clear it. Fits my window on a machine without live resize stays saving until the
   machine's state says how the upgrade ended, watched by a store that outlives the page (`computers/winvmUpgrade.ts`):
-  Saved only when that end is awake, with no error, on the live-resize display; refused, or any other end, the size
-  that stood is written back, and Screen size's row says so, also on a page opened again later. Its sign-ins and its
+  Saved only when that end is awake, with no error, on the live-resize display (a read on reopen that finds it so
+  settles it, though every step was missed); refused, or any other end, the size that stood is written back, and Screen
+  size's row says so, also on a page opened again later. Under Screen size, one line with Retry says what is left: an
+  end this window cannot confirm (Retry reads the machine again), or a size the computer would not put back (Retry
+  writes it again). Its sign-ins and its
   edition's end are Connections' rows alone. The Work page no longer has it.
 
 The preview (`SettingsPages.preview.tsx`) answers per computer: `<environment id>:<method>` answers first, a fixture
@@ -267,7 +270,10 @@ the set the computer last confirmed on a refusal.
   set unknown, so it asks first then too. After the clear the store drops the place's entry, guessing nothing from a
   cached global set or Docket's defaults, and reads it again (`saveDefaults`). Every summary of the place (its dialog,
   the places list, `parts/StartSetRow.tsx` on a job's and a workspace's page) waits, then shows the set that came back
-  or the read's failure with Retry, also after the dialog closes. An open dialog stays open meanwhile. In a dialog
+  or the read's failure with Retry, also after the dialog closes. An open dialog stays open meanwhile. A refresh that
+  fails over a held set (`defaultsStale`, `useThreadDefaultsStale`) keeps the values, marked "As last read" over New
+  threads' rows and the place dialog's and "(as last read)" after the summary on a job's or a workspace's page, under
+  the failure with Retry (fixtures `defaults-stale`, `workspace-stale`). In a dialog
   narrower than 22rem, a place's row puts Use New threads under its name and set. A key that
   may only read sees each value in words (`ValueWords`, the size and tone Away and Digest use) and one `ManagedLine`
   first, above the first section, as on Reviews and Subagents. "Different in N places" holds its shape while places are read and, when a computer did not answer, says

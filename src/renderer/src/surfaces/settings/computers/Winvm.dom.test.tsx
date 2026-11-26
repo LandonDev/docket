@@ -563,6 +563,66 @@ describe("Screen size and picture quality", () => {
     expect(document.querySelector("[data-setting='winvm.screen'] [data-slot=save-mark]")?.getAttribute("data-state")).toBe("slow");
   });
 
+  it("settles as Saved when a reconnect's read finds live resize on, though it missed every step", async () => {
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmHost env="box" />);
+    await flush();
+    await pick("Screen size", "Fits my window");
+    await flush();
+    const mark = () => document.querySelector("[data-setting='winvm.screen'] [data-slot=save-mark]")?.getAttribute("data-state");
+    expect(mark()).toBe("slow");
+    // The socket dropped through the whole upgrade; on reopen the machine reads awake on the live-resize display.
+    h.state = at({ state: "awake", display: virtio });
+    await act(async () => h.opens.forEach((fn) => fn()));
+    await flush();
+    expect(mark()).toBe("saved");
+    expect(document.querySelector("[data-upgrade-note]")).toBeNull();
+  });
+
+  it("says an end it cannot confirm with Retry, which reads the machine again", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmHost env="box" />);
+    await flush();
+    await pick("Screen size", "Fits my window");
+    await flush();
+    // On reopen the machine reads awake on the old display with no error and no step seen: not confirmed either way.
+    await act(async () => h.opens.forEach((fn) => fn()));
+    await flush();
+    const line = document.querySelector("[data-upgrade-note]")!.closest("[data-slot=page-error-line]") as HTMLElement;
+    expect(line.textContent).toContain("The box has not said yet whether the Windows VM fits your window.");
+    h.state = at({ state: "awake", display: virtio });
+    await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
+    await flush();
+    expect(document.querySelector("[data-upgrade-note]")).toBeNull();
+    expect(document.querySelector("[data-setting='winvm.screen'] [data-slot=save-mark]")?.getAttribute("data-state")).toBe("saved");
+  });
+
+  it("says a size it could not put back on Screen size, with Retry that writes it again", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmHost env="box" />);
+    await flush();
+    await pick("Screen size", "Fits my window");
+    await flush();
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "setting-up", step: "Restarting Windows", display: vga }) })));
+    // The upgrade fails, and the write back is refused too.
+    h.settingsWriteFail = "The box refused the change.";
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", error: "Windows did not start with the new display.", display: vga }) })));
+    await flush();
+    const line = document.querySelector("[data-upgrade-note]")!.closest("[data-slot=page-error-line]") as HTMLElement;
+    expect(line.textContent).toContain("1280 × 800");
+    expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).toContain("The box did not fit the Windows VM to your window.");
+    // The box still holds Fits my window: the select says so, not the size that was not put back.
+    expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("Fits my window");
+    h.settingsWriteFail = null;
+    await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
+    await flush();
+    expect(document.querySelector("[data-upgrade-note]")).toBeNull();
+    expect(h.calls.filter((c) => c.method === "work.winvm.settings" && (c.params as { screen?: string }).screen).at(-1)).toEqual({ method: "work.winvm.settings", params: { screen: "1280x800" } });
+    expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1280 × 800");
+  });
+
   it("calls an upgrade done only from an end that says so, never from the display alone", () => {
     expect(upgradeWorked(at({ state: "awake", display: virtio }))).toBe(true);
     expect(upgradeWorked(at({ state: "awake", error: "Live resize did not start.", display: virtio }))).toBe(false);

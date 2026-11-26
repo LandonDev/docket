@@ -78,7 +78,8 @@ const computersOf = (groups: readonly ListGroup[]): ListRow[] => listPages(group
 
 /** What this window is, for rows a page draws only in some windows (`SettingEntry.needs`). */
 /** `workHere`: Work is on for this window's own computer (the capture key is that computer's). */
-export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean; workHere?: boolean };
+/** `jobsOn`: the computers (environment ids) that hold a job, whose pages list their jobs. */
+export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean; workHere?: boolean; jobsOn?: readonly string[] };
 
 const drawn = (entry: SettingEntry, window: SearchWindow): boolean =>
   !entry.needs || entry.needs.every((need) =>
@@ -98,6 +99,8 @@ function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly
     const own: SettingVars = row.kind === "computer" ? { ...vars, computer: nameInLine(row.label) } : vars;
     for (const entry of SETTINGS_MAP) {
       if (entry.page !== kind || !drawn(entry, window)) continue;
+      // A computer's page lists its jobs only where it has some.
+      if (entry.id === "pc.jobs" && row.kind === "computer" && !window.jobsOn?.includes(computerOfSection(row.id) ?? "")) continue;
       // A row on a shared page that is drawn per computer ("The box on this Mac") lists once for each.
       const perComputer = row.kind !== "computer" && /\{computer\}/.test(entry.section + entry.title);
       if (!perComputer) out.push(rowResult(entry, row, place, own));
@@ -125,7 +128,8 @@ function rowResult(entry: SettingEntry, row: ListRow, place: string | undefined,
     page: row.id,
     row: entry.id,
     names: title,
-    old: entry.was,
+    // An old name says the computer a row was on ("Hosts › The box › Port"), never "a host".
+    old: entry.was.map((was) => settingWords(was, vars)),
     rank: 1,
   };
 }

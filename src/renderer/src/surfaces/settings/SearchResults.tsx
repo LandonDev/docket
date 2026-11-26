@@ -12,6 +12,7 @@ import { useListWindow, useSettingsKnown } from "../../lib/settings/useListWindo
 import { thisDesktopInLine } from "../../lib/native";
 import { LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
 import { useWorkHosts } from "../../lib/workSwitch";
+import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { ItemButton } from "../../components/ui/item";
 import { addonNames } from "./addons/useAddons";
 import { skillNames } from "./skills/useSkills";
@@ -43,9 +44,11 @@ export function useSearchResults(): SearchResult[] {
   const addons = addonNames.useExtras();
   const skills = skillNames.useExtras();
   const workHere = useWorkHosts().has(LOCAL_ENVIRONMENT_ID);
+  // The computers that hold a job: only their pages list jobs.
+  const jobsOn = [...new Set(useWorkspaces().filter((workspace) => workspace.kind === "work").map((workspace) => workspace.environmentId))];
   // Found only where the list offers it (the press is mounted).
   const { addComputer } = useSettingsKnown();
-  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills, ...(window.work ? SIGN_IN_NAMES : []), ...(addComputer ? [ADD_COMPUTER_RESULT] : [])], { web: window.web, mac: window.platform === "darwin", work: window.work, workHere });
+  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills, ...(window.work ? SIGN_IN_NAMES : []), ...(addComputer ? [ADD_COMPUTER_RESULT] : [])], { web: window.web, mac: window.platform === "darwin", work: window.work, workHere, jobsOn });
 }
 
 /**

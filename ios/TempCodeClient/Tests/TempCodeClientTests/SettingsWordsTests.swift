@@ -69,13 +69,15 @@ struct SignInWordsTests {
         let refused = EnvironmentStoreError.api(.unauthorized("invalid or expired pairing code"))
         #expect(SignInWords.refusal(refused, link: true) == "That sign-in link is invalid or expired. Make a new one with Add… under Who can sign in (a Mac's is in Sharing, the box's on its own page).")
         // Add… makes no key for a phone: a refused key points to the link.
-        #expect(SignInWords.refusal(refused, link: false) == "The computer refused that key. To sign in anew, use Sign-In Link.")
+        #expect(SignInWords.refusal(refused, link: false) == "The computer refused that key. For a new sign-in, use Sign-In Link.")
     }
 
     @Test func `each other refusal in plain words`() {
         #expect(SignInWords.refusal(.invalidPairingLink, link: true) == "That is not a sign-in link. Copy the whole link from the computer.")
         #expect(SignInWords.refusal(.invalidKey, link: false) == "That is not a key. Copy the whole key from the computer.")
-        #expect(SignInWords.refusal(.notAClientKey, link: true) == "That key is for a bot. Make a key for this phone on the computer.")
+        // A bot's key points to the link, never to a key Add… cannot make for a phone.
+        #expect(SignInWords.refusal(.notAClientKey, link: true) == "That key is for a bot. To sign in, use Sign-In Link.")
+        #expect(SignInWords.refusal(.notAClientKey, link: false) == "That key is for a bot. To sign in, use Sign-In Link.")
         #expect(SignInWords.refusal(.keyStore("errSecDuplicateItem"), link: true) == "This phone could not keep the key. Try again.")
         #expect(SignInWords.refusal(.api(.rateLimited(retryAfterSeconds: 30)), link: true) == "Too many attempts, try again in 30 s.")
     }
@@ -89,8 +91,13 @@ struct SignInHintTests {
     }
 
     @Test func `the Key tab is for a key already held, and sends a new sign-in to the link`() {
-        #expect(SignInWords.keyHint == "A key this phone already holds, with its computer's address. To sign in anew, use Sign-In Link.")
+        #expect(SignInWords.keyHint == "Enter a key you already have and its computer's address. For a new sign-in, use Sign-In Link.")
         #expect(!SignInWords.keyHint.contains("Add…"))
+        // No line about a key sends him to make one: Add… makes a key only for a bot.
+        for line in [SignInWords.keyHint, SignInWords.refusal(.notAClientKey, link: false), SignInWords.refusal(.api(.unauthorized("x")), link: false)] {
+            #expect(!line.contains("Make a key"))
+            #expect(line.hasSuffix("use Sign-In Link."))
+        }
     }
 
     @Test func `every way to a new link names the same press, never a page only one kind of computer has`() {
