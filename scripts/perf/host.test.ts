@@ -1,9 +1,11 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { seedFakeAccount } from '../journeys/lib/fakeProvider'
 import { describe, expect, it } from 'vitest'
 import { bootLayout, bootRows, copyIndexRows, expectedTailStart, hostFlags, HOST_SCENES, lastAllowedCores, onceInOrder, over, percentile, stallSlices } from './host'
+import { restoreCopyPaths, stageCopyPaths } from './lib/copyPaths'
 import { loadStream } from './lib/load'
 import { requireScrubbed } from './scrubCopy'
 
@@ -73,7 +75,7 @@ describe('timing and row counts', () => {
       { type: 'user-text', text: 'First' },
       { type: 'tool-call', callId: 'one', name: 'Read', input: {} },
       { type: 'tool-result', callId: 'one', output: 'Dummy', isError: false },
-      { type: 'assistant-text', text: 'Last', delta: false },
+      { type: 'assistant-text', text: 'Last', delta: false, msgId: 'last', blockIndex: 0 },
       { type: 'turn-complete' }
     ] as const
     expect(expectedTailStart(rows, 2)).toBe(2)
@@ -104,6 +106,30 @@ describe('timing and row counts', () => {
     expect(over(slices, 50, from, to)).toHaveLength(2)
     expect(over(slices, 100, from, to)).toHaveLength(1)
     expect(over(slices, 50, from + 1, to)).toHaveLength(1)
+  })
+
+  it('temporarily disconnects copy paths and restores them after a repeated stage', () => {
+    const db = new DatabaseSync(':memory:')
+    try {
+      db.exec(`
+        CREATE TABLE projects (id TEXT PRIMARY KEY, cwd TEXT NOT NULL);
+        CREATE TABLE workspaces (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE);
+        CREATE TABLE sessions (id TEXT PRIMARY KEY, cwd TEXT NOT NULL);
+        INSERT INTO projects VALUES ('../p', '/source/project');
+        INSERT INTO workspaces VALUES ('w1', '/source/one'), ('w2', '/source/two');
+        INSERT INTO sessions VALUES ('s', '/source/session');
+      `)
+      stageCopyPaths(db, '/tmp/bench-one')
+      expect(db.prepare("SELECT COUNT(*) AS n FROM workspaces WHERE path LIKE '/tmp/bench-one/disconnected/%'").get()?.n).toBe(2)
+      stageCopyPaths(db, '/tmp/bench-two')
+      expect(db.prepare("SELECT COUNT(*) AS n FROM projects WHERE cwd = '/tmp/bench-two/disconnected/projects/2E2E2F70'").get()?.n).toBe(1)
+      restoreCopyPaths(db)
+      expect(db.prepare("SELECT COUNT(*) AS n FROM workspaces WHERE path LIKE '/source/%'").get()?.n).toBe(2)
+      expect(db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE cwd = '/source/session'").get()?.n).toBe(1)
+      expect(db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'perf_host_copy_paths'").get()?.n).toBe(0)
+    } finally {
+      db.close()
+    }
   })
 
   it('reads only the completed boot index count, including zero', () => {

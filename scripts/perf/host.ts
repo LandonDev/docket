@@ -5,6 +5,7 @@ import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFile
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import type { AgentEvent, SessionMeta } from '../../src/shared/events'
 import type { EventsPage } from '../../src/shared/wire'
@@ -18,6 +19,7 @@ import { toolCall } from '../journeys/lib/thread'
 import { connectProbes, openClient, remoteSocketUrl, type ProbeClient, type ProbeSeed, type Timed } from '../lib/connectProbe'
 import { batchRowMidRun } from '../lib/ios-seeds'
 import { perfThread } from '../lib/ios-perf-seeds'
+import { restoreCopyPaths, stageCopyPaths } from './lib/copyPaths'
 import { guardLiveBox } from './lib/guard'
 import { perfProvider, startLoad } from './lib/load'
 import { requireScrubbed } from './scrubCopy'
@@ -106,7 +108,7 @@ export function onceInOrder(seqs: readonly number[], first: number, last: number
 export function expectedTailStart(events: readonly AgentEvent[], blocks: number, beforeSeq = events.length + 1): number {
   const scan = events.slice(0, beforeSeq - 1).map((event, index) => ({
     seq: index + 1, type: event.type,
-    callId: 'callId' in event ? event.callId : null,
+    callId: 'callId' in event ? event.callId ?? null : null,
     msgId: 'msgId' in event ? event.msgId ?? null : null,
     blockIndex: 'blockIndex' in event ? event.blockIndex ?? null : null
   })).reverse()
@@ -198,8 +200,8 @@ type Result = {
 }
 
 class Rig {
-  readonly root: string
-  readonly repo: string
+  readonly root = mkdtempSync('/tmp/docket-host-')
+  readonly repo = join(this.root, 'repo')
   readonly seed = randomBytes(32).toString('hex')
   readonly signal: AbortSignal
   readonly finishStreams = new AbortController()
@@ -214,14 +216,12 @@ class Rig {
   started = 0
   private inspectPort = 0
   private appPid?: number
+  private copyPathsStaged = false
   private readonly boxLog: string
   readonly env: NodeJS.ProcessEnv
 
   constructor(readonly options: Options, readonly abort: AbortController, copy: string | undefined, remotePort: number, chromium?: string) {
     this.signal = abort.signal
-    // The copy's private /tmp is mounted after this folder is created.
-    this.root = mkdtempSync(copy ? '/srv/agents/tmp/docket-host-' : '/tmp/docket-host-')
-    this.repo = join(this.root, 'repo')
     this.data = copy ?? join(this.root, 'data')
     this.remotePort = remotePort
     this.boxLog = join(this.root, 'box.log')
@@ -230,7 +230,6 @@ class Rig {
     const bin = join(this.root, 'bin')
     const vm = join(this.root, 'no-vm')
     for (const dir of [home, tmp, bin, vm, this.data, this.repo]) mkdirSync(dir, { recursive: true })
-    if (copy) mkdirSync(join(this.root, 'copy-data'))
     this.env = {
       ...isolatedEnvironment(process.env),
       PATH: [bin, '/srv/agents/home/.local/bin', process.env.PATH].join(':'),
@@ -279,28 +278,20 @@ class Rig {
     this.env.TEMP_CODE_WORK_PORT = String(await freePort())
     if (!this.options.copy) seedFakeAccount(this.env.TEMP_CODE_ALIAX_DATA_DIR!, true)
     const electron = join(REPO, 'node_modules', 'electron', 'dist', 'electron')
+    if (this.options.copy) {
+      const db = new DatabaseSync(this.dbPath)
+      try {
+        stageCopyPaths(db, this.root)
+        this.copyPathsStaged = true
+      } finally {
+        db.close()
+      }
+    }
     this.started = performance.now()
     const args = sampleLoop ? [`--inspect=127.0.0.1:${this.inspectPort}`, '.'] : ['.']
-    // Like the box service, a private X server also supports Chromium's hidden windows.
-    const launcher = ['xvfb-run', '-a', '-s', '-screen 0 1440x900x24 -nolisten tcp', 'dbus-run-session', '--', electron, ...args]
-    // The copy can still name real workspaces. Its background mirror sweep
-    // must only be able to write to the copy and this run's scratch paths.
-    const argv = this.options.copy ? [
-      'unshare', '--map-current-user', '--mount', '--keep-caps', 'bash', '-ec', `
-        repo="$PWD"
-        mount --rbind / /
-        mount --bind -- "$1" "$1"
-        mount --bind -- "$2" "$1/copy-data"
-        mount -o remount,bind,ro /
-        mount -t tmpfs -o mode=1777 tmpfs /tmp
-        cd /
-        cd "$repo"
-        export TEMP_CODE_USER_DATA="$1/copy-data"
-        shift 2
-        exec "$@"
-      `, 'docket-host-copy', this.root, this.data, ...launcher
-    ] : launcher
-    const app = this.spawn(argv[0]!, argv.slice(1), this.boxLog)
+    const app = this.spawn('xvfb-run', [
+      '-a', '-s', '-screen 0 1440x900x24 -nolisten tcp', 'dbus-run-session', '--', electron, ...args
+    ], this.boxLog)
     app.once('exit', (code, signal) => this.abort.abort(new Error(`box exited (${signal ?? code})${this.bootLogTail()}`)))
     const deadline = this.started + MAX_MS
     while (performance.now() < deadline) {
@@ -325,7 +316,12 @@ class Rig {
   }
 
   private bootLogTail(): string {
-    return this.options.copy ? '' : '\n' + read(this.boxLog).slice(-4000)
+    const log = read(this.boxLog)
+    if (!this.options.copy) return '\n' + log.slice(-4000)
+    // Keep the Chromium fatal's source location only. A copied host can
+    // log transcript or workspace content and that must stay in scratch.
+    const fatal = /FATAL:([a-z0-9_/.]+\.cc):(\d+)\]/i.exec(log)
+    return fatal ? ` (${fatal[1]}:${fatal[2]})` : ''
   }
 
   async waitForCopyIndex(): Promise<number | null> {
@@ -451,7 +447,17 @@ class Rig {
       await sleep(100)
     }
     const remaining = instancePids(this.root)
-    if (!remaining.length && this.options.copy && appPid) this.cleanCopyIdentity(appPid)
+    if (!remaining.length && this.options.copy) {
+      if (appPid) this.cleanCopyIdentity(appPid)
+      if (this.copyPathsStaged) {
+        const db = new DatabaseSync(this.dbPath)
+        try {
+          restoreCopyPaths(db)
+        } finally {
+          db.close()
+        }
+      }
+    }
     const failed = stopped.find((item) => item.status === 'rejected')
     if (failed) throw failed.reason
     return remaining
