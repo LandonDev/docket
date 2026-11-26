@@ -17,6 +17,7 @@ import {
   parseSearchQuery,
   setQueryToken,
   runCrossHostSearch,
+  HOST_DEADLINE_MS,
   scoreMessages,
   transcriptHits,
   type SearchSnapshot,
@@ -415,6 +416,39 @@ describe("runCrossHostSearch", () => {
     await flush();
     expect(snapshots[3].settled).toBe(true);
     expect(snapshots[3].progress.find((p) => p.name === "mac")).toMatchObject({ state: "done", elapsedMs: 1250 });
+  });
+
+  it("a host that never answers holds the settled state 2 s at most, and its rows land late if they come", async () => {
+    vi.useFakeTimers();
+    try {
+      const snapshots: SearchSnapshot[] = [];
+      const slow = deferred<AppSearchHit[]>();
+      runCrossHostSearch({
+        hosts: [
+          { environmentId: "fast", name: "fast", online: true },
+          { environmentId: "slow", name: "slow", online: true },
+        ],
+        sources: (host) => (host.environmentId === "fast" ? [Promise.resolve([file("fast", "/a")])] : [slow.promise]),
+        onUpdate: (s) => snapshots.push(s),
+        now: () => 0,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(snapshots.at(-1)?.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(HOST_DEADLINE_MS - 1);
+      expect(snapshots.at(-1)?.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const settled = snapshots.at(-1)!;
+      expect(settled.settled).toBe(true);
+      expect(settled.hits.get("fast")).toHaveLength(1);
+      expect(settled.progress.find((p) => p.name === "slow")?.state).toBe("searching");
+      // Late, its rows still join the list.
+      slow.resolve([file("slow", "/b")]);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(snapshots.at(-1)?.hits.get("slow")).toHaveLength(1);
+      expect(snapshots.at(-1)?.progress.find((p) => p.name === "slow")?.state).toBe("done");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("aborts every host's signal on cancel, so the host drops the reads a newer query replaced", async () => {

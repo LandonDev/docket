@@ -165,9 +165,13 @@ export type HostProgress = {
 export type SearchSnapshot = {
   hits: ReadonlyMap<string, AppSearchHit[]>;
   progress: HostProgress[];
-  /** Every host has answered, been skipped or failed. */
+  /** Every host has answered, been skipped or failed, or HOST_DEADLINE_MS passed: a host
+   *  still searching then holds nothing, and its rows join the list when they come. */
   settled: boolean;
 };
+
+/** How long one slow host may hold the settled state; its late rows still land. */
+export const HOST_DEADLINE_MS = 2_000;
 
 export type SearchHost = {
   environmentId: string;
@@ -197,15 +201,21 @@ export function runCrossHostSearch(options: RunOptions): () => void {
   const stop = new AbortController();
   const hits = new Map<string, AppSearchHit[]>();
   const progress = new Map<string, HostProgress>();
+  let pastDeadline = false;
   const publish = (): void => {
     if (cancelled) return;
     const rows = [...progress.values()];
     options.onUpdate({
       hits: new Map(hits),
       progress: rows,
-      settled: rows.every((row) => row.state !== "searching"),
+      settled: pastDeadline || rows.every((row) => row.state !== "searching"),
     });
   };
+  // A host that never answers holds the settled state HOST_DEADLINE_MS at most.
+  const deadline = setTimeout(() => {
+    pastDeadline = true;
+    if ([...progress.values()].some((row) => row.state === "searching")) publish();
+  }, HOST_DEADLINE_MS);
   for (const host of options.hosts) {
     if (!host.online) {
       progress.set(host.environmentId, {
@@ -259,6 +269,7 @@ export function runCrossHostSearch(options: RunOptions): () => void {
   queueMicrotask(publish);
   return () => {
     cancelled = true;
+    clearTimeout(deadline);
     stop.abort();
   };
 }
