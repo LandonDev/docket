@@ -58,3 +58,29 @@ export function applyHarness(env: NodeJS.ProcessEnv, baked: Harness): void {
     if (!env[key] && baked[key]) env[key] = baked[key]
   }
 }
+
+/** Beside a test build's userData: what the build says it is, for a proof to read. */
+export const HARNESS_IDENTITY_FILE = 'harness-identity.json'
+
+export interface HarnessIdentity {
+  /** app.getName(): package.json's productName, else its name. The data folder follows it. */
+  name: string
+  /** The userData Electron picks with no override: the installed app's data dir. */
+  defaultUserData: string
+  execPath: string
+  version: string
+  pid: number
+}
+
+/** Written at every boot of a packaged copy whose userData its baked block names (the updater
+ *  proofs across a rename read the OS-facing name and data path from it); anything else writes
+ *  nothing. */
+export function harnessIdentity(
+  packaged: boolean,
+  baked: Harness,
+  env: NodeJS.ProcessEnv,
+  self: HarnessIdentity
+): { path: string; record: HarnessIdentity } | null {
+  if (!packaged || !baked.TEMP_CODE_USER_DATA || env.TEMP_CODE_USER_DATA !== baked.TEMP_CODE_USER_DATA) return null
+  return { path: join(baked.TEMP_CODE_USER_DATA, HARNESS_IDENTITY_FILE), record: self }
+}

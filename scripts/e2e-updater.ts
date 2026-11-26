@@ -7,6 +7,10 @@
  *   bun run script:e2e-updater --reuse    # keep the builds under ROOT, redrive
  *   bun run script:e2e-updater --busy     # restart while a thread is running
  *   bun run script:e2e-updater --still-running  # a second instance blocks ShipIt
+ *   bun run script:e2e-updater --rename   # across the rename: TempCodeE2E 1.0.N-1 → DocketE2E 1.0.N
+ *   bun run script:e2e-updater --rename=present  # the same with a DocketE2E.app already in the folder
+ *   bun run script:e2e-updater --rename=hand     # the old copy renamed DocketE2E.app by hand first
+ *   bun run script:e2e-updater --rename --next   # then DocketE2E 1.0.N → 1.0.N+1 from where that left it
  *   bun scripts/e2e-updater.ts --win            # the Windows update path, in the rig on the box
  *                                               # (scripts/e2e-updater-win.ts has its own account)
  *
@@ -43,6 +47,14 @@
  *      shows a clean install. A restart that leaves the process alive is
  *      reported as a stall.
  *
+ * --rename builds the old copy under the product name the app had (TempCodeE2E) and the new one
+ * under the one it has (DocketE2E), with the same bundle id, and records what a person would
+ * see after the update: every bundle in ROOT with its version, whether ShipIt relaunched the app
+ * itself, which executable runs, and the name and default userData the app reports before and
+ * after (harness.ts `harnessIdentity`; both must hold). A relaunch that does not come is
+ * reported, and the run opens the updated bundle by hand so --next can go on from that state.
+ * The facts are also written to ROOT/facts.json.
+ *
  * Everything it writes lives under ROOT, the e2e ShipIt cache, the
  * temp-code-harness-updater cache and the launchd label with the e2e bundle
  * id; the installed app's paths are never read or written.
@@ -51,6 +63,7 @@ import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -59,6 +72,7 @@ import {
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { HARNESS_IDENTITY_FILE, type HarnessIdentity } from '../src/main/harness'
 import {
   attach as attachTo,
   builtApp as builtAppAt,
@@ -85,13 +99,21 @@ if (process.argv.includes('--win')) await import('./e2e-updater-win')
 
 const ROOT = '/private/tmp/tc-updater-e2e'
 const APP_ID = 'dev.landon.tempcode.e2e'
-const PRODUCT = 'TempCodeE2E'
+const renameArg = process.argv.find((a) => a === '--rename' || a.startsWith('--rename='))
+/** plain: the old bundle under its own name; present: a DocketE2E.app (the old build) already
+ *  beside it; hand: the old bundle renamed DocketE2E.app, its executable still TempCodeE2E. */
+const rename = renameArg ? ((renameArg.split('=')[1] ?? 'plain') as 'plain' | 'present' | 'hand') : null
+if (rename && !['plain', 'present', 'hand'].includes(rename)) throw new Error(`--rename=${rename}?`)
+const next = process.argv.includes('--next')
+const PRODUCT = 'DocketE2E'
+const OLD_PRODUCT = rename ? 'TempCodeE2E' : PRODUCT
 const DEBUG_PORT = 9230
 const FEED_PORT = 9231
 const FEED_URL = `http://127.0.0.1:${FEED_PORT}/`
 const USER_DATA = join(ROOT, 'userData')
-const APP = join(ROOT, `${PRODUCT}.app`)
-const EXE = join(APP, 'Contents', 'MacOS', PRODUCT)
+const APP = join(ROOT, `${rename === 'hand' ? PRODUCT : OLD_PRODUCT}.app`)
+const EXE = join(APP, 'Contents', 'MacOS', OLD_PRODUCT)
+const IDENTITY = join(USER_DATA, HARNESS_IDENTITY_FILE)
 const FEED_DIR = join(ROOT, 'feed')
 const SHIPIT_DIR = join(homedir(), 'Library', 'Caches', `${APP_ID}.ShipIt`)
 const SHIPIT_LOG = join(SHIPIT_DIR, 'ShipIt_stderr.log')
@@ -116,17 +138,25 @@ const log = (msg: string): void =>
 const N = readPackage().n
 const OLD = `1.0.${N - 1}`
 const NEW = `1.0.${N}`
+const NEXT = `1.0.${N + 1}`
 const identity = await findIdentity()
 
 log(`old ${OLD} → new ${NEW}, identity "${identity}", root ${ROOT}`)
-await killAt(APP)
+/** The bundles in ROOT itself (the builds sit a level down). */
+const bundles = (): string[] =>
+  existsSync(ROOT) ? readdirSync(ROOT).filter((n) => n.endsWith('.app')).sort() : []
+const killAll = async (): Promise<void> => {
+  for (const name of bundles()) await killAt(join(ROOT, name))
+}
+await killAll()
 await tryRun(['launchctl', 'remove', SHIPIT_LABEL])
 rmSync(SHIPIT_DIR, { recursive: true, force: true })
 rmSync(UPDATER_CACHE, { recursive: true, force: true })
 if (!reuse) rmSync(ROOT, { recursive: true, force: true })
 else {
-  rmSync(APP, { recursive: true, force: true })
+  for (const name of bundles()) rmSync(join(ROOT, name), { recursive: true, force: true })
   rmSync(USER_DATA, { recursive: true, force: true })
+  rmSync(join(ROOT, 'feed'), { recursive: true, force: true })
 }
 mkdirSync(ROOT, { recursive: true })
 for (const port of [DEBUG_PORT, FEED_PORT]) {
@@ -137,17 +167,22 @@ await waitForReleaseTrain(log)
 
 // ── Build ──────────────────────────────────────────────────────────────────
 
-const outDir = (which: 'old' | 'new'): string => join(ROOT, `build-${which}`)
-const builtApp = (which: 'old' | 'new'): string => builtAppAt(outDir(which), PRODUCT)
-const zipName = `${PRODUCT}-${NEW}-arm64.zip`
+type Which = 'old' | 'new' | 'next'
+const builds: Which[] = next ? ['old', 'new', 'next'] : ['old', 'new']
+const outDir = (which: Which): string => join(ROOT, `build-${which}`)
+const productOf = (which: Which): string => (which === 'old' ? OLD_PRODUCT : PRODUCT)
+const builtApp = (which: Which): string => builtAppAt(outDir(which), productOf(which))
+const zipOf = (version: string): string => `${PRODUCT}-${version}-arm64.zip`
+const zipName = zipOf(NEW)
+const versionOf = { old: OLD, new: NEW, next: NEXT }
 
-async function pack(version: string, which: 'old' | 'new'): Promise<void> {
+async function pack(version: string, which: Which): Promise<void> {
   await packApp({
     version,
     which,
     outDir: outDir(which),
     appId: APP_ID,
-    product: PRODUCT,
+    product: productOf(which),
     identity,
     check,
     log,
@@ -162,44 +197,53 @@ async function pack(version: string, which: 'old' | 'new'): Promise<void> {
 if (!reuse) {
   log('bun run build (typecheck + electron-vite)')
   await sh(['bun', 'run', 'build'], { quiet: true })
-  await pack(OLD, 'old')
-  await pack(NEW, 'new')
+  for (const which of builds) {
+    await pack(versionOf[which], which)
+    // Only the zips the feed serves are needed; the old one is 300 MB of disk for nothing.
+    if (which === 'old') rmSync(join(outDir(which), `${OLD_PRODUCT}-${OLD}-arm64.zip`), { force: true })
+  }
 } else {
-  for (const which of ['old', 'new'] as const) {
+  for (const which of builds) {
     if (!existsSync(builtApp(which))) throw new Error(`--reuse: ${builtApp(which)} missing`)
   }
 }
 
 // ── Feed ───────────────────────────────────────────────────────────────────
 
-const newZip = join(outDir('new'), zipName)
-if (!existsSync(newZip)) throw new Error(`${newZip} missing`)
-mkdirSync(FEED_DIR, { recursive: true })
-const feedZip = join(FEED_DIR, zipName)
-if (!existsSync(feedZip)) await sh(['cp', newZip, feedZip])
-
-const sha512 = await new Promise<string>((res, rej) => {
-  const h = createHash('sha512')
-  createReadStream(feedZip)
-    .on('data', (d) => h.update(d))
-    .on('end', () => res(h.digest('base64')))
-    .on('error', rej)
-})
-const size = statSync(feedZip).size
-writeFileSync(
-  join(FEED_DIR, 'latest-mac.yml'),
-  [
-    `version: ${NEW}`,
-    'files:',
-    `  - url: ${zipName}`,
-    `    sha512: ${sha512}`,
-    `    size: ${size}`,
-    `path: ${zipName}`,
-    `sha512: ${sha512}`,
-    `releaseDate: '${new Date().toISOString()}'`,
-    ''
-  ].join('\n')
-)
+/** Puts a build's zip on the feed and names it latest. Hard links: the disk is short on the Mac. */
+async function offer(which: Which): Promise<number> {
+  const version = versionOf[which]
+  const name = zipOf(version)
+  const built = join(outDir(which), name)
+  if (!existsSync(built)) throw new Error(`${built} missing`)
+  mkdirSync(FEED_DIR, { recursive: true })
+  const feedZip = join(FEED_DIR, name)
+  if (!existsSync(feedZip)) await sh(['ln', built, feedZip])
+  const sha512 = await new Promise<string>((res, rej) => {
+    const h = createHash('sha512')
+    createReadStream(feedZip)
+      .on('data', (d) => h.update(d))
+      .on('end', () => res(h.digest('base64')))
+      .on('error', rej)
+  })
+  const size = statSync(feedZip).size
+  writeFileSync(
+    join(FEED_DIR, 'latest-mac.yml'),
+    [
+      `version: ${version}`,
+      'files:',
+      `  - url: ${name}`,
+      `    sha512: ${sha512}`,
+      `    size: ${size}`,
+      `path: ${name}`,
+      `sha512: ${sha512}`,
+      `releaseDate: '${new Date().toISOString()}'`,
+      ''
+    ].join('\n')
+  )
+  return size
+}
+const size = await offer('new')
 const server = Bun.serve({
   port: FEED_PORT,
   hostname: '127.0.0.1',
@@ -217,6 +261,8 @@ log(`feed at ${FEED_URL} serving ${zipName} (${size} bytes)`)
 // ── Install the old copy and launch it ─────────────────────────────────────
 
 await sh(['ditto', builtApp('old'), APP])
+// A copy at the name the update would move to: the old build, so its version tells whether ShipIt wrote into it.
+if (rename === 'present') await sh(['ditto', builtApp('old'), join(ROOT, `${PRODUCT}.app`)])
 mkdirSync(USER_DATA, { recursive: true })
 const appLog = join(ROOT, 'old-app.log')
 const env = launchEnv(busy ? { TEMP_CODE_DIALOG_ANSWER: 'yes' } : {})
@@ -267,39 +313,106 @@ const attach = (timeoutMs: number): Promise<Cdp> => attachTo(DEBUG_PORT, timeout
 let relaunched: Cdp | null = null
 const feedLog: string[] = []
 
+const facts: Record<string, unknown> = { rename: rename ?? 'none', next, from: OLD, to: NEW }
+const fact = (key: string, value: unknown): void => {
+  facts[key] = value
+  console.log(`FACT ${key}: ${JSON.stringify(value)}`)
+}
+const readIdentity = (): HarnessIdentity | null => {
+  try {
+    return JSON.parse(readFileSync(IDENTITY, 'utf8')) as HarnessIdentity
+  } catch {
+    return null
+  }
+}
+/** Every bundle in ROOT with the version its Info.plist says. */
+async function folder(): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  for (const name of bundles()) out[name] = await plistVersionOf(join(ROOT, name))
+  return out
+}
+async function executableOf(app: string): Promise<string> {
+  const plist = join(app, 'Contents', 'Info.plist')
+  return (await sh(['plutil', '-extract', 'CFBundleExecutable', 'raw', plist], { quiet: true })).trim()
+}
+async function runningCount(): Promise<number> {
+  let n = 0
+  for (const name of bundles()) n += (await pidsAt(join(ROOT, name))).length
+  return n
+}
+/** The identity the old app wrote at boot; taken away so the next boot's is its own. */
+let identityBefore: HarnessIdentity | null = null
+async function noteIdentityBefore(label: string): Promise<void> {
+  for (let i = 0; i < 20 && !readIdentity(); i++) await sleep(500)
+  identityBefore = readIdentity()
+  fact(`${label}.identity`, identityBefore)
+  rmSync(IDENTITY, { force: true })
+}
+
 /** After the app quit: ShipIt copies the staged bundle, verifies the copy
  *  against the running app's designated requirement, swaps Contents and
  *  relaunches. Lines of the ShipIt log written before `since` are an earlier
- *  attempt's and are not held against this one. */
-async function finishInstall(since: number): Promise<void> {
+ *  attempt's and are not held against this one. Answers the app it attached
+ *  to: ShipIt's relaunch, or, when that never came, the updated bundle opened
+ *  by hand. */
+async function finishInstall(since: number, version = NEW, label = 'update'): Promise<Cdp | null> {
   const swapUntil = Date.now() + 180_000
-  let plistVersion = ''
+  let target = ''
   while (Date.now() < swapUntil) {
-    plistVersion = await plistVersionOf(APP)
-    if (plistVersion === NEW) break
+    const seen = await folder()
+    target = Object.keys(seen).find((n) => seen[n] === version) ?? ''
+    if (target) break
     await sleep(1000)
   }
   check(
-    `bundle on disk is ${NEW}`,
-    plistVersion === NEW,
-    `Info.plist says "${plistVersion}" ${((Date.now() - since) / 1000).toFixed(0)}s after restart`
+    `a bundle on disk is ${version}`,
+    target !== '',
+    `${target || 'none'} ${((Date.now() - since) / 1000).toFixed(0)}s after restart`
   )
+  // ShipIt moves the bundle and then relaunches; give it a moment to finish both.
+  await sleep(3000)
+  const after = await folder()
+  fact(`${label}.folder`, after)
+  check(`one app in the folder after the ${label}`, Object.keys(after).length === 1, JSON.stringify(after))
 
-  relaunched = await attach(120_000).catch((e) => {
-    check('ShipIt relaunched the app', false, e.message)
-    return null
-  })
-  if (relaunched) {
-    const version = await relaunched.eval<string>('window.api.app.version()')
-    check(`relaunched app answers ${NEW}`, version === NEW, version)
-    const status2 = await relaunched.eval<Status>('window.api.updates.get()')
+  let cdp = await attach(120_000).catch(() => null)
+  fact(`${label}.relaunchedBySelf`, cdp !== null)
+  check('ShipIt relaunched the app', cdp !== null)
+  if (!cdp && target) {
+    const exe = join(ROOT, target, 'Contents', 'MacOS', await executableOf(join(ROOT, target)))
+    log(`no relaunch; opening ${exe} by hand`)
+    const file = Bun.file(join(ROOT, `${label}-by-hand.log`))
+    Bun.spawn([exe], { env, stdout: file, stderr: file })
+    cdp = await attach(90_000).catch((e) => {
+      check(`the updated bundle opens by hand`, false, e.message)
+      return null
+    })
+  }
+  if (cdp) {
+    const answered = await cdp.eval<string>('window.api.app.version()')
+    check(`relaunched app answers ${version}`, answered === version, answered)
+    const status2 = await cdp.eval<Status>('window.api.updates.get()')
     check(
       'relaunched app reports no pending update and no failure',
-      status2.current === NEW && status2.phase !== 'error' && !status2.installFailure,
+      status2.current === version && status2.phase !== 'error' && !status2.installFailure,
       JSON.stringify(status2)
     )
     const attemptFile = join(USER_DATA, 'update-attempt.json')
     check('the attempt record was cleared after the install', !existsSync(attemptFile))
+    for (let i = 0; i < 20 && !readIdentity(); i++) await sleep(500)
+    const identity = readIdentity()
+    fact(`${label}.identityAfter`, identity)
+    check(
+      'app.getName() and the default userData are unchanged',
+      !!identity &&
+        !!identityBefore &&
+        identity.name === identityBefore.name &&
+        identity.defaultUserData === identityBefore.defaultUserData,
+      `${identityBefore?.name} → ${identity?.name}; ${identityBefore?.defaultUserData} → ${identity?.defaultUserData}`
+    )
+    fact(`${label}.processes`, await runningCount())
+    identityBefore = identity
+    rmSync(IDENTITY, { force: true })
   }
 
   const shipItLog = existsSync(SHIPIT_LOG) ? readFileSync(SHIPIT_LOG, 'utf8') : ''
@@ -322,11 +435,36 @@ async function finishInstall(since: number): Promise<void> {
   console.log('---- ShipIt_stderr.log')
   console.log(shipItLog.trim())
   console.log('----')
+  return cdp
+}
+
+/** --next: one more update, DocketE2E 1.0.N → 1.0.N+1, from the state the first update left. */
+async function nextUpdate(cdp: Cdp): Promise<void> {
+  await offer('next')
+  const checked = await cdp.eval<Status>('window.api.updates.check()')
+  check(`check sees ${NEXT} on the feed`, checked.latest === NEXT && checked.phase !== 'error', JSON.stringify(checked))
+  await driveToReady(cdp)
+  await sleep(2000)
+  log('apply again: restart to update (next)')
+  const at = Date.now()
+  await cdp.eval<Status>('window.api.updates.apply()').catch((e) => log(`apply (restart) threw: ${e.message}`))
+  cdp.close()
+  let gone = false
+  for (const until = Date.now() + 60_000; Date.now() < until; await sleep(500)) {
+    if ((await runningCount()) === 0) {
+      gone = true
+      break
+    }
+  }
+  check('restart quits the app (next)', gone)
+  relaunched = await finishInstall(at, NEXT, 'next')
 }
 
 async function drive(): Promise<void> {
   try {
     const cdp = await attach(90_000)
+    await noteIdentityBefore('old')
+    fact('old.folder', await folder())
     const booted = await cdp.eval<Status>('window.api.updates.get()')
     check(`old app reports current ${OLD}`, booted.current === OLD, JSON.stringify(booted))
 
@@ -428,7 +566,7 @@ async function drive(): Promise<void> {
         .eval<Status>('window.api.updates.apply()')
         .catch((e) => log(`apply (restart) threw: ${e.message}`))
       check('restart quits the app', await waitExit(again, 60_000))
-      await finishInstall(restartAt2)
+      relaunched = await finishInstall(restartAt2)
       return
     }
 
@@ -478,7 +616,7 @@ async function drive(): Promise<void> {
       cdp.close()
       oldProc.kill('SIGTERM')
       await Promise.race([oldProc.exited, sleep(10_000)])
-      if (!(await pidsAt(APP)).length) log('old app killed')
+      if (!(await runningCount())) log('old app killed')
       throw new Error('stall')
     }
     check(
@@ -486,18 +624,20 @@ async function drive(): Promise<void> {
       true,
       `exited ${((Date.now() - restartAt) / 1000).toFixed(1)}s after apply`
     )
-    await finishInstall(restartAt)
+    relaunched = await finishInstall(restartAt)
+    if (next && relaunched) await nextUpdate(relaunched)
   } catch (e) {
     if ((e as Error).message !== 'stall') check('e2e run', false, (e as Error).message)
   } finally {
     relaunched?.close()
-    await killAt(APP)
+    await killAll()
     await tryRun(['launchctl', 'remove', SHIPIT_LABEL])
     server.stop(true)
   }
 }
 await drive()
 
+writeFileSync(join(ROOT, 'facts.json'), JSON.stringify(facts, null, 2))
 log(`artifacts under ${ROOT}; old app log ${appLog}; ShipIt log ${SHIPIT_LOG}`)
 console.log(failures === 0 ? 'E2E UPDATER: PASS' : `E2E UPDATER: ${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)

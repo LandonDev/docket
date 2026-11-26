@@ -2,13 +2,13 @@ import { createComputerBanner } from './computerBanner'
 import { computerBannerHooks } from './server/computer/hold'
 import { app, shell, dialog, net, BrowserWindow, Notification, ipcMain, powerMonitor, powerSaveBlocker } from 'electron'
 import { homedir } from 'os'
-import { join } from 'path'
-import { copyFileSync, existsSync, mkdirSync } from 'fs'
+import { dirname, join } from 'path'
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { flushCompileCache, getCompileCacheDir } from 'node:module'
 import { REVEAL_NO_WINDOW } from '@shared/contract-work-reveal'
 import { bootMark } from './server/boot'
 import { noteInstallOnQuit, registerUpdates, selfUpdate, setCodeStatus } from './update'
-import { applyHarness, bakedHarness } from './harness'
+import { applyHarness, bakedHarness, harnessIdentity } from './harness'
 import { codeBoot } from './codeBoot'
 import { appRoot } from './server/appRoot'
 import { SOAK_SWITCHES, soakWindow } from './soakWindow'
@@ -98,12 +98,28 @@ const FLUSH_AFTER_MS = 10_000
 // Parallel dev instances (worktrees) get their own userData + database so
 // they never contend with the primary checkout's running app. A packaged
 // test build carries the same overrides in its package.json (harness.ts).
-applyHarness(process.env, bakedHarness(app.getAppPath()))
+const baked = bakedHarness(app.getAppPath())
+applyHarness(process.env, baked)
 // Windows: the data dir sits under %LOCALAPPDATA%, off the roaming profile (windowFrame.ts).
 const winUserData = localUserData(process.platform, process.env, app.getPath('userData'))
 if (winUserData) app.setPath('userData', winUserData)
 /** The app's own userData before any override: the installed app's data dir, the prod one on a Mac. */
 const defaultUserData = app.getPath('userData')
+const identity = harnessIdentity(app.isPackaged, baked, process.env, {
+  name: app.getName(),
+  defaultUserData,
+  execPath: process.execPath,
+  version: app.getVersion(),
+  pid: process.pid
+})
+if (identity) {
+  try {
+    mkdirSync(dirname(identity.path), { recursive: true })
+    writeFileSync(identity.path, JSON.stringify(identity.record))
+  } catch {
+    // a proof's record, never a reason to stop the app
+  }
+}
 if (process.env.TEMP_CODE_USER_DATA) {
   app.setPath('userData', process.env.TEMP_CODE_USER_DATA)
   // A proof's ballast: this many MiB resident in main, so a fork here costs what it costs on the box (scripts/e2e-exec-broker.ts). Isolated instances only.

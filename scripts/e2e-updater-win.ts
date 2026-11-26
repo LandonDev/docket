@@ -11,6 +11,7 @@
  *   bun scripts/e2e-updater.ts --win --busy       restart with the bundled claude.exe running out of the install folder
  *   bun scripts/e2e-updater.ts --win --build-only build and check both copies, leave the rig alone
  *   bun scripts/e2e-updater.ts --win --no-vite    out/ is already built: pack it as it is
+ *   bun scripts/e2e-updater.ts --win --rename     across the rename: TempCodeE2E 1.0.N-1 → DocketE2E 1.0.N
  *
  * What it does:
  *   1. Builds out/ (electron-vite), stages the win32 Claude CLI (scripts/win-stage.ts), builds
@@ -33,6 +34,13 @@
  *      no pending update and no failure, and with --busy that the children alive before the
  *      restart are gone.
  *
+ * --rename builds the old copy under the product name the app had (TempCodeE2E) and the new one
+ * under the one it has (DocketE2E), same app id, so the same NSIS GUID, and records what a person
+ * would see after the update: the install folder and the programs in it, every Start menu and
+ * desktop shortcut with its target and AppUserModelID, and the uninstall entries. It holds them
+ * to one uninstall entry named DocketE2E, shortcuts named DocketE2E only, each pointing at a
+ * program that exists, with the app id as its AUMID. The facts go to ROOT/facts.json too.
+ *
  * Everything it writes on the box lives under ROOT; in the guest, under %LOCALAPPDATA%
  * (Programs\TempCodeE2E, tc-e2e, temp-code-harness-updater) of a throwaway overlay.
  */
@@ -46,7 +54,9 @@ import { rigConfig, rigPaths, STANDARD_USER } from '../src/main/server/work/winv
 
 const ROOT = '/tmp/tc-updater-e2e-win'
 const APP_ID = 'dev.landon.tempcode.e2e'
-const PRODUCT = 'TempCodeE2E'
+const renameLeg = process.argv.includes('--rename')
+const PRODUCT = 'DocketE2E'
+const OLD_PRODUCT = renameLeg ? 'TempCodeE2E' : PRODUCT
 /**
  * Each copy's CDP port in the guest, and where the tunnel brings it on the box. Two, because the
  * installer the old copy starts inherits its listening debug socket (a Windows child inherits every
@@ -60,9 +70,12 @@ const FEED_URL = `http://127.0.0.1:${FEED_PORT}/`
 /** In the guest. `%LOCALAPPDATA%` is spelled out: the block is read before any shell could expand it. */
 const GUEST_LOCAL = `C:\\Users\\${STANDARD_USER}\\AppData\\Local`
 const GUEST_USER_DATA = `${GUEST_LOCAL}\\tc-e2e\\userData`
-const GUEST_APP_DIR = `${GUEST_LOCAL}\\Programs\\${PRODUCT}`
-const GUEST_EXE = `${GUEST_APP_DIR}\\${PRODUCT}.exe`
-const GUEST_CLI = `${GUEST_APP_DIR}\\resources\\app\\node_modules\\@anthropic-ai\\claude-agent-sdk-win32-x64\\claude.exe`
+const programDir = (product: string): string => `${GUEST_LOCAL}\\Programs\\${product}`
+const OLD_APP_DIR = programDir(OLD_PRODUCT)
+/** The folder the app runs from: the one the first install made, and after the update wherever the new version landed. */
+let appDir = OLD_APP_DIR
+const GUEST_EXE = `${OLD_APP_DIR}\\${OLD_PRODUCT}.exe`
+const GUEST_CLI = `${OLD_APP_DIR}\\resources\\app\\node_modules\\@anthropic-ai\\claude-agent-sdk-win32-x64\\claude.exe`
 const FEED_DIR = join(ROOT, 'feed')
 const SHOTS = join(ROOT, 'shots')
 
@@ -134,7 +147,7 @@ async function pack(version: string, which: 'old' | 'new'): Promise<void> {
       {
         extends: `./${WIN_CONFIG}`,
         appId: APP_ID,
-        productName: PRODUCT,
+        productName: which === 'old' ? OLD_PRODUCT : PRODUCT,
         directories: { output: outDir(which) },
         extraMetadata: {
           tempcodeHarness: {
@@ -236,13 +249,13 @@ let startedRig = false
 async function appProcesses(): Promise<string[]> {
   // Get-Process, not CIM: over SSH a standard user's CIM query of a desktop process answers "Access denied".
   const r = await ps(
-    `Get-Process -EA 0 | Where-Object { $_.Path -like '${GUEST_APP_DIR}\\*' } | ForEach-Object { "$($_.Id) $($_.Path)" }`
+    `Get-Process -EA 0 | Where-Object { $_.Path -like '${appDir}\\*' } | ForEach-Object { "$($_.Id) $($_.Path)" }`
   )
   return r.out.split('\n').map((l) => l.trim()).filter(Boolean)
 }
 
-async function installedVersion(): Promise<string> {
-  const r = await ps(`(Get-Content -Raw '${GUEST_APP_DIR}\\resources\\app\\package.json' | ConvertFrom-Json).version`)
+async function installedVersion(dir = appDir): Promise<string> {
+  const r = await ps(`(Get-Content -Raw '${dir}\\resources\\app\\package.json' | ConvertFrom-Json).version`)
   return r.code === 0 ? r.out.trim() : ''
 }
 
@@ -268,6 +281,59 @@ async function key(cdp: Cdp, k: { key: string; code: string; vk: number }, modif
   for (const type of ['rawKeyDown', 'keyUp']) {
     await cdp.send('Input.dispatchKeyEvent', { type, modifiers, key: k.key, code: k.code, windowsVirtualKeyCode: k.vk })
   }
+}
+
+const facts: Record<string, unknown> = { rename: renameLeg, from: OLD, to: NEW }
+const fact = (key: string, value: unknown): void => {
+  facts[key] = value
+  console.log(`FACT ${key}: ${JSON.stringify(value)}`)
+}
+
+type Shortcut = { path: string; target: string; aumid: string }
+type Desktop = {
+  folders: Array<{ name: string; exes: string[] }>
+  shortcuts: Shortcut[]
+  uninstall: Array<{ key: string; name: string; location: string; icon: string }>
+}
+
+/** What Windows shows of the test app: the folders under Programs with their programs, the Start
+ *  menu and desktop shortcuts (target and AppUserModelID, read through the shell's property
+ *  store), and the per-user uninstall entries. */
+async function desktop(): Promise<Desktop> {
+  const r = await ps(
+    [
+      `$folders = @(Get-ChildItem "$env:LOCALAPPDATA\\Programs" -Directory -EA 0 | Where-Object Name -like '*E2E*' | ForEach-Object { [pscustomobject]@{ name = $_.Name; exes = @(Get-ChildItem $_.FullName -Filter *.exe -EA 0 | ForEach-Object Name) } })`,
+      `$sh = New-Object -ComObject WScript.Shell; $shell = New-Object -ComObject Shell.Application`,
+      `$links = @(foreach ($d in @("$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs", "$env:USERPROFILE\\Desktop")) { Get-ChildItem $d -Filter '*E2E*.lnk' -EA 0 | ForEach-Object { $id = ''; try { $id = [string]$shell.NameSpace($_.DirectoryName).ParseName($_.Name).ExtendedProperty('System.AppUserModel.ID') } catch {}; [pscustomobject]@{ path = $_.FullName; target = $sh.CreateShortcut($_.FullName).TargetPath; aumid = $id } } })`,
+      `$un = @(Get-ChildItem 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall' -EA 0 | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object DisplayName -like '*E2E*' | ForEach-Object { [pscustomobject]@{ key = $_.PSChildName; name = [string]$_.DisplayName; location = [string]$_.InstallLocation; icon = [string]$_.DisplayIcon } })`,
+      `[pscustomobject]@{ folders = $folders; shortcuts = $links; uninstall = $un } | ConvertTo-Json -Compress -Depth 4`
+    ].join('; ')
+  )
+  try {
+    const raw = JSON.parse(r.out.slice(r.out.indexOf('{'))) as Desktop
+    // ConvertTo-Json writes a one-element array as the element itself.
+    const list = <T,>(v: T[] | T | null | undefined): T[] => (v == null ? [] : Array.isArray(v) ? v : [v])
+    return { folders: list(raw.folders).map((f) => ({ ...f, exes: list(f.exes) })), shortcuts: list(raw.shortcuts), uninstall: list(raw.uninstall) }
+  } catch {
+    log(`desktop facts unreadable: ${r.out.slice(0, 300)}`)
+    return { folders: [], shortcuts: [], uninstall: [] }
+  }
+}
+
+/** After the update across the rename: one uninstall entry and shortcuts under the new name, each
+ *  pointing at a program that is there, grouped under the app id. */
+async function judgeRename(): Promise<void> {
+  const after = await desktop()
+  fact('after', after)
+  fact('running', await appProcesses())
+  const folder = after.folders.find((f) => appDir.endsWith(`\\${f.name}`))
+  check(`the install folder holds ${PRODUCT}.exe and no ${OLD_PRODUCT}.exe`, !!folder && folder.exes.includes(`${PRODUCT}.exe`) && !folder.exes.includes(`${OLD_PRODUCT}.exe`), JSON.stringify(after.folders))
+  check(`one uninstall entry, named ${PRODUCT}`, after.uninstall.length === 1 && after.uninstall[0].name.startsWith(PRODUCT), JSON.stringify(after.uninstall))
+  const names = after.shortcuts.map((l) => l.path.split('\\').pop() ?? '')
+  check(`the shortcuts are named ${PRODUCT} alone`, names.length > 0 && names.every((n) => n === `${PRODUCT}.lnk`), names.join(', '))
+  const targets = await Promise.all(after.shortcuts.map(async (l) => (await ps(`Test-Path '${l.target}'`)).out.trim() === 'True'))
+  check('every shortcut points at a program that is there', after.shortcuts.length > 0 && targets.every(Boolean), after.shortcuts.map((l) => l.target).join(', '))
+  check(`every shortcut carries the AppUserModelID ${APP_ID}`, after.shortcuts.length > 0 && after.shortcuts.every((l) => l.aumid === APP_ID), after.shortcuts.map((l) => l.aumid).join(', '))
 }
 
 async function drive(): Promise<void> {
@@ -307,10 +373,10 @@ async function drive(): Promise<void> {
   const installed = await guest([vm('ssh'), `Downloads\\${oldInstaller} /S`], 1_200_000)
   check('the installer runs silently as the standard user and exits 0', installed.code === 0, `${((Date.now() - before) / 1000).toFixed(0)}s ${installed.out.slice(0, 200)}`)
   const landed = await waitFor('the install', 600_000, async () => (await installedVersion()) === OLD)
-  check(`it installs ${OLD} into %LOCALAPPDATA%\\Programs\\${PRODUCT}`, landed, await installedVersion())
-  const machineWide = await ps(`Test-Path 'C:\\Program Files\\${PRODUCT}'`)
+  check(`it installs ${OLD} into %LOCALAPPDATA%\\Programs\\${OLD_PRODUCT}`, landed, await installedVersion())
+  const machineWide = await ps(`Test-Path 'C:\\Program Files\\${OLD_PRODUCT}'`)
   check('nothing was written under Program Files', machineWide.out.trim() === 'False', machineWide.out)
-  const shortcut = await ps(`Test-Path "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\${PRODUCT}.lnk"`)
+  const shortcut = await ps(`Test-Path "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\${OLD_PRODUCT}.lnk"`)
   check('the Start menu has its shortcut', shortcut.out.trim() === 'True', shortcut.out)
 
   const cli = await guest([vm('ssh'), `"${GUEST_CLI}" --version`], 120_000)
@@ -322,6 +388,7 @@ async function drive(): Promise<void> {
   const cdp = await attach(CDP_PORT.old, 180_000)
   await sleep(4000)
   await shot('installed')
+  if (renameLeg) fact('before', await desktop())
   const booted = await cdp.eval<Status>('window.api.updates.get()')
   check(`the app reports current ${OLD}`, booted.current === OLD, JSON.stringify(booted))
   const data = await ps(`Test-Path '${GUEST_USER_DATA}\\temp-code.db'`)
@@ -396,7 +463,7 @@ async function drive(): Promise<void> {
     const cli = await guest([vm('run-in-session'), GUEST_CLI], 120_000)
     log(`bundled CLI on the desktop: ${cli.out.slice(0, 160)}`)
     await waitFor('the bundled CLI', 60_000, async () => (await appProcesses()).some((l) => /claude\.exe$/i.test(l)))
-    childrenBefore = (await appProcesses()).filter((l) => !l.toLowerCase().endsWith(`${PRODUCT.toLowerCase()}.exe`))
+    childrenBefore = (await appProcesses()).filter((l) => !l.toLowerCase().endsWith(`${OLD_PRODUCT.toLowerCase()}.exe`))
     check('a bundled claude.exe runs out of the install folder before the restart', childrenBefore.some((l) => /claude\.exe$/i.test(l)), childrenBefore.join(' | '))
     await shot('busy-before-restart')
   }
@@ -407,12 +474,21 @@ async function drive(): Promise<void> {
   cdp.close()
   await sleep(6000)
   await shot('installing')
-  const swapped = await waitFor(`the folder to hold ${NEW}`, 900_000, async () => (await installedVersion()) === NEW)
+  const swapped = await waitFor(`the folder to hold ${NEW}`, 900_000, async () => {
+    for (const dir of new Set([OLD_APP_DIR, programDir(PRODUCT)])) {
+      if ((await installedVersion(dir)) === NEW) {
+        appDir = dir
+        return true
+      }
+    }
+    return false
+  })
+  if (renameLeg) fact('installFolder', appDir)
   check(`the installed folder holds ${NEW}`, swapped, `${await installedVersion()} ${((Date.now() - restartAt) / 1000).toFixed(0)}s after restart`)
   // What runs while the installer works, until the app is back with its CDP port: the log says how long each part took.
   const back = await waitFor('the app to come back', 1_200_000, async () => {
     const r = await ps(
-      `$p = @(Get-Process -EA 0 | Where-Object { $_.Path -like '${GUEST_APP_DIR}\\*' -or $_.Name -like '*setup*' -or $_.Name -like 'Un_*' } | ForEach-Object { "$($_.Name):$($_.Id)" }) -join ' '; $l = [bool]((netstat -ano | Out-String) -match ':${GUEST_CDP_PORT.new} .*LISTEN'); "$l $p"`
+      `$p = @(Get-Process -EA 0 | Where-Object { $_.Path -like '${appDir}\\*' -or $_.Name -like '*setup*' -or $_.Name -like 'Un_*' } | ForEach-Object { "$($_.Name):$($_.Id)" }) -join ' '; $l = [bool]((netstat -ano | Out-String) -match ':${GUEST_CDP_PORT.new} .*LISTEN'); "$l $p"`
     )
     log(`+${((Date.now() - restartAt) / 1000).toFixed(0)}s ${r.out.replace(/\s+/g, ' ').slice(0, 300)}`)
     if ((Date.now() - restartAt) % 60_000 < 12_000) await shot('installing')
@@ -433,6 +509,7 @@ async function drive(): Promise<void> {
     check('the attempt record was cleared after the install', record.out.trim() === 'False', record.out)
     await sleep(3000)
     await shot('updated')
+    if (renameLeg) await judgeRename()
     if (busy) {
       const now = await appProcesses()
       const survivors = childrenBefore.map((l) => l.split(' ')[0]).filter((pid) => now.some((l) => l.startsWith(`${pid} `)))
@@ -456,6 +533,7 @@ try {
   }
 }
 
+if (renameLeg) writeFileSync(join(ROOT, 'facts.json'), JSON.stringify(facts, null, 2))
 log(`artifacts under ${ROOT}; screenshots in ${SHOTS}`)
 console.log(failures === 0 ? 'E2E UPDATER (WINDOWS): PASS' : `E2E UPDATER (WINDOWS): ${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)
