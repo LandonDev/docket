@@ -265,3 +265,11 @@
   or focus while it holds files, each noted while parked; an unpark with
   nothing changed asks nothing, and the board reads on show alone
   (master-threads.md "When the board asks").
+  The column's open thread reaches its rows through a store, not their
+  props (chrome/WorkspaceSessions.tsx `ActiveRowContext`, `useActive`):
+  each card, list and row asks what it reads of it (am I the one, is it
+  one of mine), so a switch renders the row it leaves and the row it
+  reaches, and the open thread's tree, read when a menu opens, is one set
+  kept current after each commit. The Work column's rows still read
+  `activeSessionId` off their actions (work/shell/WorkColumnRows.tsx).
+  Tested by `tallyRender` counts (WorkspaceSessions.rail.dom.test.tsx).

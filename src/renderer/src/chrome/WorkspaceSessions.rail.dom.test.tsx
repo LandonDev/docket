@@ -22,6 +22,7 @@ vi.mock("../lib/tcserver/workspaces", async (importOriginal) => ({
 }));
 
 import WorkspaceSessions, { forgetColumnMemory } from "./WorkspaceSessions";
+import { devRenders } from "../lib/devRenders";
 
 const chat = (i: number): SessionMeta =>
   ({
@@ -413,5 +414,35 @@ describe("the home with no chat", () => {
       fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     });
     expect(onNewChat).toHaveBeenCalledWith(null);
+  });
+});
+
+describe("a switch renders the rows it touches", () => {
+  it("2 project cards between threads of two projects, 2 rows between two chats, and the selection moves", () => {
+    h.catalog = {
+      workspaces: [workspace("w1")],
+      projects: [1, 2, 3, 4].map(
+        (n) => ({ environmentId: "local", id: `p${n}`, workspaceId: "w1", name: `Project ${n}`, mode: "local", branch: "main", cwd: `/w1/p${n}`, archived: false, createdAt: 1 }) as ProjectMeta,
+      ),
+    };
+    h.metas = [
+      ...[1, 2, 3, 4].flatMap((n) => [0, 1].map((k) => ({ ...chat(n * 10 + k), workspaceId: "w1", projectId: `p${n}`, title: `Thread ${n}.${k}` }))),
+      ...[0, 1, 2].map((i) => ({ ...chat(i), workspaceId: "w1" })),
+    ];
+    const view = render(<Column shown scope="w1" active="c10" />);
+    expect(view.container.querySelectorAll("[data-project-card]")).toHaveLength(4);
+    const count = () => ({ cards: devRenders.projectCard ?? 0, rows: devRenders.railRow ?? 0 });
+    const current = () => [...view.container.querySelectorAll('[aria-current="true"]')].map((el) => el.closest("[data-menu-id]")?.getAttribute("data-menu-id"));
+
+    let before = count();
+    view.rerender(<Column shown scope="w1" active="c20" />);
+    expect(count().cards - before.cards).toBe(2);
+    expect(count().rows - before.rows).toBe(0);
+
+    view.rerender(<Column shown scope="w1" active="c0" />);
+    before = count();
+    view.rerender(<Column shown scope="w1" active="c1" />);
+    expect(count()).toEqual({ cards: before.cards, rows: before.rows + 2 });
+    expect(current()).toEqual(["c1"]);
   });
 });

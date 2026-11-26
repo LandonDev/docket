@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
@@ -276,6 +277,8 @@ export function InlineRename({
 // --- rows ------------------------------------------------------------------
 
 export type RowActions = {
+  /** The open thread, for rows outside the column's `ActiveRowContext` (the
+   *  Work column's, a test's); the column's rows ask `useActive`. */
   activeSessionId?: string;
   /** The focused session's root and children: "Archive dormant" spares them. */
   focusedTree: ReadonlySet<string>;
@@ -294,6 +297,38 @@ export type RailThreadMenu = {
   onPick: (id: string, pick: string) => void;
   onOpenChange: (id: string, open: boolean) => void;
 };
+
+/** The column's open thread, held outside the rows' props: each row asks
+ *  what it reads of it (`useActive`), so a switch renders the row it leaves
+ *  and the row it reaches, never every card. */
+type ActiveRow = { get(): string | undefined; subscribe(listener: () => void): () => void; set(id: string | undefined): void };
+
+function createActiveRow(initial: string | undefined): ActiveRow {
+  let id = initial;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => id,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    set(next) {
+      if (next === id) return;
+      id = next;
+      for (const listener of listeners) listener();
+    },
+  };
+}
+
+const ActiveRowContext = createContext<ActiveRow | null>(null);
+const NO_STORE = () => () => undefined;
+
+/** What a row reads of the open thread; `pick` answers a primitive, so a
+ *  switch that does not touch the row renders nothing. */
+function useActive<T extends string | boolean | null | undefined>(actions: RowActions, pick: (id: string | undefined) => T): T {
+  const store = useContext(ActiveRowContext);
+  return useSyncExternalStore(store?.subscribe ?? NO_STORE, () => pick(store ? store.get() : actions.activeSessionId));
+}
 
 /** Scrolls the list's selected row into view when the selection moves, and
  *  only then: a list the virtualizer re-mounts around an unchanged selection
@@ -569,12 +604,14 @@ const ChatRow = memo(function ChatRow({
   actions: RowActions;
   fold?: Fold;
 }) {
+  tallyRender("railRow");
   const offline = useHostsOffline([thread.environmentId]);
   const renaming = actions.renamingId === thread.id;
+  const selected = useActive(actions, (id) => id === thread.id);
   return (
     <ThreadRowView
       row={thread}
-      selected={thread.id === actions.activeSessionId}
+      selected={selected}
       offline={offline}
       fold={fold}
       onOpen={() => actions.onOpen(thread.id)}
@@ -622,11 +659,12 @@ const ChildRow = memo(function ChildRow({
   actions: RowActions;
 }) {
   const offline = useHostsOffline([thread.environmentId]);
+  const selected = useActive(actions, (id) => id === thread.id);
   return (
     <ThreadRowView
       row={thread}
       child
-      selected={thread.id === actions.activeSessionId}
+      selected={selected}
       offline={offline}
       onOpen={() => actions.onOpen(thread.id)}
       menuId={thread.id}
@@ -651,9 +689,8 @@ const ThreadRows = memo(function ThreadRows({
     [thread.batch, thread.children],
   );
   const count = kids?.length ?? 0;
-  const auto =
-    thread.running ||
-    (kids?.some((c) => c.running || c.id === actions.activeSessionId) ?? false);
+  const kidActive = useActive(actions, (id) => !!id && !!kids?.some((c) => c.id === id));
+  const auto = thread.running || kidActive || (kids?.some((c) => c.running) ?? false);
   const open = useSubagentRows((s) => count > 0 && subagentRowsOpen(s, thread.id, auto));
   const noun = thread.batch?.length ? "thread" : "subagent";
   const fold = useMemo<Fold | undefined>(
@@ -690,8 +727,10 @@ export const ThreadList = memo(function ThreadList({
   onMore?: () => void;
   className: string;
 }) {
-  const { shown, hidden } = windowRows(threads, requested, actions.activeSessionId);
-  const ref = useRevealActive(actions.activeSessionId);
+  const ids = useMemo(() => new Set(threads.map((t) => t.id)), [threads]);
+  const active = useActive(actions, (id) => (id && ids.has(id) ? id : undefined));
+  const { shown, hidden } = windowRows(threads, requested, active);
+  const ref = useRevealActive(active);
   return (
     <div ref={ref} className={className}>
       {shown.map((t) => (
@@ -1163,7 +1202,13 @@ export const ProjectCard = memo(function ProjectCard({
   const { project, threads, latest, archivedCount } = group;
   const [renaming, setRenaming] = useState(false);
   const offline = useHostsOffline(hosts.split("\n"));
-  const status = projectCardStatus(cardThreads(threads), rows.activeSessionId ?? null, lastSeen, seenFloor);
+  // The open thread when it is one of this card's: a switch elsewhere renders no card.
+  const roots = useMemo(() => cardThreads(threads), [threads]);
+  const ids = useMemo(() => new Set([...threads, ...roots].map((t) => t.id)), [threads, roots]);
+  const active = useActive(rows, (id) => (id && ids.has(id) ? id : null));
+  const activeStore = useContext(ActiveRowContext);
+  const activeNow = () => (activeStore ? activeStore.get() : rows.activeSessionId);
+  const status = projectCardStatus(roots, active, lastSeen, seenFloor);
   const all = cardLines(threads, status);
   const { shown, hidden } = windowRows(all, requested, null);
   const batchScope: BatchScope = { kind: "projects", ids: [...new Set([project.id, ...(group.projectIds ?? [])])], name: project.name };
@@ -1217,9 +1262,9 @@ export const ProjectCard = memo(function ProjectCard({
     else if (id === "settings") openSettings(project);
     else if (id === "preamble") openPreamble(project);
     else if (batchActionOfMenuId(id)) void requestThreadBatch(batchActionOfMenuId(id)!, batchScope, () => selectionFor(batchScope));
-    else if (id === "archive-dormant") archiveDormantThreads(dormant(), rows.activeSessionId);
+    else if (id === "archive-dormant") archiveDormantThreads(dormant(), activeNow());
     else if (id.startsWith("archive-dormant:"))
-      archiveDormantThreads(dormantByType(dormant()).find((g) => g.type === id.slice("archive-dormant:".length))?.threads ?? [], rows.activeSessionId);
+      archiveDormantThreads(dormantByType(dormant()).find((g) => g.type === id.slice("archive-dormant:".length))?.threads ?? [], activeNow());
     else if (id === "archive") archive(project);
     else if (id === "delete") remove(project);
   };
@@ -1233,7 +1278,7 @@ export const ProjectCard = memo(function ProjectCard({
       latest={latest}
       lines={shown}
       hidden={hidden}
-      counts={projectCardCounts(threads, rows.activeSessionId ?? null, lastSeen, seenFloor, archivedCount)}
+      counts={projectCardCounts(threads, active, lastSeen, seenFloor, archivedCount)}
       unread={status.unread.length > 0}
       ariaLabel={projectCardAriaLabel(project.name, status)}
       selected={selected}
@@ -1685,18 +1730,29 @@ export default function WorkspaceSessions({
     }),
     [],
   );
+  // The open thread and its tree reach the rows without riding their props:
+  // a row asks the store (`useActive`), and the tree, read when a menu opens,
+  // is one set kept current after each commit. A switch renders two rows.
+  const [activeRow] = useState(() => createActiveRow(activeSessionId));
+  const [focusedNow] = useState(() => new Set(focused));
+  useLayoutEffect(() => {
+    activeRow.set(activeSessionId);
+    focusedNow.clear();
+    for (const id of focused) focusedNow.add(id);
+  }, [activeRow, activeSessionId, focused, focusedNow]);
   const rows = useMemo<RowActions>(
     () => ({
-      activeSessionId,
-      focusedTree: focused,
+      focusedTree: focusedNow,
       onOpen: openSession,
       onRename: renameSession,
       menu: railMenu,
       renamingId,
       onStartRename: setRenamingId,
     }),
-    [activeSessionId, focused, openSession, renameSession, railMenu, renamingId],
+    [focusedNow, openSession, renameSession, railMenu, renamingId],
   );
+  // The Work column's rows (work/shell/WorkColumnRows.tsx) read the open thread off their actions.
+  const workRows = useMemo<RowActions>(() => ({ ...rows, activeSessionId }), [rows, activeSessionId]);
 
   // Cards are the list's unit (railRows.tsx, virtual once the chunk lands).
   // Every item is measured, so a card that grows a line pushes the ones
@@ -1815,7 +1871,7 @@ export default function WorkspaceSessions({
         ) : null;
       case "work-threads":
         return archivedScope ? (
-          <WorkThreadsSection items={item.items} actions={rows} requested={pageOf(pages, "work-threads")} onMore={moreWorkThreads} archived={archivedScope} />
+          <WorkThreadsSection items={item.items} actions={workRows} requested={pageOf(pages, "work-threads")} onMore={moreWorkThreads} archived={archivedScope} />
         ) : null;
       case "work-archived":
         return archivedScope ? <WorkArchivedRow scope={archivedScope} onOpen={openSession} /> : null;
@@ -1838,6 +1894,7 @@ export default function WorkspaceSessions({
   };
 
   return (
+    <ActiveRowContext.Provider value={activeRow}>
     <PlanReadyContext.Provider value={planReady}>
     {/* The sidebar's element scrolls; this one only pads (pt-2 is the list's
     scroll margin). */}
@@ -1890,5 +1947,6 @@ export default function WorkspaceSessions({
       {threadMenu.dialogs}
     </div>
     </PlanReadyContext.Provider>
+    </ActiveRowContext.Provider>
   );
 }
