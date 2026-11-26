@@ -1359,7 +1359,9 @@ When Drive cannot be reached and a mirror was read before, that mirror
 opens and the view carries `readOnly: {from: 'google', offline: true,
 readAt}`: `readAt` is when that copy was last read from Drive (exported, or
 found to be Drive's version still) in this run, else the mirror's file time
-(`mirrorReadAt`); the line says "This is the copy from 1:40 PM".
+(`mirrorReadAt`); the line says "Copy from 1:40 PM" first, then "Couldn't
+reach Google" in regular muted, which is the part cut beside a thread, so
+the time stays whole. With no time known it says "Couldn't reach Google".
 Read again from Google gets a fresh export. The deck is read only as an
 import is, with the Google sentence; it Presents, and its More has Read
 again from Google, Open in Google and Make a copy to edit. The slides body
@@ -1384,7 +1386,7 @@ stage".
 | File | What it does |
 |---|---|
 | `canvas.ts` | The kind's def |
-| `SlidesCanvas.tsx` | The chunk: `Body` (the format row, the strip and the stage or the Sorter, the Format sheet), `Bar` (History, Present where neither the row nor a read-only deck's quiet line holds it, the line while PowerPoint shows the deck) and `TabEnd` (the TempCode and PowerPoint switch) |
+| `SlidesCanvas.tsx` | The chunk: `Body` (the format row, the strip and the stage or the Sorter, the Format sheet), `Bar` (History, Present where the row does not hold it, the line while PowerPoint shows the deck; nothing for a read-only deck, whose quiet line ends with the zoom, where it has 560px, and Present) and `TabEnd` (the TempCode and PowerPoint switch) |
 | `Strip.tsx`, `Sorter.tsx`, `Picture.tsx` | The strip and the Sorter, each with a slide's menu, reorder by drag and Delete; a slide's picture at a width |
 | `geometry.ts` | Hit testing, the selection's outline and handles, which kinds can be picked, where a shape's words are laid (`textFrameOf`) and the ground under them (`groundOf`) (pure) |
 | `deck.ts` | `DeckHost` (the methods and the push), the per-item store the three parts share (the view, the slide on the stage, which app shows it), and `useRender`, which opens one of the deck's renders in pdf.js and keeps the one shown until the next has opened |

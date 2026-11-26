@@ -20,6 +20,7 @@ import { registerFlush } from "../canvas/flush";
 import { useSaving } from "../canvas/useCalm";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { OpenFailed, progressWords } from "../canvas/FetchState";
+import { BAR_NARROW } from "../canvas/KindBar";
 import { pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { boxStyle } from "../pdf/layout";
 import { deckStoreOf, linkDeckHost, openDeck, showHostOf, useDeck, useDeckView, useRender, type DeckHost, type DeckStore, type StageZoom } from "./deck";
@@ -528,11 +529,17 @@ export function SlidesBody({
         <NoticeLine
           notice={file.notice}
           // A read-only deck's one press beside its words: Present ends this line, and the bar holds no row of its own for it.
+          // The stage's zoom before it where the line has room for both whole.
           end={
-            view.readOnly && canPresent(view) ? (
-              <PreviewOpener.Provider value={() => askPreview(item.id)}>
-                <PresentButton onPresent={presentFrom} />
-              </PreviewOpener.Provider>
+            view.readOnly ? (
+              <span className="flex items-center gap-1">
+                {look === "slide" && size.width >= BAR_NARROW ? <ZoomMenu zoom={zoom} onZoom={(next) => store.set({ zoom: next })} /> : null}
+                {canPresent(view) ? (
+                  <PreviewOpener.Provider value={() => askPreview(item.id)}>
+                    <PresentButton onPresent={presentFrom} />
+                  </PreviewOpener.Provider>
+                ) : null}
+              </span>
             ) : null
           }
         />
@@ -1389,12 +1396,14 @@ export function Bar({ item, env, source, host: given, engine }: CanvasBodyProps<
   const { view, error, side, look, zoom } = useDeck(store);
   const inPowerPoint = useInPowerPoint(view, source, env);
   if (!view) return error ? null : <Skeleton className="h-3 w-30" />;
+  // A deck he can only read has its one row in its line (Present, and the zoom, at its end): the bar draws nothing.
+  if (view.readOnly) return null;
   const pending = view.changes.length;
   const host = given ?? hostFor(env, item.id);
   if (side !== "powerpoint") {
-    // Present, at the bar's end, wherever the host has a picture of the file to show and neither the row nor a read-only
-    // deck's line holds it.
-    const presentHere = !view.hand && !view.readOnly && canPresent(view);
+    // Present, at the bar's end, wherever the host has a picture of the file to show and the row does not hold it.
+    const presentHere = !view.hand && canPresent(view);
+    if (look !== "slide" && !view.hand && !presentHere) return null;
     return (
       <div className="ms-auto flex shrink-0 items-center gap-1">
         {look === "slide" ? <ZoomMenu zoom={zoom} onZoom={(next) => store.set({ zoom: next })} /> : null}

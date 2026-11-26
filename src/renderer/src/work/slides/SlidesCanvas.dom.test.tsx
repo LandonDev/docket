@@ -1096,10 +1096,13 @@ describe("slide imports and Google", () => {
     let done!: () => void;
     const asked = answer({ "work.slides.copyToEdit": () => new Promise((res) => (done = () => res({ itemId: "copy" }))) });
     const line = await found("[data-slide-notice]");
-    expect(line.textContent).toBe("Read onlyMake a copy to editPresent");
+    expect(line.textContent).toBe("Read onlyMake a copy to editFitPresent");
     // One row above the slides: Present ends the quiet line, and the bar holds none.
     expect(within(line).getByRole("button", { name: "Present" })).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Present" })).toHaveLength(1);
+    // The kind's bar draws nothing of its own for it: the stage's zoom stands before Present in the line.
+    expect(document.querySelector("[data-canvas-tools]")?.childElementCount ?? 0).toBe(0);
+    expect(line.querySelector("[data-slides-zoom]")?.textContent).toBe("Fit");
     expect(screen.queryByRole("radiogroup")).toBeNull();
     const press = within(line).getByRole("button", { name: "Make a copy to edit" }) as HTMLButtonElement;
     fireEvent.click(press);
@@ -1162,7 +1165,7 @@ describe("slide imports and Google", () => {
 
   it("keeps Google read only and offers Present, Read again, and a copy to edit", async () => {
     open(readOnlyView("google"), undefined, undefined, GOOGLE);
-    expect((await found("[data-slide-notice]")).textContent).toBe("Read onlyMake a copy to editPresent");
+    expect((await found("[data-slide-notice]")).textContent).toBe("Read onlyMake a copy to editFitPresent");
     expect(await screen.findByRole("button", { name: "Present" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     expect(await screen.findByRole("menuitem", { name: "Read again from Google" })).toBeTruthy();
@@ -1177,22 +1180,22 @@ describe("slide imports and Google", () => {
     const line = await found("[data-slide-notice]");
     const push = (itemId: string) => act(() => host.pushes.forEach((listener) => listener({ push: "work.google", sessionId: "t1", itemId, state: { behind: true, unsent: 0, url: "u" } } as never)));
     push("another item");
-    expect(line.textContent).toBe("Read onlyMake a copy to editPresent");
+    expect(line.textContent).toBe("Read onlyMake a copy to editFitPresent");
     push(item.id);
-    await waitFor(() => expect(document.querySelector("[data-slide-notice]")!.textContent).toBe("Changed in GoogleRead againPresent"));
+    await waitFor(() => expect(document.querySelector("[data-slide-notice]")!.textContent).toBe("Changed in GoogleRead againFitPresent"));
     fireEvent.click(screen.getByRole("button", { name: "Read again" }));
-    await waitFor(() => expect(document.querySelector("[data-slide-notice]")!.textContent).toBe("Read onlyMake a copy to editPresent"));
+    await waitFor(() => expect(document.querySelector("[data-slide-notice]")!.textContent).toBe("Read onlyMake a copy to editFitPresent"));
     expect(asked.map(([method]) => method)).toContain("work.google.reload");
   });
 
   it("says when Drive could not be reached and the copy read before is shown, and when that copy was read", async () => {
     open({ ...readOnlyView("google"), readOnly: { from: "google", offline: true } }, undefined, undefined, GOOGLE);
-    expect((await found("[data-slide-notice]")).textContent).toBe("Couldn't reach GoogleRead againPresent");
+    expect((await found("[data-slide-notice]")).textContent).toBe("Couldn't reach GoogleRead againFitPresent");
     cleanup();
     // Which copy: the time the host says it was read from Drive.
     const at = new Date(new Date().setHours(13, 40, 0, 0)).getTime();
     open({ ...readOnlyView("google"), readOnly: { from: "google", offline: true, readAt: at } }, undefined, undefined, GOOGLE);
-    expect((await found("[data-slide-notice]")).textContent).toBe("Couldn't reach GoogleThis is the copy from 1:40 PMRead againPresent");
+    expect((await found("[data-slide-notice]")).textContent).toBe("Copy from 1:40 PMCouldn't reach GoogleRead againFitPresent");
   });
 
   it("opens the Google account dialog from an uploadable deck", async () => {

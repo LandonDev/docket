@@ -20,7 +20,7 @@ export const FILES_PANE = "filespane_";
 export interface SlideNotice {
   /** null: the line says nothing the bar has not (a mail's file in a Files tab is "Read only" in its header). */
   words: string | null;
-  /** after the words, muted: which copy is shown ("This is the copy from 1:40 PM") */
+  /** after the words, muted: why ("Couldn't reach Google" after "Copy from 1:40 PM"); the part that gives way when the line is short */
   detail?: string;
   press: { label: string; run(): Promise<void> } | null;
 }
@@ -34,8 +34,11 @@ export interface SlideNotice {
 export function noticeOf(item: Pick<CanvasItem, "source" | "sessionId">, readOnly: DeckView["readOnly"], behind: boolean, copy: () => Promise<void>, readAgain: () => Promise<void>): SlideNotice | null {
   if (!readOnly) return null;
   if (readOnly.from === "google" && behind) return { words: "Changed in Google", press: { label: "Read again", run: readAgain } };
+  // Which copy is shown is the line's point: it leads, whole, and the reason gives way after it beside a thread.
   if (readOnly.from === "google" && readOnly.offline)
-    return { words: "Couldn't reach Google", ...(readOnly.readAt ? { detail: `This is the copy from ${whenWords(readOnly.readAt)}` } : {}), press: { label: "Read again", run: readAgain } };
+    return readOnly.readAt
+      ? { words: `Copy from ${whenWords(readOnly.readAt)}`, detail: "Couldn't reach Google", press: { label: "Read again", run: readAgain } }
+      : { words: "Couldn't reach Google", press: { label: "Read again", run: readAgain } };
   const saidAbove = item.source.at === "mail" && item.sessionId.startsWith(FILES_PANE);
   return { words: saidAbove ? null : "Read only", press: { label: "Make a copy to edit", run: copy } };
 }
