@@ -1,5 +1,5 @@
 {
-  "n": 393,
-  "notes": "Docket: the app's shown name and new icon everywhere; the old MonoCode names removed, with saved layout and themes carried over",
-  "ts": 1795662543139
+  "n": 394,
+  "notes": "Work thread rows show their provider's icon on the left; a Work thread's head shows its type icon before the title, and a row shows the type when it is not a plain chat.",
+  "ts": 1795662961532
 }
