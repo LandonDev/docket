@@ -275,11 +275,17 @@ it("holds the selected draft and its shortcut while the link is down, then frees
     const view = render(<OutboxView besideRail onClose={() => {}} />);
     fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
     const send = () => screen.getByRole<HTMLButtonElement>("button", { name: "Send", exact: true });
+    const discard = () => screen.getByRole<HTMLButtonElement>("button", { name: "Discard", exact: true });
     await waitFor(() => expect(send().disabled).toBe(false), { timeout: 5000 });
+    expect(discard().disabled).toBe(false);
     for (const transport of ["reconnecting", "offline"] as const) {
       status = { ...status, transport };
       view.rerender(<OutboxView besideRail onClose={() => {}} />);
       expect(send().disabled).toBe(true);
+      // Discard goes to the host too: held in place, and its key opens nothing (council R1-A19).
+      expect(discard().disabled).toBe(true);
+      fireEvent.keyDown(document.querySelector("[data-work-outbox]")!, { key: "d" });
+      expect(screen.queryByRole("textbox", { name: "Why, for the thread" })).toBeNull();
       // The link's one wording (`linkWords`), as the line over the composer says it.
       expect(screen.getAllByText(transport === "offline" ? "The box is offline" : "Reconnecting to the box…")).toHaveLength(1);
       fireEvent.click(send());
@@ -296,6 +302,7 @@ it("holds the selected draft and its shortcut while the link is down, then frees
     status = { ...status, transport: "open" };
     view.rerender(<OutboxView besideRail onClose={() => {}} />);
     expect(send().disabled).toBe(false);
+    expect(discard().disabled).toBe(false);
     expect(screen.queryByText("The box is offline")).toBeNull();
   } finally {
     cleanup();
@@ -669,7 +676,7 @@ describe("the Outbox", () => {
     await waitFor(() => expect(within(sheet).getByText("Mail to Dana Lee")).toBeTruthy());
     await act(async () => fireEvent.click(within(sheet).getByRole("button", { name: "Remove" })));
     expect(world.calls.filter((c) => c.method === "work.outbox.ungrant")).toHaveLength(1);
-    await waitFor(() => expect(within(sheet).getByText("No grants. Every act waits for your press.")).toBeTruthy());
+    await waitFor(() => expect(within(sheet).getByText("No grants. Everything waits for your press.")).toBeTruthy());
   });
 
   it("a given computer's key sends, and is offered no grant: no Send menu, no Remove", async () => {
@@ -715,7 +722,7 @@ describe("the Outbox", () => {
     for (const group of groups) expect(group.querySelector("li svg")).toBeTruthy();
     // What he discarded keeps the words he gave the thread.
     fireEvent.click(screen.getByText("Send to Sam Ortiz"));
-    await waitFor(() => expect(document.querySelector("[data-outbox-detail]")!.textContent).toContain('Discarded. You told the thread: "Already booked"'));
+    await waitFor(() => expect(document.querySelector("[data-outbox-detail]")!.textContent).toContain('Discarded. You told the thread: “Already booked”'));
   });
 
   it("says a failed send's reason once, in the detail and in his words: the row keeps what it is about", async () => {
@@ -1134,6 +1141,11 @@ describe("the Outbox, rebuilt around how he decides", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
     await waitFor(() => expect(screen.getByText("3 more")).toBeTruthy(), { timeout: 5000 });
     expect(document.querySelectorAll("[data-outbox-waiting] li")).toHaveLength(5);
+    // The fold is laid out as a row: its words on the rows' 28px edge, its chevron in the glyph column (council R1-A22).
+    const fold = screen.getByText("3 more").closest("button")!;
+    expect(fold.className).toContain("ps-7");
+    expect(fold.querySelector("svg")).toBeNull();
+    expect(fold.parentElement!.querySelector("[data-fold-chevron]")!.className).toContain("start-2");
     fireEvent.click(screen.getByText("3 more"));
     expect(document.querySelectorAll("[data-outbox-waiting] li")).toHaveLength(7);
     expect(screen.getByRole("button", { name: "Select 7" })).toBeTruthy();
@@ -1235,7 +1247,7 @@ describe("the Outbox, rebuilt around how he decides", () => {
   it("a mail whose person wrote back since says who, when and their first line", async () => {
     world.extra = { o1: { replied: { from: "Dana Lee", at: Date.now() - 60_000, line: "Can we move it to 3?" } } };
     await open();
-    await waitFor(() => expect(detail().textContent).toMatch(/Dana Lee wrote back at .+, after this was made: "Can we move it to 3\?"/));
+    await waitFor(() => expect(detail().textContent).toMatch(/Dana Lee wrote back at .+, after this was made: “Can we move it to 3\?”/));
   });
 
   it("offers Send later on Send's menu only for a kind that may wait, above the grant", async () => {

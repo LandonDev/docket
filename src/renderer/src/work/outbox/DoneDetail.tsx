@@ -86,7 +86,7 @@ export function DoneDetail({
             </p>
           ) : null}
           {item.state === "discarded" ? (
-            <p className="max-w-[60ch] text-[13px] leading-5 text-muted-foreground">{item.reason ? `Discarded. You told the thread: "${item.reason}"` : "Discarded"}</p>
+            <p className="max-w-[60ch] text-[13px] leading-5 text-muted-foreground">{item.reason ? `Discarded. You told the thread: “${item.reason}”` : "Discarded"}</p>
           ) : null}
           {item.state === "stale" ? (
             <p className="flex max-w-[60ch] items-start gap-2 text-[13px] leading-5 text-muted-foreground">

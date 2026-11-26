@@ -184,6 +184,9 @@ describe("the lists", () => {
     for (const [verb, past] of [["Drop class", "Dropped class"], ["Transfer", "Transferred"], ["Ship order", "Shipped order"], ["Commit", "Committed"], ["Sell", "Sold"], ["Leave meeting", "Left meeting"], ["Withdraw", "Withdrew"], ["Stop", "Stopped"], ["Open", "Opened"], ["Visit", "Visited"], ["Fix", "Fixed"], ["Show", "Showed"], ["Sign", "Signed"], ["Join", "Joined"]]) expect(pastOf(verb!)).toBe(past);
     const now = new Date(2026, 10, 19, 12).getTime();
     expect(grantLine("mail.send", now - 60_000, now)).toBe("Made today from a held mail");
+    // His words, never the code's (council R1-A23): a calendar change, and an item for a kind with no word of its own.
+    expect(grantLine("calendar.op", now - 60_000, now)).toBe("Made today from a held calendar change");
+    expect(grantLine("computer.act", now - 60_000, now)).toBe("Made today from a held item");
     expect([dayOf(now - 3_600_000, now), dayOf(now - 86_400_000, now), dayOf(now - 3 * 86_400_000, now)]).toEqual(["Today", "Yesterday", "Earlier"]);
   });
 });

@@ -199,18 +199,19 @@ export function WaitingList({
                 );
               })}
               {fold ? (
-                <li>
+                <li className="relative">
+                  {/* Laid out as a row: the words on the rows' 28px edge, the chevron in the glyph column. */}
                   <ItemButton
                     {...{ [ROW_ATTR]: `more:${section.key}` }}
                     tabIndex={stop === `more:${section.key}` ? 0 : -1}
                     onClick={() => onExpand(section.key)}
-                    className="h-8 flex-nowrap gap-2 rounded-md py-0 pe-2 ps-2 text-left text-[13px] leading-5 text-muted-foreground transition-none hover:bg-foreground/5"
+                    className="h-8 flex-nowrap rounded-md py-0 pe-2 ps-7 text-left text-[13px] leading-5 text-muted-foreground transition-none hover:bg-foreground/5"
                   >
-                    <span className="grid size-4 shrink-0 place-items-center">
-                      <ChevronDown className="size-3.5" />
-                    </span>
                     {section.items.length - FOLD_SHOWS} more
                   </ItemButton>
+                  <span aria-hidden data-fold-chevron className="pointer-events-none absolute start-2 top-2 grid size-4 place-items-center text-muted-foreground">
+                    <ChevronDown className="size-3.5" />
+                  </span>
                 </li>
               ) : null}
             </ul>

@@ -479,11 +479,11 @@ export function offerLine(offer: Pick<GrantOffer, "label" | "count" | "routineId
   return `${offer.label}${offer.routineId ? " from this routine" : ""}: you sent the last ${offer.count} as written.`;
 }
 
-const KIND_WORDS: Partial<Record<ActKind, string>> = { "mail.send": "mail", "office.mail.send": "mail", "addon.call": "add-on call", "teams.post": "post", "calendar.op": "calendar act", "chat.reply": "reply" };
+const KIND_WORDS: Partial<Record<ActKind, string>> = { "mail.send": "mail", "office.mail.send": "mail", "addon.call": "add-on call", "teams.post": "post", "calendar.op": "calendar change", "chat.reply": "reply" };
 
 /** A grant row's muted line, under its workspace's heading: "Made today from a held mail". */
 export function grantLine(kind: ActKind, createdAt: number, now = Date.now()): string {
-  return `Made ${dayOf(createdAt, now) === "Today" ? "today" : timeOf(createdAt, now)} from a held ${KIND_WORDS[kind] ?? "act"}`;
+  return `Made ${dayOf(createdAt, now) === "Today" ? "today" : timeOf(createdAt, now)} from a held ${KIND_WORDS[kind] ?? "item"}`;
 }
 
 // ── the return from Away ─────────────────────────────────────────────────

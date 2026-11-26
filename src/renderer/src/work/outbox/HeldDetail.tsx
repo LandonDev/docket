@@ -220,9 +220,9 @@ export function aboutFiles(error: string | null | undefined): boolean {
 export const changedWords = (changed: NonNullable<HostItem["changed"]>, now = Date.now()): string =>
   `${changed.by === "thread" ? "The thread rewrote this" : "You changed this"} at ${heldWhen(changed.at, now)}.`;
 
-/** "Dana Lee wrote back at 8:12 AM, after this was made: "Can we move it to 3?"" */
+/** "Dana Lee wrote back at 8:12 AM, after this was made: “Can we move it to 3?”" */
 export const repliedWords = (replied: NonNullable<HostItem["replied"]>, now = Date.now()): string =>
-  `${replied.from} wrote back at ${heldWhen(replied.at, now)}, after this was made: "${replied.line}"`;
+  `${replied.from} wrote back at ${heldWhen(replied.at, now)}, after this was made: “${replied.line}”`;
 
 /**
  * The thing with its changes marked where they stand (Show changes): its fields on the views' 72px column, a field
@@ -825,7 +825,7 @@ export function HeldDetail({
     );
 
   const discard = (reason: string) =>
-    run(
+    !linkDown && run(
       "discard",
       async () => {
         await discardItem(item, { reason, via });
@@ -848,7 +848,7 @@ export function HeldDetail({
     );
 
   const again = () =>
-    run(
+    !linkDown && run(
       "again",
       async () => {
         await askAgain(item);
@@ -859,7 +859,7 @@ export function HeldDetail({
     );
 
   const cancel = () =>
-    run(
+    !linkDown && run(
       "cancel",
       async () => {
         const back = await cancelScheduled(item);
@@ -881,6 +881,7 @@ export function HeldDetail({
     );
 
   const save = () => {
+    if (linkDown) return;
     const next = applyEdits(item.payload, edits);
     if (next.error) return setEditError(next.error);
     void run(
@@ -901,10 +902,12 @@ export function HeldDetail({
   };
 
   const sendOff = !!linkDown || !waiting || !ready || busy !== null;
+  // Every press that goes to the host is held while its link is down, as Send is: the line above says why.
+  const hostOff = !!linkDown;
   const verbs: DetailCommands = {
       primary: () => {
         if (editing) return save();
-        if (stale) return void (busy === null && again());
+        if (stale) return void (busy === null && !hostOff && again());
         if (timed) return;
         if (stuck && fix === "edit" && busy === null) return setEditing(true);
         if (stuck && fix === "thread") return onOpenSession!(item.sessionId!, item.environmentId);
@@ -912,7 +915,7 @@ export function HeldDetail({
       },
       edit: () => editable && !editing && busy === null && setEditing(true),
       discard: () => {
-        if ((waiting || stale) && !timed && !editing && busy === null) openByKey("discard");
+        if ((waiting || stale) && !timed && !editing && busy === null && !hostOff) openByKey("discard");
       },
       later: () => {
         if (later && !editing && !sendOff) openByKey("later");
@@ -970,7 +973,7 @@ export function HeldDetail({
             Cancel
           </Button>
           <Tip label="Save" shortcut={keyHint("mod+S")}>
-            <Button size="sm" disabled={busy !== null || edits.size === 0} onClick={save}>
+            <Button size="sm" disabled={busy !== null || edits.size === 0 || hostOff} onClick={save}>
               <BusyLabel busy={busy === "save"} label="Save" />
             </Button>
           </Tip>
@@ -978,7 +981,7 @@ export function HeldDetail({
       ) : timed ? (
         // His press already timed it: the verbs left are to take it back, or to send it now.
         <VerbBar>
-          <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void cancel()}>
+          <Button variant="ghost" size="sm" disabled={busy !== null || hostOff} onClick={() => void cancel()}>
             <BusyLabel busy={busy === "cancel"} label="Cancel send" />
           </Button>
           <span className="flex-1" />
@@ -990,17 +993,17 @@ export function HeldDetail({
         </VerbBar>
       ) : stale ? (
         <VerbBar>
-          <DiscardButton busy={busy === "discard"} disabled={busy !== null} open={discardOpen} instant={byKey} onOpenChange={(o) => (setDiscardOpen(o), o || setByKey(false))} onDiscard={(r) => void discard(r)} />
+          <DiscardButton busy={busy === "discard"} disabled={busy !== null || hostOff} open={discardOpen && !hostOff} instant={byKey} onOpenChange={(o) => (setDiscardOpen(o), o || setByKey(false))} onDiscard={(r) => void discard(r)} />
           <span className="flex-1" />
           <Tip label="Ask the thread again" shortcut={keyHint("mod+enter")}>
-            <Button size="sm" disabled={busy !== null} onClick={() => void again()}>
+            <Button size="sm" disabled={busy !== null || hostOff} onClick={() => void again()}>
               <BusyLabel busy={busy === "again"} label="Ask the thread again" />
             </Button>
           </Tip>
         </VerbBar>
       ) : (
         <VerbBar>
-          <DiscardButton busy={busy === "discard"} disabled={!waiting || busy !== null} open={discardOpen} instant={byKey} onOpenChange={(o) => (setDiscardOpen(o), o || setByKey(false))} onDiscard={(r) => void discard(r)} />
+          <DiscardButton busy={busy === "discard"} disabled={!waiting || busy !== null || hostOff} open={discardOpen && !hostOff} instant={byKey} onOpenChange={(o) => (setDiscardOpen(o), o || setByKey(false))} onDiscard={(r) => void discard(r)} />
           <span className="flex-1" />
           {/* A send that may have gone: no plain Send, only his own Send again once he has looked. */}
           {item.outcomeUnknown && waiting ? <span className="text-[13px] leading-5 text-muted-foreground">{checkWords(item)}</span> : null}

@@ -1093,7 +1093,7 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     second copy: the fields in the view's order, each address muted after its
     name, the files under the body, and Send stays live while it shows),
     "<Name> wrote back at 8:12 AM, after this was made:
-    "<line>"" (`replied`, from `get`), "Goes <time>" for a timed send (in the
+    “<line>”" (`replied`, from `get`), "Goes <time>" for a timed send (in the
     zone he named first, this window's after where they differ), and
     a computer act's screen. Then the thing as it will arrive (the kind's
     view, "Kind views" below). Every item is read whole with `get`; only a
@@ -1154,7 +1154,10 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     never reads as sent. The head says who decided (`whoWords`): "by
     you", "from another device", "by the grant …", "from your approval in
     <thread>" (`via` `request:<id>`), "scheduled by you". A discard shows his
-    words ("Discarded. You told the thread: "…""). The Result's way back,
+    words ("Discarded. You told the thread: “…”"). While its computer's link
+    is down every press that goes there is held in place (Send, Discard and
+    its key and open popover, Cancel send, Ask the thread again, Edit's
+    Save); the link's line above says why. The Result's way back,
     "Sent mail cannot be taken back", and the earned grant's line
     (`OfferLine.tsx`) as before; the toast that earned it opens the item
     in Done.

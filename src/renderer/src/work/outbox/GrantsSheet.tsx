@@ -51,7 +51,7 @@ export function GrantsSheet({
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-5 pb-5">
           {groups.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground">No grants. Every act waits for your press.</p>
+            <p className="text-[13px] text-muted-foreground">No grants. Everything waits for your press.</p>
           ) : (
             groups.map((group) => {
               const name = nameOf(group.items[0]!.environmentId, group.workspaceId);
