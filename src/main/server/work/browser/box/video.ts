@@ -140,6 +140,9 @@ export class BoxVideo implements VideoSource {
       scope,
       group: pane,
       tag,
+      // the engine stamps each frame on the kernel's monotonic clock, the host's own: the relay samples the capture wait
+      // and the viewer's Delay holds it, as the Windows VM's does
+      captureClock: true,
       opened: (stream) => {
         this.granted.delete(feed)
         this.feeds.set(stream, { feed, since: this.now() })

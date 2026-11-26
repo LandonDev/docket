@@ -6,6 +6,7 @@ import type { StreamClaim } from '../remote/auth'
 import { FakeFeed } from './feed'
 import { VideoRelay, type StreamGrant, type ViewerSocket } from './relay'
 import { VideoRpc, type VideoOpening, type VideoSource } from './rpc'
+import { BoxVideo } from '../work/browser/box/video'
 
 /** A viewer's socket as the relay sees one: what it was sent, and how it was closed. */
 class FakeSocket implements ViewerSocket {
@@ -111,6 +112,44 @@ describe('VideoRelay', () => {
     expect(phone.socket.sent).toEqual([])
     expect(drive.feed.inputs).toEqual([])
     expect(drive.feed.acks).toEqual([])
+    relay.shutdown()
+  })
+
+  it("a box stream's pong has a capture median: the box's browser opens it on the host's clock", async () => {
+    const relay = new VideoRelay({ nowMicros: () => 5_000_000 })
+    const lease = { port: 4100, token: 'f'.repeat(64), pid: null, onExit: () => {}, release: () => {} }
+    const box = new BoxVideo({
+      browser: { running: true, display: { DISPLAY: ':7', XAUTHORITY: '/d/Xauthority' }, tools: null, wm: null, scale: 2 } as never,
+      stage: { watching: null, driving: null, watch: async () => {}, drive: async () => {}, onEnd: () => () => {}, touched: () => {} } as never,
+      engines: { lease: async () => lease } as never,
+      relay,
+      pageOf: () => 'A',
+      paneOf: (thread) => thread,
+      drives: () => false,
+      urlOf: async () => 'https://concur.example/report',
+      closed: () => false,
+      setting: () => true,
+      installed: () => true
+    })
+    // the engine's own socket is not here: the box's opening is kept whole but its feed is a stand-in
+    const feed = new FakeFeed()
+    const source: VideoSource = { open: async (ask) => {
+      const opening = await box.open(ask)
+      if (!opening?.ok) return opening
+      opening.feed.close()
+      return { ...opening, feed }
+    } }
+    const rpc = new VideoRpc(relay, { mintStreamTicket: () => ({ ticket: 't', expiresIn: 30 }) }, () => false)
+    rpc.addSource(source)
+    const viewer: Principal = { kind: 'remote', keyId: 'k1', name: 'phone', audience: 'client', caps: ['approve'] }
+    const answer = await rpc.open({ threadId: 't1', maxEdge: 2560, accepts: ['pong'] }, { principal: viewer, connection: asker, connectionId: 'c1' })
+    if (!answer.ok) throw new Error(answer.reason)
+    const socket = new FakeSocket()
+    expect(relay.attach({ stream: answer.stream, scope: 'watch', holder: KEY }, socket)).toBe(true)
+    for (const timestamp of [4_990_000, 4_994_000, 4_996_000]) feed.push({ timestamp })
+    socket.say(encodePing(1))
+    expect(parsePong(socket.sent.at(-1)!)).toEqual({ sequence: 1, captureMs: 6 })
+    box.close()
     relay.shutdown()
   })
 
