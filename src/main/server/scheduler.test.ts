@@ -395,6 +395,37 @@ describe('the scheduler alone', () => {
     expect(scheduler.lineOf('c')).toEqual({ line: 'Queued  2 of 2 running', detail: '2 of 2 running' })
   })
 
+  it('a slot freed wakes the parked send once, on the change that freed it: never on a timer, never twice', async () => {
+    vi.useFakeTimers()
+    const rows = [row('busy', 1, 'running'), row('parked', 2)]
+    const { reg, started } = fakeRegistry(rows)
+    let changed: (s: SessionMeta) => void = () => {}
+    reg.cap = () => 1
+    reg.onMeta = (listener) => {
+      changed = listener
+      return () => {}
+    }
+    const scheduler = new ThreadScheduler(reg)
+    scheduler.attach()
+    await scheduler.tick()
+    expect(started).toEqual([])
+    // Ten minutes with the cap full: no timer starts it.
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(started).toEqual([])
+    // The busy thread settles: its meta change, twice in one burst, is the wake.
+    rows[0] = { ...rows[0]!, status: 'idle' }
+    changed(rows[0])
+    changed(rows[0])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(started).toEqual(['parked'])
+    // More changes and more time while its start is in flight: still once.
+    changed(rows[0])
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(started).toEqual(['parked'])
+    scheduler.dispose()
+    vi.useRealTimers()
+  })
+
   it('while the loop lags, a storm of changes is one pass per 250 ms, each after a quiet moment', async () => {
     vi.useFakeTimers()
     const { reg } = fakeRegistry([row('a', 1)])
