@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { readStalls, sendStampTables, stampTables } from './perf/stall-report'
 
 const mean = (values: number[]): number => values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0
 const max = (values: number[]): number => values.reduce((a, b) => Math.max(a, b), 0)
@@ -32,9 +33,10 @@ export function stallsSummary(text: string): string {
       times.push(Number(request[2]))
       slow.set(request[1], times)
     }
-    const section = line.match(/^\S+ timed (\S+) ([\d.]+)ms(?:\s|$)/)
+    const section = line.match(/^\S+ timed (.+?) ([\d.]+)ms(?:\s|$)/)
     if (section) timed.set(section[1], (timed.get(section[1]) ?? 0) + 1)
   }
+  const stamps = stampTables(readStalls(text))
   const byCount = <T extends { length: number }>(a: [string, T], b: [string, T]): number =>
     b[1].length - a[1].length || a[0].localeCompare(b[0])
   return [
@@ -49,8 +51,9 @@ export function stallsSummary(text: string): string {
     'In-flight depth (logged loop samples; log caps entries at 12)',
     table([['max', 'p90'], [String(max(depths)), String(percentile(depths, 0.9))]]),
     'Timed sections',
-    table([['label', 'count'], ...[...timed].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([label, count]) => [label, String(count)])])
-  ].join('\n')
+    table([['label', 'count'], ...[...timed].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([label, count]) => [label, String(count)])]),
+    ...stamps
+  ].join('\n').trimEnd()
 }
 
 const PHASES = ['accepted', 'prepared', 'handle', 'delivered', 'init', 'first-message', 'model', 'first-content'] as const
@@ -91,7 +94,7 @@ function parseSpans(text: string): Span[] {
   return spans
 }
 
-const kindOf = (span: Span): string => span.note.handle ?? (span.ms.handle !== undefined ? 'other' : 'none')
+const kindOf = (span: Span): string => span.note.handle?.split(' ', 1)[0] ?? (span.ms.handle !== undefined ? 'other' : 'none')
 const pct = (part: number, whole: number): string => (whole ? `${((part / whole) * 100).toFixed(0)}%` : '-')
 
 /**
@@ -139,8 +142,9 @@ export function sendsSummary(text: string): string {
     'New threads',
     table([['warm', 'cold', 'warm share'], [String(warm), String(cold), pct(warm, warm + cold)]]),
     'Prompt cache (model note)',
-    table([['sends', 'miss rate', 'after 5-60 min', 'miss rate'], [String(noted), pct(missed, noted), String(gapNoted), pct(gapMissed, gapNoted)]])
-  ].join('\n')
+    table([['sends', 'miss rate', 'after 5-60 min', 'miss rate'], [String(noted), pct(missed, noted), String(gapNoted), pct(gapMissed, gapNoted)]]),
+    ...sendStampTables(readStalls(text))
+  ].join('\n').trimEnd()
 }
 
 if (import.meta.main) {

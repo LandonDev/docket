@@ -3180,6 +3180,59 @@ a call that waited 500 ms or more on the Windows VM's door says
 `bun scripts/perf/stall-report.ts <stalls.log…>` turns a log into the
 table the Work baseline keeps (docs/agents/work-perf.md).
 
+The host records these stamps through the same bounded stall log queue.
+All times below are in milliseconds.
+
+- `boot listening ms=<ms>` marks the loopback listener. `boot hello-ready ms=<ms>`
+  marks when that socket can answer hello. `boot resumed-first ms=<ms>` marks
+  the first recovered turn whose restart nudge reached its harness. The
+  resume pass writes `boot resumed n=<n> ms=<ms>` with the last successful
+  handoff's time, or the pass end if none resumed. Threads still at the cap
+  are outside that count. A boot with no successful resume has no
+  `resumed-first` line. Each time starts at process launch.
+- `send` keeps `accepted=`, `prepared=`, `handle=`, `delivered=`,
+  `init=`, `first-message=`, `model=` and `first-content=`. It adds
+  `queue=<ms> handle-wait=<ms> mcp=<ms> gateway-dispatch=<ms> first-byte=<ms> first-row=<ms>`.
+  The queue time runs from parking to release. After a restart the saved
+  user row gives the start of that wait. `handle-wait` times acquiring the
+  driver handle. The gateway and row stamps count from `accepted`, which
+  starts again when a parked send leaves the queue. `gateway-dispatch` is
+  the first scoped sampling request handed to the upstream fetch.
+  `first-byte` is when that request's forwarded body first reached the
+  gateway. `first-row` is the first text, thinking or tool call row sent
+  on any subscribed socket. Missing phases read `-`.
+- On startup the send may also give `mcp.source=<codex-gate|codex-timeout|claude-init|muse-session>`.
+  Codex times its MCP gate separately from the model-list wait and keeps
+  its old `delivered=<ms>(mcp=<ms>)` note for the combined wait.
+  `mcp.servers=app:120,linear:1650` gives the time from each server's
+  starting notice to its terminal status. Names are percent-encoded.
+  Claude measures from CLI spawn or adoption to its first init snapshot.
+  That snapshot can include servers still pending. Muse measures the
+  session start or resume handshake. Neither protocol gives the driver
+  individual server durations.
+- Once an hour with samples, the gateway process sends a timing window to
+  main. Main writes
+  `gateway n=<n> out.p50=<ms> out.p95=<ms> out.max=<ms> byte.p50=<ms> byte.p95=<ms> byte.max=<ms> byte.n=<n>`.
+  `out` runs from the complete request body to the first upstream fetch
+  dispatch. `byte` runs from the first upstream body byte the gateway
+  reads to the first write of that body to the harness. Requests with no
+  forwarded body add no byte sample. `doctor.get` shows the latest
+  completed window in `gateway.timings`.
+- `timed event flush <ms>ms ser=<ms> write=<ms> commit=<ms>` keeps the
+  slow flush threshold. `ser` sums the time spent on `JSON.stringify`
+  as the batch's rows were appended, `write` covers statements and
+  their preparation, and `commit` times SQLite's commit. The hourly
+  line for completed transactions reads
+  `flush n=<n> rows=<n> ser.p95=<ms> write.p95=<ms> commit.p95=<ms> max=<ms>`.
+  `max` is the largest sum of those three phases for one batch.
+
+Both stall report scripts read these stamps and keep the older formats.
+They also read the renderer's
+`[renderer] first-paint session=<id> host=<env> ms=<ms> why=<open|restore|reconnect> queued=<ms> fetch=<ms> fold=<ms> text=<ms>`,
+`[renderer] first-paint-hist n=<n> p50=<ms> p90=<ms> p95=<ms> max=<ms> open=<n> restore=<n> reconnect=<n>`,
+`[renderer] longtask <ms>ms cause=<push:<name>|answer:<method>|none>`,
+and `[renderer] board-paint session=<id> ms=<ms> answer=<ms> render=<ms>`.
+
 ### A disk stall froze the loop
 
 On 2026-11-24 an agent's QEMU guest on a fresh qcow2 flushed to disk in a

@@ -4,14 +4,11 @@
  * answers on the host's own loop, so the read is cut into slices with the loop handed back
  * between them; this times the slices.
  *
- *   taskset -c 2,3 bun run script:bench-review -- --db /srv/agents/temp-code-data/temp-code.db
+ *   taskset -c 2,3 bun run script:bench-review -- --db /srv/agents/tmp/perf2-db/docket.db
  *   taskset -c 2,3 bun run script:bench-review -- --db <copy>.db --weeks 4 --runs 5
  *
- * It runs on a COPY, never on a database an app has open: a long reader holds a live file's
- * write-ahead log open, and every thread on the host writes to that file. Make the copy once,
- * through the heavy queue, and delete it when done:
- *
- *   heavy sqlite3 /srv/agents/temp-code-data/temp-code.db "VACUUM INTO '/tmp/review-bench/copy.db'"
+ * Use a scratch copy. Never open the live file: a long reader holds its
+ * write-ahead log open while every thread on the host writes to it.
  *
  * The script refuses a file whose write-ahead log moved in the last ten minutes, and opens what
  * it is given read only. It reads every thread of the host as one job (`every`), since a box's
@@ -38,7 +35,7 @@ const TZ = arg('tz') ?? 'America/Chicago'
 const LIMIT_MS = 50
 
 if (!DB || !existsSync(DB)) {
-  console.error('usage: bench-review --db <temp-code.db> [--weeks 2] [--runs 5] [--tz America/Chicago]')
+  console.error('usage: bench-review --db /srv/agents/tmp/perf2-db/docket.db [--weeks 2] [--runs 5] [--tz America/Chicago]\nUse a scratch copy. Never open the live file.')
   process.exit(2)
 }
 
@@ -46,7 +43,7 @@ if (!DB || !existsSync(DB)) {
 const LIVE_MS = 10 * 60_000
 for (const wal of [`${DB}-wal`, `${DB.replace(/\.db$/, '')}-cold.db-wal`]) {
   if (existsSync(wal) && statSync(wal).size > 0 && Date.now() - statSync(wal).mtimeMs < LIVE_MS) {
-    console.error(`refused: ${DB} is in use (its write-ahead log moved in the last ten minutes). Bench on a copy:\n  sqlite3 ${DB} "VACUUM INTO '/tmp/review-bench/copy.db'"`)
+    console.error(`refused: ${DB} is in use (its write-ahead log moved in the last ten minutes). Use a scratch copy. Never open the live file.`)
     process.exit(2)
   }
 }
