@@ -72,6 +72,19 @@ function ThreadGlyph({ status }: { status: SessionMeta["status"] }) {
   return marksAtRest(state) ? <StatusMark state={state} word={false} /> : <MessageSquare className="size-3.5 text-muted-foreground" />;
 }
 
+/** What sets the list's height: its mode, its one-line rows by kind and key, and its muted row's words. */
+function shapeOf(matches: PopoverMatches | null): string {
+  if (!matches) return "";
+  const head = `${matches.mode}\t${matches.loading ? 1 : 0}\t${matches.mode === "command" ? (matches.failed ? 1 : 0) : (matches.note ?? "")}`;
+  const rows =
+    matches.mode === "command"
+      ? matches.rows.map((c) => `${c.source}:${c.scope}:${c.name}`)
+      : matches.rows.map((m) =>
+          m.kind === "work" ? `work:${m.row.group}:${m.row.hit.chip.kind}:${JSON.stringify(m.row.hit.chip.ref)}` : m.kind === "thread" ? `thread:${m.session.id}` : `${m.kind}:${m.file.path}`,
+        );
+  return `${head}\n${rows.join("\n")}`;
+}
+
 export function CommandPopover({
   id,
   matches,
@@ -112,11 +125,20 @@ export function CommandPopover({
     [ending],
   );
 
-  // The frame's height is the list's, so a narrowing filter glides it.
+  // The frame's height is the list's, so a narrowing filter glides it. Read once
+  // for each new set of rows: an answer that lands the same rows (one line each)
+  // leaves the height as it was, so a key costs one layout read at most.
+  const measured = useRef<string | null>(null);
   useLayoutEffect(() => {
     const frame = frameRef.current;
     const list = listRef.current;
-    if (!frame || !list || !open) return;
+    if (!frame || !list || !open) {
+      measured.current = null;
+      return;
+    }
+    const shape = shapeOf(matches);
+    if (shape === measured.current) return;
+    measured.current = shape;
     // Unmeasured (a pane not laid out), it keeps its natural height.
     const height = list.offsetHeight;
     frame.style.height = height > 0 ? `${height}px` : "";

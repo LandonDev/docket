@@ -38,7 +38,6 @@ import {
   commandTextParts,
   matchCommands,
   rankFiles,
-  rankThreads,
   triggerAt,
   triggerInsert,
   type Trigger
@@ -110,7 +109,9 @@ import { MasterCheck } from './MasterCheck'
 import { DraftTitleField } from './DraftTitleField'
 import { useSlashCommands } from '../lib/tcserver/slashCommands'
 import { readCopiedMessage } from '../lib/copyMessage'
-import { sessionStore, useSessionMetaValue, useSessionMetasWhen } from '../lib/tcserver/store'
+import { sessionStore, useSessionMetaValue } from '../lib/tcserver/store'
+import { useMentionThreads } from '../lib/mentionThreads'
+import { useRankQuery } from '../lib/rankQuery'
 import { threadToken } from '../lib/threadMentions'
 import { tune as tuneSession } from '../lib/tcserver/commands'
 import { nativeModelId } from '../lib/models'
@@ -312,7 +313,6 @@ export function Composer({
   const live = trigger && dismissed !== `${trigger.mode}:${trigger.start}` ? trigger : null
   const commandOpen = live?.mode === 'command'
   const mentionOpen = live?.mode === 'file'
-  const metas = useSessionMetasWhen(!!live)
   // Three values of the thread's meta, each a primitive: a meta push that moves anything else renders nothing here.
   const metaEnvironmentId = useSessionMetaValue(sessionId, metaEnvironment)
   const threadProvider = useSessionMetaValue(sessionId, metaProvider)
@@ -405,24 +405,31 @@ export function Composer({
     () => files.filter((file) => !file.isDir && !/\s/.test(file.relative)),
     [files]
   )
-  const matches = useMemo<PopoverMatches | null>(() => {
-    if (!live) return null
-    if (live.mode === 'command') {
-      return { mode: 'command', rows: matchCommands(commands, live.query), loading: !commandsLoaded, failed: commandsFailed, query: live.query }
-    }
-    const fileHits: AtMatch[] = looksLikeProject(executionCwd)
-      ? rankFiles(mentionable, live.query).map((file) => ({ kind: 'file', file }))
-      : []
-    const threadHits: AtMatch[] = rankThreads(metas, live.query, sessionId, projectId).map(
-      (session) => ({ kind: 'thread', session })
-    )
-    const noteHits: AtMatch[] = rankNoteFiles(notes, live.query).map((file) => ({ kind: 'note', file }))
+  // The `@` rows rank on the query alone (past 5,000 paths in a transition, lib/rankQuery.ts); the metas are read
+  // only in `@` mode, and a push that moves no drawn thread row renders nothing here (lib/mentionThreads.ts).
+  const liveQuery = live?.query ?? ''
+  const mentionQuery = useRankQuery(mentionOpen ? liveQuery : '', mentionable.length)
+  const threads = useMentionThreads(mentionOpen, mentionQuery, sessionId, projectId)
+  const fileHits = useMemo<AtMatch[]>(
+    () => (mentionOpen && looksLikeProject(executionCwd) ? rankFiles(mentionable, mentionQuery).map((file) => ({ kind: 'file', file })) : []),
+    [executionCwd, mentionOpen, mentionable, mentionQuery]
+  )
+  const commandMatches = useMemo<PopoverMatches | null>(
+    () => (commandOpen ? { mode: 'command', rows: matchCommands(commands, liveQuery), loading: !commandsLoaded, failed: commandsFailed, query: liveQuery } : null),
+    [commandOpen, commands, commandsFailed, commandsLoaded, liveQuery]
+  )
+  // On primitives and the ranked lists alone, so a render that moves none of them (a deferred key's first, a push) keeps the one list.
+  const mentionMatches = useMemo<PopoverMatches | null>(() => {
+    if (!mentionOpen) return null
+    const threadHits: AtMatch[] = threads.map((session) => ({ kind: 'thread', session }))
+    const noteHits: AtMatch[] = rankNoteFiles(notes, mentionQuery).map((file) => ({ kind: 'note', file }))
     const workHits: AtMatch[] = workMentions.rows.map((row) => ({ kind: 'work', row }))
     const loading = looksLikeProject(executionCwd) && filesFor !== executionCwd
     // A Work thread is about mail, tasks and the rest more than its folder's files: those lead there.
     const rows = workMentions.lead ? [...workHits, ...fileHits, ...threadHits, ...noteHits] : [...fileHits, ...threadHits, ...noteHits, ...workHits]
     return { mode: 'file', rows, loading, note: workMentions.note }
-  }, [commands, commandsFailed, commandsLoaded, executionCwd, filesFor, live, mentionable, metas, notes, projectId, sessionId, workMentions.rows, workMentions.lead, workMentions.note])
+  }, [executionCwd, fileHits, filesFor, mentionOpen, mentionQuery, notes, threads, workMentions.rows, workMentions.lead, workMentions.note])
+  const matches = commandOpen ? commandMatches : mentionMatches
   const rows = matches?.rows.length ?? 0
   // Mounted from the first `/` or `@` on, so its close keeps its fade.
   const [menuUsed, setMenuUsed] = useState(false)
