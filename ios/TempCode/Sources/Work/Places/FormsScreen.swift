@@ -42,11 +42,9 @@ struct FormsScreen: View {
                     List {
                         if let refreshError {
                             Section {
-                                HStack(spacing: Layout.rowGap) {
-                                    Text(refreshError).textStep(.meta, tint: Tint.destructiveText)
-                                    Spacer(minLength: Layout.rowGap)
-                                    PillButton("Try Again") { Task { await load() } }
-                                }
+                                // The list's own insets, as its rows have.
+                                FailedRead(words: refreshError, retry: { await load() }, identifier: "forms-reread-failed", insets: nil,
+                                           tint: Tint.destructiveText)
                             }
                         }
                         let both = !ours.isEmpty && !ms.isEmpty
@@ -217,7 +215,8 @@ private struct FormRowView: View {
             if busy {
                 ProgressView().controlSize(.small)
             } else {
-                Text(stamp).textStep(.stamp).foregroundStyle(.secondary).monospacedDigit()
+                // Muted in the secondary label ink: the stamp step's own tertiary sits closer to the text and would win.
+                Text(stamp).textStep(.stamp, tint: Color(.secondaryLabel)).monospacedDigit()
             }
         }
         .frame(minHeight: Layout.rowHeight)
@@ -263,7 +262,7 @@ struct MsFormAnswersScreen: View {
             // A refresh that failed keeps the last read, its time in the footer, with the failed-read row above it.
             List {
                 if let error {
-                    Section { FailedRead(words: error, retry: { await load(client) }, identifier: "msform-reread-failed") }
+                    Section { FailedRead(words: error, retry: { await load(client) }, identifier: "msform-reread-failed", insets: nil) }
                 }
                 if !answers.rows.isEmpty {
                     Section {

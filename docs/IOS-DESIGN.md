@@ -3396,8 +3396,8 @@ desktop's weekly review on the phone (docs/agents/work-review.md "The phone"). O
 - **The head** is one muted line of when it was made ("Made Friday at 4:00 PM"), a host that is off ("The Mac is
   off. …"), a list read in part, then the red lines (a host that did not answer, a source that feeds more than one
   section), the first with Try Again as the failed-read row in its red (`FailedRead`), as the desktop's head.
-- **Hours**: one row a job, every job listed (the empty one is the news), its sector dot in the mark slot, the
-  name, the total trailing ("about 11 h", "6 hr 30 min"; else "Nothing seen" muted; under the name at accessibility
+- **Hours**: one row a job, every job listed (the empty one is the news), its sector dot on the name's first line
+  (`FirstLineMark`, as every Review row's, the separator at the name), the name, the total trailing ("about 11 h", "6 hr 30 min"; else "Nothing seen" muted; under the name at accessibility
   sizes), then under it the facts ("6 hr 30 min on the calendar, about 4 hr 30 min at the desk"; a row with one
   source says its figure once, "about 15 min at the desk", with no total beside it), "Threads ran 2 hr", the week before where
   it says something, and Money's line ("Money $2,400.00 in, $312.50 out"). The footer says once that calendar

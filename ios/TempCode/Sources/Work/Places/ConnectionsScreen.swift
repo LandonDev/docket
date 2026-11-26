@@ -196,7 +196,8 @@ private struct ConnectionRowView: View {
 
     private var tint: Color? {
         switch state {
-        case .working: nil
+        // Muted, never the stamp step's own tertiary (1.7:1 on white).
+        case .working: Color(.secondaryLabel)
         case .needsYou: Tint.warningText
         case .broken, .unknown: Tint.destructiveText
         }

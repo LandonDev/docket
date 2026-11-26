@@ -351,8 +351,7 @@ private struct ReviewHoursRow: View {
     var body: some View {
         let large = typeSize.isAccessibilitySize
         HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
-            SectorDot(sector: job.sector)
-                .frame(width: Layout.glyphWidth + Layout.markWidth)
+            FirstLineMark { SectorDot(sector: job.sector) }
             VStack(alignment: .leading, spacing: 2) {
                 Text(job.name).textStep(.title, weight: .medium).lineLimit(large ? 2 : 1)
                 // At accessibility sizes the total goes under the name, whole, never cut beside it.
@@ -367,6 +366,8 @@ private struct ReviewHoursRow: View {
         .padding(.vertical, Layout.rowVertical)
         .frame(minHeight: Layout.rowHeight + 8)
         .listRowInsets(Layout.rowInsets)
+        // At the name: the mark column's hidden line is the row's first text, which the list would start it at.
+        .separatorAtTextEdge(Layout.glyphWidth + Layout.markWidth + Layout.rowGap)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("review-hours")
     }
@@ -395,7 +396,8 @@ private struct ReviewHoursRow: View {
     }
 }
 
-/// A shipped or slipped row: the job's dot in the mark slot, the thing's own title, one muted detail.
+/// A shipped or slipped row: the job's dot on the title's first line (`FirstLineMark`), as Hours' is, the thing's own
+/// title, one muted detail.
 private struct ReviewRowView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     let sector: String?
@@ -416,6 +418,7 @@ private struct ReviewRowView: View {
             }
         }
         .listRowInsets(Layout.rowInsets)
+        .separatorAtTextEdge(Layout.glyphWidth + Layout.markWidth + Layout.rowGap)
         .placeSelected(selected)
         .accessibilityElement(children: .combine)
         .accessibilityLabel([job, title, detail].compactMap { $0 }.joined(separator: ", "))
@@ -423,15 +426,14 @@ private struct ReviewRowView: View {
     }
 
     private var content: some View {
-        HStack(spacing: Layout.rowGap) {
-            Group {
+        HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
+            FirstLineMark {
                 if busy {
                     ProgressView().controlSize(.small)
                 } else if job != nil {
                     SectorDot(sector: sector)
                 }
             }
-            .frame(width: Layout.glyphWidth + Layout.markWidth)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).textStep(.title, tint: muted ? Color(.secondaryLabel) : nil).lineLimit(2)
                 if let detail, !detail.isEmpty { Text(detail).textStep(.meta).lineLimit(typeSize.isAccessibilitySize ? 2 : 1) }
