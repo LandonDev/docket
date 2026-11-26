@@ -302,6 +302,23 @@
   lib/tcserver/metaPush.dom.test.tsx (no listener, no render for a push
   elsewhere), metaSelect.test.ts, dockBadge.install.test.ts,
   store.approvals.test.ts, launchMirror.test.ts and subscriptions.test.ts.
+  A card line's second hand runs only while the line can be seen
+  (`LineElapsed` with `seen`: lib/onScreen.ts `useOnScreen`, one observer a
+  scroller with half a screen of margin, and the document shown); off
+  screen it keeps its text on the half-minute hand
+  (WorkspaceSessions.clock.dom.test.tsx). The video worker's count and
+  reading intervals start with its first player and stop with its last
+  (video.worker.ts `pace`). Over a long day: a running transcript outside
+  the kept set unloads like a settled one (store `unload`; only a send still
+  on its way keeps its rows), its meta telling the rail how it runs, fetched
+  whole when shown again; the settled markdown trees, in the window and its
+  worker, are bounded by an estimate of their bytes (renderCache.ts
+  `treeBytes`, 48 MiB each); and the git index paces itself while agents
+  write (lib/gitIndexStore.ts: a refresh waits at least the last load's own
+  time after it ended, `nextDelay`; events under `.git/` and
+  `.claude/worktrees/` ask nothing, `ignoredPath`; a focus within
+  `FOCUS_QUIET_MS`, 5 s, of the last load reads that load; a local
+  mutation's refresh still goes at once).
   Still visible on purpose, so not done: spinners turning in a visible but
   unfocused window, and the meta flush's rate while unfocused (the owner's
   call: both change what he sees).
