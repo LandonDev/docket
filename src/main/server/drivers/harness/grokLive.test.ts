@@ -26,6 +26,7 @@ mockChild({
 const { sendGrokTurn, respondGrokApproval, stopGrokSession } = await import(
   "./grokEngine"
 );
+const { probeCatalog } = await import("./grokCatalog");
 import type { HarnessEvent } from "./types";
 
 function reply(id: number, result: unknown) {
@@ -60,12 +61,18 @@ const initResult = {
   },
 };
 
-async function handshake() {
+async function initialize() {
   await waitFor(
     () => parse().some((m) => m.method === "initialize"),
     "initialize",
   );
-  reply(parse().find((m) => m.method === "initialize")!.id, initResult);
+  const request = parse().find((m) => m.method === "initialize")!;
+  expect(request.params.clientInfo).toEqual({ name: "docket", version: "0.1.0" });
+  reply(request.id, initResult);
+}
+
+async function handshake() {
+  await initialize();
   await waitFor(
     () => parse().some((m) => m.method === "authenticate"),
     "authenticate",
@@ -80,6 +87,13 @@ async function handshake() {
     models: { currentModelId: "grok-4.6" },
   });
 }
+
+it("identifies the ACP catalog probe as Docket", async () => {
+  sent.length = 0;
+  const catalog = probeCatalog();
+  await initialize();
+  expect(await catalog).toMatchObject({ defaultModel: "grok-4.6" });
+});
 
 describe("grok live turn sequence", () => {
   beforeEach(() => {

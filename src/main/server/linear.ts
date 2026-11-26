@@ -13,8 +13,8 @@ import type {
 } from '@shared/contract-linear'
 
 /**
- * Linear in the Inbox (M11). Port of monocode/src-tauri/src/linear.rs: a
- * GraphQL client with a 20 s timeout and a personal API key stored in a
+ * Linear in the Inbox (M11), ported from `src-tauri/src/linear.rs`.
+ * The GraphQL client has a 20 s timeout and stores the personal API key in a
  * 0600 file under userData. The key is read on every call, never cached in
  * a response, never logged, and scrubbed from any error text.
  */

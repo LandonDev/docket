@@ -2,6 +2,11 @@
 
 Two separate steps, on purpose, over one gate.
 
+What's New and the release notes tab take the running version's notes
+from `release.json`. The update prompt can also show notes from the
+feed, either plain Markdown or a Keep a Changelog section. A tab saved
+for an older release shows “No release notes for this version”.
+
 - **The gate is `bun run gate`** (scripts/gate.ts): one `STEPS` array, each
   step tagged `commit` or `publish`, and one `TIER_PATHS` map in the same
   file. `--tier commit|publish|all` picks the tier; `--since <ref>` adds

@@ -104,8 +104,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   electron.vite.config.ts). The app's node_modules is
   `dependencies` alone, the packages out/main and out/preload load;
   everything else is a devDependency compiled into out/
-  (scripts/shippedDeps.test.ts). No AI attribution
-  trailers in commits. [docs/agents/releases.md](docs/agents/releases.md)
+  (scripts/shippedDeps.test.ts). No AI attribution trailers in commits.
+  What's New uses `release.json` or the feed.
+  [docs/agents/releases.md](docs/agents/releases.md)
 - **Code-only updates** — a green commit's `out/` in the owner's Mac app in minutes, no signed
   bundle: release.ts packs it after the tag and the push (scripts/code-pack.ts, the base stamp
   `out/code-base.json`), the box offers it over the peer link (server/codeOffer.ts), the Mac takes it

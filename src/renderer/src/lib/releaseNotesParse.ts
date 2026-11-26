@@ -1,10 +1,8 @@
-import bundledChangelog from "../../CHANGELOG.md?raw";
 import { BUNDLED_RELEASE } from "./bundledRelease";
 import type { ReleaseNotesDocument, ReleaseNotesTabSource } from "./releaseNotes";
 
-/* The Keep-a-Changelog parser over the bundled changelog (34 kB of text):
-   the release notes chunk and the What's new dialog read it, never the
-   first paint. */
+/* What's New and the release notes tab use the running build's notes.
+   The parser also accepts a Keep a Changelog section from the update feed. */
 
 function bundledReleaseMarkdown(): string {
   return `## [${BUNDLED_RELEASE.version}] - ${BUNDLED_RELEASE.date}\n\n${BUNDLED_RELEASE.notes}`;
@@ -12,12 +10,14 @@ function bundledReleaseMarkdown(): string {
 
 export function releaseNotesForVersion(
   version: string,
-  changelog: string = bundledChangelog,
+  changelog?: string,
 ): ReleaseNotesDocument | null {
   const normalized = version.trim();
   if (!normalized || normalized === "Unreleased") return null;
-  if (changelog === bundledChangelog && normalized === BUNDLED_RELEASE.version) {
-    return { source: { version: normalized }, markdown: bundledReleaseMarkdown() };
+  if (changelog === undefined) {
+    return normalized === BUNDLED_RELEASE.version
+      ? { source: { version: normalized }, markdown: bundledReleaseMarkdown() }
+      : null;
   }
 
   const escapedVersion = normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -41,7 +41,7 @@ export function releaseNotesForVersion(
 
 export function releaseNotesMarkdown(
   source: ReleaseNotesTabSource,
-  changelog: string = bundledChangelog,
+  changelog?: string,
 ): string | null {
   return releaseNotesForVersion(source.version, changelog)?.markdown ?? null;
 }
@@ -55,7 +55,7 @@ export type ReleaseNotesPresentation = {
 /** Changelog body for the What's new modal: version heading lives in the chrome. */
 export function presentReleaseNotes(
   version: string,
-  changelog: string = bundledChangelog,
+  changelog?: string,
 ): ReleaseNotesPresentation | null {
   const release = releaseNotesForVersion(version, changelog);
   if (!release) return null;

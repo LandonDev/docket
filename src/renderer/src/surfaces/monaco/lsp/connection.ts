@@ -148,7 +148,7 @@ export class LspConnection {
     ws.onclose = (e) => void this.onClose(e.code);
     const init = await this.request<{ capabilities: Record<string, unknown> }>("initialize", {
       processId: null,
-      clientInfo: { name: "monocode" },
+      clientInfo: { name: "docket" },
       rootUri: this.rootUri,
       workspaceFolders: [{ uri: this.rootUri, name: this.project.name }],
       capabilities: {

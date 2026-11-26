@@ -12,9 +12,8 @@ type Props = {
 };
 
 /**
- * Bundled changelog by default. With `markdown`, the feed's notes: a full
- * changelog section loses its heading like the bundled one, anything else
- * shows as is.
+ * Use the running build's notes by default. Feed notes with a changelog
+ * heading drop that heading. Plain feed notes show as written.
  */
 function resolveNotes(
   version: string,

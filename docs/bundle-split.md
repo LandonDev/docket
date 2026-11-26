@@ -43,7 +43,7 @@ on intent so the skeleton is rarely seen.
 | media | MediaGate and MediaReview (images, media, review) | FilePane.tsx | hovering the file tree |
 | lightbox | the Lightbox component (its store is `chrome/lightboxStore.ts`, in the main chunk) | Composer.tsx | hovering an attachment thumbnail |
 | commandMenu | the composer's slash and @ menu (chrome/CommandPopover.tsx) | Composer.tsx, mounted once the composer first has matches so its close keeps its fade | the idle slot after the first thread opens |
-| releaseNotes | ReleaseNotesSurface and the changelog parser (`lib/releaseNotesParse.ts`, the 34 kB `CHANGELOG.md?raw`) | FilePane.tsx; App.tsx's What's new asks `releaseNotesChunk.load()` | the What's new button in Settings |
+| releaseNotes | ReleaseNotesSurface, the running release's notes from `release.json`, and the feed changelog parser (`lib/releaseNotesParse.ts`) | FilePane.tsx; App.tsx's What's New asks `releaseNotesChunk.load()` | the What's New button in Settings |
 | dialogs | the dialogs an action opens (`chrome/dialogs.ts`): new project and workspace, project settings and teardown, the remote folder picker, thread defaults, the preamble, What's new, the fleet switches' confirm, the thread menu's Recent and Archived lists (`ThreadListPopover`) and its Goal… (`GoalDialog`, hosted once by chrome/GoalDialog.tsx) and the project plan chip's options (`ProjectPlanOptions`); with them Base UI's sheet and select | App.tsx, Sidebar.tsx, WorkspaceSessions.tsx, ThreadMenu.tsx, ProjectPlanChip.tsx, GoalDialog.tsx, each mounted only while open | the workspace menu's trigger, the ⋯ menu opening, the plan chip's hover; the first thread on screen, after idle |
 | select | Base UI's select and every picker on it (`components/select-body.ts`): `ChoiceSelect` for the dialogs and settings, and the composer's permission mode (`AccessPickerSelect`), thread type (`ThreadTypeSelect`) and the model menu's setting rows (`SettingSelect`, chrome/composerSelects.tsx) | choice-select.tsx; AccessPicker.tsx, ThreadTypeChip.tsx and ModelSettings.tsx through `components/lazy-select.tsx` | the pointer entering a cold picker; the first thread on screen, after idle |
 | review | a review's notice (`ReviewCard`): its line, or the held review's card; a gate's notice (`GateCard`, re-exported from ReviewCard.tsx) | transcript/NoticeRow.tsx, with a 28px skeleton line in the notice's shape | the first thread on screen, after idle |
@@ -59,9 +59,10 @@ first paint, so `loadHunks` and `stageHunk` import them when a file is
 expanded; and App.tsx's find keys (`handleEditorFindKey`,
 `openFindInActiveEditor`) go through `surfaces/editorFind.ts`, which asks
 the editor chunk only when it is loaded (an editor can only be mounted
-once it is, so before that no key is an editor's). The bundled changelog
-text (`CHANGELOG.md?raw`, 34 kB) rides the release notes chunk since A26:
-App.tsx awaits that chunk before it opens What's new.
+once it is, so before that no key is an editor's).
+
+App.tsx waits for the release notes chunk before opening What's New for
+the running version.
 
 The transcript's highlighter (`lib/highlight.worker.ts`) starts with no
 grammar and loads each language's chunk on first use

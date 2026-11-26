@@ -1,8 +1,7 @@
 import { z } from 'zod'
 
-// Linear (M11). Donor DTOs from monocode/src-tauri/src/linear.rs; the
-// renderer's lib/linear.ts declares the same shapes. The token never
-// appears in any result.
+// Linear (M11). Wire types from `src-tauri/src/linear.rs` match the shapes
+// in the renderer's lib/linear.ts. The token never appears in any result.
 
 export interface LinearStatus {
   connected: boolean

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { formatReleaseDate, releaseNotesTitle } from "./releaseNotes";
 import { presentReleaseNotes, releaseNotesForVersion, releaseNotesMarkdown } from "./releaseNotesParse";
+import { BUNDLED_RELEASE } from "./bundledRelease";
 
 const fixture = `# Changelog
 
@@ -26,6 +27,20 @@ const fixture = `# Changelog
 `;
 
 describe("releaseNotesForVersion", () => {
+  it("uses the running release's notes when no feed notes are given", () => {
+    const { version, date, notes } = BUNDLED_RELEASE;
+    expect(releaseNotesMarkdown({ version })).toBe(`## [${version}] - ${date}\n\n${notes}`);
+  });
+
+  it("uses the supplied feed notes even when the version matches the running release", () => {
+    const { version } = BUNDLED_RELEASE;
+    expect(presentReleaseNotes(version, `## [${version}]\n\nFeed notes.`)).toEqual({
+      version,
+      date: null,
+      markdown: "Feed notes.",
+    });
+  });
+
   it("extracts only the requested release", () => {
     const release = releaseNotesForVersion("0.1.2", fixture);
 
@@ -75,7 +90,7 @@ describe("releaseNotesForVersion", () => {
 });
 
 describe("releaseNotesMarkdown", () => {
-  it("resolves a stored source against the bundled changelog shape", () => {
+  it("resolves a stored source against a supplied changelog", () => {
     const release = releaseNotesForVersion("0.1.2", fixture);
     expect(releaseNotesMarkdown(release!.source, fixture)).toBe(
       release?.markdown,

@@ -281,7 +281,7 @@ async function ensureLive(input: SendTurnInput): Promise<Live> {
         {
           protocolVersion: 1,
           clientCapabilities: CLIENT_CAPABILITIES,
-          clientInfo: { name: "monocode", version: "0.1.0" },
+          clientInfo: { name: "docket", version: "0.1.0" },
         },
         INIT_TIMEOUT_MS,
       );

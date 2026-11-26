@@ -1,7 +1,7 @@
 /**
  * PTY logic with no Electron or node-pty in it, so the batching, the byte
  * credits and the foreground-process formatter can be tested directly.
- * Ported from MonoCode's `src-tauri/src/pty.rs`.
+ * Ported from the Tauri app's `src-tauri/src/pty.rs`.
  */
 import { loginShell, whichWin } from './server/loginShell'
 

@@ -69,7 +69,9 @@ describe("fx live turn sequence", () => {
       () => parse().some((m) => m.method === "initialize"),
       "initialize",
     );
-    reply(parse().find((m) => m.method === "initialize")!.id, {
+    const initialize = parse().find((m) => m.method === "initialize")!;
+    expect(initialize.params.clientInfo).toEqual({ name: "docket", version: "0.1.0" });
+    reply(initialize.id, {
       protocolVersion: 1,
     });
     await waitFor(

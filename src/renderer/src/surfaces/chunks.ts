@@ -31,7 +31,7 @@ export const workHeadChunk = defineChunk("work-head", () => import("./transcript
 export const mediaChunk = defineChunk("media", () => import("./MediaViewer"));
 /** The full-window image viewer. */
 export const lightboxChunk = defineChunk("lightbox", () => import("../chrome/Lightbox"));
-/** The release notes tab, with the bundled changelog. */
+/** The release notes tab and the running build's notes. */
 export const releaseNotesChunk = defineChunk("releaseNotes", () => import("./ReleaseNotesSurface"));
 /** The thread's right panel with its section bodies (RightPanel). */
 export const rightPanelChunk = defineChunk("rightPanel", () => import("./RightPanel"));
