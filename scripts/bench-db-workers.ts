@@ -17,6 +17,7 @@ import { dirname, join, resolve } from 'node:path'
 import { openDb, Store } from '../src/main/server/db'
 import { ColdMover } from '../src/main/server/cold'
 import { EventReader, startCheckpointWorker } from '../src/main/server/dbWorkers'
+import { benchCopyRefusal } from './lib/benchCopy'
 import { flushStallLog, setStallLog, startStallMonitor, STALL_MS } from '../src/main/server/stalls'
 import type { SessionMeta } from '../src/shared/events'
 
@@ -28,12 +29,13 @@ if (!dbArg || (workers !== 'on' && workers !== 'off')) {
   process.exit(2)
 }
 const dbPath = resolve(dbArg)
-if (/Application Support\/(TempCode|temp-code)/.test(dbPath)) {
-  console.error(`refusing an app data dir: ${dbPath}; clone it with cp -c into /tmp first`)
-  process.exit(2)
-}
 if (!existsSync(dbPath)) {
   console.error(`no such file: ${dbPath}`)
+  process.exit(2)
+}
+const refused = benchCopyRefusal(dbPath)
+if (refused) {
+  console.error(`${refused}; clone it into /tmp first`)
   process.exit(2)
 }
 

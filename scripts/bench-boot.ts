@@ -12,13 +12,14 @@
  *
  * Run: bun run script:bench-boot -- /tmp/bench/temp-code.db
  */
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { openDb, Store } from '../src/main/server/db'
 import { sweepFolds } from '../src/main/server/folds'
 import { backfillMirrors } from '../src/main/server/mirror'
 import { SessionRegistry } from '../src/main/server/sessions'
+import { benchCopyRefusal } from './lib/benchCopy'
 import type { ProjectMeta } from '../src/shared/events'
 
 const dbArg = process.argv[2]
@@ -29,14 +30,11 @@ if (!dbArg) {
 const dbPath = resolve(dbArg)
 
 // The installed app is the user's live workspace. A second writer on its
-// database freezes the running threads, so the benchmark will not open it.
-// By either name: since the move to Docket's names one is a link to the other.
-const LIVE = join(homedir(), 'Library', 'Application Support', 'temp-code')
-const real = (path: string): string => (existsSync(path) ? realpathSync(path) : path)
-const lives = [LIVE, join(dirname(LIVE), 'Docket')].map(real)
-if (lives.includes(real(dirname(dbPath))) || lives.some((dir) => real(dbPath).startsWith(`${dir}/`))) {
-  console.error(`refusing to open the installed app's database: ${dbPath}`)
-  console.error(`copy it first:  cp "${join(LIVE, 'temp-code.db')}"* /tmp/bench/`)
+// database freezes the running threads, so the benchmark will not open it, on
+// the Mac or the box, by any name, nor a copy something has open.
+const refused = benchCopyRefusal(dbPath)
+if (refused) {
+  console.error(refused)
   process.exit(2)
 }
 

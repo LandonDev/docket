@@ -13,10 +13,16 @@
 import { statSync } from 'node:fs'
 import { openDb, Store } from '../src/main/server/db'
 import { TURN_ROW_SQL } from '../src/main/server/turnIndex'
+import { benchCopyRefusal } from './lib/benchCopy'
 
 const path = process.argv[2]
 if (!path) {
   console.error('usage: measure-turn-index <copy-of-temp-code.db> [query ...]')
+  process.exit(2)
+}
+const refused = benchCopyRefusal(path)
+if (refused) {
+  console.error(refused)
   process.exit(2)
 }
 const queries = process.argv.slice(3).length ? process.argv.slice(3) : ['gateway', 'session move', 'notarize', 'the', 'fts5']
