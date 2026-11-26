@@ -192,6 +192,9 @@ type Entry = {
   heldOn?: number;
   /** Its last replay failed: the hold stays until a replay of it succeeds, whatever else releases holds. */
   heldFailed?: boolean;
+  /** A `resync` came while a replay held its rows: the rows held from this index on came after it, and wait for a
+   *  second replay, from the cursor, that brings the rows the host shed before them. */
+  resyncAt?: number;
   /** Times this entry was unloaded: a fold that yielded across one stops (its rows are no longer this fold's). */
   unloads?: number;
   /** The replay of its gap on its way, and the socket it runs on: one on a newer socket waits it out. */
@@ -1925,9 +1928,25 @@ class SessionStore {
         if (!ok && entry.held) {
           entry.resyncHold = true;
           entry.heldFailed = true;
+          entry.resyncAt = undefined;
           return;
         }
         entry.heldFailed = false;
+        const at = entry.resyncAt;
+        entry.resyncAt = undefined;
+        if (at !== undefined && entry.held) {
+          // Rows from before the host's resync fold now; those after it stay held for a replay from the cursor, once,
+          // which brings the rows the host shed between them.
+          const after = entry.held.slice(at);
+          const before = entry.held.slice(0, at);
+          entry.held = null;
+          for (const row of before) this.applyPush(entry, row);
+          entry.held = after;
+          entry.heldOn = socket;
+          entry.resyncHold = true;
+          void this.replayGap(entry, "resync").catch(() => undefined);
+          return;
+        }
         const held = entry.held;
         entry.held = null;
         // The fold drops whatever history already covered.
@@ -2357,7 +2376,11 @@ class SessionStore {
           const socket = attached.opens;
           for (const entry of this.entries.values()) {
             if (!entry.loaded || entry.meta?.environmentId !== environmentId) continue;
-            if (entry.held && entry.heldOn === socket) continue;
+            // A replay on this socket already holds its rows: the marker is noted, and its end replays again.
+            if (entry.held && entry.heldOn === socket) {
+              entry.resyncAt ??= entry.held.length;
+              continue;
+            }
             entry.held = [];
             entry.heldOn = socket;
             entry.resyncHold = true;

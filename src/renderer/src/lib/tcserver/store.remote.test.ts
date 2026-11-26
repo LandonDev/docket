@@ -773,6 +773,29 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2"]);
   });
 
+  it("a resync while a replay's page is out keeps the rows after it held until a second replay brings the shed ones (Sol S25)", async () => {
+    link.pages = [[wireMeta({ id: "s" })]];
+    link.events.set("s", turns("s", 2));
+    await boot(link);
+    sessionStore.followShown({ shown: () => "s", onChange: () => () => {} });
+    sessionStore.setMounted(["s"]);
+    await sessionStore.ensureLoaded("s");
+    // The replay's page (nothing after row 4 yet) waits on the socket.
+    const gate: (() => void)[] = [];
+    link.holdNext = gate;
+    link.open();
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(gate).toHaveLength(1);
+    // The host appends 5 and 6 but sheds their pushes, says resync, then pushes 7.
+    const late = turns("s", 2, 5).map((r, i) => ({ ...r, event: { ...r.event, text: `late ${i}` } as EventRow["event"] }));
+    link.events.set("s", [...turns("s", 2), ...late.slice(0, 3)]);
+    link.push({ push: "resync" });
+    link.push({ push: "event", row: late[2]! });
+    for (const release of gate) release();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1", "late 2"]);
+  });
+
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
   async function masterWithChild(): Promise<{ asked: () => string[] }> {
     link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];
