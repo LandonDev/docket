@@ -90,8 +90,10 @@ beforeAll(async () => {
   await holdAll(statusBudget)
   await holdAll(oneShotBudget)
   // A write on the focused thread's checkpoint chain that never ends: Undo of
-  // its new file asks git (childBudget, held) from inside the chain.
-  fillers.push(window.request('checkpoint.undo', { sessionId: seed.focused, relative: `new-${seed.focused}.ts` }, 60_000))
+  // its new file asks git (childBudget, held) from inside the chain. It rides
+  // the filler socket, which stays open: closing a socket settles its pending
+  // requests with no answer (connectProbe.ts `close`), and that is not an answer.
+  fillers.push(filler.request('checkpoint.undo', { sessionId: seed.focused, relative: `new-${seed.focused}.ts` }, 60_000))
   await new Promise((r) => setTimeout(r, 100))
   // The window that measures is a fresh one: it has not focused anything yet.
   window.close()
