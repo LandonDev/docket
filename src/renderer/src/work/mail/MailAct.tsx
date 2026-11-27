@@ -8,6 +8,7 @@ import { SettingSwitch } from "../../components/setting-switch";
 import type { ActViewProps } from "../acts/registry";
 import { tempcodeMailKit } from "./kit";
 import { mailActView } from "./model";
+import { KitWaits } from "../kitWaits";
 
 /** The HTML this host will send for a held mail: the outgoing rules on what he wrote, then the quote LifeOS puts under it. */
 export function outgoingMail(payload: unknown): string | null {
@@ -31,12 +32,14 @@ function AsItLooks({ html }: { html: string }) {
   return (
     <MailKitProvider kit={tempcodeMailKit}>
       <FrameHostProvider value={host}>
-        <div data-mail-drawn className="flex flex-col gap-1.5 border-t border-border pt-4">
-          <MailFrame prepared={prepared} showQuotes title="The mail as it will arrive" />
-          <p aria-live="polite" className={link?.warn ? "min-h-4 truncate text-xs text-warning" : "min-h-4 truncate text-xs text-muted-foreground"}>
-            {link ? `${link.warn ? "Goes to " : ""}${link.href}` : null}
-          </p>
-        </div>
+        <KitWaits>
+          <div data-mail-drawn className="flex flex-col gap-1.5 border-t border-border pt-4">
+            <MailFrame prepared={prepared} showQuotes title="The mail as it will arrive" />
+            <p aria-live="polite" className={link?.warn ? "min-h-4 truncate text-xs text-warning" : "min-h-4 truncate text-xs text-muted-foreground"}>
+              {link ? `${link.warn ? "Goes to " : ""}${link.href}` : null}
+            </p>
+          </div>
+        </KitWaits>
       </FrameHostProvider>
     </MailKitProvider>
   );

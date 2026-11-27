@@ -19,6 +19,7 @@ import { CardBones } from "./cardParts";
 import { DraftCard } from "./DraftCard";
 import { RewriteCard } from "./RewriteCard";
 import { RowsCard } from "./RowsCard";
+import { KitWaits } from "../../kitWaits";
 
 /**
  * A mail chat's answer as mail's own thing (docs/DESIGN.md "The Mail view", the chat's cards): `mail_offer`'s card
@@ -80,7 +81,9 @@ function OfferSession({ sessionId, env, offer, cardKey, children }: { sessionId:
   ) : (
     <ConvexProvider client={lifeos.client}>
       <MailClientProvider client={mailClientFor(env, lifeos.client.url, sector)}>
-        <MailKitProvider kit={tempcodeMailKit}>{children(at)}</MailKitProvider>
+        <MailKitProvider kit={tempcodeMailKit}>
+          <KitWaits>{children(at)}</KitWaits>
+        </MailKitProvider>
       </MailClientProvider>
     </ConvexProvider>
   );

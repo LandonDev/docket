@@ -19,6 +19,7 @@ import { OutcomeMark } from "../threads/mark";
 import type { WorkPlaceProps } from "../places/registry";
 import { useTracker, type MergedJob, type MergedProject } from "./data";
 import { openNewProject, openProjectPage, openTrackerThread } from "./open";
+import { KitWaits } from "../kitWaits";
 
 /**
  * The Projects place (docs/agents/work-tracker.md "The page", docs/DESIGN.md "The tracker"): every job's open
@@ -90,32 +91,34 @@ export function TrackerBody({ jobs, loading, errors, pending = false, waitingOnl
   // Under the filter a job shows only what waits on him; one with none goes, a job LifeOS could not read stays (it may).
   const shown = waitingOnly ? jobs.filter((job) => job.down || job.projects.some(waitsOnHim)) : jobs;
   return (
-    <div className="tc-projects h-full min-h-0 overflow-x-hidden overflow-y-auto">
-      <ProjectFactsTable threads className="mx-auto w-full max-w-(--pk-list-column) px-2 pt-4 pb-10">
-        {errors.map((words) => (
-          <p key={words} data-host-silent className="mx-2 flex min-h-8 items-center px-2 text-(length:--pk-meta) text-muted-foreground">
-            {words}
-          </p>
-        ))}
-        {/* Bones while it reads, and while a pending host leaves the page empty: it says nothing until it knows. */}
-        {loading || (pending && shown.length === 0) ? (
-          <>
-            <ProjectFactsHeader threads />
-            <ProjectFactsBones rows={6} />
-          </>
-        ) : shown.length === 0 ? (
-          // An all-clear only when every host answered: a host missing may hold the job that waits.
-          errors.length || pending ? null : <p className="mx-2 flex min-h-8 items-center px-2 text-(length:--pk-text) text-muted-foreground">{waitingOnly ? "Nothing waits on you" : "No jobs yet"}</p>
-        ) : (
-          <>
-            <ProjectFactsHeader threads />
-            {shown.map((job) => (
-              <JobGroup key={job.sector} job={job} waitingOnly={waitingOnly} now={now} onRetry={onRetry} Down={Down} />
-            ))}
-          </>
-        )}
-      </ProjectFactsTable>
-    </div>
+    <KitWaits>
+      <div className="tc-projects h-full min-h-0 overflow-x-hidden overflow-y-auto">
+        <ProjectFactsTable threads className="mx-auto w-full max-w-(--pk-list-column) px-2 pt-4 pb-10">
+          {errors.map((words) => (
+            <p key={words} data-host-silent className="mx-2 flex min-h-8 items-center px-2 text-(length:--pk-meta) text-muted-foreground">
+              {words}
+            </p>
+          ))}
+          {/* Bones while it reads, and while a pending host leaves the page empty: it says nothing until it knows. */}
+          {loading || (pending && shown.length === 0) ? (
+            <>
+              <ProjectFactsHeader threads />
+              <ProjectFactsBones rows={6} />
+            </>
+          ) : shown.length === 0 ? (
+            // An all-clear only when every host answered: a host missing may hold the job that waits.
+            errors.length || pending ? null : <p className="mx-2 flex min-h-8 items-center px-2 text-(length:--pk-text) text-muted-foreground">{waitingOnly ? "Nothing waits on you" : "No jobs yet"}</p>
+          ) : (
+            <>
+              <ProjectFactsHeader threads />
+              {shown.map((job) => (
+                <JobGroup key={job.sector} job={job} waitingOnly={waitingOnly} now={now} onRetry={onRetry} Down={Down} />
+              ))}
+            </>
+          )}
+        </ProjectFactsTable>
+      </div>
+    </KitWaits>
   );
 }
 

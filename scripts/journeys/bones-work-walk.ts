@@ -41,7 +41,7 @@ const check = (name: string, ok: boolean, detail = ''): void => {
   if (!ok) failed++
 }
 
-/** What the window shows of bones right now (bones-walk.ts's count), and work-kit's own hand-drawn bars beside them. */
+/** What the window shows of bones right now (bones-walk.ts's count), and any bar of work-kit's drawn as itself (one a drawing holds is unseen). */
 const BONES_NOW = `(() => {
   const seen = (selector) => [...document.querySelectorAll(selector)].filter((el) => el.checkVisibility());
   const bars = seen('[skullet-layer]').flatMap((layer) => [...(layer.shadowRoot?.children ?? [])]);
@@ -51,7 +51,7 @@ const BONES_NOW = `(() => {
     leaving: seen('[data-bones="leaving"], [skullet-exiting], [data-bones="copy"]').length,
     bars: bars.length,
     sweeping: bars.filter((bar) => bar.getAnimations().some((a) => a.playState === 'running' && a.effect?.getComputedTiming().iterations === Infinity)).length,
-    kit: seen('[data-slot="skeleton"], .animate-pulse').length,
+    kit: seen('[data-slot="skeleton"], .animate-pulse').filter((el) => !el.closest('[skullet-loading]')).length,
   };
 })()`
 type Bones = { held: number; shown: number; leaving: number; bars: number; sweeping: number; kit: number }
@@ -95,9 +95,13 @@ function judge(name: string, frames: Frame[]): void {
   const last = frames.at(-1)!
   check(`${name}: the content landed`, last.landed, `after ${frames.find((frame) => frame.landed)?.at ?? -1} ms`)
   check(`${name}: no bone outlived it`, last.bones.shown === 0 && last.bones.leaving === 0 && last.bones.bars === 0, js(last.bones))
-  // work-kit draws its own waits inside Mail's list and pane; say how long they stood, they are not ours to judge.
+  // From the first bones to the landing, every frame shows bones: one wait hands to the next with nothing bare between.
+  const first = waiting.findIndex((frame) => frame.bones.bars > 0)
+  const bare = first < 0 ? [] : waiting.slice(first).filter((frame) => frame.bones.bars === 0 && frame.bones.leaving === 0)
+  check(`${name}: bones in every waiting frame`, first >= 0 && bare.length === 0, bare.length ? `bare at ${bare.map((frame) => frame.at).join(', ')} ms` : '')
+  // work-kit's screens wait through Docket's bones (work/kitWaits.tsx): a bar of its own on screen is a wait that missed the seam.
   const kit = frames.filter((frame) => frame.bones.kit > 0)
-  if (kit.length) log(`      ${name}: work-kit's own bars stood in ${kit.length} of ${frames.length} frames`)
+  check(`${name}: no bar of work-kit's own`, kit.length === 0, kit.length ? `in ${kit.length} of ${frames.length} frames, from ${kit[0]!.at} ms` : '')
 }
 
 async function main(): Promise<void> {

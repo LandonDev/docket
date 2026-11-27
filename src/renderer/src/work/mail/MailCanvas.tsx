@@ -24,6 +24,7 @@ import { mailClientFor, RevealMailbox } from "./client";
 import { placedKit } from "./files";
 import { tempcodeMailKit } from "./kit";
 import { proposalDiff, type Proposal } from "./proposal";
+import { KitWaits } from "../kitWaits";
 
 /**
  * A mail item beside a thread (docs/agents/work-mail.md): a draft an agent
@@ -85,10 +86,12 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
     <ConvexProvider client={lifeos.client}>
       <MailClientProvider client={mailClientFor(env, lifeos.client.url, sector ?? "all")}>
         <MailKitProvider kit={kit}>
-          <div className="tc-mail flex h-full min-h-0 flex-col">
-            <Draft id={source.id} shell={shell} />
-            <SentLine env={env} id={source.id} />
-          </div>
+          <KitWaits>
+            <div className="tc-mail flex h-full min-h-0 flex-col">
+              <Draft id={source.id} shell={shell} />
+              <SentLine env={env} id={source.id} />
+            </div>
+          </KitWaits>
         </MailKitProvider>
       </MailClientProvider>
     </ConvexProvider>

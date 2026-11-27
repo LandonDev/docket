@@ -110,6 +110,29 @@ inside 400 ms of a key or a scroll, in a hidden window, or with motion
 reduced lands at once; no leaving pane waits on a frame (it is dropped after
 1.5 s whatever its fade says); bones that have stood 20 s go still.
 
+## work-kit's screens
+
+Mail, the sheet and Projects are work-kit's screens (docs/agents/work-kit.md), and
+work-kit draws its own grey bars for LifeOS. Every wait in them goes through
+`Wait` (`work-kit/ui/wait`): whether it is loading, the kit's bars, and for
+Mail's list, reading pane and body a `sample` drawn with words in the row's own
+grid and type (`ThreadListSample`, `PaneSample`, `BodySample`; the list's are
+the same words as `work/mail/bones.tsx`, so the cold open moves nothing at the
+handover). With no host the kit draws its bars and then the content, as it
+always has, so LifeOS sees no change.
+
+`KitWaits` (`src/renderer/src/work/kitWaits.tsx`) is Docket's host: under it
+each kit wait is a `Region` whose bones are the sample, else the kit's bars
+(each bar a block), with the hold, the sweep and the reveal. A wait that is an
+early return pairs with `waited(content)` on the content's returns, so one
+region stands from the bones to the content. Projects' `Held` is a host wait
+when it stands alone (`ProjectFactsBones` on the Tracker page) and plain
+inside a drawing. **Wrap every place that mounts a kit screen in `KitWaits`**
+(today: `MailView`, `MailCanvas`, `MailAct`, the chat's `OfferCard`,
+`SheetBody`, `ProjectsView`, `TrackerPage`); a kit screen outside it shows the
+kit's grey bars, and `bones-work-walk.ts` fails on any bar of the kit's own on
+screen.
+
 ## Samples
 
 A sample is a fixed literal shaped like real work: no clock, no random, ids
@@ -257,7 +280,9 @@ the commit that mounts it.
    --views Mail,Agenda`: a pair with Work on, reading a LifeOS sandbox through
    a hop that holds each request `--delay` ms, each view opened cold (the
    window reloaded on it); frames and `walk.log` go to
-   `.temp-code/findings/skullet/work`.
+   `.temp-code/findings/skullet/work`. It fails when a bar of work-kit's own
+   stands on screen, or a frame between the first bones and the landing shows
+   none.
 
 ## Speed
 

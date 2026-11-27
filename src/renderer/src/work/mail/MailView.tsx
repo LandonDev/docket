@@ -35,6 +35,7 @@ import { DOCK_SIZE } from "../dock/shapes";
 import { DockSash } from "../dock/DockSash";
 import { MAIL_BESIDE } from "./chat/layout";
 import type { SectorKey } from "@shared/work";
+import { KitWaits } from "../kitWaits";
 
 export { clampList, LIST_WIDTH, MailBones };
 
@@ -74,7 +75,9 @@ export function View(props: WorkViewProps) {
     <ConvexProvider client={convex}>
       <MailClientProvider client={mailClientFor(env, convex.url, sector ?? "all")}>
         <MailKitProvider kit={tempcodeMailKit}>
-          <MailPageBody {...props} />
+          <KitWaits>
+            <MailPageBody {...props} />
+          </KitWaits>
         </MailKitProvider>
       </MailClientProvider>
     </ConvexProvider>

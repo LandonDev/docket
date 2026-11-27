@@ -46,6 +46,7 @@ import { reachHere } from "./fullHere";
 import { useSaveToGoogle } from "./toGoogle";
 import { ShareButton } from "../guests/Share";
 import { registerFlush } from "../canvas/flush";
+import { KitWaits } from "../kitWaits";
 
 /**
  * The sheet kind (docs/agents/work-sheets.md; the approved page is
@@ -239,97 +240,99 @@ export function Body(props: Props) {
   if (!view || !book || prepared !== true || faces !== book.key) return <SheetSkeleton loading={book ? null : state.loading} name={view?.name ?? item.title} row={view ? controls.length > 0 : true} />;
   const Canvas = grid.Canvas;
   return (
-    <div
-      ref={frameRef}
-      data-sheet-item={item.id}
-      // The editor's keys are the grid's while the caret is in it (work-editors.md "Who hears a key"). A sheet he can only read, and
-      // one whose store keeps no formatting (no row), keep ⌘B the app's: a key never makes what the row there does not offer.
-      data-editor-keys={locked || controls.length === 0 ? "read" : "sheet"}
-      className="relative flex min-h-0 flex-1 flex-col"
-      onPointerUp={(event) => {
-        pointer.current = { x: event.clientX, y: event.clientY };
-      }}
-    >
-      <div className={previewing ? "invisible contents" : "contents"} inert={previewing ? true : undefined}>
-      {handle && controls.length > 0 ? (
-        <SheetToolbar
-          sheet={handle}
-          // (the host lists them by the kit's own ids; one this build of the kit does not know draws nothing)
-          controls={controls satisfies readonly SheetControl[]}
-          boundary={box}
-          mac={IS_MAC}
-          editorKeys
-          tip={rowTip}
-          loadFont={grid.font}
-          onCustomFormat={(current) => setCustomFormat(current)}
-          confirmMerge={confirmMerge}
-          // The Data menu's rules open the side sheet on their lists; a second press of the one open closes it.
-          onRules={() => setRules((open) => (open ? null : { view: "lists" }))}
-          pageBreaks={pageView}
-          onPageBreaks={setPageView}
-          // Insert → Picture opens the system's file picker; the grid seats what he picks at the cell in hand.
-          {...(controls.includes("picture") ? { onPicture: () => pictureInput.current?.click() } : {})}
-          // The row ends in Preview, as a document's does: every way out of the sheet, drawn as it will be.
-          {...(source ? { out: { label: "Preview", icon: <Eye />, onPress: () => showPreview("last") } } : {})}
-        />
-      ) : controls.length > 0 ? (
-        // Until the grid hands its handle the row keeps its 36px, so the grid does not drop when the row lands.
-        <FormatRowBone />
-      ) : null}
-      {/* A sheet that is the Excel copy of an .xls, .ods or .tsv says so in one quiet line, with its one press. */}
-      {view.imported ? <ImportLine imported={view.imported} shared={view.shared} run={(act) => runImport(importAsk(sync), view.imported!, act, showFolder)} /> : null}
-      {handle && controls.includes("picture") ? <PictureInput ref={pictureInput} handle={handle} /> : null}
-      {handle && customFormat !== null ? <CustomFormat current={customFormat} onClose={() => setCustomFormat(null)} onApply={(pattern) => handle.format({ pattern })} /> : null}
-      {google.dialog}
-      <div className={stacked ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-1"}>
-        <Canvas
-          key={book.key}
-          snapshot={book.workbook as never}
-          worker={grid.worker}
-          // Locked too while the book is read again after a stop: an edit made then would be in neither the grid nor the file.
-          readOnly={locked || state.reloading || !!state.offer}
-          styleKeys={controls.length > 0}
-          // The filter's header buttons and menu only where the host keeps a filter (a workbook Excel or Google holds keeps none).
-          filter={controls.includes("filter")}
-          // The sort dialog, the filter's menu, a list's drop-down and a validation's refusal are work-kit's own, not Univer's.
-          dataChrome
-          // A sheet's page set-up is kept by the grid only where the host keeps it (read once, as the grid is made).
-          pages={controls.includes("page")}
-          pageBreaks={pageView && controls.includes("pageBreaks")}
-          // What a note's pop-over offers: what this store keeps, as its host says (`view.notes`); none on a sheet he cannot edit.
-          {...(view.notes?.length && !locked && !state.reloading ? { noteControls: view.notes } : {})}
-          marks={marks}
-          presence={others.presence}
-          was={cellWas}
-          said={said}
-          // The sheet's charts and pictures, drawn where Excel draws them; each change goes to its store as the tab's list. A
-          // sheet that has none yet still gets the layer where its store keeps them, so Insert → Chart draws what it makes.
-          objects={book.objects ?? (controls.includes("objects") || view.legacyCharts?.length ? NO_OBJECTS : undefined)}
-          media={sync.media}
-          onObjects={(change) => sync.object(change)}
-          onReady={setHandle}
-          onSelection={onSelection}
-          labels={LABELS}
-          // Find and Replace in the grid, a reader's too (Replace only where he may edit).
-          find
-          // Freeze, Hide and Unhide, tabs in order: what this store keeps, as its host says (`view.layout`); none on a sheet he cannot edit.
-          {...(view.layout?.length && !locked && !state.reloading ? { layout: view.layout } : {})}
-          className="min-h-0 min-w-0 flex-1"
-        />
-        {siding ? (
-          <div data-sheet-rules="" className={stacked ? "h-[344px] shrink-0" : "w-80 shrink-0"}>
-            <RulesSheet sheet={handle} open={siding} onOpen={setRules} onClose={() => setRules(null)} kinds={kinds} stacked={stacked} className="size-full" />
+    <KitWaits>
+      <div
+        ref={frameRef}
+        data-sheet-item={item.id}
+        // The editor's keys are the grid's while the caret is in it (work-editors.md "Who hears a key"). A sheet he can only read, and
+        // one whose store keeps no formatting (no row), keep ⌘B the app's: a key never makes what the row there does not offer.
+        data-editor-keys={locked || controls.length === 0 ? "read" : "sheet"}
+        className="relative flex min-h-0 flex-1 flex-col"
+        onPointerUp={(event) => {
+          pointer.current = { x: event.clientX, y: event.clientY };
+        }}
+      >
+        <div className={previewing ? "invisible contents" : "contents"} inert={previewing ? true : undefined}>
+        {handle && controls.length > 0 ? (
+          <SheetToolbar
+            sheet={handle}
+            // (the host lists them by the kit's own ids; one this build of the kit does not know draws nothing)
+            controls={controls satisfies readonly SheetControl[]}
+            boundary={box}
+            mac={IS_MAC}
+            editorKeys
+            tip={rowTip}
+            loadFont={grid.font}
+            onCustomFormat={(current) => setCustomFormat(current)}
+            confirmMerge={confirmMerge}
+            // The Data menu's rules open the side sheet on their lists; a second press of the one open closes it.
+            onRules={() => setRules((open) => (open ? null : { view: "lists" }))}
+            pageBreaks={pageView}
+            onPageBreaks={setPageView}
+            // Insert → Picture opens the system's file picker; the grid seats what he picks at the cell in hand.
+            {...(controls.includes("picture") ? { onPicture: () => pictureInput.current?.click() } : {})}
+            // The row ends in Preview, as a document's does: every way out of the sheet, drawn as it will be.
+            {...(source ? { out: { label: "Preview", icon: <Eye />, onPress: () => showPreview("last") } } : {})}
+          />
+        ) : controls.length > 0 ? (
+          // Until the grid hands its handle the row keeps its 36px, so the grid does not drop when the row lands.
+          <FormatRowBone />
+        ) : null}
+        {/* A sheet that is the Excel copy of an .xls, .ods or .tsv says so in one quiet line, with its one press. */}
+        {view.imported ? <ImportLine imported={view.imported} shared={view.shared} run={(act) => runImport(importAsk(sync), view.imported!, act, showFolder)} /> : null}
+        {handle && controls.includes("picture") ? <PictureInput ref={pictureInput} handle={handle} /> : null}
+        {handle && customFormat !== null ? <CustomFormat current={customFormat} onClose={() => setCustomFormat(null)} onApply={(pattern) => handle.format({ pattern })} /> : null}
+        {google.dialog}
+        <div className={stacked ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-1"}>
+          <Canvas
+            key={book.key}
+            snapshot={book.workbook as never}
+            worker={grid.worker}
+            // Locked too while the book is read again after a stop: an edit made then would be in neither the grid nor the file.
+            readOnly={locked || state.reloading || !!state.offer}
+            styleKeys={controls.length > 0}
+            // The filter's header buttons and menu only where the host keeps a filter (a workbook Excel or Google holds keeps none).
+            filter={controls.includes("filter")}
+            // The sort dialog, the filter's menu, a list's drop-down and a validation's refusal are work-kit's own, not Univer's.
+            dataChrome
+            // A sheet's page set-up is kept by the grid only where the host keeps it (read once, as the grid is made).
+            pages={controls.includes("page")}
+            pageBreaks={pageView && controls.includes("pageBreaks")}
+            // What a note's pop-over offers: what this store keeps, as its host says (`view.notes`); none on a sheet he cannot edit.
+            {...(view.notes?.length && !locked && !state.reloading ? { noteControls: view.notes } : {})}
+            marks={marks}
+            presence={others.presence}
+            was={cellWas}
+            said={said}
+            // The sheet's charts and pictures, drawn where Excel draws them; each change goes to its store as the tab's list. A
+            // sheet that has none yet still gets the layer where its store keeps them, so Insert → Chart draws what it makes.
+            objects={book.objects ?? (controls.includes("objects") || view.legacyCharts?.length ? NO_OBJECTS : undefined)}
+            media={sync.media}
+            onObjects={(change) => sync.object(change)}
+            onReady={setHandle}
+            onSelection={onSelection}
+            labels={LABELS}
+            // Find and Replace in the grid, a reader's too (Replace only where he may edit).
+            find
+            // Freeze, Hide and Unhide, tabs in order: what this store keeps, as its host says (`view.layout`); none on a sheet he cannot edit.
+            {...(view.layout?.length && !locked && !state.reloading ? { layout: view.layout } : {})}
+            className="min-h-0 min-w-0 flex-1"
+          />
+          {siding ? (
+            <div data-sheet-rules="" className={stacked ? "h-[344px] shrink-0" : "w-80 shrink-0"}>
+              <RulesSheet sheet={handle} open={siding} onOpen={setRules} onClose={() => setRules(null)} kinds={kinds} stacked={stacked} className="size-full" />
+            </div>
+          ) : null}
+        </div>
+        </div>
+        {previewing && source ? (
+          <div data-sheet-preview="" className="absolute inset-0 z-10">
+            {/* Print… asked for while it is up on another format moves it to Print: a new frame on that format. */}
+            <Preview key={asked} source={source} title={item.title} kind="sheet" {...(previewing === "print" ? { initial: "print" } : {})} readOnly={locked} onClose={() => setPreviewing(false)} />
           </div>
         ) : null}
       </div>
-      </div>
-      {previewing && source ? (
-        <div data-sheet-preview="" className="absolute inset-0 z-10">
-          {/* Print… asked for while it is up on another format moves it to Print: a new frame on that format. */}
-          <Preview key={asked} source={source} title={item.title} kind="sheet" {...(previewing === "print" ? { initial: "print" } : {})} readOnly={locked} onClose={() => setPreviewing(false)} />
-        </div>
-      ) : null}
-    </div>
+    </KitWaits>
   );
 }
 

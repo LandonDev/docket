@@ -23,6 +23,7 @@ import { setProjectsBack, setProjectsHere } from "./here";
 import { ProjectsBones } from "./bones";
 import { Arrive, Region } from "../../components/bones";
 import { openDoc, placeOf, setPlace, useOpenedDoc, usePlace, type OpenedDoc } from "./place";
+import { KitWaits } from "../kitWaits";
 
 const ProjectSettingsDialog = dialogsChunk.surface("ProjectSettingsDialog");
 // The Share sheet is its own chunk, loaded on the ⋯'s Share… press.
@@ -141,15 +142,17 @@ export function View(props: WorkViewProps) {
     <ConvexProvider client={convex}>
       <ProjectsKitProvider kit={kit}>
         <ProjectsClientProvider client={client}>
-          {/* Where the session's bones stood a moment ago, the screens come in over them. */}
-          <Arrive className="tc-projects h-full min-h-0">{doc ? <DocInPlace env={env} workspaceId={workspace.id} doc={doc} /> : <Projects sector={sector as KitSector} place={place} onPlace={onPlace} />}</Arrive>
-          {coding ? <CodeThreadDialog task={{ _id: coding.id, title: coding.title }} sector={sector} onStart={startThread} onClose={() => setCoding(null)} /> : null}
-          {linking ? <LinkPicker env={env} workspaceId={workspace.id} project={linking.project} kind={linking.kind} onClose={() => setLinking(null)} /> : null}
-          {sharing ? (
-            <Suspense fallback={null}>
-              <ShareSheet env={env} target={{ source: { at: "lifeos", table: "projects", id: sharing.id } }} title={sharing.name} onClose={() => setSharing(null)} />
-            </Suspense>
-          ) : null}
+          <KitWaits>
+            {/* Where the session's bones stood a moment ago, the screens come in over them. */}
+            <Arrive className="tc-projects h-full min-h-0">{doc ? <DocInPlace env={env} workspaceId={workspace.id} doc={doc} /> : <Projects sector={sector as KitSector} place={place} onPlace={onPlace} />}</Arrive>
+            {coding ? <CodeThreadDialog task={{ _id: coding.id, title: coding.title }} sector={sector} onStart={startThread} onClose={() => setCoding(null)} /> : null}
+            {linking ? <LinkPicker env={env} workspaceId={workspace.id} project={linking.project} kind={linking.kind} onClose={() => setLinking(null)} /> : null}
+            {sharing ? (
+              <Suspense fallback={null}>
+                <ShareSheet env={env} target={{ source: { at: "lifeos", table: "projects", id: sharing.id } }} title={sharing.name} onClose={() => setSharing(null)} />
+              </Suspense>
+            ) : null}
+          </KitWaits>
         </ProjectsClientProvider>
       </ProjectsKitProvider>
     </ConvexProvider>

@@ -375,6 +375,7 @@
 @source "../../../node_modules/work-kit/src/ui/toggle-group.tsx";
 @source "../../../node_modules/work-kit/src/ui/toggle.tsx";
 @source "../../../node_modules/work-kit/src/ui/tooltip.tsx";
+@source "../../../node_modules/work-kit/src/ui/wait.tsx";
 @source "../../../node_modules/work-kit/src/views/agenda/agenda-list.tsx";
 @source "../../../node_modules/work-kit/src/views/agenda/agenda-month.tsx";
 @source "../../../node_modules/work-kit/src/views/agenda/agenda-week.tsx";

@@ -73,6 +73,12 @@ it and who owns each folder.
   `y-protocols` 1.0.7 in `devDependencies` (exact, as work-kit names them), or an
   import of `work-kit/editor` does not resolve.
 
+- **Waits.** Every wait in a kit screen goes through `Wait` (`work-kit/ui/wait`);
+  Docket draws them as its Skullet bones through `KitWaits`
+  (`src/renderer/src/work/kitWaits.tsx`), which wraps every place a kit screen
+  is mounted. A kit screen mounted outside it shows the kit's grey bars.
+  docs/agents/loading-bones.md "work-kit's screens".
+
 Imports are by subpath; there is no root export: `work-kit/ui/<name>`
 (`work-kit/ui/cn` for the kit's `cn`),
 `work-kit/<folder>`, `work-kit/lifeos/types`, `work-kit/editor/styles.css`,
@@ -94,8 +100,8 @@ runs the same guard on its own lock.
 
 ## Bumping the pin
 
-The Work polish pin is `4edecefd1f03a81c14b53776c705460a080e8766`. It keeps
-`WORK_KIT_API` at 3. The pin needs a signed Docket release.
+The pin is `154b2753b72df05926c480a50833d0597538a3db` (v100: every wait through
+`Wait`). It keeps `WORK_KIT_API` at 3. The pin needs a signed Docket release.
 
 A bump changes five pin files in one commit: `package.json`, `bun.lock`,
 `ios/TempCode/project.yml`, the tracked `ios/TempCode/TempCode.xcodeproj/project.pbxproj`,
