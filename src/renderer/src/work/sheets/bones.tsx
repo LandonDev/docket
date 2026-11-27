@@ -7,7 +7,7 @@ import { Bones } from "../../components/bones";
  */
 const SAMPLE_COLUMNS = [132, 52, 52, 68, 88, 72];
 const SAMPLE_ROWS: Array<[string, string?, string?]> = [
-  ["Spring league budget"],
+  ["League budget"],
   [""],
   ["Line"],
   ["Court rental", "1,240", "1,240"],
@@ -73,7 +73,7 @@ export function SheetBones({ row = false, formula = null }: { row?: boolean; for
                 const value = c === 0 ? words : c === 3 ? was : c === 4 ? now : undefined;
                 // A cell of no words keeps its hairline as it is; one with words is walked, and its words are a bar.
                 return (
-                  <span key={c} skullet-own={value ? undefined : ""} className={c === 0 ? "flex flex-none items-center border-r border-border px-2 text-xs" : "flex flex-none items-center justify-end border-r border-border px-2 text-xs tabular-nums"} style={{ width: w }}>
+                  <span key={c} skullet-own={value ? undefined : ""} className={c === 0 ? "flex flex-none items-center overflow-hidden border-r border-border px-2 text-xs whitespace-nowrap" : "flex flex-none items-center justify-end border-r border-border px-2 text-xs whitespace-nowrap tabular-nums"} style={{ width: w }}>
                     {value || null}
                   </span>
                 );
