@@ -1,15 +1,19 @@
 // The loading bones of Work's views in the built window (docs/agents/loading-bones.md "Proving a conversion"): a pair
 // of isolated instances with Work on, reading a LifeOS sandbox through a hop that holds every request (`--delay`), so
-// each view's reads take long enough to see. Each view is opened cold (the window reloaded on it) and filmed frame by
-// frame until its content has landed, in dark and in light, and checked on the way: bones showed, their sweep ran,
-// and none was left once the reads had answered.
+// each view's reads take long enough to see; the host answers the window as late (`TEMP_CODE_PEER_DELAY_MS`). Each view
+// of the workspace and each place above the workspaces (Today, Projects, Review, the Outbox) is opened cold (the window
+// reloaded on it), and each file kind is opened from the Files place for the first time; each is filmed frame by frame
+// until its content has landed, in dark and in light, and checked on the way: bones showed, their sweep ran, and none
+// was left once the reads had answered.
 //
 //   bun scripts/journeys/bones-work-walk.ts [--out <dir>] [--theme dark|light|both] [--delay 400] [--views Mail,Agenda]
+//     [--places Today,Outbox] [--files sheet,pdf,deck]
 //
 // Build first (electron-vite build). Nothing here touches the installed app or its data.
 import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { fixtures, openRow } from './lib/files'
 import { requireBuild } from './run'
 import { startSandbox } from './lib/lifeos'
 import { FIRST_MAIL, SECTOR } from './lib/lifeosSeed'
@@ -19,11 +23,14 @@ import type { Window } from './lib/window'
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
-  options: { out: { type: 'string' }, theme: { type: 'string', default: 'both' }, delay: { type: 'string', default: '400' }, views: { type: 'string', default: 'Mail,Agenda,Messages,Routines' } }
+  options: { out: { type: 'string' }, theme: { type: 'string', default: 'both' }, delay: { type: 'string', default: '400' }, views: { type: 'string', default: 'Mail,Agenda,Messages,Routines,Tasks,People,Money,Files' }, places: { type: 'string', default: 'Today,Projects,Review,Outbox' }, files: { type: 'string', default: 'sheet,pdf,deck' } }
 })
 const THEMES = values.theme === 'both' ? (['dark', 'light'] as const) : ([values.theme as 'dark' | 'light'] as const)
 const DELAY = Number(values.delay)
-const VIEWS = values.views!.split(',').map((view) => view.trim()).filter(Boolean)
+const list = (words: string) => words.split(',').map((word) => word.trim()).filter(Boolean)
+const VIEWS = list(values.views!)
+const PLACES = list(values.places!)
+const FILES = list(values.files!) as ('sheet' | 'pdf' | 'deck')[]
 const js = JSON.stringify
 
 const repo = resolve(import.meta.dir, '../..')
@@ -68,6 +75,17 @@ const LANDED: Record<string, string> = {
   Agenda: `(${shows('[role="listitem"]')} || ${shows('[data-week]')} || ${shows('[data-slot="empty"]')}) && ${NOTHING_WAITS}`,
   Messages: `(${shows('[role="option"]')} || ${shows('[data-slot="empty"]')}) && ${NOTHING_WAITS}`,
   Routines: `(${shows('[data-routine-row]')} || ${shows('[data-slot="empty"]')}) && ${NOTHING_WAITS}`,
+}
+/** A place above the workspaces, landed: its page drawn with nothing waiting. */
+const placeLanded = (place: string): string =>
+  place === 'Outbox'
+    ? `(${shows('[data-outbox-empty]')} || ${shows('[data-outbox-detail]')} || ${shows('[role="listitem"]')}) && ${NOTHING_WAITS}`
+    : `${shows(`[data-work-place="${place.toLowerCase()}"]`)} && ${NOTHING_WAITS}`
+/** A file opened in a Files tab, landed: its kind's own content drawn with nothing waiting. */
+const FILE_LANDED: Record<'sheet' | 'pdf' | 'deck', string> = {
+  sheet: `${shows('[data-sheet-item]')} && ${NOTHING_WAITS}`,
+  pdf: `${shows('[data-pdf-pager]')} && ${NOTHING_WAITS}`,
+  deck: `${shows('[data-slides-main]')} && ${NOTHING_WAITS}`,
 }
 /** A view with no landing of its own: its heading drawn, with nothing waiting. */
 const landedOf = (view: string): string => LANDED[view] ?? `${shows('[data-view-heading]', view)} && ${NOTHING_WAITS}`
@@ -116,9 +134,9 @@ async function main(): Promise<void> {
   try {
     pair.sandbox = await startSandbox(folder, pair.abort.signal, false, { delayMs: DELAY })
     for (const url of [pair.sandbox.url, pair.sandbox.siteUrl, pair.sandbox.mcpUrl]) pair.trackPort(Number(new URL(url).port))
-    const workspace: Workspace = await pair.open(false, `Bones ${root.slice(-6)}`, { fake: true, sector: SECTOR })
+    const workspace: Workspace = await pair.open(false, `Bones ${root.slice(-6)}`, { fake: true, sector: SECTOR, peerDelayMs: DELAY })
     const page = pair.page
-    log(`window and host open; LifeOS answers ${DELAY} ms late each way`)
+    log(`window and host open; LifeOS answers ${DELAY} ms late each way, and the host answers the window ${DELAY} ms late`)
     await pair.checkSeededMail(workspace)
     for (const theme of THEMES) {
       await page.eval(`localStorage.setItem('docket.colorScheme', ${js(theme)})`)
@@ -128,6 +146,25 @@ async function main(): Promise<void> {
         await page.reload()
         await page.resize(1280, 800)
         judge(`${theme} ${view}`, await film(page, `${theme}-${i + 1}-${view.toLowerCase()}`, () => page.eval<boolean>(landedOf(view))))
+      }
+      for (const [i, place] of PLACES.entries()) {
+        await page.clickOn('nav button', place)
+        await page.reload()
+        await page.resize(1280, 800)
+        judge(`${theme} ${place}`, await film(page, `${theme}-p${i + 1}-${place.toLowerCase()}`, () => page.eval<boolean>(placeLanded(place))))
+      }
+      if (FILES.length) {
+        // Each kind opened for the first time, from the workspace's folder: a file of its own a theme, so none is read already.
+        const made = fixtures(repo, workspace.path, `Bones ${theme}`)
+        await pair.showWork(workspace, 'Files')
+        await page.reload()
+        await page.resize(1280, 800)
+        for (const [i, kind] of FILES.entries()) {
+          await page.clickOn('[data-files-sidebar] button', workspace.name)
+          await page.until('the workspace folder', 15_000, () => page.eval(`document.querySelector('[data-files-bar] [aria-current]')?.textContent.trim() === ${js(workspace.name)}`))
+          void openRow(page, made[kind].split('/').at(-1)!)
+          judge(`${theme} ${kind}`, await film(page, `${theme}-f${i + 1}-${kind}`, () => page.eval<boolean>(FILE_LANDED[kind]), { most: 30_000 }))
+        }
       }
     }
   } finally {
