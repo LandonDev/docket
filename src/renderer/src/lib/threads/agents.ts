@@ -156,12 +156,16 @@ export function agentSummaryParts(s: AgentSummary): { text: string; tone?: strin
   return parts;
 }
 
-/** The catalog name for a server (provider, native model) pair; the model
- *  as written when the catalog lacks it, and "" when a meta names no model
- *  or no provider (a board stand-in for a child its host has not described). */
+/** The whole name for a server (provider, native model) pair, said where no
+ *  mark stands beside it: a Claude model with its maker ("Claude Opus 5.5"),
+ *  whose list name is bare, as the live catalog's is; the model as written
+ *  when the catalog lacks it, and "" when a meta names no model or no provider
+ *  (a board stand-in for a child its host has not described). */
 export function modelLabel(provider: string | null | undefined, model: string | null | undefined): string {
   if (!provider || !model) return "";
-  return findModel(pickerModelId(asHarness(provider), model))?.name ?? model;
+  const found = findModel(pickerModelId(asHarness(provider), model));
+  if (!found) return model;
+  return found.harness === "claude" && !found.vendor && !/^Claude\s/.test(found.name) ? `Claude ${found.name}` : found.name;
 }
 
 /** The maker of a (provider, native model) pair when it is not the

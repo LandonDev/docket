@@ -409,7 +409,7 @@ describe('StatsPage', () => {
     expect(aliax.stats).toHaveBeenCalled()
     expect(screen.getByRole('heading', { level: 1, name: 'Stats' })).toBeTruthy()
     expect(screen.getByText('Nothing to show yet')).toBeTruthy()
-    expect(screen.getByText('No Claude Code or Codex session logs on this machine.')).toBeTruthy()
+    expect(screen.getByText(/^No Claude Code or Codex session logs on this (computer|Mac)\.$/)).toBeTruthy()
   })
 
   it('counts a Reindex as it runs, and says a refused one in red with its reason on hover alone', async () => {

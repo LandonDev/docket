@@ -22,6 +22,9 @@ import {
   TONE_CLASS,
 } from "./agents";
 import { STATUS_WORD, statusToneClass } from "../../components/ui/status";
+import { findModel, resetHarnessModelOverlays, setHarnessModels } from "../models";
+import { agentModelsFor } from "../tcserver/catalog";
+import { CATALOG } from "@server/shared/catalog";
 
 const block = (role: Block["role"], text: string, extra: Partial<Block> = {}): Block => ({
   id: `${role}:${text}`,
@@ -302,6 +305,12 @@ it("the queued lead parses the host's two spaces as it parses the old dot", () =
 
 it("modelLabel names the catalog's model, the native id when the catalog lacks it, and nothing without a model or a provider", () => {
   expect(modelLabel("claude", "claude-opus-5-5")).toBe("Claude Opus 5.5");
+  // The list's name is bare ("Opus 5.5"), the built-in list's and the live catalog's alike: the whole name adds the maker once.
+  expect(findModel("claude:opus-5.5")?.name).toBe("Opus 5.5");
+  setHarnessModels("claude", agentModelsFor(CATALOG.claude), CATALOG.claude.defaultModel);
+  expect(modelLabel("claude", "claude-opus-5-5")).toBe("Claude Opus 5.5");
+  resetHarnessModelOverlays();
+  expect(modelLabel("claude", "muse-wonder-1.0")).toBe("Muse Wonder 1.0");
   expect(modelLabel("codex", "gpt-nope")).toBe("gpt-nope");
   expect(modelLabel(undefined, undefined)).toBe("");
   expect(modelLabel("claude", undefined)).toBe("");

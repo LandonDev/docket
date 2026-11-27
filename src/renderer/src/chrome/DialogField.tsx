@@ -85,7 +85,8 @@ export function FieldRow({
           </ItemDescription>
         ) : null}
       </ItemContent>
-      <ItemActions className="shrink-0">
+      {/* Never wider than the row: a control that wraps (`ChoiceToggle wrap`) takes its second line inside it. */}
+      <ItemActions className="max-w-full shrink-0">
         {cloneElement(children, {
           "aria-labelledby": children.props["aria-labelledby"] ?? id,
           ...(error ? { "aria-describedby": errorId, "aria-invalid": true } : {}),
@@ -115,9 +116,11 @@ export function CheckRow({
 }) {
   const id = useId();
   return (
-    <label data-slot="dialog-check-row" className={cn("flex min-h-7 items-center gap-2 text-[13px] text-foreground", disabled && "opacity-50", className)}>
-      <Checkbox checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} aria-labelledby={id} />
-      <span id={id} className="min-w-0 truncate">
+    // The label wraps, read whole (what a confirm removes is never cut); the box sits on its first line, a single line
+    // keeping the 28px row it always had (4px over and under a 20px line).
+    <label data-slot="dialog-check-row" className={cn("flex min-h-7 items-start gap-2 py-1 text-[13px] leading-5 text-foreground", disabled && "opacity-50", className)}>
+      <Checkbox className="mt-0.5" checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} aria-labelledby={id} />
+      <span id={id} className="min-w-0 text-pretty">
         {label}
       </span>
     </label>

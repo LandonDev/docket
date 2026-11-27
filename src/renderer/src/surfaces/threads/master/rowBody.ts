@@ -1,10 +1,10 @@
 import type { BoardDigest } from "@server/shared/contract-batch";
-import { threadStateOf, type ThreadState } from "../../../components/ui/status";
+import { STATUS_WORD, threadStateOf, type ThreadState } from "../../../components/ui/status";
 import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { leadStripped } from "../../../lib/threads/agents";
-import { settledWithAgents } from "../../../lib/threadStripModel";
-import { groupOf, type GroupedMeta } from "../../../lib/threadGroups";
+import { marksAtRest, settledWithAgents } from "../../../lib/threadStripModel";
+import { GROUP_LABEL, groupOf, type GroupedMeta } from "../../../lib/threadGroups";
 import { detailText, sentenceStart } from "@shared/statusWords";
 import { watchPhrase } from "@shared/watch";
 import { clockTime } from "./useMasterModel";
@@ -113,6 +113,28 @@ export function rowStatus(
     default:
       return said(why);
   }
+}
+
+/** Line two would say nothing: no glyph at rest, the section already says
+ *  the word, no detail and no tally. The row then draws line one alone
+ *  (a Done chat or research child that never lands), never a blank strip. */
+export function lineTwoEmpty(state: ThreadState, ownWord: boolean, detail: string, tally: string | null): boolean {
+  return !marksAtRest(state) && !ownWord && !detail && !tally;
+}
+
+/** `lineTwoEmpty` from a row's facts, for a row whose task bar is not shown
+ *  (the board's size estimate asks it before the row is drawn). */
+export function oneLineRow(
+  meta: Parameters<typeof rowStatus>[0] & GroupedMeta,
+  digest: Parameters<typeof rowStatus>[1],
+  landed: boolean,
+  blocked: string | null = null,
+): boolean {
+  const { state, detail } = rowStatus(meta, digest, landed, blocked);
+  const group = groupOf(meta);
+  const tasks = taskList(digest);
+  const tally = group === "done" && tasks.every((t) => t.status === "completed") ? null : taskTally(tasks);
+  return lineTwoEmpty(state, STATUS_WORD[state] !== GROUP_LABEL[group], detail, tally);
 }
 
 /** The New pass dialog's one line under the title: the board row's own

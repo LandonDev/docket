@@ -40,7 +40,7 @@ describe("ConnectionLine", () => {
     for (const lastError of ["the socket dropped", "could not connect"]) {
       degraded = { kind: "offline", status: { ...(status as object), transport: "offline", lastError } as never };
       const { unmount } = render(<ConnectionLine environmentId="env_box" />);
-      expect(screen.getByRole("status").textContent).toBe("The box is offlineRetry");
+      expect(screen.getByRole("status").textContent).toBe("The box is offline");
       unmount();
     }
   });
@@ -62,11 +62,11 @@ describe("ConnectionLine", () => {
   it("sits on the box row's 6px inset with its glyph on the + axis, and wraps rather than cuts", () => {
     degraded = { kind: "offline", status: { ...(status as object), transport: "offline" } as never };
     render(<ConnectionLine environmentId="env_box" />);
-    const line = screen.getByRole("status");
+    const line = document.querySelector<HTMLElement>("[data-connection-line]")!;
     expect(line.className).toContain("px-1.5");
     expect(line.firstElementChild?.className).toContain("w-7");
     expect(line.querySelector(".truncate")).toBeNull();
-    expect(line.textContent).toBe("The box is offlineRetry");
+    expect(line.querySelector("[data-connection-words]")!.textContent).toBe("The box is offline");
   });
 
   it("counts the seconds inside its own line, while what the composer reads holds still", () => {
@@ -85,12 +85,30 @@ describe("ConnectionLine", () => {
         <ConnectionLine environmentId="env_box" />
       </>,
     );
-    expect(screen.getByRole("status").textContent).toContain("Reconnecting to the box in 5 s");
+    const shown = () => document.querySelector("[data-connection-words]")!.textContent;
+    expect(shown()).toBe("Reconnecting to the box in 5 s");
     const before = composerRenders;
     act(() => vi.advanceTimersByTime(2_000));
-    expect(screen.getByRole("status").textContent).toContain("Reconnecting to the box in 3 s");
+    expect(shown()).toBe("Reconnecting to the box in 3 s");
     expect(screen.getByTestId("field").textContent).toBe("Reconnecting to the box…");
     expect(composerRenders).toBe(before);
+  });
+
+  it("announces the steady words once a state, never the ticking seconds, with Retry outside the live region", () => {
+    vi.useFakeTimers();
+    degraded = { kind: "reconnecting", status: { ...(status as object), nextRetryAt: Date.now() + 5_000 } as never };
+    render(<ConnectionLine environmentId="env_box" />);
+    const live = screen.getByRole("status");
+    expect(live.textContent).toBe("Reconnecting to the box…");
+    // The countdown shows but is hidden from the reader: the live region's words hold still as it ticks.
+    const words = document.querySelector<HTMLElement>("[data-connection-words]")!;
+    expect(words.getAttribute("aria-hidden")).toBe("true");
+    expect(words.textContent).toBe("Reconnecting to the box in 5 s");
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(words.textContent).toBe("Reconnecting to the box in 3 s");
+    expect(screen.getByRole("status").textContent).toBe("Reconnecting to the box…");
+    expect(live.querySelector("button")).toBeNull();
+    expect(live.contains(screen.getByRole("button", { name: "Retry" }))).toBe(false);
   });
 
   it("spins Retry from its press until the link's state moves on", () => {
@@ -111,7 +129,7 @@ describe("ConnectionLine", () => {
   it("offers Pair again, not Retry, when the host is another machine than the one paired", () => {
     degraded = { kind: "offline", status: { ...(status as object), transport: "offline", lastError: "host identity changed: expected env_a, got env_b" } as never };
     render(<ConnectionLine environmentId="env_box" />);
-    expect(screen.getByRole("status").textContent).toContain("The box is not the host this computer paired with");
+    expect(screen.getByRole("status").textContent).toBe("The box is not the host this computer paired with");
     expect(screen.getByRole("button", { name: "Pair again" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });

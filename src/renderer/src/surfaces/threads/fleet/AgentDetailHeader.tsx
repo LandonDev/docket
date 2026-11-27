@@ -43,7 +43,8 @@ export function AgentDetailHeader({
           state={status.state}
           still={status.state === "working"}
           detail={status.state === "working" ? undefined : status.detail}
-          className="mt-0.5 items-start [&_[data-slot=status-detail]]:whitespace-normal [&_[data-slot=status-word]]:whitespace-normal"
+          // A long question wraps: the glyph keeps to its first 16px line, beside the word.
+          className="mt-0.5 items-start [&_[data-slot=status-detail]]:whitespace-normal [&_[data-slot=status-word]]:whitespace-normal [&>[data-slot=status-glyph]]:mt-px [&>[data-slot=status-glyph]]:self-start"
         />
         <AgentNumbersLine
           className="mt-1"

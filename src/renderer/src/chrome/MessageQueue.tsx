@@ -111,7 +111,8 @@ export function MessageQueue({
 
   return (
     <div className="mb-2">
-      <p className="mb-1 px-1.5 text-xs font-medium text-muted-foreground">
+      {/* On the rows' text column: a row's unseen 1px side, then 6px, the grip's 28px and 8px (42px past the side). */}
+      <p data-queue-heading className="mb-1 border-x border-transparent ps-10.5 pe-1.5 text-xs font-medium text-muted-foreground">
         {awaiting ? (
           'Queued until the wait finishes'
         ) : (

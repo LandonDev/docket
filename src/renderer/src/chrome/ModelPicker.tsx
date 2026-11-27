@@ -121,6 +121,8 @@ export function ModelPicker({
   const [tab, setTab] = useState<ModelPickerTab>(() => loadModelPickerTab());
   const [query, setQuery] = useState("");
   const [favorites, setFavorites] = useState(loadFavoriteModels);
+  // A list read that failed while open: the empty tab says so, and the next open asks again.
+  const [readFailed, setReadFailed] = useState(false);
   const search = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -144,7 +146,9 @@ export function ModelPicker({
   // A remote host's lists come over its own link; this machine's through its adapters.
   const remote = environmentId !== undefined && environmentId !== registry.primaryEnvironmentId;
   const refreshLists = (ids: HarnessId[]) =>
-    remote ? refreshCatalog(environmentId).catch(() => undefined) : refreshHarnessCatalogs(ids);
+    (remote ? refreshCatalog(environmentId).then(() => true, () => false) : refreshHarnessCatalogs(ids)).then((ok) => {
+      if (!ok) setReadFailed(true);
+    });
   const pickerHarnesses = HARNESSES.filter(shownInPicker);
   const visibleTab = coerceModelPickerTab(tab, shownInPicker);
   if (visibleTab !== tab) {
@@ -202,6 +206,7 @@ export function ModelPicker({
     // It opens on something to pick: with no star, the current model's provider rather than an empty Favorites.
     setTab(coerceModelPickerTab(loadModelPickerTab(), shownInPicker, { noFavorites: loadFavoriteModels().length === 0, current: current.harness }));
     setQuery("");
+    setReadFailed(false);
   }, [open]);
 
   const searching = query.trim().length > 0;
@@ -434,7 +439,9 @@ export function ModelPicker({
                 : !available(visibleTab)
                   ? harnessUnavailableHint(visibleTab, environmentId)
                   : visibleTab === "codex"
-                    ? "Loading Codex models…"
+                    ? readFailed
+                      ? "Couldn't load models"
+                      : "Loading Codex models…"
                     : "No matching models"
           }
           onPick={pick}

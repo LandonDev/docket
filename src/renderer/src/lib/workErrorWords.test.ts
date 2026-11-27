@@ -36,9 +36,9 @@ describe("an error as Work says it to him", () => {
     ["ffprobe is not installed on this host", "The box is missing the tools that draw and read this file. Install them under Settings, Connections, Conversion tools."],
     ["no such guest link on this host", "This link is not on the box. Look for it on the computer that made it."],
     ["A file in the Windows VM is copied on this host (filesCopy): its bytes go to no caller.", "Open this file from its library in Files. The copy is made on the computer that runs the Windows VM."],
-    ["Scrim notes.txt could not go to the Trash, so it was left where it is: spawn gio ENOENT", "A program the box needs for this is missing there."],
+    ["Scrim notes.txt could not go to the Trash, so it was left where it is: spawn gio ENOENT", "The box is missing a program it needs for this."],
     // A held act's failure as the host answers it, the program first (the Outbox, PM7): capitalized on the way.
-    ["spawn osascript ENOENT", "A program the box needs for this is missing there."],
+    ["spawn osascript ENOENT", "The box is missing a program it needs for this."],
     ["forbidden: work.set needs admin", "This computer's key may not do that on the box. Do it from a computer that manages the box."],
   ];
   it.each(TWENTY)("%s", (raw, words, context) => expect(says(raw, context ?? box)).toBe(words));

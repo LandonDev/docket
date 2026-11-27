@@ -5,7 +5,7 @@ import { decideOpen, decisionNote, localPathOf, type PathMap } from "@shared/ope
 import { registry } from "./connection";
 import { digestFiles, gitBranches } from "./fs";
 import type { FileNote } from "./layout";
-import { invokeOn, openWithEditor } from "./native";
+import { editorConfig, invokeOn, openWithEditor } from "./native";
 import type { OpenFileFn } from "./search";
 import { hostOfPath, projectForCwd } from "./tcserver/projects";
 
@@ -17,8 +17,8 @@ import { hostOfPath, projectForCwd } from "./tcserver/projects";
  * (`harness.status` → pathMap, inverted in shared/openOnMac.ts), and the
  * editor opens it only when the Mac's copy
  * is the same bytes as the host's. Otherwise the host's version opens in
- * the app's own editor, read-only, with a line saying why ("Mac copy
- * differs: on branch X here") and the Mac copy one click away.
+ * the app's own editor, read-only, with a line saying why ("This Mac's
+ * copy is different, on branch X") and the Mac copy one click away.
  */
 
 export type OpenInEditorTarget = {
@@ -55,6 +55,25 @@ export function editorLabelFor(path: string | null, config: EditorConfig | null,
   return editorActionLabel({ remote: isRemotePath(path, threadHost), config, path });
 }
 
+/**
+ * A launch that failed, as one written sentence: the editor this machine would
+ * pick for `path`, by name ("Couldn't open it in IntelliJ IDEA"), else "No
+ * editor found"; `openedHere` adds where it went instead ("… Opened here instead."). The thrown text
+ * (a program's name, a path, Electron's own words) goes to the log, never the screen.
+ */
+export async function launchFailedText(
+  path: string,
+  err: unknown,
+  openedHere: boolean,
+  config: () => Promise<EditorConfig | null> = editorConfig,
+): Promise<string> {
+  console.debug("[docket] editor launch", err);
+  const known = await config().catch(() => null);
+  const editor = known ? chooseEditor(known.editor, known.installed, path) : null;
+  const lead = editor ? `Couldn't open it in ${EDITOR_LABELS[editor]}` : "No editor found";
+  return openedHere ? `${lead}. Opened here instead.` : lead;
+}
+
 const navigationOf = (target: OpenInEditorTarget) =>
   target.line ? { line: target.line, column: target.column } : undefined;
 
@@ -70,7 +89,7 @@ export async function openInEditor(target: OpenInEditorTarget, openHere: OpenFil
     try {
       await openWithEditor(editorTarget);
     } catch (err) {
-      openHere(target.path, navigationOf(target), { note: { text: err instanceof Error ? err.message : String(err) } });
+      openHere(target.path, navigationOf(target), { note: { text: await launchFailedText(editorTarget.path, err, true) } });
     }
   };
   if (host === primary) {

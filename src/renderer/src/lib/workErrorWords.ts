@@ -72,7 +72,8 @@ const RULES: Rule[] = [
   [/^not a work workspace\b|^unknown thread\b/i, () => "The thread or workspace this belongs to is gone. Open it again from Work."],
   // The disk, by errno: the file's own words, never the path.
   // A line that starts with it reaches here capitalized (`refusalWords`): "Spawn osascript ENOENT".
-  [/\bspawn \S+ ENOENT\b/i, (c) => `A program ${c.host} needs for this is missing there.`],
+  // The computer first, so the sentence reads whole for any name it gets ("This Mac", "The box", "That computer").
+  [/\bspawn \S+ ENOENT\b/i, (c) => `${c.Host} is missing a program it needs for this.`],
   [/\bENOENT\b|^there is no file at |^no file at /i, () => "The file or folder was moved or removed. Refresh Files and open it from where it is now."],
   [/\b(EACCES|EPERM|EROFS)\b/, () => "This computer could not change the file in that folder. Check that you may edit it there, or save a copy somewhere you may."],
   [/\bENOSPC\b/, (c) => `The disk on ${c.host} is full.`],

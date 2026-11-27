@@ -249,7 +249,7 @@ function AddThreadForm({
         </Field>
         <div className="flex flex-col">
           <FieldRow label="Type">
-            <ChoiceToggle label="Type" value={type} options={types.map((t) => ({ value: t, label: THREAD_LABELS[t] }))} onChange={setType} />
+            <ChoiceToggle label="Type" wrap value={type} options={types.map((t) => ({ value: t, label: THREAD_LABELS[t] }))} onChange={setType} />
           </FieldRow>
           <FieldRow label="Model">
             <span className="flex items-center" data-model-picker>

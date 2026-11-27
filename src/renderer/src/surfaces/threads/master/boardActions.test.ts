@@ -50,7 +50,14 @@ describe("the board's menus", () => {
     expect(by("resume")).toMatchObject({ label: "Resume all", disabled: false });
     expect(by("archive-done")).toMatchObject({ label: "Archive done…", disabled: true });
     expect(by("archive-all")).toMatchObject({ label: "Archive all…", disabled: false });
-    expect(addMenuItems(0).map((i) => (i.kind === "item" ? `${i.label}:${!!i.disabled}` : ""))).toEqual(["New thread…:false", "Add existing thread…:true"]);
+    expect(addMenuItems(0).map((i) => (i.kind === "item" ? `${i.label}:${!!i.disabled}` : ""))).toEqual(["New batch thread…:false", "Add existing thread…:true"]);
+  });
+
+  it("draws no + row the key may not use, and names the new one as the thread menu does", () => {
+    const ids = (may: { create: boolean; adopt: boolean }) => addMenuItems(2, may).map((i) => (i.kind === "item" ? i.id : ""));
+    expect(ids({ create: true, adopt: false })).toEqual(["new"]);
+    expect(ids({ create: false, adopt: true })).toEqual(["adopt"]);
+    expect(ids({ create: false, adopt: false })).toEqual([]);
   });
 
   it("writes the archive confirm with the live count and the resources clause", () => {

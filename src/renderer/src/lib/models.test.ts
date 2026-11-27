@@ -347,7 +347,7 @@ describe.each(["5.2", "5.1"])("Claude Fable %s", (version) => {
     expect(defaultModelId("claude")).toBe("claude:fable-5.1");
     const model = resolveModel("claude", native);
     expect(model.id).toBe(slug);
-    expect(model.name).toBe(`Claude Fable ${version}`);
+    expect(model.name).toBe(`Fable ${version}`);
     expect(model.contextWindow).toBe(1_000_000);
     expect(model.settings?.find((s) => s.id === "effort")?.value).toBe(version === "5.2" ? "high" : "medium");
     expect(model.settings?.find((s) => s.id === "effort")?.options.map((o) => o.value)).toEqual([
@@ -463,3 +463,15 @@ describe("Meta's models", () => {
 function defaultEffort(m: AgentModel): string | undefined {
   return m.settings?.find((s) => s.id === "effort")?.value;
 }
+
+describe("the built-in Claude list", () => {
+  afterEach(() => {
+    resetHarnessModelOverlays();
+  });
+
+  it("names each model as the live catalog does, with no maker before it", () => {
+    const builtIn = modelsFor("claude").filter((m) => !m.vendor);
+    expect(builtIn.length).toBeGreaterThan(0);
+    expect(builtIn.filter((m) => /^Claude\s/.test(m.name)).map((m) => m.name)).toEqual([]);
+  });
+});

@@ -35,7 +35,8 @@ vi.mock("../lib/harness/availability", () => ({
   subscribeHarnessAvailability: () => () => {},
   getHarnessAvailabilitySnapshot: () => 0,
 }));
-vi.mock("../lib/harness/registry", () => ({ refreshHarnessCatalogs: () => Promise.resolve() }));
+const catalogs = vi.hoisted(() => ({ read: vi.fn(() => Promise.resolve(true)) }));
+vi.mock("../lib/harness/registry", () => ({ refreshHarnessCatalogs: catalogs.read }));
 vi.mock("../lib/connection", () => ({ registry: { primaryEnvironmentId: "local" } }));
 
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as ModelInfo["reasoning"];
@@ -419,6 +420,21 @@ describe("ModelPicker: Meta's models", () => {
     picker("claude", "claude:claude-opus-5");
     const menu = await open(/Opus 5/);
     expect(within(menu).queryAllByRole("option")).toHaveLength(0);
+    expect(menu.textContent).toContain("Loading Codex models…");
+  });
+
+  it("a failed Codex read says so, and the next open asks again", async () => {
+    resetHarnessModelOverlays();
+    saveModelPickerTab("codex");
+    catalogs.read.mockImplementationOnce(() => Promise.resolve(false));
+    picker("claude", "claude:claude-opus-5");
+    let menu = await open(/Opus 5/);
+    await waitFor(() => expect(menu.textContent).toContain("Couldn't load models"));
+    expect(menu.textContent).not.toContain("Loading Codex models…");
+    const asked = catalogs.read.mock.calls.length;
+    await act(async () => fireEvent.keyDown(menu, { key: "Escape" }));
+    menu = await open(/Opus 5/);
+    expect(catalogs.read.mock.calls.length).toBeGreaterThan(asked);
     expect(menu.textContent).toContain("Loading Codex models…");
   });
 

@@ -1,4 +1,4 @@
-import { ArrowDownCircle, FileText, RefreshCw, X } from "./icons";
+import { ArrowDownCircle, CircleCheck, FileText, RefreshCw, X } from "./icons";
 import { Spinner } from "../components/ui/spinner";
 import { isWebMode } from "../lib/nativeWeb";
 import { canRetry, type UpdaterSnapshot } from "../lib/updater";
@@ -116,8 +116,9 @@ export function UpdateRow({
       );
     case "updated":
       return (
+        // Settled: the check, not the download glyph Update and Restart to update wear.
         <RailRow
-          icon={ArrowDownCircle}
+          icon={CircleCheck}
           label={toVersion("Updated", state.version)}
           ariaLabel={`Updated to ${state.version}, what's new`}
           onClick={() => onOpenWhatsNew?.(state.version)}

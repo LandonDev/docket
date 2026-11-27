@@ -204,6 +204,18 @@ describe("MessageQueue reorder", () => {
     expect(order()).toEqual(["a", "b", "c"]);
   });
 
+  it("the Queued heading starts on the rows' text column, 43px in like the row's text", () => {
+    render(<MessageQueue items={three} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
+    const px = (cls: string[], name: string, size: number) => (cls.includes(name) ? size : 0);
+    const heading = document.querySelector<HTMLElement>("[data-queue-heading]")!.className.split(" ");
+    const row = grip("a").parentElement!.className.split(" ");
+    const headingStart = px(heading, "border-x", 1) + px(heading, "ps-10.5", 42);
+    // The row: its 1px side, 6px, the grip's 28px, the 8px gap.
+    const textStart = px(row, "border", 1) + px(row, "pl-1.5", 6) + px(grip("a").className.split(" "), "w-7", 28) + px(row, "gap-2", 8);
+    expect(textStart).toBe(43);
+    expect(headingStart).toBe(textStart);
+  });
+
   it("the grip sits in the `+` button's 28px box, 6px in from the row's edge, on `+`'s axis", () => {
     render(<MessageQueue items={three} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
     const g = grip("a");

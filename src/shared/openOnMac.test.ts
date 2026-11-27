@@ -54,9 +54,12 @@ describe('decideOpen', () => {
 })
 
 describe('decisionNote', () => {
-  it('names the branch here when known', () => {
-    expect(decisionNote({ kind: 'differs', localPath: '/x' }, 'master', 'box')).toBe('Mac copy differs: on branch master here')
-    expect(decisionNote({ kind: 'missing', localPath: '/x', localProject: '/p' }, null, 'box')).toBe('No Mac copy')
+  it('names the Mac checkout\'s branch in a plain sentence when known', () => {
+    // Plain sentences, the branch the Mac's own (never a colon pair, never "here" for the Mac's checkout).
+    expect(decisionNote({ kind: 'differs', localPath: '/x' }, 'master', 'box')).toBe("This Mac's copy is different, on branch master")
+    expect(decisionNote({ kind: 'differs', localPath: '/x' }, null, 'box')).toBe("This Mac's copy is different")
+    expect(decisionNote({ kind: 'missing', localPath: '/x', localProject: '/p' }, 'main', 'box')).toBe('No copy on this Mac, on branch main')
+    expect(decisionNote({ kind: 'missing', localPath: '/x', localProject: '/p' }, null, 'box')).toBe('No copy on this Mac')
     expect(decisionNote({ kind: 'absent', localPath: null }, null, 'box')).toBe('Only on box')
     expect(decisionNote({ kind: 'absent', localPath: '/x' }, 'main', 'box')).toBe('Not checked out on the Mac')
     expect(decisionNote({ kind: 'local', localPath: '/x' }, 'main', 'box')).toBeNull()

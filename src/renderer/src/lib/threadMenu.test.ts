@@ -116,6 +116,11 @@ describe("threadMenuRows: the master pin", () => {
     expect(row(threadMenuRows(facts()), "master")).not.toHaveProperty("disabled");
   });
 
+  it("ends Rename in an ellipsis only where it opens the dialog", () => {
+    expect(row(threadMenuRows(facts()), "rename")).toMatchObject({ label: "Rename" });
+    expect(row(threadMenuRows(facts({ renameDialog: true })), "rename")).toMatchObject({ label: "Rename…" });
+  });
+
   it("a master root offers its batch's add rows right after the pin", () => {
     const got = ids(threadMenuRows(facts({ master: true })));
     const at = got.indexOf("master");

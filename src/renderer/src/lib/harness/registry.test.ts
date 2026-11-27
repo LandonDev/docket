@@ -86,6 +86,13 @@ describe("harness registry", () => {
     expect(pi).toHaveBeenCalledOnce();
   });
 
+  it("says whether every requested read landed", async () => {
+    registerHarness(stub("codex", { refreshCatalog: vi.fn(async () => { throw new Error("socket closed"); }) }));
+    registerHarness(stub("claude", { refreshCatalog: vi.fn(async () => undefined) }));
+    expect(await refreshHarnessCatalogs(["claude"])).toBe(true);
+    expect(await refreshHarnessCatalogs(["claude", "codex"])).toBe(false);
+  });
+
   it("skips catalog refresh when no harness is in use", async () => {
     const pi = vi.fn(async () => undefined);
     registerHarness(stub("pi", { refreshCatalog: pi }));

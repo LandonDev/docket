@@ -175,7 +175,7 @@ describe("the capture window", () => {
     await flush();
     expect(bridge.failed).toHaveBeenCalled();
     expect(field().value).toBe("Keep me\nTyped since");
-    expect(screen.getByRole("alert").textContent).toBe("This computer cannot use LifeOS now. See why under Settings, Connections.");
+    expect(screen.getByRole("alert").textContent).toBe("This Mac cannot use LifeOS now. See why under Settings, Connections.");
   });
 
   it("files a second capture while the first is on its way, each with its own key", async () => {
@@ -204,7 +204,7 @@ describe("the capture window", () => {
   it("adds the cause after a thread that did not start only in words, never the start call's own text", async () => {
     for (const [threadError, said] of [
       ["session.create: socket hang up at /srv/agents/work/x", "Filed. The thread did not start"],
-      ["spawn claude ENOENT", "Filed. The thread did not start. A program this computer needs for this is missing there."],
+      ["spawn claude ENOENT", "Filed. The thread did not start. This Mac is missing a program it needs for this."],
     ] as const) {
       answer = () => Promise.resolve({ taskId: "t1", kept: [], threadError });
       await open();

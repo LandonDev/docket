@@ -248,6 +248,15 @@ describe("AddThreadDialog", () => {
     expect(h.startThread.mock.calls[0][0]).toMatchObject({ threadType: "chat", masterId: "m" });
   });
 
+  it("wraps Type onto a second line in a narrow window, no type cut, the control never wider than its row", async () => {
+    render(<AddThreadDialog master={master} siblings={[]} onClose={() => {}} onAdded={() => {}} />);
+    await flush();
+    const group = screen.getByRole("group", { name: "Type" });
+    expect(group.className).toContain("flex-wrap");
+    expect(group.querySelector(".truncate")).toBeNull();
+    expect((group.closest('[data-slot="item-actions"]') as HTMLElement).className).toContain("max-w-full");
+  });
+
   it("a Work master's batch takes a chat or research alone, and starts on Chat", async () => {
     render(<AddThreadDialog master={{ ...master, scope: "work" }} siblings={[]} onClose={() => {}} onAdded={() => {}} />);
     await flush();

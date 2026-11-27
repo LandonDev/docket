@@ -32,6 +32,8 @@ const choiceOf = (last: SectorKey | null | undefined): SectorChoice => last ?? "
 
 /** This computer as it names itself (`thisDesktopName`): the capture window has no main window's bridge to ask, so its own browser says. */
 const thisComputer = (): string => (/^win/i.test(navigator.platform) ? "This PC" : "This Mac");
+/** The same inside a sentence ("this Mac"), as `thisDesktopInLine` says it. */
+const thisComputerInLine = (): string => thisComputer().replace(/^This /, "this ");
 
 interface Draft {
   text: string;
@@ -164,12 +166,12 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
           // Filed, but the thread he asked for did not start: say so; the task stands, so the draft stays clear.
           // Its cause follows in words when it is one the app knows, never the start call's own text (S F10.1, round 4).
           if (filed.threadError) {
-            const why = workErrorWords(new Error(filed.threadError), { host: "this computer" });
+            const why = workErrorWords(new Error(filed.threadError), { host: thisComputerInLine() });
             setError(`Filed. The thread did not start${why ? `. ${why}` : ""}`);
             bridge.failed();
           }
         },
-        (err: unknown) => comeBack(sent, workErrorWords(err, { host: "this computer", write: true }) || "Nothing was filed. Try again."),
+        (err: unknown) => comeBack(sent, workErrorWords(err, { host: thisComputerInLine(), write: true }) || "Nothing was filed. Try again."),
       )
       .finally(() => {
         inFlight.current -= 1;

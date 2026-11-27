@@ -537,7 +537,7 @@ this is the short one.
   idle less the blocked child) and the resources checkbox: `batch.archive` on the master's
   host, then each other host's `session.batch` for the rows its answer
   left, `remoteArchivePlan` in `master/boardActions.ts`), + (Add thread) a menu
-  with New thread… (the add sheet: every type, Chat first; Host over the master's host and every
+  with New batch thread… (the add sheet: every type, Chat first; Host over the master's host and every
   linked one, `linkedHosts`; `session.create` on that host with
   `masterId` and `startedBy` = the master) and Add existing thread…
   (the project's roots in no batch on this host and its paired copies,

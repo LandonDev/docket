@@ -2965,10 +2965,10 @@ forward.
   Same bytes on the Mac → the editor opens the Mac copy at the same line.
   Otherwise the box's version opens in the app's own editor, read-only,
   with one line above it:
-  - *Mac copy differs: on branch X here* and **Open the Mac copy anyway**
+  - *This Mac's copy is different, on branch X* and **Open the Mac copy anyway**
     when the Mac has the file with other content (X is the Mac checkout's
     current branch, from `git.branches` on the mapped project root);
-  - *No Mac copy: on branch X here* and **Open the project anyway** when
+  - *No copy on this Mac, on branch X* and **Open the project anyway** when
     the Mac has the project (the mapped cwd is a directory) but not the
     file (the thread is on a branch the Mac has not checked out);
   - *Not checked out on the Mac* or *Only on <host>* with no action when

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { SECTION_SKELETON, StatsView, paceHeight, paceLine, paceTitle, resetPaceCount } from "./stats";
 import { HEATMAP_HEIGHT } from "./stats/heatmap";
 import { STATS } from "./stats.fixtures";
+import { thisDesktopInLine } from "@renderer/lib/native";
 
 afterEach(() => {
   cleanup();
@@ -130,7 +131,15 @@ describe("an empty month", () => {
     const empty = { ...STATS, totals: { ...STATS.totals, turns: 0 }, pace: [], heatmap: [] };
     render(<StatsView data={empty} status={{ indexing: false, filesDone: 40, filesTotal: 40, rows: 1200 }} />);
     expect(screen.getByText("Nothing in the last 30 days")).toBeTruthy();
-    expect(screen.queryByText(/session logs on this machine/)).toBeNull();
+    expect(screen.queryByText(/session logs on this/)).toBeNull();
+  });
+
+  it("names the desktop as the window does elsewhere when it has no logs at all", () => {
+    const none = { ...STATS, totals: { ...STATS.totals, turns: 0 }, pace: [], heatmap: [] };
+    render(<StatsView data={none} status={{ indexing: false, filesDone: 0, filesTotal: 0, rows: 0 }} />);
+    expect(screen.getByText("Nothing to show yet")).toBeTruthy();
+    expect(screen.getByText(`No Claude Code or Codex session logs on ${thisDesktopInLine()}.`)).toBeTruthy();
+    expect(screen.queryByText(/this machine/)).toBeNull();
   });
 
   it("keeps the page open for Busiest hours when the last turn was 31 to 60 days ago", () => {

@@ -139,11 +139,17 @@ vi.mock("../../lib/tcserver/store", async (importOriginal) => {
     },
   };
 });
+// The master's link as a case sets it: by default the window's own socket (no key, every verb) and open.
+const access = vi.hoisted(() => ({ hello: null as unknown, held: null as string | null }));
 vi.mock("../../lib/connection/status", () => ({
   useEnvironments: () => hosts.environments,
   useEnvironmentStatuses: () => hosts.statuses,
   // The window's own socket: no key, so the board offers every verb (lib/linkMay.ts).
-  useEnvironmentStatus: () => ({ transport: "open", lastHello: null }),
+  useEnvironmentStatus: () => ({ transport: "open", lastHello: access.hello }),
+}));
+vi.mock("../../lib/connection/degraded", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/connection/degraded")>()),
+  useHostHeld: () => access.held,
 }));
 vi.mock("../../lib/tcserver/workspaces", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/tcserver/workspaces")>()),
@@ -567,7 +573,7 @@ describe("the master view", () => {
     await flush();
     const head = document.querySelector("[data-view-header]") as HTMLElement;
     fireEvent.click(within(head).getByRole("button", { name: "Add thread" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "New thread…" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "New batch thread…" }));
     expect(within(await screen.findByRole("dialog")).getByText("Add a thread to iOS batch 2")).toBeTruthy();
   });
 
@@ -666,6 +672,17 @@ describe("the master view", () => {
     const status = row.querySelector("[data-row-status]")!;
     expect(status.textContent).toBe(`Landed ${LANDED}`);
     expect(status.querySelector("[data-slot=status-mark]")?.getAttribute("aria-label")).toBe(`Done: Landed ${LANDED}`);
+  });
+
+  it("a settled row with nothing to say draws line one alone, the state word kept for readers", async () => {
+    seed([meta({ id: "c-chat", title: "Quick question", status: "idle", threadType: "chat", createdAt: 2 })]);
+    renderView();
+    await flush();
+    const row = screen.getByRole("button", { name: /Quick question/ });
+    expect(row.querySelector("[data-row-glyph]")).toBeNull();
+    const status = row.querySelector("[data-row-status]")!;
+    expect(status.className).toBe("sr-only");
+    expect(status.textContent).toBe("Done");
   });
 
   it("the child that blocks the batch says why on its second line; a watching or paused child under Working says its own word", async () => {
@@ -1147,6 +1164,37 @@ describe("the master view", () => {
     expect(link.calls.filter((c) => c.method === "batch.archive").at(-1)?.params).toEqual({ masterId: "m", which: "all", removeResources: false });
   });
 
+  it("draws no Batch actions and no Add thread for a key that may only read", async () => {
+    access.hello = { environmentId: "local", contract: 1, caps: ["read"], key: { id: "k" } };
+    onTestFinished(() => {
+      access.hello = null;
+    });
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    renderView();
+    await flush();
+    const head = document.querySelector("[data-view-header]") as HTMLElement;
+    expect(within(head).queryByRole("button", { name: "Batch actions" })).toBeNull();
+    expect(within(head).queryByRole("button", { name: "Add thread" })).toBeNull();
+  });
+
+  it("holds Batch actions and Add thread while the master's host is away, the link's words their tooltip", async () => {
+    access.held = "This Mac is not connected";
+    onTestFinished(() => {
+      access.held = null;
+    });
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    renderView();
+    await flush();
+    const head = document.querySelector("[data-view-header]") as HTMLElement;
+    for (const name of ["Batch actions", "Add thread"]) {
+      const button = within(head).getByRole("button", { name }) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      expect(button.closest("[data-held]")).toBeTruthy();
+      fireEvent.click(button);
+    }
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
   it("Add existing thread… lists the project's roots in no batch and adopts the picked ones through batch.adopt", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     link.metas.push(
@@ -1203,7 +1251,7 @@ describe("the master view", () => {
     const menu = await screen.findByRole("menu", { name: "Thread actions" });
     const labels = within(menu).getAllByRole("menuitem").map((i) => i.textContent);
     expect(labels.slice(0, 2)).toEqual(["Open", "New pass…"]);
-    expect(labels).toContain("Rename");
+    expect(labels).toContain("Rename…");
     expect(labels).toContain("Archive");
     fireEvent.click(within(menu).getByRole("menuitem", { name: "New pass…" }));
     await flush();
@@ -1612,7 +1660,7 @@ describe("the master view", () => {
     renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Add thread" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "New batch thread…" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("Add a thread to iOS batch 2")).toBeTruthy();
     // The brief has focus; every effort of the model's own ladder is offered.
@@ -1692,7 +1740,7 @@ describe("the master view", () => {
     expect(controls.slice(0, 2).every((b) => b.className.includes("size-7"))).toBe(true);
     fireEvent.click(within(head).getByRole("button", { name: "Add thread" }));
     const menu = await screen.findByRole("menu", { name: "Add thread" });
-    expect(within(menu).getByRole("menuitem", { name: "New thread…" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "New batch thread…" })).toBeTruthy();
     // The summary lives in the rules dialog and the master's chat, never on the board.
     expect(document.querySelector("[data-board]")?.textContent).not.toContain("Gate, release, publish");
   });
@@ -2161,7 +2209,7 @@ describe("the batch across hosts", () => {
     renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Add thread" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "New batch thread…" }));
     const dialog = screen.getByRole("dialog");
     const hostRow = within(dialog).getByRole("group", { name: "Host" });
     expect(within(hostRow).getAllByRole("button").map((r) => r.textContent)).toEqual(["This Mac", "The box"]);
@@ -2181,7 +2229,7 @@ describe("the batch across hosts", () => {
     renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Add thread" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "New thread…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "New batch thread…" }));
     expect(within(screen.getByRole("dialog")).queryByRole("group", { name: "Host" })).toBeNull();
   });
 

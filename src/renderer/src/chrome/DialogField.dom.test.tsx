@@ -63,6 +63,17 @@ describe("CheckRow", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Delete origin/x" }));
     expect(set).not.toHaveBeenCalled();
   });
+
+  it("wraps a long label, never cutting it, the box on its first line", () => {
+    render(<CheckRow label="and remove their 3 worktrees and simulators" checked onCheckedChange={() => {}} />);
+    const box = screen.getByRole("checkbox", { name: "and remove their 3 worktrees and simulators" });
+    const row = box.closest('[data-slot="dialog-check-row"]') as HTMLElement;
+    const label = document.getElementById(box.getAttribute("aria-labelledby")!)!;
+    expect(label.className).not.toContain("truncate");
+    expect(row.className).toContain("items-start");
+    expect(row.className).toContain("leading-5");
+    expect(box.className).toContain("mt-0.5");
+  });
 });
 
 describe("error lines", () => {

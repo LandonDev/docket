@@ -106,7 +106,7 @@ export const MODELS: AgentModel[] = [
   {
     id: "claude:fable-5.2",
     harness: "claude",
-    name: "Claude Fable 5.2",
+    name: "Fable 5.2",
     nativeId: "claude-fable-5-2",
     contextWindow: 1_000_000,
     settings: CLAUDE_FRONTIER_SETTINGS.map((setting) =>
@@ -116,7 +116,7 @@ export const MODELS: AgentModel[] = [
   {
     id: "claude:fable-5.1",
     harness: "claude",
-    name: "Claude Fable 5.1",
+    name: "Fable 5.1",
     nativeId: "claude-fable-5-1",
     contextWindow: 1_000_000,
     settings: CLAUDE_FRONTIER_SETTINGS,
@@ -124,19 +124,19 @@ export const MODELS: AgentModel[] = [
   {
     id: "claude:sonnet-5.5",
     harness: "claude",
-    name: "Claude Sonnet 5.5",
+    name: "Sonnet 5.5",
     nativeId: "claude-sonnet-5-5",
   },
   {
     id: "claude:haiku-5.5",
     harness: "claude",
-    name: "Claude Haiku 5.5",
+    name: "Haiku 5.5",
     nativeId: "claude-haiku-5-5",
   },
   {
     id: "claude:opus-5.5",
     harness: "claude",
-    name: "Claude Opus 5.5",
+    name: "Opus 5.5",
     nativeId: "claude-opus-5-5",
     contextWindow: 1_000_000,
     settings: CLAUDE_FRONTIER_SETTINGS,
@@ -144,13 +144,13 @@ export const MODELS: AgentModel[] = [
   {
     id: "claude:opus-5",
     harness: "claude",
-    name: "Claude Opus 5",
+    name: "Opus 5",
     nativeId: "claude-opus-5",
   },
   {
     id: "claude:fable-5",
     harness: "claude",
-    name: "Claude Fable 5",
+    name: "Fable 5",
     nativeId: "claude-fable-5",
     contextWindow: 1_000_000,
     settings: CLAUDE_FRONTIER_SETTINGS,

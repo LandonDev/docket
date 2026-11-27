@@ -38,6 +38,8 @@ import type { CoreMethod } from "./linkMayCore";
 
 export type ThreadMenuFacts = {
   status: SessionStatus;
+  /** Rename opens RenameThreadDialog (no inline edit where the menu opened), so it ends in "…". */
+  renameDialog?: boolean;
   treeHasLiveWork?: boolean;
   treeHasPaused?: boolean;
   threadType: ThreadType | null;
@@ -140,7 +142,7 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
     });
   rows.push({ kind: "sep" });
 
-  rows.push({ kind: "item", id: "rename", label: "Rename", icon: Pencil });
+  rows.push({ kind: "item", id: "rename", label: facts.renameDialog ? "Rename…" : "Rename", icon: Pencil });
   // A retype drops the harness, so a live thread waits until it settles.
   rows.push({
     kind: "sub",

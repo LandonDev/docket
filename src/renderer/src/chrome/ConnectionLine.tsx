@@ -46,15 +46,17 @@ export function ConnectionLine({ environmentId }: { environmentId: string }) {
     setPressed(degraded.status);
     registry.retry(environmentId);
   };
-  return <ConnectionLineView kind={degraded.kind} pair={identityChanged(degraded.status)} text={linkWords(name, degraded, now)} retrying={pressed === degraded.status} onRetry={retry} onPair={() => shell.openSettings(computerPageOf(environmentId))} />;
+  return <ConnectionLineView kind={degraded.kind} pair={identityChanged(degraded.status)} text={linkWords(name, degraded, now)} said={linkWords(name, degraded)} retrying={pressed === degraded.status} onRetry={retry} onPair={() => shell.openSettings(computerPageOf(environmentId))} />;
 }
 
-export function ConnectionLineView({ kind, text, pair = false, retrying = false, onRetry, onPair }: { kind: Degraded["kind"]; text: string; pair?: boolean; retrying?: boolean; onRetry: () => void; onPair: () => void }) {
+/** `text` is what the line shows (a countdown ticks in it); `said` the steady words announced once a state
+ *  ("Reconnecting to the box…"), so a screen reader never hears the line again each second. The live region
+ *  holds those words alone: Retry and Pair again are buttons of their own, outside it. */
+export function ConnectionLineView({ kind, text, said = text, pair = false, retrying = false, onRetry, onPair }: { kind: Degraded["kind"]; text: string; said?: string; pair?: boolean; retrying?: boolean; onRetry: () => void; onPair: () => void }) {
   const unauthorized = kind === "unauthorized";
   return (
     // On the box row's 6px inset with its glyph on `+`'s 28px axis and its words on the field's.
     <div
-      role="status"
       data-connection-line={kind}
       className="mb-2 flex min-h-6 items-center gap-1 px-1.5 text-xs text-muted-foreground"
     >
@@ -65,7 +67,8 @@ export function ConnectionLineView({ kind, text, pair = false, retrying = false,
           <Spinner aria-hidden className="size-3 text-muted-foreground" />
         )}
       </span>
-      <span className="min-w-0 flex-1 px-1 text-pretty">{text}</span>
+      <span aria-hidden data-connection-words className="min-w-0 flex-1 px-1 text-pretty">{text}</span>
+      <span role="status" className="sr-only">{said}</span>
       {unauthorized || pair ? (
         <Button variant="ghost" size="xs" {...settingsChunk.intent} onClick={onPair} className={`shrink-0 ${ACTION}`}>
           Pair again

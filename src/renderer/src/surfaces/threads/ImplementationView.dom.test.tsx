@@ -157,6 +157,23 @@ describe("the implementation board", () => {
     }
   });
 
+  it("names each task under Changes a step below the heading, never at its size", () => {
+    view(
+      session({
+        status: "running",
+        blocks: [first, edit("e", "src/a.ts", 0)],
+        todos: [todo("Write a", "in_progress"), todo("Write b", "pending")],
+      }),
+    );
+    const section = screen.getByRole("region", { name: "Changes" });
+    const heading = within(section).getByRole("heading", { level: 3, name: "Changes" });
+    const task = within(section).getByRole("heading", { level: 4, name: "Write a" });
+    expect(heading.className).toContain("text-xs");
+    expect(heading.className).toContain("font-medium");
+    expect(task.className).toContain("text-[13px]");
+    expect(task.className).not.toContain("text-xs");
+  });
+
   it("ends a done task's row in its time and shows the running task's label whole", () => {
     const run = (id: string, todoIx: number, ts: number, doneTs?: number) =>
       ({ id, role: "tool", text: "", round: 0, todo: todoIx, ts, doneTs, tool: { kind: "execute", name: "Bash" } }) as unknown as Block;

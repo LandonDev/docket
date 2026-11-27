@@ -1,9 +1,10 @@
 import { measureElement, useVirtualizer, type Virtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactElement, type RefObject } from "react";
 import { useLinkMay } from "../../lib/linkMayCore";
 import { useHostHeld } from "../../lib/connection/degraded";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
-import { RowsContextMenu, RowsMenu } from "../../chrome/menuRows";
+import { RowsContextMenu, RowsMenu, type MenuRow } from "../../chrome/menuRows";
+import { HeldTip } from "../../components/heldTip";
 import { useThreadMenu } from "../../chrome/useThreadMenu";
 import { MoreHorizontal, Plus } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
@@ -26,7 +27,7 @@ import { addMenuItems, adoptCandidates, boardMenuItems, doneRows, pairedProjectI
 import { ChildPane } from "./master/ChildPane";
 import { MasterRow, type RowMenu } from "./master/MasterRow";
 import { RowBoundary } from "./master/RowBoundary";
-import { taskProgress } from "./master/rowBody";
+import { oneLineRow, taskProgress } from "./master/rowBody";
 import { taskFoldChoice, taskFoldKey, taskFoldOpen } from "./master/taskFold";
 import { NewPassDialog } from "./master/NewPassDialog";
 import { AgentSummaryContext } from "./master/agentSummary";
@@ -113,12 +114,14 @@ const LiveBatchFoot = memo(function LiveBatchFoot({ holder, ...foot }: { holder:
 });
 
 /** A section heading is 32px, its words on the last 16px with 4px under
- *  them; the first one 24px. A row is 48px (MasterRow), 64px with its task
+ *  them; the first one 24px. A row is 48px (MasterRow), 32px when line two
+ *  has nothing to say (`oneLineRow`), 64px with its task
  *  bar's line, and 20px a task more with its list open (the compact
  *  TaskRows, 2px above and under); rows sit flush. */
 const HEADER_PX = 32;
 const FIRST_HEADER_PX = 24;
 const ROW_PX = 48;
+const ONE_LINE_ROW_PX = 32;
 const BAR_LINE_PX = 16;
 const TASK_ROW_PX = 20;
 const TASK_FOLD_PAD_PX = 4;
@@ -279,6 +282,32 @@ export function BoardFailed({ renderChat, onRetry }: Pick<ThreadViewProps, "rend
   );
 }
 
+/** A title-bar menu of the board: held in place, the link's words its tooltip, while the master's host is away. */
+function BoardMenu({ label, icon, held, rows, onPick, onOpenChange }: { label: string; icon: ReactElement; held: string | null; rows: () => MenuRow[]; onPick: (id: string) => void; onOpenChange: (open: boolean) => void }) {
+  if (held)
+    return (
+      <HeldTip held={held}>
+        <Button variant="ghost" size="icon-sm" aria-label={label} disabled>
+          {icon}
+        </Button>
+      </HeldTip>
+    );
+  return (
+    <RowsMenu
+      label={label}
+      tip={{ label }}
+      trigger={
+        <Button variant="ghost" size="icon-sm" aria-label={label}>
+          {icon}
+        </Button>
+      }
+      rows={rows}
+      onPick={onPick}
+      onOpenChange={onOpenChange}
+    />
+  );
+}
+
 function MasterBoardView(props: ThreadViewProps) {
   const { session } = props;
   const meta = useMetaById(session.id);
@@ -295,7 +324,11 @@ function MasterBoardView(props: ThreadViewProps) {
   // D5 (boards-03): the foot's Edit… and Stop go to the master's host; a key that may not has neither.
   const maySetRules = useLinkMay(masterHost, "batch.setRules");
   const mayStopStep = useLinkMay(masterHost, "batch.stopStep");
-  // Round 2: both go to the master's host; held while it is away.
+  // The header's ⋯ (Pause all, Resume all, the archives: operate, as session.batch) and + rows go there too.
+  const mayBatch = useLinkMay(masterHost, "session.batch");
+  const mayCreate = useLinkMay(masterHost, "session.create");
+  const mayAdopt = useLinkMay(masterHost, "batch.adopt");
+  // Round 2: all of them go to the master's host; held while it is away.
   const footHeld = useHostHeld(masterHost);
   const hostOf = useMemo(() => {
     const cache = new Map<string, RowHost | null>();
@@ -368,21 +401,34 @@ function MasterBoardView(props: ThreadViewProps) {
       ]),
     [layout],
   );
+  // The child that blocks the batch's end says why on its own row (a far
+  // child is named `<env>:<session>`); every other row gets null.
+  const blocked = view.blocked;
+  const blockedOf = useCallback(
+    (row: BoardRowRef): string | null => {
+      if (!blocked || (blocked.sessionId !== row.id && blocked.sessionId !== `${row.environmentId}:${row.id}`)) return null;
+      return blockedReason(blocked.why, blocked.environmentId ? hostNames.get(blocked.environmentId) : null);
+    },
+    [blocked, hostNames],
+  );
+
   // A row with its task bar is a line taller, and its open list a row a
-  // task (open while the thread is live, MasterRow); the measure follows the fold.
+  // task (open while the thread is live, MasterRow); the measure follows the
+  // fold. A row with nothing to say on line two is line one alone.
   const estimateSize = useCallback(
     (i: number) => {
       const item = items[i];
       if (item?.kind !== "row") return i === 0 ? FIRST_HEADER_PX : HEADER_PX;
       const meta = sessionStore.metaOf(item.row.id) ?? item.row.fallback;
-      const progress = meta ? taskProgress(meta, digests.get(item.row.id)) : null;
-      if (!meta || !progress) return ROW_PX;
+      if (!meta) return ROW_PX;
+      const digest = digests.get(item.row.id);
+      const progress = taskProgress(meta, digest);
       const key = taskFoldKey(session.id, item.row.key);
       const live = groupOf(meta) !== "done";
-      if (!live && taskFoldChoice(key) !== true) return ROW_PX;
+      if (!progress || (!live && taskFoldChoice(key) !== true)) return oneLineRow(meta, digest, landed.has(item.row.id), blockedOf(item.row)) ? ONE_LINE_ROW_PX : ROW_PX;
       return ROW_PX + BAR_LINE_PX + (taskFoldOpen(key, live) ? progress.total * TASK_ROW_PX + TASK_FOLD_PAD_PX : 0);
     },
-    [items, digests, session.id],
+    [items, digests, session.id, landed, blockedOf],
   );
   const list = useRef<Virtualizer<HTMLDivElement, HTMLDivElement> | null>(null);
 
@@ -451,17 +497,6 @@ function MasterBoardView(props: ThreadViewProps) {
     [],
   );
 
-  // The child that blocks the batch's end says why on its own row (a far
-  // child is named `<env>:<session>`); every other row gets null.
-  const blocked = view.blocked;
-  const blockedOf = useCallback(
-    (row: BoardRowRef): string | null => {
-      if (!blocked || (blocked.sessionId !== row.id && blocked.sessionId !== `${row.environmentId}:${row.id}`)) return null;
-      return blockedReason(blocked.why, blocked.environmentId ? hostNames.get(blocked.environmentId) : null);
-    },
-    [blocked, hostNames],
-  );
-
   const openRef = useRef<(id: string, focus?: boolean) => void>(() => {});
   openRef.current = (id: string, focus = false) => {
     savedScroll.current = scroller.current?.scrollTop ?? 0;
@@ -522,33 +557,30 @@ function MasterBoardView(props: ThreadViewProps) {
   const actions = useMemo(
     () => (
       <>
-        <RowsMenu
-          label="Batch actions"
-          tip={{ label: "Batch actions" }}
-          trigger={
-            <Button variant="ghost" size="icon-sm" aria-label="Batch actions">
-              <MoreHorizontal />
-            </Button>
-          }
-          rows={() => boardMenuItems({ pausable: pausableCount, paused: pausedCount, done: doneCount, all: rowCount })}
-          onPick={pick}
-          onOpenChange={(open) => setMenu(open ? "board" : null)}
-        />
-        <RowsMenu
-          label="Add thread"
-          tip={{ label: "Add thread" }}
-          trigger={
-            <Button variant="ghost" size="icon-sm" aria-label="Add thread">
-              <Plus />
-            </Button>
-          }
-          rows={() => addMenuItems(candidateCount)}
-          onPick={pick}
-          onOpenChange={(open) => setMenu(open ? "add" : null)}
-        />
+        {/* Each menu only for a key that may use it, held in place while the master's host is away. */}
+        {mayBatch ? (
+          <BoardMenu
+            label="Batch actions"
+            icon={<MoreHorizontal />}
+            held={footHeld}
+            rows={() => boardMenuItems({ pausable: pausableCount, paused: pausedCount, done: doneCount, all: rowCount })}
+            onPick={pick}
+            onOpenChange={(open) => setMenu(open ? "board" : null)}
+          />
+        ) : null}
+        {mayCreate || mayAdopt ? (
+          <BoardMenu
+            label="Add thread"
+            icon={<Plus />}
+            held={footHeld}
+            rows={() => addMenuItems(candidateCount, { create: mayCreate, adopt: mayAdopt })}
+            onPick={pick}
+            onOpenChange={(open) => setMenu(open ? "add" : null)}
+          />
+        ) : null}
       </>
     ),
-    [candidateCount, doneCount, pausableCount, pausedCount, pick, rowCount],
+    [candidateCount, doneCount, pausableCount, pausedCount, pick, rowCount, mayBatch, mayCreate, mayAdopt, footHeld],
   );
 
   // The foot's callbacks, stable across board renders: it re-renders for the batch alone.

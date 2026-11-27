@@ -765,7 +765,8 @@ continue never moves it), and its
 detail, the tally and the frozen time one comma run ("Stopped The harness
 is gone, 1m 35s"); a narrow row cuts the detail's words, never the frozen
 time, which keeps its place after them. The queue's grip sits in the same box, centred on its
-text's first line, and the text starts 8px after it, on the field's column.
+text's first line, and the text starts 8px after it, on the field's column;
+the heading over the rows ("Queued 2") starts on that same text column.
 A queued row is the message alone on the `muted` fill, `rounded-lg`, with no
 hairline and no number (the heading's "Queued 2" is the one count), so the
 composer's card stays the one line there; Send's glyph while it queues is a
@@ -4863,7 +4864,9 @@ already names the host (the Hosts menu) ends in the same words without the
 name (`linkFact`: "No longer accepts this key", "Reconnecting…", "Offline"). The line sits
 on the box row's 6px inset, its glyph on `+`'s 28px axis and its words on the
 field's, wraps rather than cuts, and its Retry spins from the press until the
-link moves on. A failed read keeps the last good rows and says so in one red
+link moves on. A screen reader hears the line once a state, in its steady words
+("Reconnecting to the box…"): the shown countdown stays out of the live region,
+and Retry is its own button outside it. A failed read keeps the last good rows and says so in one red
 line with Retry ("Couldn't read the changes", "The box did not answer"),
 never the loading bones or an empty state standing in for it.
 

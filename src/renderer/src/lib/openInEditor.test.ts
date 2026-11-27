@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("./native", () => ({
   invokeOn: vi.fn(),
   openWithEditor: vi.fn(),
+  editorConfig: vi.fn(async () => null),
 }));
 vi.mock("./connection", () => ({
   registry: { primaryEnvironmentId: "local", primary: () => ({ request: vi.fn() }), environment: () => undefined },
@@ -15,7 +16,8 @@ vi.mock("./tcserver/projects", () => ({
 }));
 
 import type { EditorConfig } from "@shared/editor";
-import { editorActionLabel, editorLabelFor, planRemoteOpen, type RemoteOpenDeps } from "./openInEditor";
+import { editorConfig, openWithEditor } from "./native";
+import { editorActionLabel, editorLabelFor, launchFailedText, openInEditor, planRemoteOpen, type RemoteOpenDeps } from "./openInEditor";
 
 const config = (over: Partial<EditorConfig> = {}): EditorConfig => ({
   editor: "auto",
@@ -51,6 +53,26 @@ describe("editorActionLabel", () => {
   });
 });
 
+describe("launchFailedText", () => {
+  const thrown = new Error("Error invoking remote method 'editor-open': Error: idea: not found");
+  it("names the editor in one written sentence, never the thrown text", async () => {
+    expect(await launchFailedText("/Users/me/x/a.ts", thrown, true, async () => config())).toBe("Couldn't open it in IntelliJ IDEA. Opened here instead.");
+    expect(await launchFailedText("/Users/me/x/a.ts", thrown, false, async () => config({ editor: "code" }))).toBe("Couldn't open it in VS Code");
+  });
+  it("opens a file whose launch failed here, its note the sentence", async () => {
+    vi.mocked(openWithEditor).mockRejectedValueOnce(thrown);
+    vi.mocked(editorConfig).mockResolvedValueOnce(config());
+    const openHere = vi.fn();
+    await openInEditor({ path: "/Users/me/x/a.ts", line: 3 }, openHere);
+    expect(openHere).toHaveBeenCalledWith("/Users/me/x/a.ts", { line: 3, column: undefined }, { note: { text: "Couldn't open it in IntelliJ IDEA. Opened here instead." } });
+  });
+  it("says no editor was found when this machine names none", async () => {
+    expect(await launchFailedText("/x", thrown, true, async () => config({ installed: { idea: false, code: false, xed: false } }))).toBe("No editor found. Opened here instead.");
+    expect(await launchFailedText("/x", thrown, false, async () => null)).toBe("No editor found");
+    expect(await launchFailedText("/x", thrown, false, () => Promise.reject(new Error("no bridge")))).toBe("No editor found");
+  });
+});
+
 describe("planRemoteOpen", () => {
   const map = { roots: { "/Users/me/IdeaProjects/temp-code": "/srv/agents/work/temp-code" }, prefixes: {} };
   const deps = (over: Partial<RemoteOpenDeps> & { digests?: Record<string, string | null> }): RemoteOpenDeps => ({
@@ -68,12 +90,12 @@ describe("planRemoteOpen", () => {
     const plan = await planRemoteOpen(target, "env_box", "local", deps({ digests: { [target.path]: "aa", "/Users/me/IdeaProjects/temp-code/src/a.ts": "aa" } }));
     expect(plan).toEqual({ kind: "launch", target: { path: "/Users/me/IdeaProjects/temp-code/src/a.ts", line: 12, column: 3 } });
   });
-  it("previews with the branch here and the Mac copy as the action when the bytes differ", async () => {
+  it("previews with the Mac checkout's branch and the Mac copy as the action when the bytes differ", async () => {
     const plan = await planRemoteOpen(target, "env_box", "local", deps({ digests: { [target.path]: "aa", "/Users/me/IdeaProjects/temp-code/src/a.ts": "bb" } }));
     expect(plan).toEqual({
       kind: "preview",
       note: {
-        text: "Mac copy differs: on branch master here",
+        text: "This Mac's copy is different, on branch master",
         action: { label: "Open the Mac copy anyway", editor: { path: "/Users/me/IdeaProjects/temp-code/src/a.ts", line: 12, column: 3 } },
       },
     });
@@ -82,7 +104,7 @@ describe("planRemoteOpen", () => {
     const plan = await planRemoteOpen(target, "env_box", "local", deps({ digests: { [target.path]: "aa" } }));
     expect(plan).toEqual({
       kind: "preview",
-      note: { text: "No Mac copy: on branch master here", action: { label: "Open the project anyway", editor: { path: "/Users/me/IdeaProjects/temp-code" } } },
+      note: { text: "No copy on this Mac, on branch master", action: { label: "Open the project anyway", editor: { path: "/Users/me/IdeaProjects/temp-code" } } },
     });
   });
   it("previews with no action when the project is not checked out here or nothing maps the path", async () => {

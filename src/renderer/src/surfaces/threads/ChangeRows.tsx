@@ -30,7 +30,8 @@ export function ChangeRows({
     <div className="flex flex-col gap-4">
       {groups.map((g) => (
         <section key={g.key} aria-label={g.task ?? "Changes"}>
-          {g.task ? <h4 className="mb-1 truncate text-xs text-muted-foreground">{g.task}</h4> : null}
+          {/* A step under the section's 12px medium heading: the task's name at the rows' 13px, muted. */}
+          {g.task ? <h4 className="mb-1 truncate text-[13px] text-muted-foreground">{g.task}</h4> : null}
           <div className="-mx-2 flex flex-col gap-0.5">
             {g.files.map((f) => (
               <ChangeFile key={f.path} file={f} cwd={cwd} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} />

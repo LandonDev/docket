@@ -60,6 +60,15 @@ describe("ChoiceToggle", () => {
     expect(button("Life").className).toContain("shrink-0");
   });
 
+  it("wrap: a second line where the row is too narrow, every label whole at the one-line track's height", () => {
+    render(<ChoiceToggle label="Pick" wrap value="a" options={OPTIONS} onChange={() => {}} />);
+    expect(group().className).toContain("flex-wrap");
+    expect(group().className).toContain("max-w-full");
+    expect(group().className).toContain("min-h-8");
+    expect(button("Alpha").className).toContain("h-6.5");
+    expect(button("Alpha").querySelector("span.truncate")).toBeNull();
+  });
+
   it("without fit, draws its labels as they are", () => {
     render(<ChoiceToggle label="Pick" value="a" options={OPTIONS} onChange={() => {}} />);
     expect(button("Alpha").querySelector("span.truncate")).toBeNull();

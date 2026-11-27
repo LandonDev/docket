@@ -3,7 +3,7 @@ import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { BoardDigest } from "@server/shared/contract-batch";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { clockTime } from "../../../lib/duration";
-import { passLine, rowStatus, summaryLine, taskBar, taskInHand, taskProgress, taskTally } from "./rowBody";
+import { oneLineRow, passLine, rowStatus, summaryLine, taskBar, taskInHand, taskProgress, taskTally } from "./rowBody";
 
 const todos: TodoItem[] = [
   { content: "Read the brief", status: "completed" },
@@ -140,6 +140,17 @@ describe("rowStatus", () => {
     expect(rowStatus(m({ threadType: "research" }), { state: "Composer done", last: "x" }, false)).toEqual({ state: "done", detail: "Composer done" });
     expect(rowStatus(m({ status: "done", threadType: "orchestration" }), { last: "Looked at three sources." }, false).detail).toBe("Looked at three sources");
     expect(rowStatus(m({ threadType: "chat" }), { last: "x" }, false)).toEqual({ state: "done", detail: "" });
+  });
+});
+
+describe("oneLineRow", () => {
+  it("is line one alone only for a settled row with no detail and no tally", () => {
+    expect(oneLineRow(m({ status: "idle", threadType: "chat" }), {}, false)).toBe(true);
+    expect(oneLineRow(m({ status: "idle", threadType: "chat" }), {}, true)).toBe(false);
+    expect(oneLineRow(m({ status: "idle", threadType: "research" }), { state: "Found three causes" }, false)).toBe(false);
+    expect(oneLineRow(m({ status: "idle" }), { todos }, false)).toBe(false);
+    expect(oneLineRow(m({ status: "running", threadType: "chat" }), {}, false)).toBe(false);
+    expect(oneLineRow(m({ status: "stopped", threadType: "chat" }), {}, false)).toBe(false);
   });
 });
 

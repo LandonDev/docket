@@ -26,7 +26,7 @@ import { ModelMark, modelMarkName, modelMarkTip, storeHostGlyph, type HostGlyphO
 import { tasksOf } from "../implementationBoard";
 import { TypeGlyph } from "../TypeGlyph";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
-import { rowStatus, taskInHand, taskList, taskProgress, taskTally } from "./rowBody";
+import { lineTwoEmpty, rowStatus, taskInHand, taskList, taskProgress, taskTally } from "./rowBody";
 import { useTaskFold } from "./taskFold";
 import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
 
@@ -246,6 +246,8 @@ export function MasterRowView({
   // Line two says nothing but the task in hand (the section says the word, the bar the tally): the bar takes that
   // line under the glyph, and a folded list's task in hand rides after it, so the bar never moves under a press.
   const seated = barShown && !ownWord && !tally && (!status.detail || status.detail === taskInHand(tasks));
+  // Nothing to say on line two: the row is line one alone, the state word kept for readers.
+  const bare = !seated && lineTwoEmpty(state, ownWord, detail, tally);
   const type = typeWord(meta);
 
   // React bubbles a portal's events through the tree: a pick in the ⋯
@@ -319,10 +321,16 @@ export function MasterRowView({
 
       {/* Line two: the status glyph hangs under the type's, so the detail
           starts under the title; a settled row draws none ("Landed 12:08 PM"). */}
-      <span className="flex h-4 items-center justify-center" data-row-glyph>
-        {marksAtRest(state) ? <StatusMark state={state} word={false} {...(seated ? { "aria-label": statusLabel } : { "aria-hidden": true })} /> : null}
-      </span>
-      {seated ? null : <span className="flex h-4 min-w-0 items-center gap-2" data-row-status>
+      {bare ? (
+        <span className="sr-only" data-row-status>
+          {statusLabel}
+        </span>
+      ) : (
+        <span className="flex h-4 items-center justify-center" data-row-glyph>
+          {marksAtRest(state) ? <StatusMark state={state} word={false} {...(seated ? { "aria-label": statusLabel } : { "aria-hidden": true })} /> : null}
+        </span>
+      )}
+      {seated || bare ? null : <span className="flex h-4 min-w-0 items-center gap-2" data-row-status>
         <StatusMark
           state={state}
           glyph={false}

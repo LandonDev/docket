@@ -58,11 +58,12 @@ export function boardMenuItems(counts: { pausable: number; paused: number; done:
   ];
 }
 
-/** The + menu: a new thread, or one the project already has. */
-export function addMenuItems(candidates: number): MenuRow[] {
+/** The + menu: a new thread, or one the project already has; a row the key may not use is not drawn
+ *  (the thread menu's batch-new and batch-adopt, one name each). */
+export function addMenuItems(candidates: number, may: { create: boolean; adopt: boolean } = { create: true, adopt: true }): MenuRow[] {
   return [
-    { kind: "item", id: "new", label: "New thread…", icon: MessageSquarePlus },
-    { kind: "item", id: "adopt", label: "Add existing thread…", icon: ListPlus, disabled: candidates === 0 },
+    ...(may.create ? [{ kind: "item", id: "new", label: "New batch thread…", icon: MessageSquarePlus } as const] : []),
+    ...(may.adopt ? [{ kind: "item", id: "adopt", label: "Add existing thread…", icon: ListPlus, disabled: candidates === 0 } as const] : []),
   ];
 }
 

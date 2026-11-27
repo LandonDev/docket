@@ -29,7 +29,7 @@ describe("a press that went wrong", () => {
   });
 
   it("words what a refused press answers", () => {
-    expect(notSentWords({ state: "failed", error: "spawn osascript ENOENT" })).toBe("A program that computer needs for this is missing there.");
+    expect(notSentWords({ state: "failed", error: "spawn osascript ENOENT" })).toBe("That computer is missing a program it needs for this.");
     expect(notSentWords({ state: "stale", error: null })).toBe("It changed since it was held; look again");
     expect(notSentWords({ state: "discarded", error: null })).toBe("Already discarded");
   });

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { FileNote } from "../lib/layout";
 import { openWithEditor } from "../lib/native";
+import { launchFailedText } from "../lib/openInEditor";
 import { Alert, AlertDescription, type AlertTone } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -15,19 +16,20 @@ export function noteTone(_note: FileNote, readOnly: boolean, failed: boolean): A
 
 /**
  * The line above a file the app shows instead of handing it to the
- * editor (lib/openInEditor.ts): why ("Mac copy differs: on branch X
- * here"), whether it is read-only, and the one way out ("Open the Mac copy
- * anyway"). A standing note, so `status`, not `alert`.
+ * editor (lib/openInEditor.ts): why ("This Mac's copy is different, on
+ * branch X"), whether it is read-only, and the one way out ("Open the Mac
+ * copy anyway"); that way failing says so in one sentence ("Couldn't open it
+ * in IntelliJ IDEA"). A standing note, so `status`, not `alert`.
  */
 export function FileNoteBar({ note, readOnly = false }: { note: FileNote; readOnly?: boolean }) {
   const [failure, setFailure] = useState<string | null>(null);
   const action = note.action;
-  const text = failure ? `Couldn't open: ${failure}` : note.text;
+  const text = failure ?? note.text;
   const run = () => {
     if (!action) return;
     setFailure(null);
-    openWithEditor(action.editor).catch((err: unknown) => {
-      setFailure(err instanceof Error ? err.message : String(err));
+    openWithEditor(action.editor).catch(async (err: unknown) => {
+      setFailure(await launchFailedText(action.editor.path, err, false));
     });
   };
   return (

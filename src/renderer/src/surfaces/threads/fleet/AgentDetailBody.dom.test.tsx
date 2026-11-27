@@ -127,6 +127,13 @@ describe("AgentDetailBody", () => {
     await waitFor(() => expect(field.value).toBe(""));
   });
 
+  it("its Send is the composer's: round, 28px", () => {
+    h.metas.set("live", fixtureMeta("live", { status: "running" }));
+    const view = render(<AgentDetailBody agentId="live" parentCwd="/repo" />);
+    const send = view.getByRole("button", { name: "Send" }).className.split(" ");
+    expect(send).toEqual(expect.arrayContaining(["rounded-full", "size-7"]));
+  });
+
   it("holds the transcript's skeleton while its sheet slides in", () => {
     h.metas.set("idle", fixtureMeta("idle", { status: "idle" }));
     const view = render(<AgentDetailBody agentId="idle" parentCwd="/repo" ready={false} />);

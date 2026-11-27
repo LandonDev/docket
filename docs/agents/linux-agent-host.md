@@ -145,8 +145,8 @@
   harness sync's path map inverted (`src/shared/openOnMac.ts`, box
   `/srv/agents/work/<X>` ↔ Mac `~/IdeaProjects/<X>`), both hosts hash the
   file (`fs.digest`), and only an identical Mac copy opens in the editor;
-  otherwise the host's version opens in the app read-only with "Mac copy
-  differs: on branch X here" / "No Mac copy" and "Open the Mac copy anyway"
+  otherwise the host's version opens in the app read-only with "This Mac's
+  copy is different, on branch X" / "No copy on this Mac" and "Open the Mac copy anyway"
   (lib/openInEditor.ts, surfaces/FileNoteBar.tsx). Web mode and a headless
   host hide the items (`editor.config()` is null). docs/box.md "Opening a
   box file on the Mac".

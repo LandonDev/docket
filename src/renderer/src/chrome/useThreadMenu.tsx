@@ -148,6 +148,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     const rows = threadMenuRows(
       {
         status: t.status ?? "idle",
+        renameDialog: !latest.current.onRename,
         treeHasLiveWork: session?.treeHasLiveWork,
         treeHasPaused: session?.treeHasPaused,
         threadType: t.threadType ?? null,

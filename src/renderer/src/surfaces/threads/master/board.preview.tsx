@@ -9,6 +9,7 @@ import type { BatchState } from "@server/shared/contract-batch";
 import { HostGlyph } from "../../../chrome/HostGlyph";
 import { MoreHorizontal, Plus } from "../../../chrome/icons";
 import { Button } from "../../../components/ui/button";
+import { HeldTip } from "../../../components/heldTip";
 import { SplitShell } from "../SplitShell";
 import { BatchFoot } from "./BatchFoot";
 import { BOARD_FIXTURE_CLOCK, FIXTURE_BATCH, FIXTURE_ROWS, fixtureGroups, TASK_BAR_ROWS, TASK_BAR_WIDTH_ROWS, type FixtureRow } from "./boardFixture";
@@ -29,8 +30,8 @@ const hostGlyph = (environmentId: string) => (environmentId === "local" ? null :
 const tally = `${FIXTURE_ROWS.filter((r) => r.meta.status === "idle").length}/${FIXTURE_ROWS.length}`;
 
 export function BoardPreview({
-  rows = FIXTURE_ROWS, foot = true, offline = false, failed = false, reveal = false, batch = FIXTURE_BATCH,
-}: { rows?: readonly FixtureRow[]; foot?: boolean; offline?: boolean; failed?: boolean; reveal?: boolean; batch?: BatchState }) {
+  rows = FIXTURE_ROWS, foot = true, offline = false, failed = false, reveal = false, batch = FIXTURE_BATCH, access = "owner",
+}: { rows?: readonly FixtureRow[]; foot?: boolean; offline?: boolean; failed?: boolean; reveal?: boolean; batch?: BatchState; access?: "owner" | "read" | "held" }) {
   const frame = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (reveal) frame.current?.querySelector("[data-actions] button")?.setAttribute("data-popup-open", "");
@@ -67,7 +68,7 @@ export function BoardPreview({
         ))}
       </div>
       </div>
-      {foot ? <BatchFoot batch={batch} clock={BOARD_FIXTURE_CLOCK} titleOf={(id) => rows.find((row) => row.meta.id === id)?.meta.title} hostName={() => "This Mac"} onSave={async () => {}} onStop={async () => {}} /> : null}
+      {foot ? <BatchFoot batch={batch} clock={BOARD_FIXTURE_CLOCK} titleOf={(id) => rows.find((row) => row.meta.id === id)?.meta.title} hostName={() => "This Mac"} onSave={access === "read" ? undefined : async () => {}} onStop={access === "read" ? undefined : async () => {}} held={access === "held" ? "This Mac is not connected" : null} /> : null}
     </div>
   );
 }
@@ -95,33 +96,42 @@ export function TaskBarWidthPreview({ width = 560 }: { width?: number }) {
 /** The master view's two states for `ui:preview`: an empty batch is the
  *  transcript alone; with children the board stands beside it. The chat is
  *  a stand-in for the transcript and composer. */
-export function MasterPreview({ empty = false, width, collapsed = false }: { empty?: boolean; width?: number; collapsed?: boolean }) {
+export function MasterPreview({ empty = false, width, collapsed = false, access = "owner" }: { empty?: boolean; width?: number; collapsed?: boolean; access?: "owner" | "read" | "held" }) {
   const chat = (
     <div className="flex flex-1 flex-col justify-end gap-3 p-6 text-sm text-foreground">
       <p className="max-w-[65ch]">The batch writes the gate, release and publish steps once its first thread lands.</p>
       <div className="h-24 rounded-lg border border-border bg-card" />
     </div>
   );
-  const actions = (
-    <>
-      <Button variant="ghost" size="icon-sm" aria-label="Batch actions">
-        <MoreHorizontal />
-      </Button>
-      <Button variant="ghost" size="icon-sm" aria-label="Add thread">
-        <Plus />
-      </Button>
-    </>
-  );
+  // As MasterView draws them: none for a key that may only read, held in place while the master's host is away.
+  const held = access === "held" ? "This Mac is not connected" : null;
+  const actions =
+    access === "read" ? null : (
+      <>
+        <HeldTip held={held}>
+          <Button variant="ghost" size="icon-sm" aria-label="Batch actions" disabled={!!held}>
+            <MoreHorizontal />
+          </Button>
+        </HeldTip>
+        <HeldTip held={held}>
+          <Button variant="ghost" size="icon-sm" aria-label="Add thread" disabled={!!held}>
+            <Plus />
+          </Button>
+        </HeldTip>
+      </>
+    );
   return (
     <div className="flex h-[560px] max-w-full bg-background" style={{ width: width ?? "100%" }}>
-      <SplitShell board={<BoardPreview />} chat={chat} hasBoard={!empty} collapsed={collapsed} onToggleChat={noop} title="iOS batch 2" detail={tally} actions={actions} />
+      <SplitShell board={<BoardPreview access={access} />} chat={chat} hasBoard={!empty} collapsed={collapsed} onToggleChat={noop} title="iOS batch 2" detail={tally} actions={actions} />
     </div>
   );
 }
 
 
-// On this revision a read-only key still sees the same board actions.
-export function MasterReadOnly() { return <MasterPreview />; }
+// A key that may only read: no Batch actions, no Add thread.
+export function MasterReadOnly() { return <MasterPreview access="read" />; }
+// The master's host away: both held in place.
+export function MasterHeld() { return <MasterPreview access="held" />; }
 export function MasterOffline() {
   const remote = FIXTURE_ROWS.find((row) => row.meta.environmentId !== "local")!;
   return <BoardPreview offline batch={{ ...FIXTURE_BATCH, blocked: { sessionId: remote.meta.id, why: "unreachable", environmentId: remote.meta.environmentId } }} />;
@@ -137,3 +147,10 @@ export function MasterAtCap() {
 }
 
 export function MasterFolded() { return <MasterPreview collapsed />; }
+
+// A Done chat that never landed has nothing to say under its title: line one alone.
+export function MasterSettledChat() {
+  const template = FIXTURE_ROWS[0];
+  const chat = { ...template, meta: { ...template.meta, id: "guide-quick", title: "Quick question", status: "idle" as const, threadType: "chat" as const }, digest: {}, agents: null, landed: false };
+  return <BoardPreview rows={[...FIXTURE_ROWS, chat]} foot={false} />;
+}

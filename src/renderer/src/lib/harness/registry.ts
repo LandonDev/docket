@@ -190,22 +190,28 @@ export function bindHarnessSession(
  * Probe model lists only for the harnesses the caller actually needs.
  * Boot used to refresh every adapter; that spawned unused CLIs (Pi with
  * extensions can sit at ~1GB) even when the workspace never touched them.
+ * Resolves false when any read failed (the picker says so; the next open asks again).
  */
 export async function refreshHarnessCatalogs(
   ids: Iterable<HarnessId>,
-): Promise<void> {
+): Promise<boolean> {
   const wanted = new Set(ids);
-  if (wanted.size === 0) return;
-  await Promise.all(
+  if (wanted.size === 0) return true;
+  const read = await Promise.all(
     [...adapters.values()]
       .filter((adapter) => wanted.has(adapter.id))
       .map(async (adapter) => {
-        if (!adapter.refreshCatalog || hasLiveCatalog(adapter.id)) return;
-        await adapter.refreshCatalog().catch((error: unknown) => {
-          console.debug(`[docket] ${adapter.id} catalog`, error);
-        });
+        if (!adapter.refreshCatalog || hasLiveCatalog(adapter.id)) return true;
+        return adapter.refreshCatalog().then(
+          () => true,
+          (error: unknown) => {
+            console.debug(`[docket] ${adapter.id} catalog`, error);
+            return false;
+          },
+        );
       }),
   );
+  return read.every(Boolean);
 }
 
 export async function generateHarnessTitle(

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PaceSeries } from "@shared/aliaxStats";
-import { dayTickInterval, paceLine, timeLeft } from "./stats";
+import { readFileSync } from "node:fs";
+import { TICK } from "@aliax/charts/chart";
+import { dayTickInterval, paceLine, PLOT_MARGIN, timeLeft, VALUE_AXIS } from "./stats";
 
 const HOUR = 3_600_000;
 /** A 5-hour window `left` hours from its end, heading for `projected` percent. */
@@ -50,5 +52,22 @@ describe("Stats day axes", () => {
     // The 400px window's chart (about 296px wide) labels three days, not six.
     expect(Math.ceil(30 / (dayTickInterval(30, 296) + 1))).toBe(3);
     expect(dayTickInterval(30, 1200)).toBe(dayTickInterval(30));
+  });
+});
+
+describe("a value plot's room for its ticks", () => {
+  it("holds the top tick's upper half and gives \"100%\" the axis's whole width less the gap", () => {
+    // A tick is centred on its gridline: the top one needs half its 12px line above the plot.
+    expect(PLOT_MARGIN.top).toBeGreaterThanOrEqual(TICK.fontSize / 2 + 2);
+    // Recharts sets the label tickMargin + tickSize in from the axis's width; DejaVu Sans draws "100%" 35px wide at 12px.
+    expect(VALUE_AXIS.width - VALUE_AXIS.tickMargin - VALUE_AXIS.tickSize).toBeGreaterThanOrEqual(36);
+    expect(VALUE_AXIS.width).toBe(44);
+  });
+  it("every value axis and plot margin on the page is the shared one", () => {
+    const source = readFileSync(new URL("./stats.tsx", import.meta.url), "utf8");
+    expect(source).not.toMatch(/margin=\{\{ top: 4/);
+    // The one category axis (the bar lists' names) keeps its own width; every other y axis is a value axis.
+    expect(source.match(/<YAxis \{\.\.\.AXIS\}/g)?.length ?? 0).toBe(1);
+    expect(source.match(/<YAxis \{\.\.\.VALUE_AXIS\}/g)?.length).toBe(4);
   });
 });

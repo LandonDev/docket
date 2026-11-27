@@ -230,7 +230,7 @@ of the right panel's Changes section, not the header's.
 | Offline tint | `chrome/hostOffline.ts` | with two or more hosts, a row whose host's link is not open (a rail row: every host of it) sits at `opacity-50` with `data-host-offline`; its rows are the launch mirror's and lift when the host is back. Its menu holds the host's verbs (Rename…, Mark all read, the fleet switches, Archive, Remove…) once the link is down past the 1.5 s grace, as the line over the composer, the link's words their reason; Pin, Reveal and the order stay (`hostsHeld`, `heldRows`). A master board's row of a host that is away keeps `data-host-offline` but reads muted by its title, never by opacity, and keeps Message alone |
 | Working | `RailWorking` / `RailWorkingView` in `chrome/RailWorking.tsx` on `workingRows` (lib/railWorking.ts) | the foot's first block, under its one hairline, from one row (`WORKING_MIN`; nothing else in the rail names a thread): a "Working" heading, then one RailRow per root thread on every host that needs the person, runs a turn, or finished while the window looked elsewhere and has not been looked at (`liveAgentTracker`), needs you first, then working by when the turn began, then done; archived threads and threads housed in a master's batch stay out. A row is an item: the thread's `TypeGlyph` at 12px in the 16px lead column, the title (muted, foreground while it is the thread on screen, `aria-current`), then the host glyph while the list's rows span two or more hosts and the state's `StatusMark` glyph at its end; its name is "<title>, <word>". Its tooltip leads with the whole title while the row cuts it (RailRow tells a tooltip function whether the label is cut), then says the state, what it is about and the elapsed time while it works (the word and the time as two spans, "Working 2m 12s"; `workingTipLine` is its one-line name, "Working: 2m 12s"), the project under them; the clock runs only while a working row shows. A click opens the thread. Four rows, then "N more", which opens the rest in place (a scroller at `max-h-[45vh]`) and reads "Show less" while open |
 | Foot | `RailFoot` in `chrome/ProjectRail.tsx` (`railFootRows`) | under one 1px hairline: Working when it has rows (`working`), then 16px under it the rows, in order: the sign-in row while this machine has no Claude or Codex account, the update row (the desktop app only), the Hosts row with two or more hosts, the Away row, Settings (Tooltip ⌘,), then the usage meter. The same foot, without Working, sits under the workspace column while the rail is collapsed (that column lists the threads), where the Go menu and the title bar's stand-ins reach Inbox and Notes |
-| Update row | `chrome/UpdateRow.tsx` (`updateRowState`) | one 28px RailRow, always there in the desktop app and absent at /ui: "Check for updates" with the running version at its end in 12px muted `tabular-nums` ("v1.0.307", which yields to the label in a rail under 15rem, so not at the default 200px, and stays in the row's name; asks the feed, as the app menu and Settings, General do), "Checking…" with the `Spinner` in the glyph slot and disabled while a check the person asked for runs (the background probes leave the row still), "Updated to 1.0.N" (opens What's new, ✕ dismisses), "Update to 1.0.N" (in a rail under 15rem the " to 1.0.N" yields whole, "Updated" and "Update", and stays in the row's name) or "Retry update" (installs; "The last download failed" on hover, never the updater's own text; What's new as the hover action when there are notes), "Downloading" with its percentage, "Restart to update"; the glyph is the accent while there is something to do, no tinted fill |
+| Update row | `chrome/UpdateRow.tsx` (`updateRowState`) | one 28px RailRow, always there in the desktop app and absent at /ui: "Check for updates" with the running version at its end in 12px muted `tabular-nums` ("v1.0.307", which yields to the label in a rail under 15rem, so not at the default 200px, and stays in the row's name; asks the feed, as the app menu and Settings, General do), "Checking…" with the `Spinner` in the glyph slot and disabled while a check the person asked for runs (the background probes leave the row still), "Updated to 1.0.N" (the check, where the rows with something to do wear the download glyph; opens What's new, ✕ dismisses), "Update to 1.0.N" (in a rail under 15rem the " to 1.0.N" yields whole, "Updated" and "Update", and stays in the row's name) or "Retry update" (installs; "The last download failed" on hover, never the updater's own text; What's new as the hover action when there are notes), "Downloading" with its percentage, "Restart to update"; the glyph is the accent while there is something to do, no tinted fill |
 | Hosts row | `HostsRow` in `chrome/HostRows.tsx` | only with two or more hosts: one 28px row ending in a 6px dot per host (`toneOf`), quiet while its host is well (`bg-muted-foreground`, half that while stale) and coloured only in trouble: amber while slow, connecting or reconnecting (the amber spinner in its place while it reconnects), red when refused, faint otherwise; its aria-label names each host and its state. A click opens a `DropdownMenu` with a submenu per host (the `HostGlyph`, bare and centred in the menu's 14px glyph column, the name taking the free room, then the state and the `+N` deploy drift against the chevron; the state is "Connected", "Catching up" or "Slow to answer" while the link is open, else `linkWords` without the host's name, `linkFact`: "No longer accepts this key", "Reconnecting…", "Offline"), holding Switch to <host> (not for the host on screen), Add workspace here…, Mark all read, Pause all, Resume all, Stop all and Archive done, then Settings, which opens that computer's own page (Sharing for this computer; `computerPageOf`, lib/computerPage.ts). The line over a composer whose computer refused its key opens the same page from Pair again. A host's boot resume is a sonner toast ("7 threads resumed after restart", the host's name under it with two or more hosts; `useBootResumeToasts`) |
 | Away row | `AwayRow` in `chrome/AwayRow.tsx` on `lib/away.ts` | right above Settings, in both feet. The whole 28px row is one switch named "Away from computer" (`role="switch"`, `aria-checked`; Space and Enter flip it): the moon, the 13px label, and at its end a still 32×18 track (switch-track.ts). Off, the label is "Away" (the whole name is cut at the rail's default 200px) and reads muted like the foot's other rows; on, the track fills `warning`, the moon turns `warning` and the label foreground. While a host has Work on, the label names the kinds away: "Away for Code", "Away for Work" or "Away for both"; the switch keeps the name "Away from computer". The flip shows at once and rolls back with a toast ("Couldn't change Away") when the host refuses. Its tooltip: off "Away from computer: when on, threads decide without asking you", on "Away since 2:14 PM". It reads this machine's host (the page's host at /ui); the Threads menu's Away from Computer is the same switch, ticked while on |
 | Return toast | `AwayReturn` in `chrome/AwayReturn.tsx`, mounted once with the app's toasts | when a live `away` push turns a host's Away from on to off (never the state read at a link's open, so never at boot), each host's tally that lands in the next 3 s joins one sonner toast (`away-return`): "Decided without you in 4 threads" ("in 1 thread"), with Review. No decisions anywhere, no toast. Review opens `AwayReviewDialog` (the dialogs chunk): a `Modal` "Decided while you were away", one `ItemButton` per thread, most decisions first: its `TypeGlyph`, title, `HostGlyph` with two or more hosts, and "3 decisions" muted `tabular-nums`. A click opens the thread and closes the list |
@@ -1056,7 +1056,8 @@ effort regular; its accessible name the uncut "Claude Opus 5.5, High effort") an
 the model menu: providers (it opens on the tab last chosen, Favorites at first; with no star, on the
 current model's provider instead), search, the list, then the model's settings as
 rows (Effort, Context, Speed only for the tiers the serving CLI lists, any
-other setting). Its model rows are menu rows (`MENU_ROW` at 28px, `rounded-lg`
+other setting). Its rows name a model as the catalog does, with no maker ("Fable 5.2", the built-in
+list too), and a whole name said with no mark beside it adds the maker ("Claude Fable 5.2", `modelLabel`). Its model rows are menu rows (`MENU_ROW` at 28px, `rounded-lg`
 concentric with the 12px panel's 4px inset), and the group heading, the no-match
 line and the setting rows share their 12px inset. In the Claude and Codex tabs a maker's models (Meta's, the
 catalog's `vendor` rows) follow the harness's own under the maker's name in
@@ -1245,8 +1246,8 @@ hunk. The tab names the file and shows its dirty mark (chrome/SurfaceTabs.tsx);
 nothing under it repeats them.
 
 - **The note**, when the app shows a file instead of handing it to the
-  editor ("Mac copy differs: on branch X here", "No Mac copy", a launcher
-  that failed), is one `Alert` above everything (surfaces/FileNoteBar.tsx):
+  editor ("This Mac's copy is different, on branch X", "No copy on this Mac", a launcher
+  that failed: "Couldn't open it in IntelliJ IDEA. Opened here instead.", never the thrown text), is one `Alert` above everything (surfaces/FileNoteBar.tsx):
   info for a read-only preview, error for a launcher that fell back or an
   action that failed, "Read-only" after the text, the one action at the end.
 - **The conflict bar** (surfaces/ConflictBar.tsx, the note's shape through
@@ -1636,7 +1637,8 @@ clock, a done one in the done tone, nothing under 1.5 s); folded, the
 header names the running task on one cut line. Then one line per approval or question
 waiting on the person (opening the chat) and the last failure (or
 Stopped), then the files each task changed (`ChangeRows`: a row per file
-under its task's name, shell-made ones marked `shell`, each one
+under its task's name (13px muted, a step under the section's 12px
+medium "Changes"), shell-made ones marked `shell`, each one
 `ItemButton` on `ROW_PRESS` ending in its `Counts` and the chevron 8px
 after, opening its diff preview in place with Open diff under it), then
 the closing report.
@@ -1810,7 +1812,11 @@ brought into view even when it moved section meanwhile.
   all of them, "3/7", 12px muted and `tabular-nums`, the same count the
   rail card's master line ends in), then three equal 28px icon buttons
   2px apart, the last on the 12px right edge: ⋯ ("Batch actions"), +
-  ("Add thread") and the conversation toggle. The master's summary
+  ("Add thread") and the conversation toggle. ⋯ is drawn only for a key
+  that may `session.batch` on the master's host, + only for one that may
+  `session.create` or `batch.adopt` (and then only the rows it may use);
+  both are held in place while that host is away, the link's words their
+  tooltip, as the foot's Edit… is. The master's summary
   (`rules.summary`) is not on the board: the rules dialog shows it and
   the master says it in its chat. The ⋯ menu is the batch's fleet switches
   (`master/boardActions.ts`), counting the rows of every host: Pause all
@@ -1827,8 +1833,8 @@ brought into view even when it moved section meanwhile.
   rows of another host its answer did not cover, that host's own
   `session.batch` (`remoteArchivePlan`: under all the live ones stopped
   first); the rows leave from the push. A row with nothing to act on is
-  disabled. + is a menu: New thread… (the add sheet) and Add
-  existing thread… (`master/AdoptThreadDialog.tsx`: the project's
+  disabled. + is a menu: New batch thread… (the add sheet; the thread
+  menu's name for it) and Add existing thread… (`master/AdoptThreadDialog.tsx`: the project's
   unarchived root threads in no batch and no master themselves, on this
   host and on the project's paired copies elsewhere (`pairedProjectIds`,
   lib/projectPairs.ts), one checkbox row each (the tinted type glyph, the title,
@@ -1893,7 +1899,10 @@ brought into view even when it moved section meanwhile.
   `blocked` names says why ("Ended its turn without completing",
   `blockedReason` in src/shared/batchWords.ts, given its capital). A
   detail is written as the host says it (a sentence with its capital, a
-  name or a count as it is) and ends without a full stop.
+  name or a count as it is) and ends without a full stop. A settled row
+  with nothing to say there (no word, no detail, no tally: a Done chat
+  that never lands, `lineTwoEmpty`) draws line one alone, 32px, its state
+  word kept for readers; the board's estimate knows it (`oneLineRow`).
   **The task bar.** An implementation or orchestration row with a task
   list (`taskBar` in master/rowBody.ts; the digest's `todos`, the tally's
   source) has a third 16px line in the title's column while it is not yet
@@ -2118,10 +2127,11 @@ brought into view even when it moved section meanwhile.
   off while a step has no name or a shell step no command; it is
   `batch.setRules` with the whole list, the foot takes the change from the
   push.
-- **New thread…** opens the add sheet (Modal md, `master/AddThreadDialog.tsx`):
+- **New batch thread…** opens the add sheet (Modal md, `master/AddThreadDialog.tsx`):
   "Add a thread to <batch>", the brief first (focused; ⌘↩ adds), then one
   `FieldRow` per choice, label left and control right: Type (a
-  `ChoiceToggle` of every type, Chat first, Implement chosen), Model (the app's picker, every catalog model), Effort
+  `ChoiceToggle` of every type, Chat first, Implement chosen, wrapping
+  onto a second line where the dialog is too narrow, every type whole), Model (the app's picker, every catalog model), Effort
   (a `ChoiceToggle` of the model's own ladder, whole), Context (200k / 1M,
   Claude only), Host (a `ChoiceToggle` over the master's own host and every saved host whose link is
   open, `linkedHosts`, the master's first, the row hidden with one host;

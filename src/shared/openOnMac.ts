@@ -92,14 +92,15 @@ export function decideOpen(evidence: OpenEvidence): OpenDecision {
 
 /** The one-line note the preview's header carries for a decision that did not open the editor. */
 export function decisionNote(decision: OpenDecision, branch: string | null, hostName: string): string | null {
-  const here = branch ? `: on branch ${branch} here` : ''
+  // The branch is this Mac's checkout's, said after the fact it qualifies.
+  const onBranch = branch ? `, on branch ${branch}` : ''
   switch (decision.kind) {
     case 'local':
       return null
     case 'missing':
-      return `No Mac copy${here}`
+      return `No copy on this Mac${onBranch}`
     case 'differs':
-      return `Mac copy differs${here}`
+      return `This Mac's copy is different${onBranch}`
     case 'absent':
       return decision.localPath ? 'Not checked out on the Mac' : `Only on ${hostName}`
   }

@@ -132,7 +132,7 @@ export function AgentDetailBody({
             aria-invalid={failure ? true : undefined}
             className="min-w-0 flex-1"
           />
-          <Button type="submit" size="icon" aria-label="Send" disabled={!text.trim() || !session || sending}>
+          <Button type="submit" size="icon-sm" rounded aria-label="Send" disabled={!text.trim() || !session || sending}>
             <ArrowUp />
           </Button>
         </div>

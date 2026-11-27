@@ -27,6 +27,14 @@ describe("AgentDetailHeader", () => {
     );
     expect(container.querySelector('[data-slot="status-mark"]')!.textContent).toBe("Needs youApprove Bash");
   });
+  it("a long question keeps the glyph on its first line, by the word", () => {
+    const { container } = render(
+      <AgentDetailHeader meta={FLEET[0].meta} status={{ state: "waiting", detail: "Should the phone's cache use bun:sqlite through the bridge, or GRDB with its own migrations?", phrase: false }} parts={[]} />,
+    );
+    const mark = container.querySelector<HTMLElement>('[data-slot="status-mark"]')!.className.split(" ");
+    // The glyph's own box centres itself (`self-center`): the sheet's mark puts it at the top, 1px down the 16px line.
+    expect(mark).toEqual(expect.arrayContaining(["items-start", "[&>[data-slot=status-glyph]]:self-start", "[&>[data-slot=status-glyph]]:mt-px"]));
+  });
   it("mounts no tooltip while the name fits", async () => {
     await act(async () => {
       await tooltipChunk.load();

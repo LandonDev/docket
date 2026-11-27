@@ -4,6 +4,7 @@ import type { PaceSeries, StatsBundle, StatsStatus } from "@shared/aliaxStats";
 import { PageEmpty, PageSection } from "@renderer/components/page";
 import { Empty, EmptyDescription, EmptyTitle } from "@renderer/components/ui/empty";
 import { Skeleton } from "@renderer/components/ui/skeleton";
+import { thisDesktopInLine } from "@renderer/lib/native";
 import { AXIS, BAR, BAR_CURSOR, CHART_HEIGHT, ChartFrame, GRID, HBAR, LINE, LINE_CURSOR } from "@aliax/charts/chart";
 import { ChartLegend } from "@aliax/charts/legend";
 import { NEUTRAL_SERIES, SERIES, SERVICE_SERIES } from "@aliax/charts/palette";
@@ -63,6 +64,13 @@ function NoData({ named = false }: { named?: boolean }) {
   return <PageEmpty>{named ? "Nothing yet" : "Nothing in the last 30 days"}</PageEmpty>;
 }
 
+/** A value plot's margin: 8px over the top gridline holds the top half of its centred 12px tick ("100%", "100k"),
+ *  which the chart's SVG would cut at 4; the chart's height is unchanged, the plot gives the room. */
+export const PLOT_MARGIN = { top: 8, right: 12, bottom: 0, left: 0 } as const;
+/** A value axis: 44px, the ticks 8px from the plot. Recharts sets a tick a tick line's length further out even with
+ *  no line drawn, so its length is 0: "100%" has the whole 36px, room on a wider fallback font too. */
+export const VALUE_AXIS = { ...AXIS, width: 44, tickSize: 0 } as const;
+
 function PaceChart({ series }: { series: PaceSeries }) {
   // The cycle is drawn in its provider's colour, as on every other chart.
   const color = SERVICE_SERIES[series.service as keyof typeof SERVICE_SERIES] ?? SERIES[0];
@@ -76,10 +84,10 @@ function PaceChart({ series }: { series: PaceSeries }) {
   return (
     <>
       <ChartFrame label={paceTitle(series)}>
-        <ComposedChart data={data} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
+        <ComposedChart data={data} margin={PLOT_MARGIN}>
           <CartesianGrid {...GRID} />
           <XAxis {...AXIS} dataKey="hours" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(v: number) => (weekly ? `${Math.round(v / 24)}d` : `${v}h`)} minTickGap={24} />
-          <YAxis {...AXIS} domain={[0, 100]} width={44} tickFormatter={percent} />
+          <YAxis {...VALUE_AXIS} domain={[0, 100]} tickFormatter={percent} />
           <ChartTooltip
             cursor={LINE_CURSOR}
             isAnimationActive={false}
@@ -187,7 +195,7 @@ function StatsSkeleton() {
 }
 
 /**
- * History from this machine's session logs, one chart per section, each
+ * History from this desktop's session logs, one chart per section, each
  * directly under its heading. Data in, sections out: StatsPage loads.
  */
 /** The room one day label takes on its axis: "Oct 30" in 12px tabular figures and the gap to the next. */
@@ -224,7 +232,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
     return (
       <Empty>
         <EmptyTitle>Nothing to show yet</EmptyTitle>
-        <EmptyDescription>No Claude Code or Codex session logs on this machine.</EmptyDescription>
+        <EmptyDescription>No Claude Code or Codex session logs on {thisDesktopInLine()}.</EmptyDescription>
       </Empty>
     );
   }
@@ -273,10 +281,10 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
             />
             <ChartFrame label="Daily output">
               {(width) => (
-              <BarChart data={data.daily} barGap={2} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
+              <BarChart data={data.daily} barGap={2} margin={PLOT_MARGIN}>
                 <CartesianGrid {...GRID} />
                 <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(data.daily.length, width)} />
-                <YAxis {...AXIS} width={44} tickFormatter={compactTick} />
+                <YAxis {...VALUE_AXIS} tickFormatter={compactTick} />
                 <ChartTooltip cursor={BAR_CURSOR} isAnimationActive={false} content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: compact })} />
                 <Bar {...BAR} dataKey="claude" name="Claude Code" fill={SERVICE_SERIES["claude-code"]} />
                 <Bar {...BAR} dataKey="codex" name="Codex" fill={SERVICE_SERIES.codex} />
@@ -295,10 +303,10 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
             <ChartLegend items={mix.series.map((m) => ({ label: m.key === OTHER_KEY ? m.name : modelLabel(m.name), color: m.color }))} />
             <ChartFrame label="Model mix">
               {(width) => (
-              <AreaChart data={mix.rows} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
+              <AreaChart data={mix.rows} margin={PLOT_MARGIN}>
                 <CartesianGrid {...GRID} />
                 <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(mix.rows.length, width)} />
-                <YAxis {...AXIS} width={44} tickFormatter={compactTick} />
+                <YAxis {...VALUE_AXIS} tickFormatter={compactTick} />
                 <ChartTooltip
                   cursor={LINE_CURSOR}
                   isAnimationActive={false}
@@ -324,10 +332,10 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
         ) : (
           <ChartFrame label="Cache hit rate">
             {(width) => (
-            <LineChart data={data.cacheDaily} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
+            <LineChart data={data.cacheDaily} margin={PLOT_MARGIN}>
               <CartesianGrid {...GRID} />
               <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(data.cacheDaily.length, width)} />
-              <YAxis {...AXIS} domain={[0, 100]} width={44} tickFormatter={percent} />
+              <YAxis {...VALUE_AXIS} domain={[0, 100]} tickFormatter={percent} />
               <ChartTooltip cursor={LINE_CURSOR} isAnimationActive={false} content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: percent })} />
               <Line {...LINE} dataKey="hit" name="Hit rate" stroke={NEUTRAL_SERIES} />
             </LineChart>
