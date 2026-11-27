@@ -1,9 +1,9 @@
 import { createContext, useContext, useId, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@renderer/lib/cn";
+import { Bone, Bones } from "./bones";
 import { Item, ItemActions, ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "./ui/item";
 import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "./ui/press";
-import { Skeleton } from "./ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { PAGE_SCROLLER, PAGE_WIDTH } from "./pageLayout";
 
@@ -273,11 +273,17 @@ type SkeletonRow = { description?: boolean | number; media?: boolean; control?: 
 
 const lineCount = (description: boolean | number | undefined): number => (typeof description === "number" ? description : description ? 1 : 0);
 
-/** Rows in their shape while a section's values load: each is a `PageRow`'s
- *  box (the 20px title line, 2px, the 16px description line, the control at
- *  its own size, 12px above and below, the hairline between neighbours), so
- *  nothing moves when the rows land. `rows` is a count of rows alike (the
- *  `description`, `media` and `control` given) or each row's own shape. */
+/** Sample words for a loading row: nobody reads them, their lengths are a setting's title and its line. */
+const SAMPLE_TITLES = ["Open links in", "Default model", "Ask before a write", "Keep this computer awake"];
+const SAMPLE_LINES = ["What this setting changes, said in a line", "Where it applies, and to which threads"];
+
+/** Rows in their shape while a section's values load, drawn in bones
+ *  (components/bones.tsx): each is a `PageRow`'s box with a row's own title
+ *  and description parts holding sample words, the control at its own size,
+ *  12px above and below, the hairline between neighbours, so nothing moves
+ *  when the rows land. `rows` is a count of rows alike (the `description`,
+ *  `media` and `control` given) or each row's own shape. A section that can
+ *  draw its real rows from a sample does that instead, in a `Region`. */
 function PageRowsSkeleton({
   rows = 2,
   description = false,
@@ -286,39 +292,40 @@ function PageRowsSkeleton({
 }: { rows?: number | readonly SkeletonRow[] } & SkeletonRow) {
   const shapes: readonly SkeletonRow[] = typeof rows === "number" ? Array.from({ length: rows }, () => ({ description, media, control })) : rows;
   return (
+    // The box names the wait; the bones inside it say nothing more (an empty label).
     <div aria-busy="true" aria-label="Loading" className="flex flex-col">
-      {shapes.map((shape, i) => {
-        const end = shape.control ?? control;
-        return (
-          <div
-            key={i}
-            data-slot="page-row-skeleton"
-            data-control={end}
-            className={cn(
-              "flex items-center gap-3 border-t border-transparent py-3 [[data-slot=page-row-skeleton]+&]:border-border",
-              shape.wide ? "@max-[30rem]/page:flex-wrap @max-[30rem]/page:gap-y-2" : null,
-            )}
-          >
-            {(shape.media ?? media) ? <Skeleton className="size-4 shrink-0 rounded-sm" /> : null}
-            <div className={cn("flex min-w-0 flex-1 flex-col gap-0.5", shape.wide ? "@max-[30rem]/page:basis-full" : null)}>
-              <div className="flex h-5 items-center">
-                <Skeleton className="h-3.5 w-32" />
-              </div>
-              {Array.from({ length: lineCount(shape.description ?? description) }, (_, line) => (
-                <div key={line} className={cn("flex h-4 items-center", line > 0 ? "mt-0.5" : null)}>
-                  <Skeleton className={line > 0 ? "h-3 w-64" : "h-3 w-48"} />
-                </div>
-              ))}
+      <Bones label="">
+        {shapes.map((shape, i) => {
+          const end = shape.control ?? control;
+          return (
+            <div
+              key={i}
+              data-slot="page-row-skeleton"
+              data-control={end}
+              className={cn(
+                "flex items-center gap-3 border-t border-transparent py-3 [[data-slot=page-row-skeleton]+&]:border-border",
+                shape.wide ? "@max-[30rem]/page:flex-wrap @max-[30rem]/page:gap-y-2" : null,
+              )}
+            >
+              {(shape.media ?? media) ? <Bone className="size-4 rounded-sm" /> : null}
+              <ItemContent className={cn("min-w-0", shape.wide ? "@max-[30rem]/page:basis-full" : null)}>
+                {/* One line, cut where the row is narrow (a phone's page): a wrapped sample would be a bar a line. */}
+                <ItemTitle className="max-w-full">
+                  <span className="truncate">{SAMPLE_TITLES[i % SAMPLE_TITLES.length]}</span>
+                </ItemTitle>
+                {Array.from({ length: lineCount(shape.description ?? description) }, (_, line) => (
+                  <ItemDescription key={line} className={cn("line-clamp-1", line > 0 ? "mt-0.5" : null)}>
+                    {SAMPLE_LINES[line % SAMPLE_LINES.length]}
+                  </ItemDescription>
+                ))}
+              </ItemContent>
+              {end === "none" ? null : (
+                <Bone data-skeleton-control className={cn(SKELETON_CONTROL[end], shape.controlClassName, shape.wide ? "@max-[30rem]/page:w-full" : null)} />
+              )}
             </div>
-            {end === "none" ? null : (
-              <Skeleton
-                data-skeleton-control
-                className={cn("shrink-0", SKELETON_CONTROL[end], shape.controlClassName, shape.wide ? "@max-[30rem]/page:w-full" : null)}
-              />
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </Bones>
     </div>
   );
 }

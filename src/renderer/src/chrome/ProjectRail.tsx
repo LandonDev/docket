@@ -116,17 +116,25 @@ import { shortcutFor } from "../lib/settings";
 
 /** The Customize dialog loads with the click (its menu warms it). */
 const CustomizeGroupDialog = customizeChunk.surface("CustomizeGroupDialog");
-// The settings list rides the settings chunk with the pages it opens: it draws only while Settings is open.
+// The settings list rides the settings chunk with the pages it opens: it draws only while Settings is open. While the
+// chunk lands its rows are drawn in bones, each in a rail row's box: 28px, its 16px glyph, 13px words.
 const SettingsNav = settingsChunk.surface(
   "SettingsNav",
   <div aria-hidden className="flex min-h-0 flex-1 flex-col gap-1 px-2 pt-7">
-    {[0, 1, 2, 3, 4].map((i) => (
-      <Skeleton key={i} className="h-7 rounded-md" />
-    ))}
+    <Bones label="">
+      <div className="flex flex-col gap-1">
+        {["General", "Appearance", "New threads", "Accounts", "Notifications"].map((label) => (
+          <div key={label} className="flex h-7 items-center gap-2 px-3 text-[13px]">
+            <Bone className="size-4 rounded-sm" />
+            <span className="min-w-0 truncate">{label}</span>
+          </div>
+        ))}
+      </div>
+    </Bones>
   </div>,
 );
 import { Kbd } from "../components/ui/kbd";
-import { Skeleton } from "../components/ui/skeleton";
+import { Bone, Bones } from "../components/bones";
 import { StatusMark, UnreadMark } from "../components/ui/status";
 import { isWorkWorkspace } from "../lib/workRow";
 

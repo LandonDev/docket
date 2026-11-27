@@ -230,9 +230,18 @@ describe("ChangesPanel", () => {
     expect((screen.getByRole("button", { name: "Branch feat" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("loads as skeleton rows, and an empty checkout is one Empty", async () => {
+  it("loads as bones drawn from real rows given a sample, and an empty checkout is one Empty", async () => {
     const { rerender } = mount();
-    expect(screen.getByLabelText("Loading changes")).toBeTruthy();
+    // The branch's row: the name's own element, a sample name in its type.
+    const top = document.querySelector<HTMLElement>('[data-slot="changes-section"] > [data-region][data-bones]')!;
+    expect(top.querySelector("[skullet-loading] span.font-medium")!.textContent).toBe("main");
+    // The list: three real file rows at rest, unseen and inert, with no actions drawn and nothing a reader or a key reaches.
+    const rows = document.querySelector<HTMLElement>('[data-slot="changes-scroller"] [data-region][data-bones]')!;
+    expect(rows.querySelector("[skullet-loading]")!.getAttribute("aria-hidden")).toBe("true");
+    expect(rows.querySelectorAll("[skullet-loading] [data-menu-id]")).toHaveLength(3);
+    expect(rows.querySelector("[data-change-actions]")).toBeNull();
+    expect(screen.queryAllByRole("button", { name: /^Open the diff of/ })).toHaveLength(0);
+    expect(document.querySelector('[data-slot="changes-section"] [data-slot="skeleton"]')).toBeNull();
     h.index = indexOf();
     rerender(<ChangesPanel cwd="/p" onOpenDiff={onOpenDiff} />);
     await flush();
@@ -408,6 +417,23 @@ describe("ChangesPanel", () => {
     expect(h.git.gitStageContents).toHaveBeenCalledWith("local", "/p", "a.ts", "staged text");
   });
 
+  it("a fold waits on its diff as one hunk row drawn from a sample, then lands as its hunks", async () => {
+    h.index = indexOf({ files: [file("a.ts")] });
+    let answer = (_diff: { original: string; current: string; binary: boolean; tooLarge: boolean }) => {};
+    h.git.gitFileDiff.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    mount();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Show hunks of a.ts" }));
+    await act(() => new Promise((r) => setTimeout(r, 20)));
+    const wait = document.querySelector<HTMLElement>('[data-region][data-bones] [skullet-loading]')!;
+    expect(wait.textContent).toContain("L12–18");
+    expect(wait.querySelector("[data-slot=counts]")).toBeTruthy();
+    await act(async () => answer({ original: "a\nb\n", current: "a\nB\n", binary: false, tooLarge: false }));
+    await act(() => new Promise((r) => setTimeout(r, 20)));
+    expect(screen.getByText("L2")).toBeTruthy();
+    expect(screen.queryByText("L12–18")).toBeNull();
+  });
+
   it("a staged modified file folds open into its hunks between HEAD and the index", async () => {
     h.index = indexOf({ files: [file("a.ts", { staged: true, unstaged: false })] });
     mount();
@@ -561,9 +587,8 @@ describe("ChangesPanel", () => {
     const { rerender } = mount();
     await flush();
     expect(screen.getByRole("alert").textContent).toContain("Couldn't read the changes");
-    expect(screen.queryByLabelText("Loading changes")).toBeNull();
-    // No branch row's bone over the red line: nothing is on its way.
-    expect(document.querySelector('[data-slot="changes-section"] [data-slot="skeleton"]')).toBeNull();
+    // No bones over the red line, the branch row's nor the list's: nothing is on its way.
+    expect(document.querySelector('[data-slot="changes-section"] [data-bones]')).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(h.refresh).toHaveBeenCalled();
     h.index = indexOf({ files: [file("a.ts")] });

@@ -11,7 +11,7 @@ import { Facts } from "../surfaces/settings/hosts/Facts";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
 import { ChoiceCombobox } from "../components/choice-combobox";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton } from "../components/page";
-import { Skeleton } from "../components/ui/skeleton";
+import { Loaded } from "../components/bones";
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
 import { Field, FieldRow } from "./DialogField";
@@ -275,7 +275,14 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         {/* The catalog's failure is said here, once, with Retry; its late answer still fills the row and the sheet. */}
         <SettingRow
           id="sub.models"
-          description={catalog ? `${allowed} of ${models.length} allowed` : catalogFailure ? undefined : <Skeleton className="inline-block h-3 w-28 align-middle" />}
+          description={
+            catalog || !catalogFailure ? (
+              // While the catalog is read the count is drawn from a sample count, in the line's own type.
+              <Loaded inline data={catalog ? `${allowed} of ${models.length} allowed` : null} sample="12 of 34 allowed" label="">
+                {(words) => words}
+              </Loaded>
+            ) : undefined
+          }
           error={catalogFailure ? catalogWords(catalogFailure.error) : undefined}
           onOpen={() => setModelsOpen(true)}
           openLabel="Models agents may run on"
@@ -625,6 +632,7 @@ function RuleRow({
   const model = provider?.models.find((m) => m.id === modelId);
   const approved = modelApproved(rules, rule.provider, modelId);
   const leadOnly = !approved && modelApproved(rules, rule.provider, modelId, "orchestrator");
+  const modelWords = model ? modelName(rule.provider, model.id, model.label) : catalog || catalogFailed ? (modelId ? modelName(rule.provider, modelId, modelId) : "Default") : null;
   const menu: MenuRow[] = [
     { kind: "item", id: "up", label: "Move up", disabled: first },
     { kind: "item", id: "down", label: "Move down", disabled: last },
@@ -638,14 +646,10 @@ function RuleRow({
         <Facts
           parts={[
             rule.enabled ? null : "Off",
-            // While the catalog is read the model's words wait as a bone: never a raw id.
-            model ? (
-              modelName(rule.provider, model.id, model.label)
-            ) : catalog || catalogFailed ? (
-              modelId ? modelName(rule.provider, modelId, modelId) : "Default"
-            ) : (
-              <Skeleton data-model-bone="" className="inline-block h-3 w-24 align-middle" />
-            ),
+            // While the catalog is read the model's words are drawn from a sample name: never a raw id.
+            <Loaded inline data={modelWords} sample="Opus 5.5" label="" bones={(drawn) => <span data-model-bone="">{drawn}</span>}>
+              {(words) => words}
+            </Loaded>,
             model?.reasoning.length ? EFFORT_LABELS[rule.reasoning] : null,
             leadOnly ? "Lead threads only" : !approved ? <span className="text-warning">Not allowed</span> : null,
           ]}

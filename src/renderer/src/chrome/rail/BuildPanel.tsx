@@ -9,7 +9,7 @@ import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { Item, ItemActions, ItemContent } from "@renderer/components/ui/item";
 import { Progress } from "@renderer/components/ui/progress";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Region } from "@renderer/components/bones";
 import { StatusMark, type ThreadState } from "@renderer/components/ui/status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
@@ -324,21 +324,22 @@ function StatusRow({ run, own, chosen, effective }: { run: BuildRun | null; own:
   const { ref: commandRef, cut } = useTruncated(command ?? "");
   const tip = cut && origin ? `${origin}: ${command}` : cut ? command : origin;
   const commandText = <span ref={commandRef} className="min-w-0 truncate font-mono" data-build-command />;
-  const commandLine = command ? (
+  // While the command is read, its own line holds a sample command in the command's type.
+  const commandLine = (
     <span className="flex min-w-0 items-baseline text-xs text-muted-foreground">
-      {tip ? (
-        <Tooltip>
-          <TooltipTrigger render={commandText}>{command}</TooltipTrigger>
-          <TooltipContent>{tip}</TooltipContent>
-        </Tooltip>
-      ) : (
-        <span ref={commandRef} className="min-w-0 truncate font-mono" data-build-command>
-          {command}
-        </span>
-      )}
+      <Region inline loading={!command} label="" className="min-w-0" bones={<span className="min-w-0 truncate font-mono">./gradlew shadowJar</span>}>
+        {!command ? null : tip ? (
+          <Tooltip>
+            <TooltipTrigger render={commandText}>{command}</TooltipTrigger>
+            <TooltipContent>{tip}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <span ref={commandRef} className="min-w-0 truncate font-mono" data-build-command>
+            {command}
+          </span>
+        )}
+      </Region>
     </span>
-  ) : (
-    <Skeleton className="h-3 w-40" />
   );
   if (!run) {
     return (

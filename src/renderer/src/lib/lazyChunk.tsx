@@ -16,8 +16,12 @@ import { Button } from "@renderer/components/ui/button";
  * one of these (surfaces/chunks.ts lists them).
  *
  * `surface(name, fallback)` is React.lazy plus a Suspense boundary; the
- * fallback is the surface's own skeleton (SurfaceSkeleton), so the chrome
- * around it paints with the click. `preload()` runs the import without
+ * fallback is the surface's own skeleton (SurfaceSkeleton, drawn in bones:
+ * components/bones.tsx), so the chrome around it paints with the click. The
+ * bones wait 150 ms before they show, so a chunk that lands sooner shows
+ * none; when it lands later, a copy of the bones fades out over the surface
+ * (components/bonesBridge.ts), or the surface's own bones take their place
+ * with no second wait. `preload()` runs the import without
  * rendering: a trigger's hover or focus (`intent`) and an idle slot after
  * the first thread opens (`preloadWhenIdle`) warm the chunk, so a click on
  * a warm machine never shows the fallback at all. Once the module has
@@ -161,7 +165,7 @@ interface BoundaryProps {
 
 /**
  * One surface's error boundary: on a throw, the surface's fallback held
- * still (no pulse: nothing is loading) with one line and Retry over it, or
+ * still (its bones do not sweep: nothing is loading) with one line and Retry over it, or
  * what `failed` draws. Retry asks the owner to replace the lazy, then
  * remounts the children.
  */
@@ -187,7 +191,7 @@ export class ChunkBoundary extends Component<BoundaryProps, { failed: boolean; a
     return (
       <div
         data-chunk-failed={this.props.name}
-        className="relative flex h-full min-h-0 w-full min-w-0 flex-1 flex-col [&_[data-surface-skeleton]]:animate-none"
+        className="relative flex h-full min-h-0 w-full min-w-0 flex-1 flex-col [--skullet-animation:none]"
       >
         {this.props.fallback}
         <div role="alert" className="absolute inset-0 flex items-center justify-center gap-3">

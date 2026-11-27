@@ -19,15 +19,17 @@ describe("RemoveProjectDialog", () => {
     const alert = screen.getByRole("alertdialog");
     expect(screen.getByText("Remove “Alpha”?")).toBeTruthy();
     expect(alert.textContent).toContain("Files on disk stay.");
-    // Counting: a bone in the count's line, and Remove spins, not pressable.
-    expect(alert.querySelector("[data-confirm-note] [data-remove-count]")).toBeTruthy();
+    // Counting: the count's line drawn from a sample count, unseen and inert, and Remove spins, not pressable.
+    const sample = alert.querySelector("[data-confirm-note] [data-region][data-inline][data-bones] [skullet-loading] [data-remove-count]")!;
+    expect(sample.textContent).toBe("Its 12 threads are deleted.");
     const verb = screen.getAllByRole("button").find((b) => b.textContent?.includes("Remove"))!;
     expect(verb.hasAttribute("disabled") || verb.getAttribute("aria-disabled") === "true").toBe(true);
     fireEvent.click(verb);
     expect(onConfirm).not.toHaveBeenCalled();
-    await act(async () => resolveCount(12));
-    expect(alert.querySelector("[data-remove-count]")).toBeNull();
-    expect(alert.querySelector("[data-confirm-note]")!.textContent).toBe("Its 12 threads are deleted.");
+    await act(async () => resolveCount(7));
+    // The leaving bones go a tick after the count lands.
+    await waitFor(() => expect(alert.querySelector("[data-remove-count]")).toBeNull());
+    expect(alert.querySelector("[data-confirm-note]")!.textContent).toBe("Its 7 threads are deleted.");
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Remove" }));

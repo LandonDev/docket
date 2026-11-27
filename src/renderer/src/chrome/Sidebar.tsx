@@ -57,20 +57,28 @@ import { dialogsChunk, workShellChunk } from "../surfaces/chunks";
 import { WORK_CHATS } from "../lib/tcserver/workspaces";
 import { useWorkOn } from "../lib/workSwitch";
 import { useRailFold } from "../lib/railFold";
-import { Skeleton } from "../components/ui/skeleton";
+import { Bone, Bones } from "../components/bones";
 import { LoadingLine } from "../surfaces/SurfaceSkeleton";
 
 // Opened from the workspace menu; mounted only while open (chrome/dialogs.ts).
 const NewProjectDialog = dialogsChunk.surface("NewProjectDialog");
 const ThreadDefaultsDialog = dialogsChunk.surface("ThreadDefaultsDialog");
 const PreambleDialog = dialogsChunk.surface("PreambleDialog");
-// A Work workspace's four rows over its projects (work/shell/WorkColumn.tsx); four row-shaped bars while the chunk lands.
+// A Work workspace's rows over its projects (work/shell/WorkColumn.tsx): its four daily views and More. While the
+// chunk lands they are drawn in bones, each in a rail row's box: 28px, its 16px glyph, 13px words.
 const WorkColumnHead = workShellChunk.surface(
   "WorkColumnHead",
   <div aria-hidden className="flex flex-col gap-1 px-2 pt-2 pb-2">
-    {[0, 1, 2, 3].map((i) => (
-      <Skeleton key={i} className="h-7 rounded-md" />
-    ))}
+    <Bones label="">
+      <div className="flex flex-col gap-1">
+        {["Mail", "Tasks", "Agenda", "Messages", "More"].map((label) => (
+          <div key={label} className="flex h-7 items-center gap-2 px-3 text-[13px]">
+            <Bone className="size-4 rounded-sm" />
+            <span className="min-w-0 truncate">{label}</span>
+          </div>
+        ))}
+      </div>
+    </Bones>
   </div>,
 );
 

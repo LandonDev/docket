@@ -180,6 +180,18 @@ describe("ChangesAgainst", () => {
     expect(screen.getByText("Commit or stash your changes first")).toBeTruthy();
   });
 
+  it("waits on the comparison as the files' own rows given a sample, which nothing reaches", async () => {
+    h.compare = undefined;
+    h.fetchCompare.mockImplementation(() => new Promise(() => {}));
+    const { container } = mount();
+    await flush();
+    const wait = container.querySelector<HTMLElement>("[data-region][data-bones] [skullet-loading]")!;
+    expect(wait.getAttribute("aria-hidden")).toBe("true");
+    expect(wait.querySelectorAll("[data-slot=counts]").length).toBe(2);
+    expect(screen.queryAllByRole("button", { name: /^Open the diff of/ })).toHaveLength(0);
+    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+  });
+
   it("an up-to-date branch says nothing under the picker", async () => {
     h.compare = compareOf({ ahead: 0, behind: 0, ours: [], theirs: [], files: [] });
     const { container } = mount();

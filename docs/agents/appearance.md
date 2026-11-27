@@ -155,6 +155,24 @@ time:
 | An outline button, a select and an attachment hover like a row, not like a selection | `--hover-fill`, `--hover-fill-field` and `--hover-fill-file` in `:root` to `color-mix(in srgb, var(--foreground) 5%, transparent)` |
 | The splash and the Windows caption glyphs take the app's own tokens | `--boot-background`, `--boot-foreground` in index.html's `:root`; `SYMBOL.dark` and `BACKING.dark` in `src/main/windowFrame.ts` |
 
+**The one change he asked for in dark: the loading bones** (2026-11-27,
+"replace all skeletons across tempcode to use skullet … the full animation
+and everything"). What now looks different in dark, and nothing else does:
+
+- A skeleton's shapes. A bone is measured from the screen it stands for: a
+  bar from each line's cap height to its baseline, a block at each glyph's
+  and field's own box. The hand-drawn blocks (12px bars at set widths) go.
+- The sweep. One stream of soft highlights crosses every bone in the window
+  (`--skeleton-sheen`, `foreground` at 7%, a new token frozen in
+  darkHeld.json). A bone was still.
+- The timing. Bones wait 150ms before they show and fade in; content comes
+  in over them, row by row; a lazy surface's fallback fades out over the
+  surface.
+
+The bone's fill did not move: `--skeleton`, `--skeleton-stage` and
+`--skeleton-matte` are the values they were. docs/agents/loading-bones.md
+has the rest.
+
 ## Palette copies
 
 Each copy of the palette outside index.css is held equal to it by a test.
@@ -193,7 +211,9 @@ the others by the `storage` event. lib/motion.ts holds it: `initMotion`
 and keeps it in step with the choice and with the system's setting; the
 slideshow's windows copy it (work/slides/show/places.ts `mirrorLook`).
 What reduced means is docs/DESIGN.md "Reduced motion": movement goes, fades
-stay, and the marks of work keep moving.
+stay, and the marks of work keep moving. The loading bones alone go still,
+and their content lands at once. Skullet reads the system's setting itself,
+so Full on a computer that asks for reduced motion still draws still bones.
 
 ## The phone
 

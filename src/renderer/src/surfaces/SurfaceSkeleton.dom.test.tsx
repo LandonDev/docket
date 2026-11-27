@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PAGE_SCROLLER } from "../components/page";
 import { readFileSync } from "node:fs";
@@ -12,13 +12,29 @@ afterEach(cleanup);
 const KINDS: SkeletonKind[] = ["page", "search", "column", "stats", "accounts", "pane", "diff", "diff-rows", "terminal", "frame", "transcript", "rows"];
 
 describe("SurfaceSkeleton", () => {
-  it.each(KINDS)("%s: a labelled status of still skeleton blocks", (kind) => {
+  it.each(KINDS)("%s: a labelled status whose frame is drawn in bones, never by hand", (kind) => {
     const { container } = render(<SurfaceSkeleton kind={kind} label="Loading notes" />);
     const root = screen.getByRole("status", { name: "Loading notes" });
     expect(root.getAttribute("data-surface-skeleton")).toBe(kind);
     expect(root.getAttribute("aria-busy")).toBe("true");
-    expect(root.querySelector('[data-slot="skeleton"]')).not.toBeNull();
-    expect(container.innerHTML).not.toMatch(/animate-(pulse|spin)\b/);
+    // One region of bones alone, its drawing unseen and inert: sample words for Skullet to measure, or a block.
+    const region = root.querySelector<HTMLElement>(":scope > [data-region]")!;
+    expect(region.dataset.bones).toBeDefined();
+    const drawing = region.querySelector<HTMLElement>("[skullet-loading]")!;
+    expect(drawing.getAttribute("aria-hidden")).toBe("true");
+    expect(drawing.querySelector("p, [data-bone]")).not.toBeNull();
+    expect(root.querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(container.innerHTML).not.toMatch(/animate-(pulse|spin)\b|bg-skeleton/);
+    // The frame names the wait; the region inside says nothing more.
+    expect(within(root).queryByRole("status")).toBeNull();
+  });
+
+  it("fills the room it is given where the surface does, and is as tall as its rows where it is a list", () => {
+    const filled = render(<SurfaceSkeleton kind="page" />);
+    expect(filled.container.querySelector("[data-region]")!.className).toContain("flex-1");
+    filled.unmount();
+    const rows = render(<SurfaceSkeleton kind="rows" />);
+    expect(rows.container.querySelector("[data-region]")!.className).not.toContain("flex-1");
   });
 
   it("says Loading when given no label", () => {
@@ -28,9 +44,10 @@ describe("SurfaceSkeleton", () => {
 
   it("transcript: each turn's bubble on the right before its prose lines", () => {
     const { container } = render(<SurfaceSkeleton kind="transcript" />);
-    const turn = container.querySelector("[data-surface-skeleton] > div > div")!;
+    const turn = container.querySelector("[skullet-ghost] > div > div")!;
     expect(turn.firstElementChild!.className).toContain("self-end");
-    expect(turn.lastElementChild!.querySelectorAll('[data-slot="skeleton"]').length).toBe(3);
+    expect(turn.firstElementChild!.hasAttribute("data-bone")).toBe(true);
+    expect(turn.lastElementChild!.querySelectorAll("p").length).toBe(3);
   });
 
   it("column: Settings' one 672px column under the strip, with no nav column", () => {
@@ -39,7 +56,8 @@ describe("SurfaceSkeleton", () => {
     expect(column.className).toContain("max-w-2xl");
     expect(column.className).toContain("mx-auto");
     expect(container.querySelector(".w-52")).toBeNull();
-    expect(container.querySelector("[data-surface-skeleton] > .border-b")).not.toBeNull();
+    // The bare strip keeps its own hairline: an empty box is a leaf Skullet would hide.
+    expect(container.querySelector("[skullet-ghost] > .border-b")!.hasAttribute("skullet-own")).toBe(true);
   });
 
   it.each(["column", "stats", "accounts"] as const)("%s: the column sits in the page's own scroller, so it lands where the page does", (kind) => {
@@ -65,15 +83,16 @@ describe("SurfaceSkeleton", () => {
     // The title in words, as Stats writes its own, then the rows 24px under it: no page line.
     expect(column.children).toHaveLength(2);
     expect(column.children[0]!.textContent).toBe("Accounts");
-    expect(column.children[0]!.querySelector("[data-slot=skeleton]")).toBeNull();
+    // Known before anything loads: drawn as it is, with no bone.
+    expect(column.children[0]!.hasAttribute("skullet-own")).toBe(true);
     expect(column.children[1]!.className).toContain("mt-6");
   });
 
   it("page: the title strip first, then the list at the Inbox's and Notes' own default width", () => {
     const { container } = render(<SurfaceSkeleton kind="page" />);
-    const root = container.querySelector("[data-surface-skeleton]")!;
-    expect(root.children[0]!.hasAttribute("data-skeleton-strip")).toBe(true);
-    expect(root.children[0]!.className).toContain("h-10");
+    const drawing = container.querySelector("[data-surface-skeleton] [skullet-ghost]")!;
+    expect(drawing.children[0]!.hasAttribute("data-skeleton-strip")).toBe(true);
+    expect(drawing.children[0]!.className).toContain("h-10");
     expect(container.querySelector<HTMLElement>("[data-skeleton-list]")!.style.width).toBe(`${PAGE_LIST_WIDTH}px`);
     for (const view of ["InboxView.tsx", "NotesView.tsx"]) expect(readFileSync(resolve(__dirname, view), "utf8")).toContain("const DEFAULT_WIDTH = PAGE_LIST_WIDTH;");
   });
@@ -87,7 +106,7 @@ describe("SurfaceSkeleton", () => {
     const head = list.querySelector("[data-skeleton-head]")!;
     expect(list.firstElementChild).toBe(head);
     expect(head.className).toContain("p-2");
-    expect(head.querySelectorAll('[data-slot="skeleton"].h-8')).toHaveLength(blocks);
+    expect(head.querySelectorAll("[data-bone].h-8")).toHaveLength(blocks);
     const rows = list.querySelectorAll("[data-skeleton-row]");
     expect(rows.length).toBe(8);
     expect(rows[0]!.parentElement!.className).toContain("p-1");
@@ -105,7 +124,9 @@ describe("SurfaceSkeleton", () => {
     const [first, second] = [...row.children] as HTMLElement[];
     expect(first!.className).toContain("h-5");
     expect(first!.querySelector("[data-skeleton-glyph]")!.className).toContain("size-3.5");
-    expect(second!.querySelector(".h-4")).not.toBeNull();
+    // The line under it is words on a 16px line, 22px in under the title.
+    expect(second!.className.split(" ")).toEqual(expect.arrayContaining(["leading-4", "ps-[22px]"]));
+    expect(second!.textContent).not.toBe("");
     expect(row.parentElement!.className).toContain("gap-0.5 p-1");
   });
 
@@ -121,7 +142,7 @@ describe("SurfaceSkeleton", () => {
 
   it("search: the strip, then count one-line rows", () => {
     const { container } = render(<SurfaceSkeleton kind="search" count={5} />);
-    expect(container.querySelector("[data-surface-skeleton]")!.children[0]!.hasAttribute("data-skeleton-strip")).toBe(true);
+    expect(container.querySelector("[data-surface-skeleton] [skullet-ghost]")!.children[0]!.hasAttribute("data-skeleton-strip")).toBe(true);
     expect(container.querySelectorAll("[data-skeleton-row]")).toHaveLength(5);
   });
 
@@ -138,9 +159,10 @@ describe("SurfaceSkeleton", () => {
     const { container } = render(<SurfaceSkeleton kind="rows" lines={3} count={2} />);
     const rows = container.querySelectorAll("[data-skeleton-row]");
     expect(rows).toHaveLength(2);
-    expect(rows[0]!.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(3);
+    expect(rows[0]!.querySelectorAll("p")).toHaveLength(3);
     // NoteCard's lines: 16px, then 4px and a 20px title, then 2px and 16px.
-    expect([...rows[0]!.querySelectorAll(".h-4, .h-5")].map((el) => (el.className.includes("h-5") ? 20 : 16))).toEqual([16, 20, 16]);
+    expect([...rows[0]!.querySelectorAll("p")].map((el) => (el.className.includes("leading-5") ? 20 : 16))).toEqual([16, 20, 16]);
+    expect([...rows[0]!.querySelectorAll("p")].map((el) => el.className.match(/\bmt-\S+/)?.[0])).toEqual([undefined, "mt-1", "mt-0.5"]);
   });
 
   it("a switch's skeleton has the Switch's box", () => {
@@ -166,6 +188,7 @@ describe("SurfaceSkeleton", () => {
     for (const line of lines) expect(line.className).toContain("h-5");
     // DiffBody's own 4px above and below the lines.
     expect(three.container.firstElementChild!.className).toContain("py-1");
+    for (const line of lines) expect(line.querySelector("p")!.className).toContain("font-mono");
     expect(three.container.innerHTML).not.toMatch(/\bborder/);
     expect(three.container.innerHTML).not.toMatch(/\bh-9\b/);
     three.unmount();

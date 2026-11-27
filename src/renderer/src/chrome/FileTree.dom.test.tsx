@@ -8,6 +8,8 @@ const ROOT = "/repo";
 const state = vi.hoisted(() => ({
   dirs: new Map<string, FsEntry[]>(),
   failing: new Set<string>(),
+  /** Folders whose listing never answers. */
+  pending: new Set<string>(),
 }));
 
 function entry(path: string, isDir = false): FsEntry {
@@ -18,6 +20,7 @@ vi.mock("../lib/fs", () => ({
   basename: (path: string) => path.slice(path.lastIndexOf("/") + 1),
   listDir: async (_env: string, path: string) => {
     if (state.failing.has(path)) throw new Error("server router not bound (fs.listPath)");
+    if (state.pending.has(path)) return new Promise<never>(() => {});
     return state.dirs.get(path) ?? [];
   },
   copyPath: vi.fn(),
@@ -223,6 +226,20 @@ describe("FileTree", () => {
     const { container } = await mount();
     expect(container.querySelector('[data-slot="tooltip-trigger"]')).toBeNull();
     expect(screen.queryByText(`${ROOT}/README.md`)).toBeNull();
+  });
+
+  it("waits on a first listing as rows written out in the row's box from sample names, never treeitems", async () => {
+    const root = "/pending-checkout";
+    state.pending.add(root);
+    render(<FileTree cwd={root} onOpenFile={vi.fn()} />);
+    await act(async () => {});
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-region][data-bones] [skullet-loading] [data-slot=tree-skeleton]")];
+    expect(rows.map((row) => row.textContent)).toEqual(["src", "scripts", "package.json"]);
+    // The row's own 28px box and 13px type, on its 8px inset at the root.
+    expect(rows[0].className.split(" ")).toEqual(expect.arrayContaining(["h-7", "text-[13px]", "gap-1"]));
+    expect(rows[0].style.paddingLeft).toBe("8px");
+    expect(screen.queryAllByRole("treeitem")).toHaveLength(0);
+    expect(document.querySelector("[data-slot=skeleton]")).toBeNull();
   });
 
   it("says an empty checkout with one Empty", async () => {

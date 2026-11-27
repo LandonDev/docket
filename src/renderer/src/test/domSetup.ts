@@ -8,8 +8,13 @@
  * keeps a mount from throwing.
  */
 
-import { afterEach } from 'vitest'
+import { afterEach, beforeAll } from 'vitest'
+import { bonesReady } from '../components/bones'
 import { forgetReturnWindow } from '../work/shell/returnRecord'
+
+// Skullet rides a chunk of its own (components/bones.tsx): in hand before a file's first test, as it is in the
+// window before any bones are due, so a region draws its bones in the commit that mounts it.
+beforeAll(() => bonesReady())
 
 type Listener = (event: Event) => void
 

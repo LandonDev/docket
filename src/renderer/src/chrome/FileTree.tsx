@@ -27,8 +27,8 @@ import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { DISCLOSURE_CHEVRON } from "@renderer/components/ui/disclosure";
 import { TruncateTip } from "@renderer/components/tip";
+import { Bones } from "@renderer/components/bones";
 import { Input } from "@renderer/components/ui/input";
-import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import {
   createContext,
@@ -819,7 +819,6 @@ function TreeChildren({
     ) : null;
   const folders = entries?.filter((e) => e.isDir) ?? [];
   const files = entries?.filter((e) => !e.isDir) ?? [];
-  const pad = { paddingLeft: 28 + depth * 12 };
   // The checkout itself lists nothing: one Empty in the tree's place.
   const bare = depth === 0 && !loading && !error && !show && entries?.length === 0;
 
@@ -834,13 +833,13 @@ function TreeChildren({
         </Empty>
       ) : null}
       {show && ctx.creating?.isDir ? row : null}
-      {loading && !error
-        ? Array.from({ length: depth === 0 ? 3 : 1 }, (_, i) => (
-            <div key={i} data-slot="tree-skeleton" className="flex h-7 items-center pr-2" style={pad}>
-              <Skeleton className="h-3" style={{ width: `${[60, 44, 52][i]}%` }} />
-            </div>
-          ))
-        : null}
+      {loading && !error ? (
+        <Bones label="">
+          {(depth === 0 ? SAMPLE_TREE_ROWS : SAMPLE_TREE_ROWS.slice(2)).map((sample) => (
+            <SampleTreeRow key={sample.name} depth={depth} {...sample} />
+          ))}
+        </Bones>
+      ) : null}
       {folders.map((child) => (
         <TreeNode key={child.path} entry={child} depth={depth} />
       ))}
@@ -849,6 +848,29 @@ function TreeChildren({
         <TreeNode key={child.path} entry={child} depth={depth} />
       ))}
     </>
+  );
+}
+
+/** What a folder's first read is drawn from: two folders over a file at the root, one file below it. */
+const SAMPLE_TREE_ROWS: readonly { name: string; isDir: boolean }[] = [
+  { name: "src", isDir: true },
+  { name: "scripts", isDir: true },
+  { name: "package.json", isDir: false },
+];
+
+/** A tree row at rest, written out in TreeNode's row's own box and type: not a treeitem, so the tree's keys never
+ *  reach it and no host is asked for a sample's folder. */
+function SampleTreeRow({ name, isDir, depth }: { name: string; isDir: boolean; depth: number }) {
+  return (
+    <div data-slot="tree-skeleton" className="flex h-7 w-full items-center gap-1 pr-2 text-[13px] leading-none" style={{ paddingLeft: 8 + depth * 12 }}>
+      <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
+        {isDir ? <ChevronRight className={`size-3 ${DISCLOSURE_CHEVRON}`} /> : null}
+      </span>
+      <span className="shrink-0">
+        <FileTypeIcon name={name} isDir={isDir} />
+      </span>
+      <span className="min-w-0 truncate">{name}</span>
+    </div>
   );
 }
 

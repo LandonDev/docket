@@ -7,9 +7,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@renderer/c
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@renderer/components/ui/dropdown-menu";
 import { ItemButton, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
-import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { ROW_PRESS } from "@renderer/components/ui/press";
+import { Bones } from "@renderer/components/bones";
 import { cn } from "@renderer/lib/cn";
 import { timeAgo } from "../../lib/format";
 import { notifyGitChanged } from "../../lib/fs";
@@ -322,14 +322,14 @@ export function AgainstHead({ model }: { model: AgainstModel }) {
       ) : null}
 
       {compare === undefined && !error ? (
-        <div className="flex flex-col gap-1 px-2 pt-1" aria-busy="true" aria-label="Loading the comparison">
-          {["w-1/2", "w-2/5"].map((w) => (
-            <div key={w} className="flex h-7 items-center gap-2">
-              <Skeleton className="size-4" />
-              <Skeleton className={cn("h-3.5", w)} />
-            </div>
-          ))}
-        </div>
+        // The files' own rows from a sample, where the files land under the picker.
+        <Bones label="Loading the comparison">
+          <div className="flex flex-col">
+            {SAMPLE_AGAINST_FILES.map((f) => (
+              <AgainstFileRow key={f.path} file={f} target="main" onOpen={noop} />
+            ))}
+          </div>
+        </Bones>
       ) : compare && compare.files.length === 0 && (ahead > 0 || behind > 0) ? (
         // The picker names the branch and the commits fold says ahead and behind; even says nothing.
         <p className="flex h-7 items-center px-2 text-xs text-muted-foreground">No file differs</p>
@@ -337,6 +337,13 @@ export function AgainstHead({ model }: { model: AgainstModel }) {
     </section>
   );
 }
+
+const noop = () => {};
+/** What the comparison's bones are drawn from: nobody reads the words, their lengths give the rows their shape. */
+const SAMPLE_AGAINST_FILES: readonly FileChange[] = [
+  { path: "src/renderer/src/chrome/rail/ChangesAgainst.tsx", adds: 18, dels: 6, status: "modified" },
+  { path: "src/main/server/projects.ts", adds: 4, dels: 1, status: "modified" },
+];
 
 /** One file this branch changed since the merge base; opens its diff against it.
  *  A deleted one behaves as the index groups' does: it keeps its focus and

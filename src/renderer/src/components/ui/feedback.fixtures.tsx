@@ -1,6 +1,7 @@
 // bun run ui:preview src/renderer/src/components/ui/feedback.fixtures.tsx#FeedbackGallery --shot --fresh
 // Export FeedbackGallery. Static shots hold progress and attachment state, without timed updates or animation.
 import { FileText } from "@renderer/chrome/icons";
+import { Region } from "../bones";
 import { Alert, AlertDescription, AlertTitle } from "./alert";
 import { Attachment, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle } from "./attachment";
 import { Button } from "./button";
@@ -8,7 +9,6 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "
 import { Item, ItemContent, ItemMedia, ItemTitle } from "./item";
 import { Kbd, KbdGroup } from "./kbd";
 import { Progress, ProgressLabel, ProgressValue } from "./progress";
-import { Skeleton } from "./skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 
 const alerts = [
@@ -31,8 +31,8 @@ export function FeedbackGallery() {
         </Empty>
         <div className="grid grid-cols-2 gap-2">
           {(["bg-background", "bg-card", "bg-sidebar", "bg-popover"] as const).map((surface) => (
-            <div key={surface} className={`flex flex-col gap-2 p-3 ${surface}`}>
-              <Skeleton className="h-4 w-24" /><Skeleton className="h-3 w-16" />
+            <div key={surface} className={`p-3 ${surface}`}>
+              <Region loading hold={0} label="Loading" bones={<div className="flex flex-col gap-1"><p className="text-[13px] leading-5">Release notes</p><p className="text-xs leading-4">Two days ago</p></div>} />
             </div>
           ))}
         </div>

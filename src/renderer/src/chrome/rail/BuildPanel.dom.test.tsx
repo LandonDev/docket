@@ -174,6 +174,17 @@ describe("BuildView", () => {
     expect(status().textContent).toBe("Stopped");
   });
 
+  it("while the command is read, its line holds a sample command in the command's type, inline", () => {
+    view({ effective: undefined });
+    const region = document.querySelector<HTMLElement>("[data-region][data-inline][data-bones]")!;
+    expect(region.tagName).toBe("SPAN");
+    const sample = region.querySelector<HTMLElement>("[skullet-loading] .font-mono")!;
+    expect(sample.textContent).toBe("./gradlew shadowJar");
+    expect(region.closest(".text-xs")).toBeTruthy();
+    expect(document.querySelector("[data-build-command]")).toBeNull();
+    expect(document.querySelector("[data-slot=skeleton]")).toBeNull();
+  });
+
   it("offers Set one when there is no command", () => {
     const props = view({ effective: null });
     expect(screen.getByText("No build command")).toBeTruthy();

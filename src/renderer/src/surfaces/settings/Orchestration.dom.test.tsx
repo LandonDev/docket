@@ -307,8 +307,10 @@ describe("Subagents", () => {
     state.scope = { rules: rules(), overridden: true };
     state.catalog = null;
     const view = render(<OrchestrationPage />);
-    // Loading: the model words wait as bones.
+    // Loading: the model words and the Models row's count are drawn from sample words, unseen and inert.
     expect(document.querySelectorAll("[data-model-bone]").length).toBeGreaterThan(0);
+    expect(document.querySelector("[data-rule] [data-region][data-inline][data-bones] [skullet-loading] [data-model-bone]")!.textContent).toBe("Opus 5.5");
+    expect(document.querySelector("[data-setting='sub.models'] [data-region][data-inline] [skullet-loading]")!.textContent).toBe("12 of 34 allowed");
     state.catalogFailure = { error: NO_ANSWER, retry: state.retry };
     view.rerender(<OrchestrationPage />);
     const models = document.querySelector("[data-setting='sub.models']") as HTMLElement;

@@ -101,7 +101,8 @@ describe("Settings › Computer use", () => {
     host.handlers = {};
     host.service = null;
     render(<ComputerPage />);
-    expect(firstSection().querySelectorAll("[data-slot=skeleton]").length).toBeGreaterThan(1);
+    // The section's rows in bones (components/page.tsx `PageRowsSkeleton`).
+    expect(firstSection().querySelectorAll("[skullet-loading] [data-slot=page-row-skeleton]").length).toBeGreaterThan(1);
     expect(within(section("macOS permissions")).getAllByTestId("permission-skeleton")).toHaveLength(2);
     expect(section("Apps it has learned").querySelector("[aria-busy=true]")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();

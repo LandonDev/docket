@@ -4,11 +4,10 @@ import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { ItemButton, ItemContent, ItemMedia, ItemTitle } from "@renderer/components/ui/item";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator } from "@renderer/components/ui/breadcrumb";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Bones, Region } from "@renderer/components/bones";
 import { DialogFooter, ErrorLine } from "./ConfirmDialog";
 import { ArrowUpLong, Folder, FolderPlus } from "./icons";
 import { Modal, useModalClose } from "./Modal";
-import { cn } from "../lib/cn";
 import { registry, useEnvironments } from "../lib/connection";
 import { useHostRead } from "../lib/connection/hostRead";
 import { NO_ANSWER } from "../lib/connection/openRead";
@@ -73,15 +72,36 @@ export function RemoteFolderDialog(props: Props) {
   );
 }
 
-/** Three rows in the shape of the folder list while it loads. */
-function FolderSkeleton() {
+/** What the folder list's bones are drawn from: nobody reads the names, their lengths give the rows their shape. */
+const SAMPLE_FOLDERS: readonly FsEntry[] = [
+  { name: "temp-code", path: "sample:/work/temp-code", isDir: true, ignored: false },
+  { name: "cosmic", path: "sample:/work/cosmic", isDir: true, ignored: false },
+  { name: "lifeos-backend", path: "sample:/work/lifeos-backend", isDir: true, ignored: false },
+];
+const noop = () => {};
+
+/** The folder list's rows: a press walks into a folder, a double press picks it. The list's bones are these rows
+ *  given the sample. */
+function FolderRows({ entries, onOpen, onPick }: { entries: readonly FsEntry[]; onOpen: (path: string) => void; onPick: (path: string) => void }) {
   return (
-    <div className="flex flex-col" aria-busy>
-      {["w-32", "w-24", "w-40"].map((w) => (
-        <div key={w} className="flex h-7 items-center gap-2 px-2">
-          <Skeleton className="size-3.5 rounded-sm" />
-          <Skeleton className={cn("h-3", w)} />
-        </div>
+    <div className="flex flex-col p-1">
+      {entries.map((entry) => (
+        <ItemButton
+          key={entry.path}
+          size="xs"
+          onClick={() => onOpen(entry.path)}
+          onDoubleClick={() => onPick(entry.path)}
+          className="rounded-sm text-start hover:bg-foreground/5"
+        >
+          <ItemMedia>
+            <Folder className="size-3.5" />
+          </ItemMedia>
+          <ItemContent className="min-w-0">
+            <ItemTitle className="max-w-full font-normal">
+              <span className="truncate">{entry.name}</span>
+            </ItemTitle>
+          </ItemContent>
+        </ItemButton>
       ))}
     </div>
   );
@@ -205,10 +225,13 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
           <>
             <Breadcrumb aria-label="Folder" className="-mx-2">
               <BreadcrumbList>
+                {/* While the work root is read, the crumb it lands as, from a sample folder's name. */}
                 {loading ? (
-                  <li>
-                    <Skeleton className="mx-2 h-3 w-28" />
-                  </li>
+                  <BreadcrumbItem>
+                    <Bones inline label="">
+                      <BreadcrumbLink className="text-foreground">work</BreadcrumbLink>
+                    </Bones>
+                  </BreadcrumbItem>
                 ) : null}
                 {workRoot && up && crumbs.length === 1 && crumbs[0].path !== workRoot.root ? (
                   <BreadcrumbItem>
@@ -233,36 +256,15 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
             </Breadcrumb>
             {/* A first listing that failed draws no list: the error and its Retry say it all. */}
             {!loading && !listing && entries === null ? null : <div className="flex min-h-0 flex-col rounded-lg border border-border" data-remote-folders>
-              {loading || listing || entries === null ? (
-                <div className="p-1">
-                  <FolderSkeleton />
-                </div>
-              ) : entries.length === 0 ? (
-                <p className="px-3 py-3 text-xs text-muted-foreground">No folders</p>
-              ) : (
-                <div className="max-h-64 min-h-0 overflow-x-hidden overflow-y-auto [--scrollbar-inset:var(--radius-lg)]">
-                  <div className="flex flex-col p-1">
-                    {entries.map((entry) => (
-                      <ItemButton
-                        key={entry.path}
-                        size="xs"
-                        onClick={() => void load(entry.path)}
-                        onDoubleClick={() => pick(entry.path)}
-                        className="rounded-sm text-start hover:bg-foreground/5"
-                      >
-                        <ItemMedia>
-                          <Folder className="size-3.5" />
-                        </ItemMedia>
-                        <ItemContent className="min-w-0">
-                          <ItemTitle className="max-w-full font-normal">
-                            <span className="truncate">{entry.name}</span>
-                          </ItemTitle>
-                        </ItemContent>
-                      </ItemButton>
-                    ))}
+              <Region loading={loading || listing || entries === null} label="Loading folders" className="min-h-0" bones={() => <FolderRows entries={SAMPLE_FOLDERS} onOpen={noop} onPick={noop} />}>
+                {entries === null ? null : entries.length === 0 ? (
+                  <p className="px-3 py-3 text-xs text-muted-foreground">No folders</p>
+                ) : (
+                  <div className="max-h-64 min-h-0 overflow-x-hidden overflow-y-auto [--scrollbar-inset:var(--radius-lg)]">
+                    <FolderRows entries={entries} onOpen={(path) => void load(path)} onPick={pick} />
                   </div>
-                </div>
-              )}
+                )}
+              </Region>
             </div>}
             {newFolder === null ? (
               <div className="flex items-center gap-2">

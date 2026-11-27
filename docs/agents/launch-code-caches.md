@@ -78,6 +78,9 @@
   spreads `chunk.intent` (hover or focus warms the chunk, so a click on a
   warm machine never shows the skeleton); the first thread on screen warms
   the diff and thread-view chunks in an idle slot (`preloadWhenIdle`).
+  The skeleton is drawn in bones, and Skullet rides a chunk of its own
+  (`bonesEngine`, 81 kB, asked for as components/bones.tsx loads, never in
+  the entry's static closure): [loading-bones.md](loading-bones.md).
   A module in a lazy chunk must never be imported statically from the main
   chunk (the right panel's Changes section and App.tsx's editor find keys reach the
   editor chunk through `import()` and `surfaces/editorFind.ts`); the

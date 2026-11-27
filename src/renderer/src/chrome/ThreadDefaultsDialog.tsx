@@ -21,7 +21,7 @@ import { ManagedLine } from "../surfaces/settings/parts/ManagedLine";
 import { useComputerName } from "../lib/settings/computerName";
 import { FailureLinesHere, FailuresSaidOnce, ReadFailure } from "../surfaces/settings/parts/ReadFailure";
 import { readWhenOpen, withDeadline } from "../lib/connection/openRead";
-import { Skeleton } from "../components/ui/skeleton";
+import { Region } from "../components/bones";
 import { useDraft } from "../surfaces/settings/parts/useDraft";
 import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
 import { useHeldLook } from "../surfaces/settings/parts/useHeldLook";
@@ -494,8 +494,8 @@ function OwnSetRow({ place }: { place: WorkspaceMeta }) {
 }
 
 /**
- * Use New threads, once the set it would bring is read: a button-shaped bone while the inherited set is out, its
- * computer's failure (with Retry) when it could not be read, the press once it is known.
+ * Use New threads, once the set it would bring is read: the button itself drawn as bones while the inherited set is
+ * out (held, with no press), its computer's failure (with Retry) when it could not be read, the press once it is known.
  */
 function UseNewThreadsPress({
   reset,
@@ -512,22 +512,35 @@ function UseNewThreadsPress({
   disabled?: boolean;
   variant: "outline" | "ghost";
 }) {
-  if (reset.failure) return <ReadFailure computer={reset.environmentId} error={reset.failure.error} retry={reset.failure.retry} />;
-  if (!reset.inherited) return <Skeleton data-skeleton-control className="h-7 w-32 shrink-0 rounded-md" />;
   return (
-    <Button
-      variant={variant}
-      size="sm"
-      disabled={disabled || reset.spin}
-      onClick={() => {
-        if (held) return;
-        void reset.run(saved);
-      }}
+    <Region
+      loading={!reset.inherited && !reset.failure}
+      label=""
+      className={reset.failure ? undefined : "shrink-0"}
+      bones={
+        <Button data-skeleton-control variant={variant} size="sm" disabled>
+          <BusyLabel busy={false} label="Use New threads" />
+        </Button>
+      }
     >
-      {/* The button pressed is the one that spins: from 150 ms of the press, through the check and the clear (never while
-          the confirm is open), in every editor of the place. */}
-      <BusyLabel busy={reset.spin} label="Use New threads" />
-    </Button>
+      {reset.failure ? (
+        <ReadFailure computer={reset.environmentId} error={reset.failure.error} retry={reset.failure.retry} />
+      ) : reset.inherited ? (
+        <Button
+          variant={variant}
+          size="sm"
+          disabled={disabled || reset.spin}
+          onClick={() => {
+            if (held) return;
+            void reset.run(saved);
+          }}
+        >
+          {/* The button pressed is the one that spins: from 150 ms of the press, through the check and the clear (never while
+              the confirm is open), in every editor of the place. */}
+          <BusyLabel busy={reset.spin} label="Use New threads" />
+        </Button>
+      ) : null}
+    </Region>
   );
 }
 

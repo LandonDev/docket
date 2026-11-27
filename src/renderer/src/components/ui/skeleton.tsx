@@ -1,11 +1,11 @@
 import type { ComponentProps } from "react";
 import { cn } from "@renderer/lib/cn";
 
-/** A loading placeholder shaped like the content it stands in for: a
- *  still block on the `skeleton` token (the muted fill in dark, a wash of
- *  foreground in light, where muted vanishes on the rail and a card). On
- *  `stage` it takes `bg-skeleton-stage`, on `matte` `bg-skeleton-matte`
- *  (held in dark: both are the bone there). Only text being produced pulses (docs/DESIGN.md). */
+/** The hand-drawn bone, on its way out: a still block on the `skeleton`
+ *  token. Loading states are drawn by Skullet now (components/bones.tsx;
+ *  docs/agents/loading-bones.md), and only the folders that
+ *  lib/bonesGuard.test.ts still holds may import this. It goes with the last
+ *  of them. */
 function Skeleton({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="skeleton" className={cn("rounded-md bg-skeleton", className)} {...props} />;
 }

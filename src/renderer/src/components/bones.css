@@ -1,0 +1,162 @@
+/*
+ * The loading bones (components/bones.tsx; docs/agents/loading-bones.md;
+ * docs/DESIGN.md "Loading and empty states"). Skullet draws every skeleton:
+ * the screen laid out unseen from a sample, and one bone for each line of
+ * text, glyph and block in it. Its theme is these properties, read by
+ * inheritance, so they follow the theme's class.
+ *   base       the `skeleton` token: the muted fill in dark, a wash of
+ *              foreground in light, so a bone shows on the rail and on a card
+ *   highlight  the sweep, felt more than seen (`skeleton-sheen`)
+ *   text       a bar runs from the cap height to the baseline: the weight of
+ *              a line of words
+ *   animation  `shimmer`: one stream of soft highlights across the whole
+ *              window, on the document's clock, so bones that mount late
+ *              join it in step. `pulse` here swaps it for an opacity loop.
+ */
+:root {
+  --skullet-base: var(--skeleton);
+  --skullet-highlight: var(--skeleton-sheen);
+  --skullet-radius: var(--radius-sm);
+  --skullet-animation: shimmer;
+  --skullet-speed: slow;
+  --skullet-text-top: cap-height;
+  --skullet-text-bottom: baseline;
+}
+/* Bones on another ground than the page (`Region`'s `on`). */
+[data-bones-on="stage"] {
+  --skullet-base: var(--skeleton-stage);
+}
+[data-bones-on="matte"] {
+  --skullet-base: var(--skeleton-matte);
+  --skullet-highlight: var(--skeleton-matte-sheen);
+}
+/* Bones that have stood `BONES.sweepCapMs` go still (lib/ease.ts): the engine marks their drawing. */
+[data-bones-still] {
+  --skullet-animation: none;
+}
+/* Reduced motion: still bones. Set where the bones are, since they read it there. */
+:where([data-motion="reduced"]) {
+  [data-region],
+  [data-bone],
+  [data-bones-layer] {
+    --skullet-animation: none;
+  }
+}
+
+/*
+ * A region is a column, and so is each of its panes: the bones and the
+ * content that takes their place. Skullet's own boxes inside the bones' pane
+ * are blocks; here they hand the column down to the drawing, so a body that
+ * fills its pane (`fill`) has the height it has when loaded. The basis is the
+ * drawing's own height, so a region as tall as what it holds stays so.
+ */
+[data-region] > [skullet-pane],
+[data-region] > [skullet-pane] > [skullet-loading],
+[data-region] > [skullet-pane] > [skullet-loading] > [skullet-ghost],
+[data-region] > [skullet-pane] > [skullet-loading] > [skullet-snapshot] {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+/* An inline region (one value in a line of words) is a box in the line, on the words' own baseline: its panes are
+   rows that hand that baseline up, as wide as their words and no wider than the line has room for. */
+[data-region][data-inline] > [skullet-pane],
+[data-region][data-inline] > [skullet-pane] > [skullet-loading] {
+  flex: 0 1 auto;
+  flex-direction: row;
+}
+[data-region][data-inline] > [skullet-pane] > [skullet-loading] > [skullet-ghost],
+[data-region][data-inline] > [skullet-pane] > [skullet-loading] > [skullet-snapshot] {
+  display: block;
+  flex: 0 1 auto;
+}
+/* A sample is as long as it likes; while bones stand or leave, the region shows only its own room. A clip, never a
+   scroll container: `hidden` would make the region a sticky head's scroller for as long as the bones last. */
+[data-region][data-bones] {
+  overflow: clip;
+}
+/* Bones on their way out stand over the content that takes their place, until their own pieces have gone. */
+[data-region] > [skullet-exiting] {
+  z-index: 1;
+}
+/* The bones lie over everything in the drawing, a sticky head included; the drawing stacks on its own. */
+[skullet-loading] {
+  isolation: isolate;
+}
+[skullet-layer] {
+  z-index: 1;
+}
+/* A glyph's bone is not a hard square, and a round glyph's (a status dot, a face) is a disc. */
+:is([skullet-ghost], [skullet-snapshot]) svg {
+  border-radius: var(--radius-sm);
+}
+:is([skullet-ghost], [skullet-snapshot]) svg:has(> circle:only-child) {
+  border-radius: 9999px;
+}
+/* Skullet gives an empty element six characters to measure, as a line of text to come. A drawing here always
+   carries its words, so an empty element is a spacer or an unset slot: it keeps its own size. */
+:is([skullet-ghost], [skullet-snapshot]) :empty::before {
+  content: none !important;
+}
+
+@layer components {
+  /* What is known before the read (a page's title, a section's heading) is marked `skullet-own` in a drawing: it is
+     drawn as it is, with no bone. Skullet's sheet leaves it its paint; the words' ink is given back here, since the
+     drawing above it hands down a clear one. */
+  [skullet-loading] [skullet-own] {
+    color: var(--foreground);
+    -webkit-text-fill-color: currentcolor;
+  }
+  /* A lone bone (`Bone`): one block on the bone's fill. In a drawing Skullet draws it; alone it sweeps itself. */
+  [data-bone] {
+    border-radius: var(--radius-md);
+    background-color: var(--skullet-base);
+    background-repeat: no-repeat;
+  }
+}
+
+/* Where a copy of bones that were unmounted whole fades out (bonesBridge.ts): over the window, under every dialog. */
+[data-bones-layer] {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/*
+ * Bones wait before they show (`BONES.holdMs`): unseen for the hold, then
+ * one short fade. A read that answers inside the hold never shows them, and
+ * bones that follow bones take their place with no fade at all.
+ */
+@keyframes bones-in {
+  from {
+    opacity: 0;
+  }
+}
+[data-region][data-bones="held"] {
+  opacity: 0;
+}
+[data-region][data-bones="shown"][data-bones-waited] {
+  animation: bones-in var(--dur-fast) var(--ease-out);
+}
+
+/* `Arrive`: content that takes the place of bones it is no region's. Runs once. */
+@keyframes bones-arrive {
+  from {
+    opacity: 0;
+  }
+}
+[data-arrive] {
+  animation: bones-arrive var(--dur-fast) var(--ease-out);
+}
+
+/* Reduced motion swaps at once. No time, not no animation: its end still fires, and `Arrive` clears its mark on it. */
+:where([data-motion="reduced"]) {
+  [data-region][data-bones="shown"][data-bones-waited],
+  [data-arrive] {
+    animation-duration: var(--dur-instant);
+  }
+}

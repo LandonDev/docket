@@ -52,7 +52,12 @@ describe("RemoteFolderDialog", () => {
     await flush();
     const dialog = screen.getByRole("dialog", { name: "Add a workspace on the box" });
     const frame = dialog.querySelector("[data-remote-folders]")!;
-    expect(frame.querySelectorAll("[data-slot=skeleton]")).toHaveLength(6);
+    // The rows' own piece given three sample folders, unseen and inert, and the trail's crumb from a sample name.
+    const wait = frame.querySelector("[data-region][data-bones] [skullet-loading]")!;
+    expect(wait.getAttribute("aria-hidden")).toBe("true");
+    expect([...wait.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["temp-code", "cosmic", "lifeos-backend"]);
+    expect(within(frame as HTMLElement).queryAllByRole("button")).toHaveLength(0);
+    expect(dialog.querySelector("[data-slot=skeleton]")).toBeNull();
     await act(async () => {
       release();
       fs.pending = null;

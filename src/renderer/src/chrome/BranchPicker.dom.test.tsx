@@ -86,12 +86,17 @@ describe("BranchPicker: no branch yet", () => {
     expect(text.className).not.toContain("font-mono");
   });
 
-  it("loading draws a Skeleton in a short branch name's shape, never a hand-made pill", () => {
+  it("loading draws the name's own bone from a short branch name in the name's type, never a hand-made pill", () => {
     h.state = { settled: false, branches: null };
     render(<BranchPicker cwd="/u/me/app" />);
     const trigger = screen.getByRole("button", { name: "Loading branch" });
-    const skeleton = trigger.querySelector<HTMLElement>("[data-slot=skeleton]")!;
-    expect(skeleton.className.split(" ")).toEqual(expect.arrayContaining(["h-3", "w-10"]));
+    // An inline region: a box in the button's row whose drawing is a sample name, unseen and inert.
+    const region = trigger.querySelector<HTMLElement>("[data-region][data-inline]")!;
+    expect(region.tagName).toBe("SPAN");
+    const sample = region.querySelector<HTMLElement>("[skullet-loading] [data-branch-skeleton]")!;
+    expect(sample.textContent).toBe("main");
+    expect(sample.className.split(" ")).toEqual(expect.arrayContaining(["font-mono", "text-xs", "truncate"]));
+    expect(trigger.querySelector("[data-slot=skeleton]")).toBeNull();
     expect(trigger.querySelector(".rounded-full")).toBeNull();
     expect(trigger.className.split(" ")).toContain("h-6");
   });

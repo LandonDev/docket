@@ -131,18 +131,19 @@ Read the file a task touches before changing that subject.
   src/renderer/src/components/ui, mapped in components/README.md; guards in
   src/renderer/src/lib. Typecheck, run touched tests; `ui:preview` for parts (sweep:
   `script:preview-smoke`), `script:docket-walk` for windows. No prettier on the renderer. [docs/agents/ui-standard.md](docs/agents/ui-standard.md)
-- **Appearance** — two themes, one per kind of place: Settings holds a theme
-  for Code and one for Work (lib/appearance.ts), a window wears its place's
-  (`placeKind`, `changeScheme` in lib/placeScheme.ts, the dissolve), and the
-  next launch opens in it (`appearance:scheme`, windowFrame.ts, boot.js).
-  `lib/tokenContrast.test.ts` holds every pair of tokens to the contrast
-  contract and `lib/colourGuard.test.ts` refuses `dark:`, `.theme-light`,
-  black or white by name and text as an opacity. **Dark is held**: no commit
-  changes how dark looks (`lib/darkHeld.test.ts`, a frozen copy); a look
-  light changes is a token with a value per theme (index.css "Held in
-  dark"), and the file lists the edit that flips each when the owner asks. [docs/agents/appearance.md](docs/agents/appearance.md); the
-  phone checked in light, one tint fixed and the rest listed:
-  [appearance-phone.md](docs/agents/appearance-phone.md)
+- **Appearance** — two themes: Settings holds one for Code and one for Work
+  (lib/appearance.ts), a window wears its place's (`placeKind`,
+  `changeScheme` in lib/placeScheme.ts), the next launch opens in it
+  (`appearance:scheme`, windowFrame.ts, boot.js).
+  `lib/tokenContrast.test.ts` holds token pairs to the contrast contract;
+  `lib/colourGuard.test.ts` refuses `dark:`, `.theme-light`, black or white
+  by name, text as an opacity. **Dark is held** (`lib/darkHeld.test.ts`,
+  frozen): a look light changes is a token with a value per theme
+  (index.css "Held in dark"). [docs/agents/appearance.md](docs/agents/appearance.md);
+  phone: [appearance-phone.md](docs/agents/appearance-phone.md)
+- **Loading bones** — every skeleton is Skullet's, from a sample: `Region`,
+  `Loaded`, `Bones` (components/bones.tsx); `lib/bonesGuard.test.ts` holds
+  the folders left. [docs/agents/loading-bones.md](docs/agents/loading-bones.md)
 - **Launch and bundle split** — boot.js migrates renderer preferences before
   paint. Compile caches, `tempcode-app://`, lazy chunks (`defineChunk`),
   and the index budget (`bun run check:bundle`).

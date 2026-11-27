@@ -14,9 +14,9 @@ import {
   notifyGitChanged,
 } from "../lib/fs";
 import { useProjectBranchesState } from "../hooks/useProjectBranches";
+import { Region } from "../components/bones";
 import { TruncateTip } from "../components/tip";
 import { Button } from "../components/ui/button";
-import { Skeleton } from "../components/ui/skeleton";
 import { cn } from "../lib/cn";
 import { LazyPopover } from "./menuRows";
 import type { BranchRow as Row, BranchRows } from "./BranchRows";
@@ -245,18 +245,28 @@ export function BranchPicker({
       )}
     >
       {head ? null : <GitBranch className="size-3.5 shrink-0" />}
-      {head && !awaitingBranch ? (
-        <span className="truncate">{label}</span>
-      ) : awaitingBranch ? (
-        // The wait is a load: a Skeleton in the shape of a short branch name,
-        // holding the width the name will take. The button is h-6 whatever it holds.
-        <Skeleton data-branch-skeleton className="h-3 w-10 shrink-0" />
-      ) : (
-        <TruncateTip text={label}>
-          {/* Mono only for a real branch name: "No repo" is words. */}
-          <span className={cn("truncate text-xs", current && "font-mono")}>{label}</span>
-        </TruncateTip>
-      )}
+      {/* The wait is a load: the name's own bone, drawn from a short branch name in the name's type, so the button
+          holds the width a name takes. The button says "Loading branch" itself, so the region says nothing. */}
+      <Region
+        inline
+        loading={awaitingBranch}
+        label=""
+        className="min-w-0"
+        bones={
+          <span data-branch-skeleton className={cn("truncate", head ? null : "font-mono text-xs")}>
+            main
+          </span>
+        }
+      >
+        {head ? (
+          <span className="truncate">{label}</span>
+        ) : (
+          <TruncateTip text={label}>
+            {/* Mono only for a real branch name: "No repo" is words. */}
+            <span className={cn("truncate text-xs", current && "font-mono")}>{label}</span>
+          </TruncateTip>
+        )}
+      </Region>
       {/* A menu trigger's still chevron, as every picker in the draft row has. */}
       {head || missingGit ? null : <ChevronDown aria-hidden className="size-3 shrink-0" />}
     </Button>

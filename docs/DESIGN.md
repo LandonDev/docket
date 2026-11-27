@@ -81,7 +81,9 @@ light one is built is "The light theme".
 | `chrome-hover`, `chrome-hover-ghost` | the hover fill of a row, a tab or a quiet control on the chrome, and of a ghost button there | `foreground` 5%, 7% | `sidebar-group-hover` |
 | `skeleton` | a loading bone | `muted` | `foreground` 8% over what it lies on |
 | `skeleton-matte` | a loading bone on `matte` (a computer's picture on its way, full screen and the pop-out) | `skeleton` | `background` 16% |
-| `skeleton-stage` | a loading bone on `stage` (a picture, a page or a media frame on its way: `bg-skeleton-stage` on `Skeleton`) | `skeleton` | `foreground` 12% |
+| `skeleton-stage` | a loading bone on `stage` (a picture, a page or a media frame on its way: `on="stage"` on a `Region`) | `skeleton` | `foreground` 12% |
+| `skeleton-sheen` | the sweep that crosses the bones (Skullet's highlight, components/bones.css) | `foreground` 7% | `background` 45%: the page's own colour lifting the dark wash |
+| `skeleton-matte-sheen` | the sweep on `matte`, where light's bone is already a light wash | `skeleton-sheen` | `background` 14% |
 | `matte-muted-foreground` | quieter words on `matte` (a show's "End of show" in the presenter's view) | `muted-foreground` | `background` 60%, on `matte` (7.4:1) |
 | `media-ground` | the ground a video or a picture plays on in a pane (the file pane's media, Work's player) | `background` | `stage` |
 | `check-edge` | an unchecked checkbox's or radio's edge | `input` | `foreground` 50% (3:1) |
@@ -212,6 +214,10 @@ pair under its floor, the test records it (`HELD_IN_DARK`, and
 white on dark's accent (2.88:1) and on its red (2.77:1), the neutral
 chart's two quieter steps (2.42:1 and 1.85:1), the white letter on seven of
 Monaco's completion badges, and the lowest steps of dark's text ladder.
+He asked for one change in dark, the loading bones: their shapes, their
+sweep and their reveal are Skullet's in both themes ("Loading and empty
+states"), on the fill dark already had; docs/agents/appearance.md lists
+exactly what differs.
 
 A look that light changes and dark keeps is a token with a value per
 theme, grouped in index.css under "Held in dark":
@@ -563,7 +569,9 @@ step or nothing. Fades and colour changes stay. The marks that say work is
 going on keep moving whatever the setting: the spinner turns, the working
 mark's dots gather and part, the shimmer crosses its words, and streamed text
 fades in word by word as it arrives (only its 4px rise goes). A still screen
-cannot say the app is working.
+cannot say the app is working. The loading bones are the one exception, by
+the owner's word: reduced, they stand still and their content lands at once
+(`--skullet-animation: none`; `still` in components/bonesEngine.tsx).
 
 The rule is one place, lib/motion.ts. Settings → Appearance → Motion is
 Follow this computer (the default), Full or Reduced, kept per window origin
@@ -617,7 +625,15 @@ every 1.6s, each segment on `--ease-breathe`) and the working words'
 shimmer (`SHIMMER`: a bright band crossing the words every 3s, held off
 them until 15% of the period and swept to 85% on Claude's shimmer curve).
 The mark and the shimmer start at 0 on the document timeline, so a remount
-picks the gesture up where it was.
+picks the gesture up where it was. A fourth loop is Skullet's and runs only
+while bones show: the bones' sweep, one stream of soft highlights across the
+whole window on the document's clock, `background-position` on each bone,
+which the main thread paints (`--skullet-animation: shimmer`,
+components/bones.css; the measured cost and the `pulse` fallback are in
+docs/agents/loading-bones.md "Speed"). Its other values are `BONES` in
+lib/ease.ts: the 150ms hold before bones show, the 320ms a reveal spreads
+its rows across, the 60ms smaller text follows by, the 400ms after a key or
+a scroll in which content lands at once.
 
 ### Layers
 
@@ -4826,9 +4842,24 @@ every asset is used, and Meta's is present.
 
 ## Loading and empty states
 
-A surface that waits shows a `Skeleton` in the shape of what is coming when
-the wait is a load, and a `Spinner` with a word ("Loading…", "Starting…")
-when it is an action. A button uses `BusyLabel` to reserve both states
+A surface that waits shows its own screen drawn as bones when the wait is a
+load, and a `Spinner` with a word ("Loading…", "Starting…") when it is an
+action. The bones are the screen itself, laid out unseen from a sample by
+Skullet, which draws one bone for each line of text, glyph and block: a bar
+from a line's cap height to its baseline, a block at a glyph's, a picture's
+or a field's own box, on the `skeleton` fill. No bone is drawn by hand, so a
+skeleton cannot drift from the screen it stands for. One sweep crosses every
+bone in the window (`skeleton-sheen`). Each part of a screen with a read of
+its own is a region (`Region`, `Loaded`; `Bones` for a wait with no content
+of its own; components/bones.tsx): its bones wait 150ms before they show, so
+a read that answers sooner shows none; when the read answers, the content
+comes in over the bones, rows in window order, each bone leaving as its row
+arrives, while the regions still waiting go on sweeping. Nothing waits for
+the slowest read. Content that lands while he types or scrolls, in a hidden
+window, or with motion reduced lands at once. A picture, a chart or a frame
+on its way, which has no words to measure, is one `Bone`. The rules and the
+recipe are docs/agents/loading-bones.md; `lib/bonesGuard.test.ts` refuses a
+skeleton drawn any other way. A button uses `BusyLabel` to reserve both states
 at rest, and the button clicked is the one that spins (a footer's Clear or
 Remove override spins itself while the confirm only waits); its spinner is hidden from assistive tech so the verb stays its
 name. `lib/busyLabelGuard.test.ts` refuses a bare Spinner in Button or
@@ -4849,9 +4880,11 @@ the composer under one muted line (the host's failure summary, else "No
 messages yet"), never the new-thread screen; a Work thread's sits beside its
 open items. Inside a picker
 or menu, no match is one muted row, never `Empty`. A lazy surface falls back
-to a `SurfaceSkeleton` kind, and a small section's wait is `LoadingLine`
-(both in surfaces/SurfaceSkeleton.tsx, beside `EmptyState`). Text that is
-being produced shimmers (`WorkingText`); nothing else does.
+to a `SurfaceSkeleton` kind (the surface's frame drawn from sample words,
+since its own pieces are in the chunk still on its way), and a small
+section's wait is `LoadingLine` (both in surfaces/SurfaceSkeleton.tsx,
+beside `EmptyState`). Text that is being produced shimmers (`WorkingText`)
+and bones sweep; nothing else does.
 
 No control is offered that its host can only refuse. While a host's link is
 not open (past the 1.5 s grace, counted from the drop, not from a control's
@@ -4999,6 +5032,10 @@ never cut (`StatusMark`'s `wrap`).
 | Working mark (`WorkingMark`, the working line's glyph) | three 3px dots gather into one and part every 1.6s, transform only (`MARK`); enters and leaves as an icon swap does | — | the same; it enters and leaves by a fade |
 | The working line settling (only once every row of the turn has finished revealing: the mark stays till then) | the mark leaves as an icon does, the words morph into "Worked for 2m 4s" (or Stopped; "Worked" while the time is still to land, which then fills in) and slide from the glyph slot to the prose edge, 22px, `--dur-base` `--ease-swap`; the hover actions mount | — | the morph's fades; no slide |
 | Spinner | the one arc turning, on the document timeline from 0 (every spinner in phase; a remount picks the turn up) | — | the same: it turns |
+| Bones showing (`Region`, `Bones`; components/bones.tsx) | they wait 150ms (`BONES.holdMs`) from when the wait began, then fade in, `--dur-fast` `--ease-out` (`bones-in`); bones that follow bones (a lazy surface's fallback giving way to the surface's own) take their place at once, with no wait and no fade; the first bones of a launch count their wait from the window's start | a read that answers inside the wait shows no bones | no fade |
+| The bones' sweep | Skullet's: one stream of soft highlights across the whole window, 20° off upright, a band about every 1.5s, on the document's clock so bones that mount late join it in step; `background-position`, linear | — | still bones |
+| Bones → content, every region | Skullet's reveal. A list or any region of more than three pieces: rows in window order over 320ms (`BONES.spreadMs`), each row's pieces fading in over 200ms (smaller text 60ms after the text it sits under) as the bone it replaces fades out 1.25 times as fast, so no bone outlives its text; only rows on screen are timed. A small region (under 72px, or three pieces or fewer): one 200ms cross-fade. The content's own fills settle under its pieces from 40% over `--dur-base`. No size change: the bones are the content's shape; where they differ the region's height eases over 280ms, which is a fault in the sample (`snap` lands at once where the height cannot be known). Content that lands inside the hold, within 400ms of a key or a scroll, or in a hidden window lands at once | a read that fails shows its error the same way | instant swap |
+| Bones unmounted whole (a lazy surface's fallback as its chunk lands; components/bonesBridge.ts) | where an `Arrive` took their place, the reveal above; else a copy of the bones fades out over what replaced them, `--dur-fast` `--ease-out`, its bars still in the sweep | — | gone at once |
 | Lightbox | opens from the thumbnail that asked for it (its transform origin is the thumbnail's centre) and settles back toward it as the dialog does | — | fade only |
 | Appshot | fade + scale 0.95→1 centred, `--dur-slow`; holds; glides into its chip, `--dur-drawer` `--ease-drawer` | — | fade in and out in place, `--dur-fast` |
 | Released drag (every sash let go past its bound, the reorder drop, an Escape glide-back) | settles on `SPRING_GLIDE` from where it is drawn, carrying the pointer's speed at release | — | at once |

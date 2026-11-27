@@ -33,6 +33,8 @@ const KEYFRAMES: Record<string, string> = {
   "reveal-flash": "surfaces/monaco/MonacoPane.tsx",
   "bubble-send-in": "surfaces/transcript/UserMessage.tsx",
   "bubble-send-flip": "surfaces/transcript/UserMessage.tsx",
+  "bones-in": "components/bones.tsx",
+  "bones-arrive": "components/bones.tsx",
 };
 
 const TAILWIND = [

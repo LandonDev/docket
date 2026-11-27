@@ -70,7 +70,7 @@ async function instance(root: string, tmpRoot: string, name: Seat): Promise<Inst
 
 /** xvfb also gives the headless host a display for its hidden preview windows. */
 const OFFLINE = 'http://127.0.0.1:0'
-type LaunchOptions = { serveLifeos?: boolean; zone?: string; chromium?: string; fakeOrigin?: string; publicOrigin?: string; sandbox?: Sandbox }
+type LaunchOptions = { serveLifeos?: boolean; zone?: string; chromium?: string; fakeOrigin?: string; publicOrigin?: string; sandbox?: Sandbox; peerDelayMs?: number }
 
 function launch(repo: string, inst: Instance, seed: string, bin: string, options: LaunchOptions, tools?: string): ChildProcess {
   const inherited = isolatedEnvironment(process.env)
@@ -86,6 +86,8 @@ function launch(repo: string, inst: Instance, seed: string, bin: string, options
     ...(['giver', 'given'].includes(inst.name) ? { TEMP_CODE_E2E_DEVICES: '1' } : {}),
     ...(inst.name === 'giver' ? { TEMP_CODE_BUILD_PLATFORM: 'darwin' } : {}),
     ...(inst.name === 'box' && options.chromium ? { TEMP_CODE_BOX_CHROMIUM: options.chromium } : {}),
+    // A slow box (src/main/server/peerDelay.ts): every request a remote peer makes of it waits this long.
+    ...(inst.name === 'box' && options.peerDelayMs ? { TEMP_CODE_PEER_DELAY_MS: String(options.peerDelayMs) } : {}),
     TEMP_CODE_HEADLESS: inst.name === 'box' ? '1' : '0',
     TEMP_CODE_REMOTE_PORT: String(inst.remote),
     ...(inst.debug ? { TEMP_CODE_DEBUG_PORT: String(inst.debug) } : {}),
@@ -289,7 +291,7 @@ export class Pair {
    * a plain one on a scratch git repo (`codeProject`). `beforeStart` runs for each instance once its folders exist
    * and before its process starts (a seeded database for box).
    */
-  async open(withDesk: boolean, name: string, options: { fake?: boolean; fakeDesk?: boolean; twoAccounts?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; withoutTools?: boolean; chromium?: string; zone?: string; browser?: boolean; link?: LinkShape; provider?: typeof startFakeProvider; work?: boolean; beforeStart?: (inst: Instance) => void | Promise<void> } = {}): Promise<Workspace> {
+  async open(withDesk: boolean, name: string, options: { fake?: boolean; fakeDesk?: boolean; twoAccounts?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; withoutTools?: boolean; chromium?: string; zone?: string; browser?: boolean; link?: LinkShape; peerDelayMs?: number; provider?: typeof startFakeProvider; work?: boolean; beforeStart?: (inst: Instance) => void | Promise<void> } = {}): Promise<Workspace> {
     // Electron's singleton uses a Unix socket under TMPDIR. Keep its path short even when evidence is nested.
     const tmpRoot = this.tmpRoot = mkdtempSync('/tmp/tcj-')
     this.win = await instance(this.root, tmpRoot, 'win')
@@ -351,6 +353,7 @@ export class Pair {
       serveLifeos: !!this.sandbox && (options.guestTheme || options.guests),
       chromium,
       zone: options.zone,
+      peerDelayMs: options.peerDelayMs,
       fakeOrigin: this.fakeProvider?.url.origin,
       publicOrigin: this.guestOrigin ?? (options.hosted ? 'http://127.0.0.1:' + this.box.workPort : undefined)
     }

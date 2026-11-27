@@ -331,6 +331,11 @@ describe('ProjectSettingsDialog: each field waits for its value', () => {
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
     await act(async () => {})
     expect(section('After each turn').querySelectorAll('[data-slot=field-bone]')).toHaveLength(3)
+    // Drawn from sample words in the rows' own title, unseen and inert, each control a bone at its size.
+    const rows = [...section('After each turn').querySelectorAll('[data-region][data-bones] [skullet-loading] [data-slot=field-bone]')]
+    expect(rows.map((row) => row.querySelector('[data-slot=item-title]')!.textContent)).toEqual(['Run the checks', 'Build the project', 'Commit after each turn'])
+    expect(rows.every((row) => row.querySelector('[data-bone]'))).toBe(true)
+    expect([...section('Build').querySelectorAll('[skullet-loading] [data-slot=field-bone] > span:first-child')].map((label) => label.textContent)).toEqual(['Command', 'What it makes'])
     expect(section('After each turn').querySelector('[role=switch]')).toBeNull()
     expect(section('Build').querySelector('input')).toBeNull()
   })

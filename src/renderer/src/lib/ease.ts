@@ -145,6 +145,38 @@ export const MARK: { dots: [Keyframe[], Keyframe[], Keyframe[]]; timing: Keyfram
   return { dots: [side(-4.5, 0.42, 0.58), middle, side(4.5, 0.5, 0.66)], timing: { duration: 1600, iterations: Infinity, easing: "linear" } };
 })();
 
+/**
+ * The loading bones (components/bones.tsx; docs/agents/loading-bones.md).
+ * Bones wait `holdMs` before they show, so a read that answers sooner shows
+ * none (Skullet's own measure of a flash); bones that follow bones inside
+ * `followsMs` never wait again. Content comes in over its bones by Skullet's
+ * reveal: rows in window order across `spreadMs`, smaller text `secondaryMs`
+ * behind the text it sits under, and at once inside `inputMs` of a key or a
+ * scroll. `surfaces` settles the content's own fills under its pieces (from
+ * 40%: a dip to nothing would show the bones bare), `copyOut` fades a copy
+ * of bones that were unmounted whole, and leaving bones fade `leaveFaster`
+ * times as fast as their text arrives, so none outlives it. A leaving pane
+ * is dropped after `leaveCapMs` whatever its fade says: a hidden window
+ * draws no frame for it to end on. The sweep itself is Skullet's
+ * (`--skullet-animation`, components/bones.css); it is paint on the main
+ * thread for every bone, so bones that have stood `sweepCapMs` go still: a
+ * wait that long is a host that is not answering, and a window left on it
+ * should cost nothing.
+ */
+export const BONES = {
+  holdMs: 150,
+  followsMs: 300,
+  spreadMs: 320,
+  secondaryMs: 60,
+  inputMs: 400,
+  rememberMs: 700,
+  leaveFaster: 1.25,
+  leaveCapMs: 1500,
+  sweepCapMs: 20_000,
+  surfaces: { keyframes: [{ opacity: 0.4 }, { opacity: 1 }] as Keyframe[], timing: { duration: DUR.base * 1000, easing: "ease" } as KeyframeAnimationOptions },
+  copyOut: { keyframes: [{ opacity: 1 }, { opacity: 0 }] as Keyframe[], timing: { duration: DUR.fast * 1000, easing: EASE_OUT_CSS } as KeyframeAnimationOptions },
+} as const;
+
 /** The one entrance: fade up 4px over DUR.base. Spread onto a motion element. */
 export const ENTER = {
   initial: { opacity: 0, y: 4 },

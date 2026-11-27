@@ -1,8 +1,8 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
+import { Bone, Bones } from "../components/bones";
 import { PAGE_SCROLLER, PAGE_WIDTH } from "../components/pageLayout";
 import { BusyLabel, Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
-import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
 import { STATS_SECTIONS } from "./statsSkeletonShape";
 import { COLUMN_MAX_CLASS } from "./transcriptOutlineModel";
@@ -11,8 +11,13 @@ import { COLUMN_MAX_CLASS } from "./transcriptOutlineModel";
  * The state kit (docs/DESIGN.md "Loading and empty states"): the fallback a
  * lazy surface (lib/lazyChunk.tsx) shows while its chunk loads, the line a
  * small section shows while it waits on an answer, and the one empty state.
- * A skeleton is the surface's own outline in still blocks, so the frame
- * around it does not jump when the real thing lands; nothing in it moves.
+ *
+ * A skeleton here is the surface's own frame drawn from sample words, in
+ * bones (components/bones.tsx): the surface's pieces are in the chunk still
+ * on its way, so the drawing is written out here, in the type and the boxes
+ * the surface lands in, and Skullet measures it. A screen whose pieces are
+ * in hand draws its bones from those pieces instead (a `Region` with a
+ * sample; docs/agents/loading-bones.md).
  */
 export type SkeletonKind =
   /** A full page with a list column beside its content (Inbox, Notes; `lines` 3 for Notes): the title strip, the list's head and rows, the detail. */
@@ -40,34 +45,46 @@ export type SkeletonKind =
   /** A list in a panel or page: `count` rows of a title over a line (the Inbox's), or Notes' three-line cards. */
   | "rows";
 
-const PROSE = [72, 48, 88, 36, 64, 56];
+/*
+ * The sample words. Nobody reads them: their lengths give the bones the
+ * shape of real work, so a row's title is a title's length and a line of
+ * prose a line's. Fixed literals, cycled by row.
+ */
+const TITLES = ["Review the release notes", "Check what changed on the box", "Plan the next pass", "Ask about the tunnel's port", "Sort the reading list", "Write up the findings", "Trim the rail", "Answer the open review"];
+const LINES = ["What changed, and what to check first", "Three things to ask before Friday", "Fewer rows, the same reach", "Two papers and a long thread", "Left over from the last pass", "A page, no more"];
+const PLACES = ["Docket · 2h", "The box · 5h", "Tracker · 1d", "Notes · 3d"];
+const PROSE = [
+  "Every read has a region of its own, so no part waits for the slowest.",
+  "What is known at once is drawn at once.",
+  "A list keeps the shape it last showed, and its bones are drawn from that shape.",
+  "A read that fails says so, with Retry.",
+  "Content that lands while someone types lands at once.",
+  "Nothing moves when the rows arrive.",
+];
+const CODE = ["export function resolve(path: string, root: string): string {", "  if (!path.startsWith(root)) return root;", "  const parts = path.slice(root.length).split(sep);", "  return join(root, ...parts);", "  const kept = parts.filter(Boolean);"];
+const cycle = <T,>(list: readonly T[], at: number): T => list[at % list.length]!;
+
 /** The Inbox's and Notes' list column at its default width; both views start there. */
 export const PAGE_LIST_WIDTH = 280;
-/** The 40px title strip every full surface opens with (Search, Inbox, Notes, the pages). */
+/** The 40px title strip every full surface opens with (Search, Inbox, Notes, the pages). Bare, it is marked
+ *  `skullet-own`: an empty box is a leaf Skullet would hide, hairline and all. */
 const STRIP = "h-10 shrink-0 border-b border-border";
-const HUNK = [64, 40, 76, 52, 30];
 /** The most lines a diff's skeleton draws: past them the fold is already a screen's worth. */
 export const DIFF_ROWS_SKELETON_CAP = 8;
+/** A 13px line on its 20px box and a 12px line on its 16px box: a drawn row is exactly as tall as the row that replaces it. */
+const LINE_13 = "truncate text-[13px] leading-5";
+const LINE_12 = "truncate text-xs leading-4";
 
-/** Lines of `className` height whose widths cycle through `widths` (percent). */
-function Lines({ widths, count, className, gap }: { widths: number[]; count: number; className: string; gap: string }) {
+/** `count` lines of sample prose, one to a line box, in `className`'s type. */
+function Prose({ count, className }: { count: number; className: string }) {
   return (
-    <div className={`flex flex-col ${gap}`}>
+    <>
       {Array.from({ length: count }, (_, i) => (
-        <Skeleton key={i} className={className} style={{ width: `${widths[i % widths.length]}%` }} />
+        <p key={i} className={`truncate ${className}`}>
+          {cycle(PROSE, i)}
+        </p>
       ))}
-    </div>
-  );
-}
-
-/** One text line's box with its bar: a 13px line is 20px tall (a 12px bar),
- *  a 12px line 16px (a 10px bar), so a skeleton row is exactly as tall as
- *  the row that replaces it. */
-function TextLine({ size, className, style }: { size: 13 | 12; className?: string; style?: CSSProperties }) {
-  return (
-    <span className={size === 13 ? "flex h-5 items-center" : "flex h-4 items-center"}>
-      <Skeleton className={`${size === 13 ? "h-3" : "h-2.5"} max-w-full ${className ?? ""}`} style={style} />
-    </span>
+    </>
   );
 }
 
@@ -81,28 +98,22 @@ function rowsOf(count: number, lines: 1 | 2 | 3): ReactNode {
   return Array.from({ length: count }, (_, i) =>
     lines === 3 ? (
       <div key={i} data-skeleton-row className="flex flex-col px-2 py-2">
-        <TextLine size={12} className="w-24" />
-        <span className="mt-1 block">
-          <TextLine size={13} className="w-40" />
-        </span>
-        <span className="mt-0.5 block">
-          <TextLine size={12} className="w-56" />
-        </span>
+        <p className={LINE_12}>{cycle(PLACES, i)}</p>
+        <p className={`mt-1 ${LINE_13}`}>{cycle(TITLES, i)}</p>
+        <p className={`mt-0.5 ${LINE_12}`}>{cycle(LINES, i)}</p>
       </div>
     ) : lines === 2 ? (
       <div key={i} data-skeleton-row className="flex flex-col gap-0.5 px-2 py-2">
-        <span className="flex h-5 items-center gap-2">
-          <Skeleton data-skeleton-glyph className="size-3.5 shrink-0 rounded-sm" />
-          <Skeleton className="h-3 flex-1" />
-        </span>
-        <span className="ps-[22px]">
-          <TextLine size={12} className="w-1/2" />
-        </span>
+        <div className="flex h-5 items-center gap-2">
+          <Bone data-skeleton-glyph className="size-3.5 rounded-sm" />
+          <p className={`min-w-0 ${LINE_13}`}>{cycle(TITLES, i)}</p>
+        </div>
+        <p className={`ps-[22px] ${LINE_12}`}>{cycle(LINES, i)}</p>
       </div>
     ) : (
       <div key={i} data-skeleton-row className="flex h-7 items-center gap-2 px-2">
-        <Skeleton data-skeleton-glyph className="size-4 shrink-0 rounded-sm" />
-        <Skeleton className="h-3" style={{ width: `${PROSE[i % PROSE.length]}%` }} />
+        <Bone data-skeleton-glyph className="size-4 rounded-sm" />
+        <p className={`min-w-0 ${LINE_13}`}>{cycle(TITLES, i)}</p>
       </div>
     ),
   );
@@ -122,24 +133,22 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
       // title and lines in the detail's own column.
       return (
         <>
-          <div data-skeleton-strip className={STRIP} />
+          <div data-skeleton-strip skullet-own="" className={STRIP} />
           <div className="flex min-h-0 flex-1">
             <div data-skeleton-list className="flex shrink-0 flex-col border-r border-border" style={{ width: PAGE_LIST_WIDTH }}>
               <div data-skeleton-head className="flex shrink-0 flex-col gap-2 border-b border-border p-2">
-                {lines === 2 ? <Skeleton className="h-8 w-full rounded-lg" /> : null}
-                <Skeleton className="h-8 w-full rounded-lg" />
+                {lines === 2 ? <Bone data-skeleton-field className="h-8 w-full rounded-lg" /> : null}
+                <Bone data-skeleton-field className="h-8 w-full rounded-lg" />
               </div>
               {listOf(8, lines)}
             </div>
             {/* Padded inside the detail's 1,024px column, as the Inbox's and Notes' details are. */}
             <div data-skeleton-detail className="@container/detail min-w-0 flex-1">
               <div className="mx-auto w-full max-w-5xl px-4 pt-8 @xl/detail:px-8">
-                <TextLine size={12} className="w-32" />
-                <span className="mt-2 flex h-6 items-center">
-                  <Skeleton className="h-4 w-64 max-w-full" />
-                </span>
-                <div className="mt-6">
-                  <Lines widths={PROSE} count={6} className="h-3" gap="gap-3" />
+                <p className={LINE_12}>{PLACES[0]}</p>
+                <p className="mt-2 truncate text-base font-semibold leading-6 tracking-[-0.01em]">{TITLES[0]}</p>
+                <div className="mt-6 flex flex-col gap-1">
+                  <Prose count={6} className="text-[13px] leading-5" />
                 </div>
               </div>
             </div>
@@ -152,7 +161,7 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
       return (
         <>
           <div data-skeleton-strip className={`${STRIP} flex items-center px-3`}>
-            <Skeleton data-skeleton-field className="h-8 flex-1 rounded-lg" />
+            <Bone data-skeleton-field className="h-8 flex-1 rounded-lg" />
           </div>
           {count > 0 ? <div className="flex flex-col p-1">{rowsOf(count, 1)}</div> : null}
         </>
@@ -165,32 +174,28 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
       // height holds each row's, so nothing moves when the chunk lands.
       return (
         <>
-          <div data-skeleton-strip className={STRIP} />
+          <div data-skeleton-strip skullet-own="" className={STRIP} />
           <div data-skeleton-scroller className={PAGE_SCROLLER}>
             <div data-skeleton-column className={`mx-auto w-full p-6 ${PAGE_WIDTH.table}`}>
-              <p className="text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">Accounts</p>
+              <p skullet-own="" className="text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">
+                Accounts
+              </p>
               <div className="@container/accounts mt-6 flex flex-col gap-6">
-                {[0, 1, 2].map((section) => (
+                {["Claude accounts", "Codex accounts", "Other accounts"].map((section) => (
                   <div key={section} className="flex flex-col">
-                    <div className="flex h-5 items-center">
-                      <Skeleton className="h-3 w-24" />
-                    </div>
+                    <p className="flex h-5 items-center text-xs font-medium">{section}</p>
                     <div className="mt-2 flex flex-col">
-                      {[0, 1].map((row) => (
+                      {["Personal account", "Work account"].map((row) => (
                         <div key={row} data-slot="account-row-skeleton" className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
-                          <Skeleton className="size-2 rounded-full" />
-                          <div className="flex flex-1 flex-col gap-0.5">
-                            <span className="flex h-5 items-center">
-                              <Skeleton className="h-3.5 w-36" />
-                            </span>
-                            <span className="flex h-4 items-center">
-                              <Skeleton className="h-3 w-24" />
-                            </span>
+                          <Bone className="size-2 rounded-full" />
+                          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                            <p className={`${LINE_13} font-medium`}>{row}</p>
+                            <p className={LINE_12}>name@example.com</p>
                           </div>
-                          <span aria-hidden data-skeleton-bars className="order-last h-14 basis-full @3xl/accounts:order-none @3xl/accounts:basis-auto" />
+                          <span aria-hidden skullet-ignore="" data-skeleton-bars className="order-last h-14 basis-full @3xl/accounts:order-none @3xl/accounts:basis-auto" />
                           <span className="flex items-center gap-2">
-                            <Skeleton data-skeleton-switch className="h-[18px] w-8 rounded-full" />
-                            <Skeleton className="size-7 rounded-md" />
+                            <Bone data-skeleton-switch className="h-[18px] w-8 rounded-full" />
+                            <Bone className="size-7 rounded-md" />
                           </span>
                         </div>
                       ))}
@@ -208,17 +213,16 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
       // of the page it stands in for.
       return (
         <>
-          <div data-skeleton-strip className={STRIP} />
+          <div data-skeleton-strip skullet-own="" className={STRIP} />
           <div data-skeleton-scroller className={PAGE_SCROLLER}>
             <div data-skeleton-column className={`mx-auto w-full p-6 ${PAGE_WIDTH.column}`}>
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="mt-2 h-3 w-64 max-w-full" />
+              <p className="truncate text-base font-semibold leading-6 tracking-[-0.01em]">Appearance</p>
+              <p className={`mt-1 ${LINE_12}`}>How the window looks and moves on this computer</p>
               <div className="mt-6 flex flex-col">
                 {Array.from({ length: count }, (_, i) => (
                   <div key={i} className="flex items-center gap-3 py-3">
-                    <Skeleton className="h-3.5 w-32" />
-                    <span className="flex-1" />
-                    <Skeleton className="h-8 w-40 rounded-lg" />
+                    <p className={`min-w-0 flex-1 ${LINE_13}`}>{cycle(TITLES, i)}</p>
+                    <Bone className="h-8 w-40 rounded-lg" />
                   </div>
                 ))}
               </div>
@@ -232,20 +236,20 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
       // the title: the page has none until its first read.
       return (
         <>
-          <div data-skeleton-strip className={STRIP} />
+          <div data-skeleton-strip skullet-own="" className={STRIP} />
           <div data-skeleton-scroller className={PAGE_SCROLLER}>
             <div data-skeleton-column className={`mx-auto w-full p-6 ${PAGE_WIDTH.column}`}>
-              <p className="text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">Stats</p>
+              <p skullet-own="" className="text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">
+                Stats
+              </p>
               <div className="mt-6 flex flex-col gap-6">
                 {STATS_SECTIONS.map((s) => (
                   <div key={s.title} className="min-w-0">
-                    <p className="flex h-5 items-center text-xs font-medium text-muted-foreground">{s.title}</p>
-                    {s.description ? (
-                      <span className="flex h-4 items-center">
-                        <Skeleton className="h-3 w-56" />
-                      </span>
-                    ) : null}
-                    <Skeleton data-section-skeleton={s.title} className="mt-2 w-full rounded-lg" style={{ height: s.height }} />
+                    <p skullet-own="" className="flex h-5 items-center text-xs font-medium text-muted-foreground">
+                      {s.title}
+                    </p>
+                    {s.description ? <p className={LINE_12}>What this chart counts, in one line</p> : null}
+                    <Bone data-section-skeleton={s.title} className="mt-2 w-full rounded-lg" style={{ height: s.height }} />
                   </div>
                 ))}
               </div>
@@ -255,22 +259,26 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
       );
     case "pane":
       return (
-        <div className="max-w-2xl p-4">
-          <Lines widths={PROSE} count={12} className="h-2.5" gap="gap-2.5" />
+        <div className="flex max-w-2xl flex-col p-4">
+          <Prose count={12} className="text-xs leading-5" />
         </div>
       );
     case "diff":
       return (
         <>
           <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3">
-            <Skeleton className="h-3 w-40 max-w-full" />
-            <Skeleton className="ms-auto h-3 w-10" />
+            <p className="min-w-0 truncate font-mono text-xs">src/main/server/paths.ts</p>
+            <p className="ms-auto shrink-0 text-xs">+12 −4</p>
           </div>
           <div className="flex max-w-2xl flex-col gap-4 p-3">
             {[0, 1].map((hunk) => (
-              <div key={hunk} className="flex flex-col gap-2.5">
-                <Skeleton className="h-2.5 w-24" />
-                <Lines widths={HUNK} count={5} className="h-2.5" gap="gap-2.5" />
+              <div key={hunk} className="flex flex-col">
+                <p className="truncate font-mono text-xs leading-5">@@ -24,7 +24,9 @@</p>
+                {CODE.map((line) => (
+                  <p key={line} className="truncate font-mono text-xs leading-5 whitespace-pre">
+                    {line}
+                  </p>
+                ))}
               </div>
             ))}
           </div>
@@ -281,24 +289,26 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
       // in past the inset, the number column and the mark.
       return Array.from({ length: Math.min(Math.max(count, 1), DIFF_ROWS_SKELETON_CAP) }, (_, i) => (
         <div key={i} data-skeleton-row className="flex h-5 items-center ps-13 pe-3">
-          <Skeleton className="h-2.5" style={{ width: `${HUNK[i % HUNK.length]}%` }} />
+          <p className="truncate font-mono text-xs whitespace-pre">{cycle(CODE, i)}</p>
         </div>
       ));
     case "terminal":
       return (
         <div className="min-h-0 flex-1 p-2">
-          <Skeleton className="h-3 w-24" />
+          <p className="font-mono text-xs leading-4">~/work/docket $</p>
         </div>
       );
     case "frame":
-      return <Skeleton className="h-full min-h-24 w-full rounded-xl" />;
+      return <Bone className="min-h-24 w-full flex-1 rounded-xl" />;
     case "transcript":
       return (
         <div className={`mx-auto flex w-full min-w-0 ${COLUMN_MAX_CLASS} flex-col gap-8`}>
-          {[3, 4, 5].map((lines, i) => (
+          {[3, 4, 5].map((answer, i) => (
             <div key={i} className="flex flex-col gap-4">
-              <Skeleton className="h-9 w-2/5 self-end rounded-xl" />
-              <Lines widths={PROSE} count={lines} className="h-3" gap="gap-3" />
+              <Bone data-skeleton-prompt className="h-9 w-2/5 self-end rounded-xl" />
+              <div className="flex flex-col gap-1">
+                <Prose count={answer} className="text-[13px] leading-5" />
+              </div>
             </div>
           ))}
         </div>
@@ -314,14 +324,16 @@ const FRAME: Record<SkeletonKind, string> = {
   column: "flex min-h-0 min-w-0 flex-1 flex-col",
   stats: "flex min-h-0 min-w-0 flex-1 flex-col",
   accounts: "flex min-h-0 min-w-0 flex-1 flex-col",
-  pane: "h-full min-h-0 w-full overflow-hidden",
+  pane: "flex h-full min-h-0 w-full flex-col overflow-hidden",
   diff: "flex h-full min-h-0 w-full flex-col overflow-hidden",
   "diff-rows": "w-full py-1",
   terminal: "docket-terminal flex h-full min-h-0 w-full flex-col",
-  frame: "flex h-full min-h-0 w-full p-3",
-  transcript: "h-full min-h-0 w-full overflow-hidden px-4 pt-6",
+  frame: "flex h-full min-h-0 w-full flex-col p-3",
+  transcript: "flex h-full min-h-0 w-full flex-col overflow-hidden px-4 pt-6",
   rows: "w-full",
 };
+/** The kinds that fill the room they are given; the rest are as tall as their rows. */
+const FILLS: ReadonlySet<SkeletonKind> = new Set(["page", "search", "column", "stats", "accounts", "pane", "diff", "terminal", "frame", "transcript"]);
 
 export function SurfaceSkeleton({
   kind,
@@ -337,8 +349,11 @@ export function SurfaceSkeleton({
   lines?: 2 | 3;
 }) {
   return (
-    <div role="status" aria-label={label ?? "Loading"} aria-busy data-surface-skeleton={kind} className={`select-none ${FRAME[kind]}`}>
-      {body(kind, count, lines)}
+    // The frame names the wait; the bones inside it say nothing more (an empty label).
+    <div role="status" aria-label={label ?? "Loading"} aria-busy data-surface-skeleton={kind} className={FRAME[kind]}>
+      <Bones label="" fill={FILLS.has(kind)}>
+        {body(kind, count, lines)}
+      </Bones>
     </div>
   );
 }

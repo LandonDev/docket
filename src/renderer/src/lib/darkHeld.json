@@ -163,6 +163,8 @@
     "--chrome-hover": "color-mix(in srgb, var(--foreground) 5%, transparent)",
     "--chrome-hover-ghost": "color-mix(in srgb, var(--foreground) 7%, transparent)",
     "--skeleton": "var(--muted)",
+    "--skeleton-sheen": "color-mix(in srgb, var(--foreground) 7%, transparent)",
+    "--skeleton-matte-sheen": "var(--skeleton-sheen)",
     "--check-edge": "var(--input)",
     "--hover-fill": "var(--muted)",
     "--hover-fill-field": "color-mix(in srgb, var(--muted) 60%, transparent)",

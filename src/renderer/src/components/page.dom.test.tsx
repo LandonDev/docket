@@ -134,18 +134,25 @@ describe("PageRow", () => {
     const row = document.querySelector<HTMLElement>("[data-slot=page-row-skeleton]")!;
     expect(row.className).toContain("py-3");
     expect(row.className).toContain("border-t");
-    const content = row.querySelector<HTMLElement>(".flex-col")!;
+    // A row's own parts hold the sample words: the title's 20px line, 2px, the description's 16px line.
+    const content = row.querySelector<HTMLElement>("[data-slot=item-content]")!;
     expect(content.className).toContain("gap-0.5");
-    expect([...content.children].map((c) => c.className.match(/\bh-[45]\b/)?.[0])).toEqual(["h-5", "h-4"]);
+    expect([...content.children].map((c) => [c.getAttribute("data-slot"), c.className.match(/\bleading-[45]\b/)?.[0]])).toEqual([
+      ["item-title", "leading-5"],
+      ["item-description", "leading-4"],
+    ]);
     expect(row.querySelector("[data-skeleton-control]")?.className).toContain("h-[18px] w-8");
+    // Drawn in bones: unseen and inert, one block for the control.
+    expect(row.closest("[skullet-loading]")!.getAttribute("aria-hidden")).toBe("true");
+    expect(row.querySelector("[data-skeleton-control]")!.hasAttribute("skullet-block")).toBe(true);
   });
 
   it("takes each row's own shape, with a hairline between neighbours as PageRow draws", () => {
     render(<PageRowsSkeleton rows={[{ description: true }, { control: "switch" }, { control: "none", media: true }]} />);
     const rows = [...document.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")];
     expect(rows.map((r) => r.dataset.control)).toEqual(["select", "switch", "none"]);
-    expect(rows[0].querySelectorAll(".h-4")).toHaveLength(1);
-    expect(rows[1].querySelectorAll(".h-4")).toHaveLength(0);
+    expect(rows[0].querySelectorAll("[data-slot=item-description]")).toHaveLength(1);
+    expect(rows[1].querySelectorAll("[data-slot=item-description]")).toHaveLength(0);
     expect(rows[2].querySelector("[data-skeleton-control]")).toBeNull();
     expect(rows[2].querySelector(".size-4")).toBeTruthy();
     for (const r of rows) expect(r.className).toContain("[[data-slot=page-row-skeleton]+&]:border-border");

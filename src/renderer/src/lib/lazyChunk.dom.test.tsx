@@ -101,6 +101,8 @@ describe("a surface that fails", () => {
     await tick();
     expect(container.querySelector("[data-fallback]")).not.toBeNull();
     expect(screen.getByRole("alert").textContent).toContain("Couldn't load");
+    // Nothing is loading: the fallback's bones stand still under the line (Skullet reads the property where they are).
+    expect(container.querySelector("[data-chunk-failed]")!.className).toContain("[--skullet-animation:none]");
     expect(calls.n).toBe(1);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await tick();

@@ -13,11 +13,11 @@ import {
 import { Empty, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { Item, ItemActions, ItemButton, ItemContent, ItemMedia } from "@renderer/components/ui/item";
 import { ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "@renderer/components/ui/press";
-import { Skeleton } from "@renderer/components/ui/skeleton";
 import { reveal, yields } from "@renderer/components/ui/reveal";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
+import { Bones, Region } from "@renderer/components/bones";
 import { cn } from "@renderer/lib/cn";
 import { registry } from "../../lib/connection";
 import { useEditorConfig } from "../../lib/editorConfig";
@@ -556,7 +556,7 @@ export function ChangesView({
   const renderItem = (item: ChangesItem): ReactNode => {
     const body =
       item.kind === "loading" ? (
-        <RowsSkeleton />
+        <RowsBones />
       ) : item.kind === "failed" ? (
         <p role="alert" className="flex h-7 items-center gap-2 px-2 text-xs text-destructive">
           <span className="min-w-0 flex-1 truncate">Couldn't read the changes</span>
@@ -594,14 +594,15 @@ export function ChangesView({
   // element would remount the scroller and its virtual list.
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-slot="changes-section">
-      {index ? (
-        <TooltipProvider>
-          <TopRow index={index} pr={pr} rules={rules} busy={busy} actions={actions} branchPicker={branchPicker} />
-        </TooltipProvider>
-      ) : failed ? null : (
-        // Bones only while the index loads: a failed read with nothing cached is the red line alone.
-        <TopRowSkeleton />
-      )}
+      {/* Bones only while the index loads: a failed read with nothing cached is the red line alone. The rows' bones
+          say the wait, so this region says nothing. */}
+      <Region loading={!index && !failed} label="" className="shrink-0" bones={TopRowBones}>
+        {index ? (
+          <TooltipProvider>
+            <TopRow index={index} pr={pr} rules={rules} busy={busy} actions={actions} branchPicker={branchPicker} />
+          </TooltipProvider>
+        ) : null}
+      </Region>
       {error ? (
         <p role="alert" className="shrink-0 px-3 pb-2 text-xs break-words text-destructive">
           {gitErrorWords(error)}
@@ -638,24 +639,65 @@ export function ChangesView({
   );
 }
 
-function TopRowSkeleton() {
+/*
+ * The loading bones, drawn from samples: the branch name's own element, and
+ * real file rows at rest (no actions, a read key's `busy`, handlers that do
+ * nothing). Nobody reads the words; their lengths give the bones their shape.
+ */
+const noop = () => {};
+const STILL: ChangesActions = {
+  open: noop,
+  stage: noop,
+  unstage: noop,
+  discard: noop,
+  toggleHunks: noop,
+  stageHunk: noop,
+  unstageHunk: noop,
+  stageAll: noop,
+  unstageAll: noop,
+  pull: noop,
+  push: noop,
+  stash: noop,
+  sync: noop,
+  createPr: noop,
+  viewPr: noop,
+  generate: noop,
+  commit: noop,
+};
+const sampleFile = (relative: string, status: string, additions: number, deletions: number): GitChangedFile => ({
+  path: `sample:${relative}`,
+  relative,
+  status,
+  additions,
+  deletions,
+  staged: false,
+  unstaged: true,
+});
+const SAMPLE_CHANGED_FILES: readonly GitChangedFile[] = [
+  sampleFile("src/renderer/src/chrome/rail/ChangesPanel.tsx", "modified", 24, 9),
+  sampleFile("src/main/server/paths.ts", "modified", 6, 2),
+  sampleFile("docs/agents/releases.md", "untracked", 0, 0),
+];
+const SAMPLE_HUNK: Hunk = { from: 12, to: 18, additions: 4, deletions: 1, pos: 0 };
+
+/** The head's left edge: the name sits 12px in, as it does in BranchPicker's head and in plain text. */
+function TopRowBones() {
   return (
-    <div className="flex h-9 shrink-0 items-center px-3" aria-hidden>
-      <Skeleton className="h-3.5 w-24" />
+    <div className="flex h-9 items-center px-3">
+      <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">main</span>
     </div>
   );
 }
 
-function RowsSkeleton() {
+/** The list's one loading item: three real rows from the sample, where the rows land (a group's heading shows
+ *  only with both groups, so the sample has none). */
+function RowsBones() {
   return (
-    <div className="flex flex-col gap-1 px-2 pt-1" aria-busy="true" aria-label="Loading changes">
-      {["w-2/3", "w-1/2", "w-3/5"].map((w) => (
-        <div key={w} className="flex h-7 items-center gap-2">
-          <Skeleton className="size-4" />
-          <Skeleton className={cn("h-3.5", w)} />
-        </div>
+    <Bones label="Loading changes">
+      {SAMPLE_CHANGED_FILES.map((f) => (
+        <FileRow key={f.path} file={f} side="unstaged" busy={READ_ONLY} actions={STILL} />
       ))}
-    </div>
+    </Bones>
   );
 }
 
@@ -936,47 +978,53 @@ function FileRow({
   );
 }
 
-/** A folded-open file's hunks, aligned under its name. */
+/** A folded-open file's hunks, aligned under its name: while its diff is read, one hunk row from a sample. */
 function HunkRows({ file, side, fold, busy, actions }: { file: GitChangedFile; side: ChangeSide; fold?: HunkFold; busy: string | null; actions: ChangesActions }) {
   if (!fold) return null;
-  if (fold === "loading") {
-    return (
-      <div className="flex h-7 items-center pl-8" aria-busy="true" aria-label="Loading hunks">
-        <Skeleton className="h-3 w-20" />
-      </div>
-    );
-  }
   const staged = side === "staged";
-  if (fold.hunks.length === 0) {
-    return <p className="flex h-7 items-center pl-8 text-xs text-muted-foreground">{staged ? "No lines to unstage" : "No lines to stage"}</p>;
-  }
+  // The count of hunks is not known before the diff is read: the fold lands at its height.
   return (
-    <div className="flex flex-col">
-      {fold.hunks.map((h) => {
-        const span = h.from === h.to ? `L${h.from}` : `L${h.from}–${h.to}`;
-        return (
-          <div key={h.from} className="group/hunk flex h-7 items-center gap-2 rounded-lg pr-2 pl-8 hover:bg-foreground/5">
-            <span className="text-xs tabular-nums text-muted-foreground">{span}</span>
-            <Counts status="modified" additions={h.additions} deletions={h.deletions} className="text-xs" />
-            <span className="flex-1" />
-            {busy === `${foldKey(side, file.relative)}#${h.from}` ? (
-              <Spinner className="size-3 text-muted-foreground" />
-            ) : (
-              <span className={cn("flex", HUNK_REVEALS)}>
-                {staged ? (
-                  <IconAction label={`Unstage lines ${span.slice(1)}`} disabled={!!busy} onClick={() => actions.unstageHunk(file, h)}>
-                    <Minus className="size-3.5" />
-                  </IconAction>
+    <Region loading={fold === "loading"} label="Loading hunks" snap bones={() => <HunkRow hunk={SAMPLE_HUNK} />}>
+      {fold === "loading" ? null : fold.hunks.length === 0 ? (
+        <p className="flex h-7 items-center pl-8 text-xs text-muted-foreground">{staged ? "No lines to unstage" : "No lines to stage"}</p>
+      ) : (
+        <div className="flex flex-col">
+          {fold.hunks.map((h) => (
+            <HunkRow key={h.from} hunk={h}>
+              {(span) =>
+                busy === `${foldKey(side, file.relative)}#${h.from}` ? (
+                  <Spinner className="size-3 text-muted-foreground" />
                 ) : (
-                  <IconAction label={`Stage lines ${span.slice(1)}`} disabled={!!busy} onClick={() => actions.stageHunk(file, h)}>
-                    <Plus className="size-3.5" />
-                  </IconAction>
-                )}
-              </span>
-            )}
-          </div>
-        );
-      })}
+                  <span className={cn("flex", HUNK_REVEALS)}>
+                    {staged ? (
+                      <IconAction label={`Unstage lines ${span.slice(1)}`} disabled={!!busy} onClick={() => actions.unstageHunk(file, h)}>
+                        <Minus className="size-3.5" />
+                      </IconAction>
+                    ) : (
+                      <IconAction label={`Stage lines ${span.slice(1)}`} disabled={!!busy} onClick={() => actions.stageHunk(file, h)}>
+                        <Plus className="size-3.5" />
+                      </IconAction>
+                    )}
+                  </span>
+                )
+              }
+            </HunkRow>
+          ))}
+        </div>
+      )}
+    </Region>
+  );
+}
+
+/** One hunk's row: its lines and counts, then its action (none at rest, as the bones draw it). */
+function HunkRow({ hunk, children }: { hunk: Hunk; children?: (span: string) => ReactNode }) {
+  const span = hunk.from === hunk.to ? `L${hunk.from}` : `L${hunk.from}–${hunk.to}`;
+  return (
+    <div className="group/hunk flex h-7 items-center gap-2 rounded-lg pr-2 pl-8 hover:bg-foreground/5">
+      <span className="text-xs tabular-nums text-muted-foreground">{span}</span>
+      <Counts status="modified" additions={hunk.additions} deletions={hunk.deletions} className="text-xs" />
+      <span className="flex-1" />
+      {children?.(span)}
     </div>
   );
 }

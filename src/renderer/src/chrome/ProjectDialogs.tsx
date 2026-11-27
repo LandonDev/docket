@@ -11,7 +11,8 @@ import { ModalBody, ModalPanel, useClosingDialog } from "./Modal";
 import { CheckRow, Field, FieldRow } from "./DialogField";
 import { Dialog } from "@renderer/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Bone, Bones } from "@renderer/components/bones";
+import { ItemActions, ItemContent, ItemTitle } from "@renderer/components/ui/item";
 import { useAccountsRead } from "../surfaces/settings/parts/useAccountsRead";
 import { FailureLinesHere, FailuresSaidOnce, ReadFailure } from "../surfaces/settings/parts/ReadFailure";
 import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
@@ -230,26 +231,41 @@ function Section({ label, action, children }: { label: string; action?: ReactNod
   );
 }
 
+/** Sample labels for a group's rows while its read is out: a setting's title's length, cycled by row. */
+const SAMPLE_FIELD_LABELS = ["Run the checks", "Build the project", "Commit after each turn", "Start the build", "Merge when done"];
+
 /**
- * A group's rows while its read is out, drawn as its `FieldRow`s are: the label, the control's shape at its end (or,
- * `stacked`, a label over a full-width field), no hairline between them, since the loaded rows have none.
+ * A group's rows while its read is out, drawn in bones from the pieces its `FieldRow`s are made of: the title holding
+ * sample words at the row's start, the control's bone at its end (or, `stacked`, Build's label over a full-width
+ * field), the rows 8px apart as the section lays its loaded rows.
  */
 function FieldBones({ rows, stacked = false }: { rows: readonly ("switch" | "select" | "field")[]; stacked?: boolean }) {
   return (
-    <div role="status" aria-label="Loading" className={stacked ? "flex flex-col gap-4" : "flex flex-col"}>
-      {rows.map((control, i) =>
-        stacked ? (
-          <div key={i} data-slot="field-bone" className="flex flex-col gap-1.5">
-            <Skeleton className="h-3 w-24" />
-            <Skeleton className="h-8 w-full rounded-lg" />
-          </div>
-        ) : (
-          <div key={i} data-slot="field-bone" className="flex min-h-11 items-center justify-between gap-3 py-2">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className={control === "switch" ? "h-[18px] w-8 rounded-full" : "h-7 w-40 rounded-md"} />
-          </div>
-        ),
-      )}
+    // The box names the wait; the bones inside it say nothing more (an empty label).
+    <div role="status" aria-label="Loading" className="flex flex-col">
+      <Bones label="">
+        <div className="flex flex-col gap-2">
+          {rows.map((control, i) =>
+            stacked ? (
+              <div key={i} data-slot="field-bone" className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">{i === 0 ? "Command" : "What it makes"}</span>
+                <Bone className="h-8 w-full rounded-lg" />
+              </div>
+            ) : (
+              // A `FieldRow`'s box with no border: Skullet reads any border as paint, and would draw the row as one
+              // block. Its 1px is in the padding instead.
+              <div key={i} data-slot="field-bone" className="flex w-full items-center gap-2.5 py-[9px]">
+                <ItemContent className="min-w-0">
+                  <ItemTitle>{SAMPLE_FIELD_LABELS[i % SAMPLE_FIELD_LABELS.length]}</ItemTitle>
+                </ItemContent>
+                <ItemActions className="max-w-full shrink-0">
+                  <Bone className={control === "switch" ? "h-[18px] w-8 rounded-full" : "h-7 w-40 rounded-md"} />
+                </ItemActions>
+              </div>
+            ),
+          )}
+        </div>
+      </Bones>
     </div>
   );
 }

@@ -1,10 +1,9 @@
 import { COMPACTING_WORDS } from "@shared/statusWords";
 import { Button } from "../components/ui/button";
-import { Skeleton } from "../components/ui/skeleton";
+import { Region } from "../components/bones";
 import { Spinner } from "../components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
-import { cn } from "../lib/cn";
-import type { ContextReading } from "../lib/contextCache";
+import type { ContextCategory, ContextReading } from "../lib/contextCache";
 import { formatTokens, type ContextUsage } from "../lib/contextUsage";
 
 const LIST_ROWS = 6;
@@ -13,9 +12,9 @@ const LIST_ROWS = 6;
  * The popover's body: the head line, what compaction is doing, the
  * harness's categories largest first, each list (memory files, MCP tools)
  * under the category it details so no total is said twice, and Compact.
- * The live total heads it; the breakdown is the last settled reading, a
- * skeleton until the first one lands, and one line mid-turn when there is
- * none yet.
+ * The live total heads it; the breakdown is the last settled reading, its
+ * rows in bones from a sample until the first one lands, and one line
+ * mid-turn when there is none yet.
  */
 export function ContextBreakdown({
   reading,
@@ -52,34 +51,20 @@ export function ContextBreakdown({
           {COMPACTING_WORDS}
         </div>
       ) : null}
-      {!reading ? (
-        busy ? (
-          <p className="text-xs text-muted-foreground">Breakdown after this turn</p>
-        ) : (
-          <div className="flex flex-col gap-2" aria-busy data-context-loading>
-            {["w-2/3", "w-1/2", "w-3/5"].map((width) => (
-              <div key={width} className="flex h-4 items-center justify-between gap-3">
-                <Skeleton className={cn("h-3", width)} />
-                <Skeleton className="h-3 w-8" />
-              </div>
-            ))}
-          </div>
-        )
-      ) : categories.length > 0 ? (
-        <div className="flex flex-col" data-context-categories>
-          {categories.map((c) => {
-            const list = listOf(c.name);
-            return (
-              <div key={c.name} data-context-category={c.name}>
-                <div className="flex h-6 items-center justify-between gap-3 text-[13px]">
-                  <span className="min-w-0 truncate text-muted-foreground">{c.name}</span>
-                  <span className="shrink-0 tabular-nums text-foreground">{formatTokens(c.tokens)}</span>
-                </div>
-                {list ? <ListRows list={list} /> : null}
-              </div>
-            );
-          })}
-        </div>
+      {!reading && busy ? (
+        <p className="text-xs text-muted-foreground">Breakdown after this turn</p>
+      ) : !reading || categories.length > 0 ? (
+        <Region
+          loading={!reading}
+          label="Loading the breakdown"
+          bones={() => (
+            <div data-context-loading>
+              <CategoryRows categories={SAMPLE_CATEGORIES} listOf={() => undefined} />
+            </div>
+          )}
+        >
+          <CategoryRows categories={categories} listOf={listOf} />
+        </Region>
       ) : null}
       {loose.map((list) => (
         <div key={list.title} className="flex flex-col" data-context-list={list.title}>
@@ -97,6 +82,34 @@ export function ContextBreakdown({
           </Button>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** What the breakdown's bones are drawn from, largest first: nobody reads the words, their lengths give the rows
+ *  their shape. No list under a row: whether a reading has one is not known. */
+const SAMPLE_CATEGORIES: readonly ContextCategory[] = [
+  { name: "Messages", tokens: 51_600 },
+  { name: "System tools", tokens: 14_800 },
+  { name: "System prompt", tokens: 3_100 },
+];
+
+/** The harness's categories, each with the list that details it under it. */
+function CategoryRows({ categories, listOf }: { categories: readonly ContextCategory[]; listOf: (name: string) => BreakdownListData | undefined }) {
+  return (
+    <div className="flex flex-col" data-context-categories>
+      {categories.map((c) => {
+        const list = listOf(c.name);
+        return (
+          <div key={c.name} data-context-category={c.name}>
+            <div className="flex h-6 items-center justify-between gap-3 text-[13px]">
+              <span className="min-w-0 truncate text-muted-foreground">{c.name}</span>
+              <span className="shrink-0 tabular-nums text-foreground">{formatTokens(c.tokens)}</span>
+            </div>
+            {list ? <ListRows list={list} /> : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

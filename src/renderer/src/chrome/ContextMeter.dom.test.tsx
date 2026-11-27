@@ -201,9 +201,16 @@ describe("ContextBreakdown", () => {
     expect(container.querySelector('[data-context-category="MCP tools"] [data-context-rows="MCP tools"]')).toBeTruthy();
   });
 
-  it("holds skeleton rows until the first reading, and says one line mid-turn without one", () => {
+  it("holds category rows drawn from a sample in bones until the first reading, and says one line mid-turn without one", () => {
     const { container } = render(<ContextBreakdown reading={null} usage={{ used: 1_000, window: 200_000 }} />);
-    expect(container.querySelector("[data-context-loading]")?.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
+    const wait = container.querySelector<HTMLElement>("[data-region][data-bones] [skullet-loading] [data-context-loading]")!;
+    expect([...wait.querySelectorAll("[data-context-category]")].map((row) => row.getAttribute("data-context-category"))).toEqual(["Messages", "System tools", "System prompt"]);
+    expect(wait.querySelector("[data-context-rows]")).toBeNull();
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull();
+    // The reading lands in the same region, its rows where the sample's stood.
+    cleanup();
+    const { container: landed } = render(<ContextBreakdown reading={READING} />);
+    expect(landed.querySelector("[data-region]:not([data-bones]) [data-context-categories]")).toBeTruthy();
     cleanup();
     render(<ContextBreakdown reading={null} usage={{ used: 1_000, window: 200_000 }} busy />);
     expect(screen.getByText("Breakdown after this turn")).toBeTruthy();

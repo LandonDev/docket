@@ -130,7 +130,7 @@ function documentWindow(): JSDOM['window'] {
   page = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true, url: 'http://localhost/' })
   const { window } = page
   const target = globalThis as Record<string, unknown>
-  for (const key of ['window', 'document', 'navigator', 'HTMLElement', 'Element', 'Node', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'MutationObserver', 'localStorage', 'AbortController', 'AbortSignal', 'CustomEvent', 'Event', 'KeyboardEvent', 'MouseEvent', 'PointerEvent', 'DOMRect', 'SVGElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLBRElement', 'customElements', 'HTMLDivElement', 'HTMLSpanElement', 'HTMLCanvasElement', 'DocumentFragment', 'Range', 'Selection', 'getSelection', 'self', 'location', 'FocusEvent', 'UIEvent', 'WheelEvent', 'Text', 'NodeFilter', 'ShadowRoot', 'HTMLButtonElement']) {
+  for (const key of ['window', 'document', 'navigator', 'scrollX', 'scrollY', 'innerWidth', 'innerHeight', 'HTMLElement', 'Element', 'Node', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'MutationObserver', 'localStorage', 'AbortController', 'AbortSignal', 'CustomEvent', 'Event', 'KeyboardEvent', 'MouseEvent', 'PointerEvent', 'DOMRect', 'SVGElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLBRElement', 'customElements', 'HTMLDivElement', 'HTMLSpanElement', 'HTMLCanvasElement', 'DocumentFragment', 'Range', 'Selection', 'getSelection', 'self', 'location', 'FocusEvent', 'UIEvent', 'WheelEvent', 'Text', 'NodeFilter', 'ShadowRoot', 'HTMLButtonElement']) {
     const value = (window as unknown as Record<string, unknown>)[key]
     // Bun's own event constructors produce a different realm's events.
     // A renderer control may dispatch to jsdom from its own event handler.
@@ -202,6 +202,7 @@ async function clientMarkup(component: ComponentType<Props>, props: Props, fixtu
       if (waited >= 50 && next === last) break
       last = next
     }
+    for (const part of [container, ...currentPortals()]) await wakeBones(part)
     let html = container.innerHTML
     const portals = portalMarkup(currentPortals())
     const stage = container.querySelector('[data-preview-stage]')
@@ -217,6 +218,18 @@ async function clientMarkup(component: ComponentType<Props>, props: Props, fixtu
     container.remove()
     Date.now = readNow
   }
+}
+
+/** Bones in a still page (components/bones.tsx): a region still in its hold is shown, and each drawing is followed
+ *  by the engine's script, which measures it and draws its bones in the page as Skullet's own server render does.
+ *  The sweep runs there too; a shot catches it where it stands. */
+async function wakeBones(root: Element): Promise<void> {
+  if (!root.querySelector('[skullet-loading]')) return
+  const { bonesPreviewScript, bonesReady } = await import('../src/renderer/src/components/bones')
+  await bonesReady()
+  for (const region of root.querySelectorAll('[data-bones="held"]')) region.setAttribute('data-bones', 'shown')
+  const script = bonesPreviewScript().replace(/<\/script/gi, '<\\/script')
+  for (const drawing of root.querySelectorAll('[skullet-loading]')) drawing.insertAdjacentHTML('afterend', `<script>${script}</script>`)
 }
 
 /** What the render put outside its container: an open menu, select,
@@ -277,6 +290,8 @@ async function main(): Promise<void> {
   const exportName = match[2]
   // Some modules read window or document as they load (Monaco's setup among them).
   documentWindow()
+  // Skullet rides a chunk of its own: in hand before the first render, so a region draws its bones in it.
+  await (await import('../src/renderer/src/components/bones')).bonesReady()
   const module = await import(pathToFileURL(modulePath).href)
   if (typeof module.previewClock === 'number') {
     const clock = module.previewClock

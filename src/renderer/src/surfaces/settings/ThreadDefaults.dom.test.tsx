@@ -581,13 +581,15 @@ describe("Use New threads, before it knows what it would bring", () => {
     expect(state.save).not.toHaveBeenCalled();
   });
 
-  it("is a bone while the set the place would follow is out", async () => {
+  it("is its own button drawn as bones, held and with no press, while the set the place would follow is out", async () => {
     state.overriding = new Set(["w1"]);
     state.inheritedOut = true;
     render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByRole("button", { name: "Use New threads" })).toBeNull();
-    expect(dialog.querySelector("[data-skeleton-control]")).toBeTruthy();
+    const bone = dialog.querySelector<HTMLButtonElement>("[data-region][data-bones] [skullet-loading] button[data-skeleton-control]")!;
+    expect(bone.textContent).toBe("Use New threads");
+    expect(bone.disabled).toBe(true);
   });
 });
 

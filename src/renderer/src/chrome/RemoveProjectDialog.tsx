@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { projectSessionCount } from "../lib/projectData";
-import { Skeleton } from "../components/ui/skeleton";
+import { Loaded } from "../components/bones";
 
 type Props = {
   name: string;
@@ -40,8 +40,12 @@ export function RemoveProjectDialog({ name, path, onCancel, onConfirm, onDone }:
     <ConfirmDialog
       title={`Remove “${name}”?`}
       body="Files on disk stay."
-      // The count's line is held by a bone of its size until it lands, and Remove waits for it: the dialog never reflows, and never removes before it says what goes.
-      note={sessions === null ? <Skeleton data-remove-count className="h-5 w-44" /> : removeProjectNote(sessions)}
+      // The count's line is drawn from a sample count until it lands, and Remove waits for it: the dialog never reflows, and never removes before it says what goes.
+      note={
+        <Loaded inline data={sessions === null ? null : removeProjectNote(sessions)} sample={removeProjectNote(12)} label="" bones={(drawn) => <span data-remove-count="">{drawn}</span>}>
+          {(words) => words}
+        </Loaded>
+      }
       holding={sessions === null}
       confirmLabel="Remove"
       danger

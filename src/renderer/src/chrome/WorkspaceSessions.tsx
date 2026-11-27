@@ -109,18 +109,31 @@ import {
 import type { WorkColumnKind } from "../lib/sidebarRows";
 import { dialogsChunk, workShellChunk } from "../surfaces/chunks";
 import type { WorkProjectRow } from "../work/shell/columnModel";
-import { Skeleton } from "../components/ui/skeleton";
+import { Bone, Bones } from "../components/bones";
 import { EmptyState } from "../surfaces/SurfaceSkeleton";
 import { RAIL_SCROLL_MARGIN_PX, RailRows } from "./railRows";
 
 // A Work job's projects and threads, and Work Chats' archived row (work/shell/WorkColumnRows.tsx): Work's chunk,
-// never the first paint's; the projects wait as row-shaped bones, the rest as nothing.
+// never the first paint's; the projects wait as bones, the rest as nothing: the section's heading, then each project
+// in a rail row's box (28px, the lead's dot, 13px words) holding a sample name.
 const WorkProjectsSection = workShellChunk.surface(
   "WorkProjectsSection",
   <div aria-hidden className="flex flex-col gap-1">
-    {[0, 1, 2].map((i) => (
-      <Skeleton key={i} className="h-7 rounded-md" />
-    ))}
+    <Bones label="">
+      <div className="flex flex-col gap-1">
+        <p className="flex h-7 w-full items-center px-3 text-xs font-medium text-muted-foreground">
+          Projects
+        </p>
+        {["Spring league schedule", "Site refresh"].map((name) => (
+          <div key={name} className="flex h-7 items-center gap-2 px-3 text-[13px]">
+            <span className="grid size-4 shrink-0 place-items-center">
+              <Bone className="size-3 rounded-full" />
+            </span>
+            <span className="min-w-0 truncate">{name}</span>
+          </div>
+        ))}
+      </div>
+    </Bones>
   </div>,
 );
 const WorkThreadsSection = workShellChunk.surface("WorkThreadsSection");

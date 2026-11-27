@@ -5,6 +5,10 @@
 @import "./surfaces/transcript/transcript.css";
 /* The work-kit files Tailwind reads: only what the renderer imports (scripts/gen-work-kit-sources.ts). */
 @import "./work-kit-sources.css";
+/* Skullet's own sheet (how a drawing is hidden under its bones), in the page for good: left to itself Skullet adds it
+   with the first bones and takes it out with the last, a restyle of the whole window each way. Then ours. */
+@import "skullet/styles.css";
+@import "./components/bones.css";
 
 /* `dark:` means the default theme; `html.theme-light` is the light one. */
 @custom-variant dark (&:where(html:not(.theme-light), html:not(.theme-light) *));
@@ -278,6 +282,12 @@
      bone here, as it was; in light, where the 8% wash all but vanishes on
      the grey stage, a firmer 12%. */
   --skeleton-stage: var(--skeleton);
+  /* The sweep that crosses the bones (Skullet's highlight; components/bones.css): a wash of
+     foreground here, felt more than seen on the muted fill; in light, where a bone is a dark
+     wash, the page's own colour lifting it. On `matte` in light the bone is already a light
+     wash, so its sweep is a second, fainter one. */
+  --skeleton-sheen: color-mix(in srgb, var(--foreground) 7%, transparent);
+  --skeleton-matte-sheen: var(--skeleton-sheen);
   /* The ground a video or a picture plays on in a pane (the file pane's
      media, Work's player): the page here, as it was; `stage` in light, so a
      video sits on the ground a picture of its tab kind does. */
@@ -471,6 +481,8 @@ html.theme-light {
   --skeleton: color-mix(in srgb, var(--foreground) 8%, transparent);
   --skeleton-matte: color-mix(in srgb, var(--background) 16%, transparent);
   --skeleton-stage: color-mix(in srgb, var(--foreground) 12%, transparent);
+  --skeleton-sheen: color-mix(in srgb, var(--background) 45%, transparent);
+  --skeleton-matte-sheen: color-mix(in srgb, var(--background) 14%, transparent);
   --media-ground: var(--stage);
   --matte-muted-foreground: color-mix(in srgb, var(--background) 60%, transparent);
   --check-edge: color-mix(in srgb, var(--foreground) 50%, transparent);
