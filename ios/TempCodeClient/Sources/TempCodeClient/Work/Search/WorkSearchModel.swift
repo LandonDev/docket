@@ -451,6 +451,14 @@ public nonisolated struct WorkSearchModel: Sendable, Equatable {
         return rows
     }
 
+    /// What kept a search that found nothing short, a line a cause: the empty screen's words in place of the
+    /// spelling hint, so the list draws them no second time. Nil while anything was found or no cause stands.
+    public static func emptyCauses(_ rows: [Row]) -> String? {
+        guard rows.contains(where: { $0.id == "nothing" }) else { return nil }
+        let causes = rows.compactMap { row -> String? in if case .note(_, let text, true) = row { text } else { nil } }
+        return causes.isEmpty ? nil : causes.joined(separator: "\n")
+    }
+
     /// Whether rows of more than one place stand together, so each must say where it is.
     public static func placesMix(jobs: Int, rows: [Row]) -> Bool {
         jobs > 1 || (jobs == 1 && rows.contains { if case .hit(_, let hit, _) = $0 { hit.workspaceId == nil } else { false } })

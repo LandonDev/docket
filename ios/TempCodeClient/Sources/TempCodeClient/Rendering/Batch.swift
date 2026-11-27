@@ -321,11 +321,10 @@ public enum MasterBoard {
         }
     }
 
-    /// "12:08" for "Landed 12:08" (24-hour, zero-padded; `calendar` carries the time zone a test fixes).
+    /// "12:08 PM" for "Landed 12:08 PM": the app's one clock time (`TimeFormat.clock`), the locale's hour and
+    /// minute in the calendar's zone; `calendar` carries the zone and locale a test fixes.
     public static func clockTime(_ ms: Int, calendar: Calendar = .current) -> String {
-        let date = Date(timeIntervalSince1970: Double(ms) / 1000)
-        let parts = calendar.dateComponents([.hour, .minute], from: date)
-        return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+        TimeFormat.clock(ms, locale: calendar.locale ?? .current, timeZone: calendar.timeZone)
     }
 
     /// A row's status: `text` in its tone, and with a `detail` the state's

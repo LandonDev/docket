@@ -200,6 +200,19 @@ struct MoreRow: View {
     }
 }
 
+/// A read that failed or came back short, where he reads it: "Couldn't search
+/// Mac.", "Not signed in to LifeOS on Mac." The meta step, read as its words.
+struct CauseRow: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .textStep(.meta)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 /// What each host took, after the answer landed: "Mac 320 ms, box 1.2 s",
 /// an offline or failed host named as such. Only with several hosts.
 struct FootRow: View {

@@ -179,4 +179,14 @@ import TempCodeContract
         #expect(WorkSearch.matches("cafe bud", "Café", "Budget"))
         #expect(!WorkSearch.matches("cafe zz", "Café", "Budget"))
     }
+
+    /// Nothing found with a cause standing: the empty screen says the cause in place of the spelling hint.
+    @Test func `the causes of an empty search`() {
+        let nothing = WorkSearchModel.Row.note(id: "nothing", text: "Nothing for “budget”", cause: false)
+        let lifeos = WorkSearchModel.Row.note(id: "quiet:lifeos", text: "Not signed in to LifeOS on Mac.", cause: true)
+        let offline = WorkSearchModel.Row.note(id: "quiet:offline:box", text: "The box is offline.", cause: true)
+        #expect(WorkSearchModel.emptyCauses([nothing, lifeos, offline]) == "Not signed in to LifeOS on Mac.\nThe box is offline.")
+        #expect(WorkSearchModel.emptyCauses([nothing]) == nil)
+        #expect(WorkSearchModel.emptyCauses([.heading(id: "heading:mail", label: "Mail"), lifeos]) == nil)
+    }
 }

@@ -456,14 +456,16 @@ paints its threads from the cache like any host's (`relayed.json` beside
 presence line and a refusal line. The presence line is one dim line of text
 in the meta step, no badge, no icon; the only colour stays on the status
 dot. Its words per state (`RelayWords`): nothing when the Mac is up and
-unlocked; "locked since 9:14" (the time the phone saw the lock, "locked"
-alone before it has); "asleep"; "unreachable since 9:14" (the box's time of
-the link's drop). On a row whose title is the host's name the line has no
-subject ("through box, locked since 9:14" under the host header on Home and
-on the Settings row); on the thread screen the subject is "the Mac" for a
-darwin host and the host's name otherwise. Locked keeps Send: the relay
+unlocked; "locked since 9:14 AM" (the time the phone saw the lock, "locked"
+alone before it has); "asleep"; "unreachable since 9:14 AM" (the box's time of
+the link's drop). The time reads as every other stamp (`RelayWords.since` is
+`TimeFormat.stamp`: the locale's hour and minute in the calendar's zone, "Wed
+9:14 AM" on another day this week). On a row whose title is the host's name the line has no
+subject ("through box, locked since 9:14 AM" under the host header on Home and
+on the Settings row); on the thread screen the subject is the host's name, a
+Mac's too, since two Macs would share "the Mac". Locked keeps Send: the relay
 forwards every method the phone uses on a locked Mac, so the working strip's
-idle slot says "The Mac is locked since 9:14" and the composer stays open.
+idle slot says "Mac mini is locked since 8:51 PM" and the composer stays open.
 Like every slot that takes room, the line has its own band: the dock's
 backing is solid from the slot's top down (`ComposerSlot.backing`, `.solid`;
 `BottomEdgeFade(solid:)`), so a board row scrolling beneath never shows
@@ -476,14 +478,14 @@ the whole column, and on 2026-11-06 the empty slot reserved at regular width
 437 pt dock whose band blurred the whole transcript, which a launch straight
 into unfolded never showed.
 Asleep and unreachable block through the composer's own line, Send
-disabled: "The Mac is asleep: reading only until it wakes", "The Mac is
-unreachable since 9:14" (the lane is held by the box's word, the socket's
+disabled: "Mac mini is asleep: reading only until it wakes", "Mac mini is
+unreachable since 9:14 AM" (the lane is held by the box's word, the socket's
 `setHostReachable`, with no attempt and no Retry; the box retries the
 link). A refusal that still comes back from the host (a `screen` method on
 a locked Mac, a race at a transition) is one line on the action that hit it,
 the host's own words capitalised: "The Mac is asleep" (`RelayRefusal`). The
-status line under the bar reads "Reconnecting to the Mac…" past its 1.5 s
-hold and "The Mac is unreachable since 9:14" while held, with no Retry
+status line under the bar reads "Reconnecting to Mac mini…" past its 1.5 s
+hold and "Mac mini is unreachable since 9:14 AM" while held, with no Retry
 button then. The presence line cross-fades in place on a change
 (`Motion.crossFade`, blur; opacity alone under reduced motion), never on
 first paint, and re-renders once a minute at most. Forgetting the box
@@ -497,7 +499,7 @@ and `hostMenu` and `projectBatch` (the fleet switches and the boot-resume
 note), `projectSettings` (the project settings entry in the project header's
 menu, after New thread and before the batch entries), `hostTrailing` (the
 deploy-drift mark on the status row and the host header), `hostSubline` (the
-relayed host's "through box, locked since 9:14" under the header's name). Masters need no
+relayed host's "through box, locked since 9:14 AM" under the header's name). Masters need no
 slot: a master's row carries its word from `ThreadRow`, its batch children are
 roots that Home lists through `HomeModel`, and whatever fills
 `ThreadItem.children` nests under its root as subagents do.
@@ -552,7 +554,9 @@ that holds nothing may still answer (connecting, or its read out), and a
 notice line never hides it; a read that failed with nothing held (no snapshot,
 or one with no rows, `InboxModel.holds`) is the house failed row (`FailedRead`,
 "Couldn't read the inbox on box." with Retry, the word of the non-Work screens),
-which stays, its spinner turning, while its Retry reads; an item's body,
+which stays, its spinner turning, while its Retry reads, and only while that
+computer's link is open: Retry never asks a closed link, and once the last
+link closes "Every computer is offline." takes its place; an item's body,
 conversation or changes that did not load is the same row; `ContentUnavailableView` "No Issues or Pull Requests" with `tray`
 (see "Empty screens") once every host has answered or cannot, unless a
 notice or a failed row already says why; "Every computer is offline." when
@@ -667,7 +671,9 @@ computer is offline.", once none can answer; nothing before a query (the
 field's prompt says what it searches); `ContentUnavailableView.search` for
 no results (see "Empty screens"). A query whose reads failed names the
 computers that failed: "Couldn't search box." alone when no host answered,
-and under "No Results for …" in place of the spelling hint when some did. Cancel clears the field. Nothing animates on a keystroke or a scope
+and under "No Results for …" in place of the spelling hint when some did.
+A failed or cut-short read under rows the phone holds is a row of its own in
+the meta step, read by its own words (`CauseRow`), never the timing foot. Cancel clears the field. Nothing animates on a keystroke or a scope
 tap; the press scale and the ticking time are the only motion. DEBUG
 hooks: `TC_TEST_SEARCH` is the query, `TC_TEST_SEARCH_SCOPE=files` opens
 the Files scope.
@@ -688,8 +694,11 @@ in the quiet step after its line number, the other hosts in the accessibility la
 an id, or `mac`), `type:` (thread, file, note, project; it wins over the
 scope buttons) and `project:` are typed in the box; the foot names each host
 with its time, "…" while it is still answering, offline or failed. With one computer, whose
-list has no foot, a failed read is that line under the rows the phone already held
-(`SearchRows.loneFailedLine`).
+list has no foot, a failed read is that line, a `CauseRow`, under the rows the phone already held
+(`SearchRows.loneFailedLine`). The Work scope follows the same rule: a host's cause line ("Not signed in to
+LifeOS on Mac.") is a `CauseRow` under the rows; with nothing found it is the line under "No Results for …"
+in place of the spelling hint (`WorkSearchModel.emptyCauses`), and the list draws it no second time; "Every
+computer with Work is offline." once no Work host can answer.
 
 ## The thread screen
 
@@ -2079,7 +2088,7 @@ package's `Rendering/Batch.swift` (`MasterBoard`, `BatchSteps`, `RulesEdit`,
   mark in the 14 pt column, the type glyph, the title in the title step with
   the type word muted after it and the task tally at the right (a chevron
   folds an implementation's tasks), then the activity line (the host's
-  `activity`, the question, "Paused", "Stopped", "Landed 12:08") with the
+  `activity`, the question, "Paused", "Stopped", "Landed 12:08 PM", the app's one clock time) with the
   model mark at its right: provider glyph, short model name, effort and
   "1M" quieter. A plan and the build it started are one row under the
   plan's title. A queued child reads the host's reason, "Waiting for <sibling>". A

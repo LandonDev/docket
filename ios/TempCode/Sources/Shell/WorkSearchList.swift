@@ -21,6 +21,8 @@ struct WorkSearchRows: View {
     @Binding var failure: String?
 
     var body: some View {
+        // With nothing found the empty screen says the causes; the list says them no second time.
+        let causesSpoken = WorkSearchModel.emptyCauses(rows) != nil
         ForEach(rows) { row in
             switch row {
             case .heading(_, let label):
@@ -43,8 +45,8 @@ struct WorkSearchRows: View {
                 // The phone's Work scope is never held to one job, so it never offers to widen.
                 EmptyView()
             case .note(_, let text, let cause):
-                if cause {
-                    FootRow(text: text)
+                if cause, !causesSpoken {
+                    CauseRow(text: text)
                         .listRowInsets(Layout.rowInsets)
                         .listRowSeparator(.hidden)
                 }

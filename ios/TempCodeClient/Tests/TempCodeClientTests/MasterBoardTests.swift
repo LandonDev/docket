@@ -14,8 +14,12 @@ private func spec(_ id: String, _ kind: BatchStepKind, name: String? = nil, run:
 private var utc: Calendar {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = TimeZone(identifier: "UTC")!
+    calendar.locale = Locale(identifier: "en_US")
     return calendar
 }
+
+/// The clock's narrow space before AM, read as a plain one.
+private func plain(_ text: String?) -> String? { text?.replacingOccurrences(of: "\u{202F}", with: " ") }
 
 @Suite struct MasterBoardChildrenTests {
     @Test("the batch is the unarchived roots carrying the master's id, oldest first; a subagent is left out") func children() {
@@ -109,7 +113,9 @@ private var utc: Calendar {
         #expect(MasterBoard.typeWord(nil) == "")
         #expect(MasterBoard.typeWord(.unknown("debate")) == "")
         // 2026-10-22 07:05:00 UTC
-        #expect(MasterBoard.clockTime(1_792_652_700_000, calendar: utc) == "07:05")
+        // The app's one clock time, never a hand-padded "07:05".
+        #expect(plain(MasterBoard.clockTime(1_792_652_700_000, calendar: utc)) == "7:05 AM")
+        #expect(plain(MasterBoard.clockTime(1_792_652_700_000 + 13 * 3_600_000, calendar: utc)) == "8:05 PM")
     }
 
     @Test("the what line follows the status") func whatLine() {
@@ -121,7 +127,7 @@ private var utc: Calendar {
         #expect(MasterBoard.whatLine(status: .queued, activity: " Queued · waiting for Live strip ", updatedAt: 0, line: blank, landed: false)?.text == "Waiting for Live strip")
         #expect(MasterBoard.whatLine(status: .running, activity: nil, updatedAt: 0, line: Fleet.Line("Read: Strip.swift", tone: .muted), landed: false)?.text == "Read: Strip.swift")
         #expect(MasterBoard.whatLine(status: .stopped, activity: nil, updatedAt: 0, line: blank, landed: false)?.text == "Stopped")
-        #expect(MasterBoard.whatLine(status: .idle, activity: nil, updatedAt: 1_792_652_700_000, line: blank, landed: true, calendar: utc)?.text == "Landed 07:05")
+        #expect(plain(MasterBoard.whatLine(status: .idle, activity: nil, updatedAt: 1_792_652_700_000, line: blank, landed: true, calendar: utc)?.text) == "Landed 7:05 AM")
         #expect(MasterBoard.whatLine(status: .idle, activity: nil, updatedAt: 0, line: blank, landed: false) == nil)
     }
 

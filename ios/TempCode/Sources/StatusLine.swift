@@ -21,7 +21,7 @@ struct StatusLine: View {
 
     var body: some View {
         let status = client.status
-        // Thread 29: a relayed host names itself ("Reconnecting to the Mac…", "The Mac is unreachable since 9:14").
+        // Thread 29: a relayed host names itself ("Reconnecting to Mac mini…", "Mac mini is unreachable since 9:14 AM").
         let text = RelayWords.statusLine(for: client, status: status, now: now) ?? Self.text(for: status, host: client.environment.name, now: now)
         Color.clear
             .frame(height: 0)

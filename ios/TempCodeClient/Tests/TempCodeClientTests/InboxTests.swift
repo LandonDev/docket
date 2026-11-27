@@ -197,6 +197,19 @@ private func entry(_ item: GithubInboxItem, host: String = "h1") -> InboxEntry {
         #expect(InboxModel.failedLine(InboxModel.HostRead(environmentId: "b", name: "box", link: .open, held: false, read: .failed), several: true) == "Couldn't read the inbox on box.")
     }
 
+    @Test func `a failed read gives way once its computer goes offline`() {
+        // The one computer's read failed, then its link closed: no Retry on a closed link, and the offline line.
+        #expect(InboxModel.failedReads([read("a", .away, .failed)]).isEmpty)
+        #expect(InboxModel.overlay([read("a", .away, .failed)], hasRows: false, hasNotices: false) == .offline)
+        // Coming back, it spins until the link opens.
+        #expect(InboxModel.failedReads([read("a", .connecting, .failed)]).isEmpty)
+        #expect(InboxModel.overlay([read("a", .connecting, .failed)], hasRows: false, hasNotices: false) == .spinner)
+        // With another computer still open, only the open one's failure stands.
+        let open = read("b", .open, .failed)
+        #expect(InboxModel.failedReads([read("a", .away, .failed), open]) == [open])
+        #expect(InboxModel.overlay([read("a", .away, .failed), read("b", .open, .answered)], hasRows: false, hasNotices: false) == .empty)
+    }
+
     private func workspace(_ id: String, repo: String?) -> WorkspaceMeta {
         WorkspaceMeta(id: id, name: id, path: "/src/\(id)", git: true, githubRepo: repo, createdAt: 0)
     }

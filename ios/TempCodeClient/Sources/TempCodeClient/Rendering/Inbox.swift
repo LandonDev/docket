@@ -227,9 +227,11 @@ public enum InboxModel {
         snapshot?.repos.contains { !$0.items.isEmpty } ?? false
     }
 
-    /// The hosts whose read failed with nothing held to show: each gets the failed line with Retry.
+    /// The hosts whose read failed with nothing held to show, on a link still open: each gets the failed line
+    /// with Retry. A failure on a link that closed since is not offered, since Retry would ask a closed link, and
+    /// with the last link closed "Every computer is offline" takes the screen.
     public static func failedReads(_ hosts: [HostRead]) -> [HostRead] {
-        hosts.filter { !$0.held && $0.read == .failed }
+        hosts.filter { $0.link == .open && !$0.held && $0.read == .failed }
     }
 
     /// "Couldn't read the inbox", naming the host when there are several.

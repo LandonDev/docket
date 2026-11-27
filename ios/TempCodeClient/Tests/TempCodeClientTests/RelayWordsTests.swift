@@ -19,7 +19,7 @@ private let utc: Calendar = {
     calendar.timeZone = TimeZone(identifier: "UTC")!
     return calendar
 }()
-private let posix = Locale(identifier: "en_US_POSIX")
+private let enUS = Locale(identifier: "en_US")
 /// 2026-10-22 12:00:00 UTC.
 private let noon = Date(timeIntervalSince1970: 1_792_670_400)
 /// 2026-10-22 09:14 UTC, in ms.
@@ -52,48 +52,55 @@ struct RelayStateTests {
     }
 }
 
+/// The clock's narrow space before AM, read as a plain one.
+private func plain(_ text: String?) -> String? { text?.replacingOccurrences(of: "\u{202F}", with: " ") }
+
 @Suite("RelayWords")
 struct RelayWordsTests {
-    @Test func `since prints the time today and the day and month otherwise`() {
-        #expect(RelayWords.since(today914, now: noon, calendar: utc, locale: posix) == "9:14")
-        #expect(RelayWords.since(yesterday914, now: noon, calendar: utc, locale: posix) == "21 Oct 9:14")
-        #expect(RelayWords.since(today914 + 12 * 3_600_000, now: noon, calendar: utc, locale: posix) == "21:14")
+    @Test func `since reads as every other stamp, the locale's clock in the calendar's zone`() {
+        #expect(plain(RelayWords.since(today914, now: noon, calendar: utc, locale: enUS)) == "9:14 AM")
+        #expect(plain(RelayWords.since(yesterday914, now: noon, calendar: utc, locale: enUS)) == "Wed 9:14 AM")
+        #expect(plain(RelayWords.since(yesterday914 - 9 * 86_400_000, now: noon, calendar: utc, locale: enUS)) == "Oct 12, 9:14 AM")
+        #expect(plain(RelayWords.since(today914 + 12 * 3_600_000, now: noon, calendar: utc, locale: enUS)) == "9:14 PM")
+        #expect(RelayWords.since(today914, now: noon, calendar: utc, locale: Locale(identifier: "en_GB")) == "09:14")
     }
 
     @Test func `the row line has no subject and says nothing when available`() {
-        #expect(RelayWords.rowLine(presence(), lockedSince: nil, now: noon, calendar: utc, locale: posix) == nil)
-        #expect(RelayWords.rowLine(presence(screen: "locked"), lockedSince: today914, now: noon, calendar: utc, locale: posix) == "locked since 9:14")
-        #expect(RelayWords.rowLine(presence(screen: "locked"), lockedSince: nil, now: noon, calendar: utc, locale: posix) == "locked")
-        #expect(RelayWords.rowLine(presence(power: "asleep"), lockedSince: nil, now: noon, calendar: utc, locale: posix) == "asleep")
-        #expect(RelayWords.rowLine(presence(link: "down", since: today914), lockedSince: nil, now: noon, calendar: utc, locale: posix) == "unreachable since 9:14")
+        #expect(RelayWords.rowLine(presence(), lockedSince: nil, now: noon, calendar: utc, locale: enUS) == nil)
+        #expect(plain(RelayWords.rowLine(presence(screen: "locked"), lockedSince: today914, now: noon, calendar: utc, locale: enUS)) == "locked since 9:14 AM")
+        #expect(RelayWords.rowLine(presence(screen: "locked"), lockedSince: nil, now: noon, calendar: utc, locale: enUS) == "locked")
+        #expect(RelayWords.rowLine(presence(power: "asleep"), lockedSince: nil, now: noon, calendar: utc, locale: enUS) == "asleep")
+        #expect(plain(RelayWords.rowLine(presence(link: "down", since: today914), lockedSince: nil, now: noon, calendar: utc, locale: enUS)) == "unreachable since 9:14 AM")
     }
 
     @Test func `the subline names the carrier and adds the presence`() {
-        #expect(RelayWords.subline(presence(), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: posix) == "through box")
-        #expect(RelayWords.subline(presence(power: "asleep"), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: posix) == "through box, asleep")
-        #expect(RelayWords.subline(presence(saver: true), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: posix) == "through box, screen saver on")
+        #expect(RelayWords.subline(presence(), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: enUS) == "through box")
+        #expect(RelayWords.subline(presence(power: "asleep"), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: enUS) == "through box, asleep")
+        #expect(RelayWords.subline(presence(saver: true), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: enUS) == "through box, screen saver on")
     }
 
     @Test func `a passwordless screen saver is available, says so on the row and nowhere else`() {
         #expect(RelayState(presence(saver: true)) == .available)
-        #expect(RelayWords.rowLine(presence(saver: true), lockedSince: nil, now: noon, calendar: utc, locale: posix) == "screen saver on")
-        #expect(RelayWords.stripLine(presence(saver: true), lockedSince: nil, now: noon, calendar: utc, locale: posix) == nil)
+        #expect(RelayWords.rowLine(presence(saver: true), lockedSince: nil, now: noon, calendar: utc, locale: enUS) == "screen saver on")
+        #expect(RelayWords.stripLine(presence(saver: true), lockedSince: nil, now: noon, calendar: utc, locale: enUS) == nil)
     }
 
     @Test func `the strip line speaks only when locked`() {
-        #expect(RelayWords.stripLine(presence(screen: "locked"), lockedSince: today914, now: noon, calendar: utc, locale: posix) == "The Mac is locked since 9:14")
-        #expect(RelayWords.stripLine(presence(screen: "locked"), lockedSince: nil, now: noon, calendar: utc, locale: posix) == "The Mac is locked")
-        #expect(RelayWords.stripLine(presence(), lockedSince: nil, now: noon, calendar: utc, locale: posix) == nil)
-        #expect(RelayWords.stripLine(presence(power: "asleep"), lockedSince: nil, now: noon, calendar: utc, locale: posix) == nil)
-        #expect(RelayWords.stripLine(presence(link: "down"), lockedSince: nil, now: noon, calendar: utc, locale: posix) == nil)
+        #expect(plain(RelayWords.stripLine(presence(screen: "locked"), lockedSince: today914, now: noon, calendar: utc, locale: enUS)) == "Studio Mac is locked since 9:14 AM")
+        #expect(RelayWords.stripLine(presence(screen: "locked"), lockedSince: nil, now: noon, calendar: utc, locale: enUS) == "Studio Mac is locked")
+        #expect(RelayWords.stripLine(presence(), lockedSince: nil, now: noon, calendar: utc, locale: enUS) == nil)
+        #expect(RelayWords.stripLine(presence(power: "asleep"), lockedSince: nil, now: noon, calendar: utc, locale: enUS) == nil)
+        #expect(RelayWords.stripLine(presence(link: "down"), lockedSince: nil, now: noon, calendar: utc, locale: enUS) == nil)
     }
 
     @Test func `the held and reconnecting lines, and the subject per platform`() {
-        #expect(RelayWords.heldLine(presence(link: "down", since: today914), now: noon, calendar: utc, locale: posix) == "The Mac is unreachable since 9:14")
-        #expect(RelayWords.reconnecting(presence()) == "Reconnecting to the Mac…")
-        #expect(RelayWords.subject(presence()) == "the Mac")
+        #expect(plain(RelayWords.heldLine(presence(link: "down", since: today914), now: noon, calendar: utc, locale: enUS)) == "Studio Mac is unreachable since 9:14 AM")
+        #expect(RelayWords.reconnecting(presence()) == "Reconnecting to Studio Mac…")
+        // Every host by its name, a Mac too: two Macs never share "the Mac".
+        #expect(RelayWords.subject(presence()) == "Studio Mac")
+        #expect(plain(RelayWords.stripLine(presence(name: "Mac mini", screen: "locked"), lockedSince: today914 + 11 * 3_600_000 + 37 * 60_000, now: noon, calendar: utc, locale: enUS)) == "Mac mini is locked since 8:51 PM")
         #expect(RelayWords.subject(presence(name: "box", platform: "linux")) == "box")
-        #expect(RelayWords.heldLine(presence(name: "box", platform: "linux", link: "down", since: today914), now: noon, calendar: utc, locale: posix) == "Box is unreachable since 9:14")
+        #expect(plain(RelayWords.heldLine(presence(name: "box", platform: "linux", link: "down", since: today914), now: noon, calendar: utc, locale: enUS)) == "Box is unreachable since 9:14 AM")
     }
 }
 

@@ -150,10 +150,16 @@ struct SearchView: View {
                         .listRowSeparator(.hidden)
                 }
             }
-            if !answer.isEmpty, let foot = severalHosts ? SearchRows.footLine(answer.hosts) : SearchRows.loneFailedLine(answer.hosts) {
-                FootRow(text: foot)
-                    .listRowInsets(Layout.rowInsets)
-                    .listRowSeparator(.hidden)
+            if !answer.isEmpty {
+                if severalHosts, let foot = SearchRows.footLine(answer.hosts) {
+                    FootRow(text: foot)
+                        .listRowInsets(Layout.rowInsets)
+                        .listRowSeparator(.hidden)
+                } else if !severalHosts, let failed = SearchRows.loneFailedLine(answer.hosts) {
+                    CauseRow(text: failed)
+                        .listRowInsets(Layout.rowInsets)
+                        .listRowSeparator(.hidden)
+                }
             }
             }
         }
@@ -245,11 +251,18 @@ struct SearchView: View {
     @ViewBuilder private func workStatus(_ rows: [WorkSearchModel.Row]) -> some View {
         if !rows.contains(where: { if case .hit = $0 { true } else { false } }) {
             if WorkSearchHosts.hosts(workInputs).hosts.isEmpty {
-                SearchStatusLine("Every host with Work is offline.")
+                SearchStatusLine("Every computer with Work is offline.")
             } else if work.model.busy {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityLabel("Searching")
+            } else if let causes = WorkSearchModel.emptyCauses(rows) {
+                // As the Threads scope does: the spelling hint traded for what kept the search short.
+                ContentUnavailableView {
+                    Label("No Results for “\(work.model.text)”", systemImage: "magnifyingglass")
+                } description: {
+                    Text(causes)
+                }
             } else if rows.contains(where: { $0.id == "nothing" }) {
                 ContentUnavailableView.search(text: work.model.text)
             } else if trimmed.isEmpty {

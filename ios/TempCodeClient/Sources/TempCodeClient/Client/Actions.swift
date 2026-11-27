@@ -18,7 +18,7 @@ public enum ActionBlock: Sendable, Hashable {
     /// The key reads the settings but does not change them (admin).
     case noAdmin
     /// A relayed host is asleep: the relay refuses everything until it wakes.
-    /// `subject` is `RelayWords.subject`: "the Mac", or the host's name.
+    /// `subject` is `RelayWords.subject`: the host's name.
     case hostAsleep(subject: String)
     /// A relayed host's link is down: the lane is closed. `since` is the
     /// formatted time (`RelayWords.since`).

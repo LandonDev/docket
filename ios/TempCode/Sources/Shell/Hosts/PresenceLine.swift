@@ -54,8 +54,8 @@ struct HostSubline: View {
     }
 }
 
-/// The working strip's idle slot: the locked line ("The Mac is locked since
-/// 9:14"), nothing in any other state and nothing on a paired host. Asleep
+/// The working strip's idle slot: the locked line ("Mac mini is locked since
+/// 9:14 AM"), nothing in any other state and nothing on a paired host. Asleep
 /// and unreachable speak through the composer's block line instead, so the
 /// row says nothing twice. Drawn in the strip's own line shape so the fade
 /// the strip runs on its phase carries it.

@@ -222,29 +222,26 @@ public extension PairedEnvironment {
 /// functions of the wire's row, so the app target holds only the SwiftUI
 /// and every word has a test.
 public enum RelayWords {
-    /// "the Mac" for a darwin host, else the host's name; what every sentence is about.
+    /// The host's name, what every sentence is about: "Mac mini is locked", never "the Mac", which two Macs
+    /// would share (one name a thing).
     public static func subject(_ presence: HostPresence) -> String {
-        presence.platform == "darwin" ? "the Mac" : presence.name
+        presence.name
     }
 
-    /// `9:14` today, `21 Oct 9:14` on another day: the box's clock (ms) in the
-    /// calendar's zone, 24-hour, the month in the locale's short word. Pure:
-    /// the calendar and locale are passed in, never the system's implicit ones.
+    /// The box's clock (ms) as every other stamp reads it (`TimeFormat.stamp`): "9:14 AM" today, "Wed 9:14 AM"
+    /// within six days, "Oct 3, 9:14 AM" before; the locale's hour and minute in the calendar's zone. Pure: the
+    /// calendar and locale are passed in, never the system's implicit ones.
     public static func since(_ ms: Int, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
-        let date = Date(timeIntervalSince1970: Double(ms) / 1000)
-        let parts = calendar.dateComponents([.day, .hour, .minute], from: date)
-        let time = "\(parts.hour ?? 0):\(String(format: "%02d", parts.minute ?? 0))"
-        if calendar.isDate(date, inSameDayAs: now) { return time }
-        var style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
-        style = style.month(.abbreviated)
-        return "\(parts.day ?? 0) \(date.formatted(style)) \(time)"
+        var calendar = calendar
+        calendar.locale = locale
+        return TimeFormat.stamp(ms, now: now, calendar: calendar)
     }
 
     /// The row's dim line, with no subject (the row's title is the host):
     /// nil when available; "screen saver on" while a passwordless saver is
-    /// up (still available: screen work dismisses it); "locked since 9:14"
+    /// up (still available: screen work dismisses it); "locked since 9:14 AM"
     /// (or "locked" before the phone saw the move), "asleep" or
-    /// "unreachable since 9:14".
+    /// "unreachable since 9:14 AM".
     public static func rowLine(_ presence: HostPresence, lockedSince: Int?, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String? {
         switch RelayState(presence) {
         case .available:
@@ -260,7 +257,7 @@ public enum RelayWords {
     }
 
     /// Home's host header and the Hosts row's relation: "through box",
-    /// "through box, locked since 9:14".
+    /// "through box, locked since 9:14 AM".
     public static func subline(_ presence: HostPresence, carrierName: String, lockedSince: Int?, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
         let through = "through \(carrierName)"
         guard let line = rowLine(presence, lockedSince: lockedSince, now: now, calendar: calendar, locale: locale) else { return through }
@@ -268,7 +265,7 @@ public enum RelayWords {
     }
 
     /// The working strip's idle slot: only the state with no block has a line
-    /// here. Locked → "The Mac is locked since 9:14"; every other state → nil
+    /// here. Locked → "Mac mini is locked since 9:14 AM"; every other state → nil
     /// (asleep and unreachable speak through the composer's block line, and
     /// nothing is said twice).
     public static func stripLine(_ presence: HostPresence, lockedSince: Int?, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String? {
@@ -278,12 +275,12 @@ public enum RelayWords {
         return "\(head) since \(since(lockedSince, now: now, calendar: calendar, locale: locale))"
     }
 
-    /// The status line while the lane is held: "The Mac is unreachable since 9:14".
+    /// The status line while the lane is held: "Mac mini is unreachable since 9:14 AM".
     public static func heldLine(_ presence: HostPresence, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
         "\(subject(presence).capitalisedFirst) is unreachable since \(since(presence.since, now: now, calendar: calendar, locale: locale))"
     }
 
-    /// "Reconnecting to the Mac…"
+    /// "Reconnecting to Mac mini…"
     public static func reconnecting(_ presence: HostPresence) -> String {
         "Reconnecting to \(subject(presence))…"
     }
