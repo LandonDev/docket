@@ -129,7 +129,7 @@ private struct MeetingPage: View {
         }
         .listStyle(.plain)
         .animation(Motion.rowLeave, value: tasks.map(\.id))
-        .refreshable { reload() }
+        .refreshable { await refresh.reread(reload) }
     }
 
     /// A transcript line: who and when on one line, the words under it.
@@ -377,29 +377,18 @@ struct FormItemView: View {
                         if responses.cut { Text("The newest are shown.") }
                     }
                 }
-                .refreshable { reload() }
+                .refreshable { await refresh.reread(reload) }
             }
         }
         .accessibilityIdentifier("form-item")
     }
 }
 
-/// A pull that failed over the rows kept on screen (`ItemLoad.onRefreshFailed`): its reason as the failed-read row
-/// of every Work place in red, until a read lands. Try Again's spinner waits on the reload it starts.
-@MainActor @Observable
-final class RefreshFailure {
-    private(set) var error: String?
-    @ObservationIgnored private var retrying = false
-
-    func answered() { error = nil; retrying = false }
-    func failed(_ words: String) { error = words; retrying = false }
-
+extension RefreshFailure {
+    /// The failed-read row of every Work place in red, over the rows kept on screen; Try Again's spinner waits on the
+    /// read it starts.
     func row(_ words: String, reload: @escaping () -> Void, identifier: String) -> some View {
-        FailedRead(words: words, retry: { [self] in
-            retrying = true
-            reload()
-            while retrying && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(100)) }
-        }, identifier: identifier, tint: Tint.destructiveText)
+        FailedRead(words: words, retry: { [self] in await reread(reload) }, identifier: identifier, tint: Tint.destructiveText)
     }
 }
 
@@ -412,9 +401,7 @@ struct DashboardItemView: View {
     /// The next read is his pull: every figure read again, not the page as last read.
     @State private var fresh = false
     /// His pull failed over the figures kept on screen: the reason with Try Again, until a read lands.
-    @State private var refreshError: String?
-    /// A read is out since his Try Again: the row's spinner waits on it.
-    @State private var retrying = false
+    @State private var refresh = RefreshFailure()
 
     var body: some View {
         let refreshes = client.work.may(.dashboardsRefresh)
@@ -422,25 +409,18 @@ struct DashboardItemView: View {
             try await (fresh && refreshes ? client.work.refreshDashboard(item.id) : client.work.canvas.dashboard(item.id))
         }, onRead: { _ in
             fresh = false
-            refreshError = nil
-            retrying = false
-        }, onRefreshFailed: { words in
-            refreshError = words
-            retrying = false
-        }) { dashboard, reload in
+            refresh.answered()
+        }, onRefreshFailed: { refresh.failed($0) }) { dashboard, reload in
+            // His pull and Try Again read every figure again, and end with that read.
+            let reread = { fresh = true; reload() }
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if let refreshError {
-                        // The failed-read row of every Work place; the figures under it are the last read's.
-                        FailedRead(words: refreshError, retry: {
-                            fresh = true
-                            retrying = true
-                            reload()
-                            while retrying && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(100)) }
-                        }, identifier: "dashboard-refresh-failed", insets: nil)
+                    if let words = refresh.error {
+                        // The figures under it are the last read's.
+                        refresh.row(words, reload: reread, identifier: "dashboard-refresh-failed")
                     }
                     // A failed pull says its own failure over the host's older one; the time says how old the figures are.
-                    if let failed = dashboard.failed, refreshError == nil {
+                    if let failed = dashboard.failed, refresh.error == nil {
                         Text(failed).textStep(.meta, tint: Tint.destructiveText)
                     } else if let asOf = dashboard.asOf {
                         Text((dashboard.stale ? "Last read " : "As of ") + Date(timeIntervalSince1970: asOf / 1000).formatted(date: .omitted, time: .shortened))
@@ -462,10 +442,7 @@ struct DashboardItemView: View {
                 .padding(Layout.textEdge)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .refreshable {
-                fresh = true
-                reload()
-            }
+            .refreshable { await refresh.reread(reread) }
         }
         .accessibilityIdentifier("dashboard-item")
     }
@@ -623,7 +600,8 @@ private struct CompareView: View {
     private var mayRestore: Bool { client.work.may(.historyRestore) && HistoryRestore.restores(versionId, in: versions) }
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.compare(source, from: versionId) }) { compare, reload in
+        // A restore's reread drops the compare from before it: the spinner, then the new compare or why not, with Try Again.
+        ItemLoad(dropsOnReload: true, read: { try await client.work.canvas.compare(source, from: versionId) }) { compare, reload in
             let stats = compare.diff.stats
             List {
                 Section {

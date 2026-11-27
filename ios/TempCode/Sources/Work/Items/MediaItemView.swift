@@ -16,10 +16,13 @@ struct MediaItemView: View {
     let item: CanvasItem
     /// On the reader page a tap on a picture hides the bars (Work/Reader/FileReaderPage.swift).
     @Environment(\.readerTap) private var tap
+    /// A check on a version still being prepared failed: its reason stands in the spinner's place until a read lands.
+    @State private var refresh = RefreshFailure()
 
     var body: some View {
         let canRead = client.environment.caps.contains(.admin)
-        ItemLoad(read: { try await client.work.canvas.media(item.id, canRead: canRead) }) { view, reload in
+        ItemLoad(read: { try await client.work.canvas.media(item.id, canRead: canRead) }, onRead: { _ in refresh.answered() },
+                 onRefreshFailed: { refresh.failed($0) }) { view, reload in
             if let version = view.versions.max(by: { $0.n < $1.n }) {
                 switch version.state {
                 case .failed:
@@ -27,10 +30,10 @@ struct MediaItemView: View {
                 case .ready, .probing, .preparing, .unknown:
                     switch MediaPick.of(version.plays, ready: version.state == .ready, canRead: canRead) {
                     case .segments(let initSegment, let count, let table):
-                        VideoVersionView(client: client, item: item, view: view, versionId: version.id, source: .segments(init: initSegment, count: count), table: table, reload: reload)
+                        VideoVersionView(client: client, item: item, view: view, versionId: version.id, source: .segments(init: initSegment, count: count), table: table)
                             .id(version.id)
                     case .file(let token, let table):
-                        VideoVersionView(client: client, item: item, view: view, versionId: version.id, source: .token(token), table: table, reload: reload)
+                        VideoVersionView(client: client, item: item, view: view, versionId: version.id, source: .token(token), table: table)
                             .id(version.id)
                     case .image(let token):
                         TokenPicture(client: client, token: token)
@@ -41,7 +44,15 @@ struct MediaItemView: View {
                             .contentShape(Rectangle())
                             .onTapGesture { tap?() }
                     case .preparing:
-                        Preparing(reload: reload)
+                        if let words = refresh.error {
+                            // The checks stop here; Try Again reads the item again, and a version still being
+                            // prepared takes up the checks.
+                            refresh.row(words, reload: reload, identifier: "media-preparing-failed")
+                                .padding(.horizontal, Layout.textEdge)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            Preparing(reload: reload)
+                        }
                     case .none:
                         ContentUnavailableView(version.name, systemImage: "desktopcomputer", description: Text("This file opens on the computer."))
                     }
@@ -89,7 +100,6 @@ private struct VideoVersionView: View {
     let versionId: String
     let source: Source
     let table: FrameTable
-    let reload: () -> Void
     @State private var player: AVPlayer?
     @State private var loaded = 0
     @State private var failure: String?

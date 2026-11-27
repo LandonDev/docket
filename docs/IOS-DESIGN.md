@@ -2914,9 +2914,12 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   the driver ("You are driving" or "The agent is driving") with Take Over
   or Hand Back, and an act it holds as the one prominent glass button,
   which opens the held detail; a form's responses
-  (each answer under its question); a meeting's, a form's and the
-  browser's read again that fails keeps what shows under the failed-read
-  row in red (`FailedRead`); a dashboard's blocks (a figure's line
+  (each answer under its question); a meeting's, a form's, a dashboard's
+  and the browser's read again that fails keeps what shows under the
+  failed-read row in red (`FailedRead`), and a pull's spinner lasts until
+  that read answers (`RefreshFailure.reread`); a video still being prepared
+  whose check fails shows that row in the spinner's place, its Try Again
+  reading the item again; a dashboard's blocks (a figure's line
   under its number and a chart's values at the stamp size in the label
   ink); history as a version list, each opening a compare with now, headed
   by the counts above zero alone ("2 changed"; `HistoryRestore.counts`),
@@ -3497,7 +3500,7 @@ card. Connections and Computers sit in the Work list's foot.
 - **Files' New** adds "From a Template" under the kinds where the place makes files: a row a template with its kind's
   glyph; it pushes its fields, one field a row, and Make writes it into the folder; the toast says what is left to
   fill.
-- **A dashboard** reads every figure again on a pull; a pull that fails keeps the figures under the failed-read row
+- **A dashboard** reads every figure again on a pull; a pull that fails keeps the figures under the red failed-read row
   (`FailedRead`, its Try Again) until a read lands, with their time but not the host's older failure; a block whose sheet the phone has opens it on a tap (a LifeOS
   sheet in the hosted editor, a form's answers), with the press's scale and no other mark.
 - **Connections**: a section a group, in the desktop's order, "Ending Soon" first when an end is within two weeks;
@@ -3666,7 +3669,8 @@ computer." in its row.
 
 **Restore** (a version's compare): Restore is the bar's one trailing press on
 every version but the newest. On his own document the undo capsule says
-"Restored" with Undo, and the compare reads "No Changes"; on one others can
+"Restored" with Undo, and the compare reads again from its spinner, "No Changes", or
+why not with Try Again, never the changes from before; on one others can
 open it says "Waiting in Review Changes" and has no Undo, since nothing was
 written.
 
@@ -4489,7 +4493,7 @@ hook's hundred tries, a sheet waiting for its socket) are not clocks.
 | `chat.shown` | A conversation | Holds the conversation as on screen, so a stopped reply is said there and not as a toast; it wakes once an hour and does nothing (Messages/MessagesPresses.swift) |
 | `outbox.surface` | The Outbox, a held item | Holds the Undo capsule's own surface as on screen, so another tab shows it only when none is; it wakes once an hour and does nothing (OutboxPresses.swift) |
 | `request.shown` | A thread's request | Holds the request's sheet as on screen, so its press's Undo is its own foot's and its outcome is said there; closed, both go to the tab's foot and the toast; it wakes once an hour and does nothing (OutboxRequestSheet.swift) |
-| `media.preparing` | A video item the host is still cutting | Reads again every 2 s until the proxy is ready; the plan's `work.media` push replaces it (Items/MediaItemView.swift) |
+| `media.preparing` | A video item the host is still cutting | Reads again every 2 s until the proxy is ready; the plan's `work.media` push replaces it; a failed check stops it under the failed-read row (Items/MediaItemView.swift) |
 
 Every other Work screen runs none.
 
