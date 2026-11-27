@@ -45,7 +45,7 @@ export const SAMPLE_SECTIONS: Section<HostItem>[] = [
     key: "sample:thread:1",
     title: "Nationals roster",
     job: "Purdue Esports",
-    sector: null,
+    sector: "purdue",
     items: [
       item(1, "mail.send", "Send to Priya Shah: Re: Travel for nationals", "Send", 12),
       item(2, "mail.send", "Send to Coach Alvarez: Roster for the spring split", "Send", 26),
@@ -58,7 +58,7 @@ export const SAMPLE_SECTIONS: Section<HostItem>[] = [
     key: "sample:thread:2",
     title: "Weekend schedule",
     job: "Refereeing",
-    sector: null,
+    sector: "ref",
     items: [
       item(5, "mail.send", "Send to the assignor: Saturday availability", "Send", 95),
       item(6, "calendar.op", "Add Varsity at North on Fri at 6:00 PM", "Add", 130),
@@ -86,7 +86,7 @@ export const SAMPLE_DAYS: { label: string; items: HostItem[] }[] = [
 ];
 
 /** The detail's item: a held mail, its facts and title. */
-export const SAMPLE_ITEM: HostItem = { ...SAMPLE_SECTIONS[0]!.items[0]!, effect: "Goes after your 30-second undo." };
+export const SAMPLE_ITEM: HostItem = { ...SAMPLE_SECTIONS[0]!.items[0]!, sector: "purdue", effect: "Goes after your 30-second undo." };
 
 /** The detail's thing: a mail's header rows on the label column, and its body. */
 export const SAMPLE_THING: { fields: KindRows["fields"]; body: string } = {

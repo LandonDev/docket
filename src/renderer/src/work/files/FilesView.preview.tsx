@@ -24,7 +24,7 @@ import { Button } from "../../components/ui/button";
 import { HomePage, SearchFilters } from "./Home";
 import { MoveDialog } from "./MoveDialog";
 import { sidebarOf, type FilesNote, type HostRead, type Sidebar } from "./model";
-import { BarBones, ListBones, NoteEmpty, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
+import { NoteEmpty, PageBones, PageBar, PageView, type NoteFixes, type PageActs, type PageFind } from "./Page";
 import { previewSeams } from "./previews";
 import { listingSeams, type Listing } from "./store";
 import { TabRow } from "./TabRow";
@@ -151,6 +151,17 @@ export function FilesBrowse() {
       </Window>
       <Window width={420} sidebarOpen={false} height={380}>
         <PageView {...common} listing={listing()} />
+      </Window>
+    </div>
+  );
+}
+
+/** A folder while its list is read, beside the same folder loaded: the bar is known, the list's heads and rows are bones. */
+export function FilesLoading({ loaded = false }: { loaded?: boolean }) {
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      <Window width={800} height={380}>
+        <PageView {...common} listing={loaded ? listing() : listing({ entries: [], loaded: false, loading: true })} />
       </Window>
     </div>
   );
@@ -414,8 +425,7 @@ export function FilesStates() {
     <div className="flex flex-col gap-8 p-6">
       <Window width={720} height={300}>
         <div className="flex min-h-0 flex-1 flex-col">
-          <BarBones />
-          <ListBones />
+          <PageBones />
         </div>
       </Window>
       <Window width={720} height={300}>

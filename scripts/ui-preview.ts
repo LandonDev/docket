@@ -162,6 +162,10 @@ function documentWindow(): JSDOM['window'] {
   if (target.CSS === undefined) target.CSS = { escape: (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`), supports: () => false }
   window.Element.prototype.scrollIntoView ??= function scrollIntoView() {}
   window.Element.prototype.getAnimations ??= () => []
+  // jsdom has no Web Animations: a region whose read lands during the render brings its content in with one, finished at once.
+  window.Element.prototype.animate ??= function animate() {
+    return { finished: Promise.resolve(), ready: Promise.resolve(), cancel() {}, finish() {}, play() {}, pause() {}, commitStyles() {}, persist() {}, addEventListener() {}, removeEventListener() {} } as unknown as Animation
+  }
   // Monaco probes the clipboard commands as it loads.
   window.document.queryCommandSupported ??= () => false
   // The transcript's virtual list parks when its viewport has no height.

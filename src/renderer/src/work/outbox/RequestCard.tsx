@@ -428,7 +428,7 @@ function CardBones() {
         <Button variant="ghost" size="sm" disabled>
           Not now
         </Button>
-        <Button size="sm" disabled>
+        <Button size="sm" disabled skullet-block="">
           Send 2
         </Button>
       </div>
@@ -442,7 +442,7 @@ function DetailBones() {
     <DetailColumn>
       <header className="flex flex-col">
         <div className="flex min-h-7 items-center gap-1 text-xs text-muted-foreground">
-          <SectorDot sector={null} className="-ms-1 size-4 shrink-0" />
+          <SectorDot sector="purdue" className="-ms-1 size-4 shrink-0" />
           <Facts parts={["Purdue Esports", "from Nationals roster", clockTime(SAMPLE_NOW)]} className="min-w-0" />
         </div>
         <h1 className="mt-1 text-base font-semibold leading-6 tracking-[-0.01em] text-balance">{SAMPLE_HEAD}</h1>

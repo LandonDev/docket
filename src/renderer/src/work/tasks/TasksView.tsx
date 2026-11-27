@@ -572,7 +572,8 @@ export const SAMPLE_TASKS = {
 /** The primary press on its way: the button itself, at rest. */
 function PressBones() {
   return (
-    <Button data-press-bone size="sm">
+    // A filled press is one block in its own box, as Skullet draws a button: its one label is no line of words.
+    <Button data-press-bone size="sm" skullet-block="">
       Start thread
     </Button>
   );
@@ -594,7 +595,7 @@ function TasksBones() {
         </p>
         <div data-bones-presses className={LEAD_PRESSES}>
           <PressBones />
-          <Button size="sm" variant="secondary">
+          <Button size="sm" variant="secondary" skullet-block="">
             Done
           </Button>
           <Button size="sm" variant="ghost">
