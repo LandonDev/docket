@@ -172,6 +172,10 @@ class WorkspaceStore {
   private state: WorkspaceCatalog = EMPTY;
   private listeners = new Set<() => void>();
   private links = new Map<string, { link: Link; detach: (() => void)[] }>();
+  /** Writes made to each scope's defaults, by scope: a read that started before the newest write is not stored when
+   *  it lands, so an answer older than a save never puts the set it replaced back. */
+  private defaultsWrites = new Map<string, number>();
+  private writesAt = (key: string): number => this.defaultsWrites.get(key) ?? 0;
   private offRegistry: (() => void) | null = null;
   private iconRequests = new Set<string>();
 
@@ -231,6 +235,7 @@ class WorkspaceStore {
     for (const { detach } of this.links.values()) for (const off of detach) off();
     this.links.clear();
     this.iconRequests.clear();
+    this.defaultsWrites.clear();
     this.set(EMPTY);
   }
 
@@ -294,6 +299,7 @@ class WorkspaceStore {
   /** Every scope's defaults on a host in one `defaults.list`; a scope it did not answer, or a failed ask, is read alone. */
   private async loadAllDefaults(link: Link, ids: string[]): Promise<void> {
     const environmentId = link.environmentId;
+    const asked = new Map([null, ...ids].map((id) => [scopeKey(environmentId, id), this.writesAt(scopeKey(environmentId, id))] as const));
     let answer: Record<string, unknown>;
     try {
       answer = await withDeadline(link.request<Record<string, unknown>>("defaults.list", { workspaceIds: ids }));
@@ -306,6 +312,8 @@ class WorkspaceStore {
     for (const id of [null, ...ids]) {
       const raw = answer[id ?? ""];
       if (raw === undefined) missing.push(id);
+      // Asked before a write to the scope that has since gone out: the write's set stands.
+      else if (this.writesAt(scopeKey(environmentId, id)) !== asked.get(scopeKey(environmentId, id))) continue;
       else {
         next.set(scopeKey(environmentId, id), parseDefaultsScope(raw));
         // An answer clears what an earlier read failed with, a first read's or a refresh's.
@@ -356,10 +364,13 @@ class WorkspaceStore {
     if (!link) return BUILT_IN_SCOPE;
     const key = scopeKey(environmentId, workspaceId);
     this.setDefaultsError(key, null);
+    const asked = this.writesAt(key);
     const read = whenOpen(link)
       .then(() => link.request<unknown>("defaults.get", { workspaceId }))
       .then(parseDefaultsScope)
       .then((scope) => {
+        // Asked before a write that has since gone out: the write's set stands; this answer is older than it.
+        if (this.writesAt(key) !== asked) return this.state.defaults.get(key) ?? scope;
         this.setDefaults(new Map([[key, scope]]));
         this.setDefaultsError(key, null);
         this.setDefaultsError(key, null, "defaultsStale");
@@ -367,6 +378,8 @@ class WorkspaceStore {
       });
     return withDeadline(read).catch((err: unknown) => {
       const had = this.state.defaults.get(key);
+      // A write went out since this read was asked: its answer, not this failure, says what the set is.
+      if (this.writesAt(key) !== asked) return had ?? BUILT_IN_SCOPE;
       const why = err instanceof Error ? err.message : String(err);
       // A failed refresh over a held answer keeps the answer and is kept apart, for a page that says both.
       this.setDefaultsError(key, why, had ? "defaultsStale" : "defaultsErrors");
@@ -395,6 +408,9 @@ class WorkspaceStore {
   ): Promise<void> {
     const link = this.linkOf(environmentId);
     if (!link) return;
+    // The one set reaches every place that follows it: a write to it outdates those places' reads too.
+    const written = workspaceId === null ? [...this.state.defaults.keys()].filter((key) => key.startsWith(`${environmentId}|`)) : [];
+    for (const key of new Set([scopeKey(environmentId, workspaceId), ...written])) this.defaultsWrites.set(key, this.writesAt(key) + 1);
     await link.request("defaults.set", { workspaceId, defaults });
     const next = new Map<string, DefaultsScope>();
     const globalKey = scopeKey(environmentId, null);

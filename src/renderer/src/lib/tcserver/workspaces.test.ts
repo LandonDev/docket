@@ -350,6 +350,47 @@ describe("thread defaults", () => {
     expect(workspaceStore.defaultsFor("local", "w1")).toEqual(set());
   });
 
+  it("a read asked before a save does not put the replaced set back when it lands after it", async () => {
+    link.stored.set("w1", set({ permission: "auto" }));
+    workspaceStore.attach(link);
+    await tick();
+    await tick();
+    const ask = link.request.bind(link);
+    let land!: () => void;
+    // The page's fresh read is asked, and answers the old set late.
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> => {
+      if (method !== "defaults.get") return ask<T>(method, params);
+      const old = ask<T>(method, params);
+      return new Promise<T>((resolve) => (land = () => void old.then(resolve)));
+    }) as typeof link.request;
+    const read = workspaceStore.loadDefaults("local", "w1");
+    await tick();
+    link.request = ask;
+    await workspaceStore.saveDefaults("local", "w1", set({ permission: "edits" }));
+    land();
+    await read;
+    expect(workspaceStore.defaultsAt("local", "w1")?.defaults.permission).toBe("edits");
+    expect(workspaceStore.getSnapshot().defaultsStale.size).toBe(0);
+  });
+
+  it("a failed read asked before a save does not mark the saved set as last read", async () => {
+    link.stored.set("w1", set({ permission: "auto" }));
+    workspaceStore.attach(link);
+    await tick();
+    await tick();
+    const ask = link.request.bind(link);
+    let fail!: () => void;
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> =>
+      method === "defaults.get" ? new Promise<T>((_resolve, reject) => (fail = () => reject(new Error("down")))) : ask<T>(method, params)) as typeof link.request;
+    const read = workspaceStore.loadDefaults("local", "w1");
+    await tick();
+    await workspaceStore.saveDefaults("local", "w1", set({ permission: "edits" }));
+    fail();
+    await read;
+    expect(workspaceStore.defaultsAt("local", "w1")?.defaults.permission).toBe("edits");
+    expect(workspaceStore.getSnapshot().defaultsStale.size).toBe(0);
+  });
+
   it("a failed load keeps what it had", async () => {
     workspaceStore.attach(link);
     await tick();

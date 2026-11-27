@@ -14,6 +14,8 @@ const box = vi.hoisted(() => ({
   /** computers whose tool rules read fails, or never answers */
   rulesFail: new Set<string>(),
   rulesOut: new Set<string>(),
+  /** A rule's save held open until the test lets it go. */
+  gate: null as null | Promise<void>,
 }));
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
@@ -21,7 +23,10 @@ vi.mock("../outbox/store", () => ({
   useOutboxPage: () => {},
   useOutbox: () => ({ grants: box.grants, loaded: box.loaded, complete: box.loaded && !box.errors.length, errors: box.errors }),
   loadHost: async () => {},
-  removeGrant: async (grant: { id: string; environmentId: string }) => void box.removed.push(`${grant.environmentId}:${grant.id}`),
+  removeGrant: async (grant: { id: string; environmentId: string }) => {
+    box.removed.push(`${grant.environmentId}:${grant.id}`);
+    await box.gate;
+  },
 }));
 vi.mock("../../lib/tcserver/workspaces", () => ({
   useWorkspaces: () => [
@@ -61,6 +66,7 @@ vi.mock("../../surfaces/settings/parts/hostRpc", () => ({
     if (method === "work.outbox.rules" && box.rulesFail.has(env)) throw new Error(NO_ANSWER);
     if (method === "work.outbox.rules")
       return { addons: env === "env_box" ? [card("a1", "linear", [{ tool: "create_issue", words: "Create issue", rule: "held" }]), card("lo", "LifeOS", [{ tool: "x", words: "X", rule: null }], true)] : [] };
+    await box.gate;
     if (box.refuse) throw new Error("forbidden: work.outbox.setRules needs admin");
     const [tool, rule] = Object.entries(params.rules)[0]!;
     return card("a1", "linear", [{ tool, words: "Create issue", rule }]);
@@ -84,6 +90,7 @@ afterEach(() => {
   box.cannot = new Set();
   box.rulesFail = new Set();
   box.rulesOut = new Set();
+  box.gate = null;
 });
 
 describe("Things threads may send on their own", () => {
@@ -105,6 +112,25 @@ describe("Things threads may send on their own", () => {
     expect(row.textContent).toContain("Cosmic");
     await act(async () => fireEvent.click(within(row).getByRole("button", { name: "Remove" })));
     expect(box.removed).toEqual(["local:g2"]);
+  });
+
+  it("holds every Remove while one removal is out: a second press sends nothing until the first answers", async () => {
+    box.grants = [grant("g1", "env_box", "w1", "Mail to Sam Ortiz"), grant("g2", "local", "w2", "Posts to #events")];
+    render(<GrantsRow id="mail.grants" />);
+    fireEvent.click(screen.getByRole("button", { name: "Things threads may send on their own" }));
+    const sheet = await screen.findByRole("dialog");
+    let let_go!: () => void;
+    box.gate = new Promise<void>((done) => (let_go = done));
+    const remove = (id: string) => within(sheet.querySelector<HTMLElement>(`[data-grant="${id}"]`)!).getByRole("button");
+    await act(async () => fireEvent.click(remove("g2")));
+    expect((remove("g1") as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => fireEvent.click(remove("g1")));
+    expect(box.removed).toEqual(["local:g2"]);
+    await act(async () => {
+      let_go();
+      await box.gate;
+    });
+    expect((remove("g1") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("says how a grant is made in the empty state, and offers no Remove to a key that may not", async () => {
@@ -238,5 +264,32 @@ describe("What each add-on's tools may do", () => {
     await settle();
     expect(box.calls.slice(before).map((c) => `${c.env} ${c.method}`)).toEqual(["env_box work.outbox.rules"]);
     expect(within(sheet).queryByRole("alert")).toBeNull();
+  });
+
+  it("holds a tool's rule while its own save is out, its pick shown until that save answers", async () => {
+    render(<ToolsRow />);
+    fireEvent.click(screen.getByRole("button", { name: "What each add-on's tools may do" }));
+    const sheet = await screen.findByRole("dialog");
+    await settle();
+    const row = sheet.querySelector<HTMLElement>('[data-tool="create_issue"]')!;
+    let let_go!: () => void;
+    box.gate = new Promise<void>((done) => (let_go = done));
+    await act(async () => fireEvent.click(within(row).getByRole("combobox")));
+    const option = await screen.findByRole("option", { name: "Runs" });
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    await settle();
+    const select = within(row).getByRole("combobox");
+    expect(select.textContent).toContain("Runs");
+    expect(select.hasAttribute("disabled") || select.getAttribute("aria-disabled") === "true" || select.hasAttribute("data-disabled")).toBe(true);
+    await act(async () => {
+      let_go();
+      await box.gate;
+    });
+    await settle();
+    expect(within(row).getByRole("combobox").textContent).toContain("Runs");
+    expect(within(row).getByRole("combobox").hasAttribute("data-disabled")).toBe(false);
   });
 });

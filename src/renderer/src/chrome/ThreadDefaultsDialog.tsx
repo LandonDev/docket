@@ -111,7 +111,11 @@ function useDefaultsSet(environmentId: string, workspaceId: string | null) {
   };
   /** Drops the scope's own set: a workspace follows New threads again, New threads takes Docket's. */
   const clear = () => cleared.run(() => queueDefaults(environmentId, workspaceId, () => workspaceStore.saveDefaults(environmentId, workspaceId, null)));
-  return { scope, failure, stale, value: draft.value, saved, write, blocked, clear, cleared, may };
+  // While any save of this set is out (a pick, Docket's defaults, Use New threads' clear) every control of it is held,
+  // the pending pick on screen: no new pick is laid on a set that save may yet replace. After a clear the set is gone
+  // until the computer is read again, so the rows wait as bones and nothing can be picked.
+  const held = blocked || draft.busy || cleared.state === "saving" || cleared.state === "slow";
+  return { scope, failure, stale, value: draft.value, saved, write, blocked, held, clear, cleared, may };
 }
 type DefaultsSet = ReturnType<typeof useDefaultsSet>;
 
@@ -136,7 +140,7 @@ function LastRead({ environmentId, stale }: { environmentId: string; stale: { er
 function DefaultsRows({ set, environmentId, startOn, layout }: { set: DefaultsSet; environmentId: string; startOn: boolean; layout: "setting" | "page" | "dialog" }) {
   const value = set.value!;
   const ladder = effortLadder(modelForDefaults(value, environmentId));
-  const disabled = set.blocked;
+  const disabled = set.held;
   const size = layout === "dialog" ? "sm" : undefined;
   const pickAccess = async (permission: ThreadDefaults["permission"]) => {
     // Full access as the start of every new thread widens what they do unasked: it asks first.
@@ -291,7 +295,7 @@ function StartWith({ environmentId }: { environmentId: string }) {
           {/* Asks first, so last in its section; offered only while there is a set to clear and the box can take it. */}
           {set.scope?.overridden && !set.blocked && set.may ? (
             <SettingRow id="defaults.reset" description={DOCKETS} saved={set.cleared}>
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
+              <Button variant="ghost" size="sm" disabled={set.held} className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
                 Use…
               </Button>
             </SettingRow>
@@ -318,7 +322,7 @@ function WorkspaceSet({ environmentId, workspaceId }: { environmentId: string; w
       title="New threads"
       action={
         set.scope?.overridden && reset.may ? (
-          <UseNewThreadsPress reset={reset} saved={set.cleared} disabled={set.blocked} variant="ghost" />
+          <UseNewThreadsPress reset={reset} saved={set.cleared} disabled={set.held} variant="ghost" />
         ) : null
       }
     >
@@ -374,10 +378,12 @@ function DifferentPlaces() {
   // heard from.
   const lastRead = own.filter((w) => defaultsStale.has(keyOf(w)));
   const confirmed = own.filter((w) => !defaultsStale.has(keyOf(w)));
-  // With none confirmed, the count is the last read's, and the line under it says so: never "0 confirmed places".
-  const n = !confirmed.length && lastRead.length
-    ? `${failed.length ? "at least " : ""}${lastRead.length}`
-    : `${failed.length ? "at least " : ""}${confirmed.length}${stale.length ? " confirmed" : ""}`;
+  // With none confirmed the count is left open ("Different in places") and the line names the last read's places:
+  // never a count or a floor built from last-read answers, never "at least 0". With none known to differ at all there
+  // is no row: the failure and its Retry at the head stand alone.
+  const known = confirmed.length > 0;
+  const n = known ? `${failed.length ? "at least " : ""}${confirmed.length}${stale.length ? " confirmed" : ""}` : undefined;
+  const shown = known || lastRead.length > 0;
   const line = [
     confirmed.length ? confirmed.map((w) => w.name).join(", ") : null,
     lastRead.length ? `${AS_LAST_READ}: ${lastRead.map((w) => w.name).join(", ")}` : null,
@@ -395,7 +401,7 @@ function DifferentPlaces() {
           {[...failed, ...stale].map((w) => (
             <ReadFailure key={keyOf(w)} computer={w.environmentId} error={defaultsErrors.get(keyOf(w)) ?? defaultsStale.get(keyOf(w)) ?? ""} retry={() => workspaceStore.loadDefaults(w.environmentId, w.id)} />
           ))}
-          {own.length || failed.length ? (
+          {shown ? (
             <SettingRow
               id="defaults.different"
               vars={{ n }}
@@ -585,7 +591,7 @@ export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: Worksp
       </ModalBody>
       <DialogFooter
         start={
-          set.scope?.overridden && reset.may ? <UseNewThreadsPress reset={reset} saved={set.cleared} disabled={set.blocked} variant="ghost" /> : null
+          set.scope?.overridden && reset.may ? <UseNewThreadsPress reset={reset} saved={set.cleared} disabled={set.held} variant="ghost" /> : null
         }
         note={set.scope && !set.scope.overridden ? "Same as New threads" : undefined}
         confirmLabel="Done"

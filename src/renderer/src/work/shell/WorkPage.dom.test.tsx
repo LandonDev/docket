@@ -159,6 +159,41 @@ describe("Access for each job's new threads", () => {
     expect([...document.querySelectorAll("[data-job]")].map((row) => row.getAttribute("data-job"))).toEqual(["k4"]);
   });
 
+  it("keeps Retry's busy state and words with the jobs it asked: a filter change mid-retry shows the other job's own failure and Retry", async () => {
+    store.jobs = Array.from({ length: 10 }, (_, i) => ({ id: `k${i}`, name: i === 4 ? "Purdue Esports" : i === 7 ? "Purdue Club" : `Job ${i}`, kind: "work", sector: "life", environmentId: "env_box" }));
+    for (const job of store.jobs) if (job.id !== "k4" && job.id !== "k7") store.defaults.set(`env_box:${job.id}`, { defaults: { permission: "edits" } });
+    store.errors.set("env_box:k4", NO_ANSWER);
+    store.errors.set("env_box:k7", "Refused: the key may not read it");
+    render(<JobsAccess />);
+    const find = screen.getByRole("searchbox", { name: "Find a job" });
+    const line = () => document.querySelector<HTMLElement>("[data-missed]")!.closest<HTMLElement>("[data-slot=page-error-line]")!;
+    fireEvent.change(find, { target: { value: "esports" } });
+    let let_go!: () => void;
+    store.gate = new Promise<void>((done) => (let_go = done));
+    store.loads.length = 0;
+    store.errors.delete("env_box:k4");
+    await act(async () => fireEvent.click(within(line()).getByRole("button", { name: "Retry" })));
+    expect((within(line()).getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+    // Mid-retry, a query for the other failed job: its own words, its own Retry, nothing of the first job's.
+    fireEvent.change(find, { target: { value: "club" } });
+    expect(line().textContent).toContain("Purdue Club: Refused: the key may not read it.");
+    expect(line().textContent).not.toContain("Purdue Esports");
+    expect((within(line()).getByRole("button") as HTMLButtonElement).disabled).toBe(false);
+    // Back to the first: still its words, still busy.
+    fireEvent.change(find, { target: { value: "esports" } });
+    expect(document.querySelector("[data-missed]")!.textContent).toBe("Purdue Esports: The box did not answer.");
+    expect((within(line()).getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+    // Its read fails again: its failure stands with Retry ready.
+    store.errors.set("env_box:k4", NO_ANSWER);
+    await act(async () => {
+      let_go();
+      await store.gate;
+    });
+    expect(document.querySelector("[data-missed]")!.textContent).toBe("Purdue Esports: The box did not answer.");
+    expect((within(line()).getByRole("button") as HTMLButtonElement).disabled).toBe(false);
+    expect(store.loads).toEqual(["env_box:k4"]);
+  });
+
   it("marks a level held over a failed refresh as last read, and counts only current levels toward the heading", () => {
     store.defaults.set("env_box:j1", { defaults: { permission: "edits" } });
     store.defaults.set("env_box:j2", { defaults: { permission: "auto" } });

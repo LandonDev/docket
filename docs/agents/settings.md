@@ -237,7 +237,10 @@ through `useSaved`.
   not back), and from the Fits my window confirm through its save before the watch begins (`holdForUpgrade`), so its
   rollback never writes over a newer pick; a read's reply that lands after the watch settled is ignored. When a display
   read again fails over values shown, they say "As last read" and both selects are held until a fresh read answers,
-  so no upgrade starts from a size that may not stand. Its sign-ins and its
+  so no upgrade starts from a size that may not stand. One rule covers the page's three selects: while a write or a
+  read a select's value depends on is out (its own save, the machine's state for Sleeps after, the display read for
+  the other two), it takes no new pick, and its own pending pick stays on screen until its save answers. The hold
+  through Fits my window's confirm draws no Saving mark; the save's mark starts with its write. Its sign-ins and its
   edition's end are Connections' rows alone. The Work page no longer has it.
 
 The preview (`SettingsPages.preview.tsx`) answers per computer: `<environment id>:<method>` answers first, a fixture
@@ -280,11 +283,16 @@ the set the computer last confirmed on a refusal.
   the failure with Retry (fixtures `defaults-stale`, `workspace-stale`). Such a set takes no change until a fresh read
   answers: its controls, Docket's defaults and Use New threads are held (Change… on a job's or workspace's page still
   opens the dialog to look and retry). A change then sends only the fields chosen, laid on the newest set held
-  (`onLatest`), so an old Access is never written over a newer one. Saves to one set are queued (`queueDefaults`):
-  each starts once the one before it settles and is laid on the set that save confirmed, so a second edit made
-  before the first answers never carries the Access the first replaced. `useDraft` keeps the second pick on screen
-  meanwhile. "Different in N places" counts confirmed answers alone ("Different in 1 confirmed place" once any place is
-  as last read, "at least" only for places never heard from) and names last-read places once ("As last read: …");
+  (`onLatest`), so an old Access is never written over a newer one. One rule holds a
+  set's interleavings: while any save of the set is out (a pick, Docket's defaults, Use New threads' clear), every
+  control of it is held and the pending pick stays on screen (`useDraft`'s `busy`; New threads, a place's dialog,
+  Reviews, Builds from plans, and Subagents' own count of writes out). A refusal puts back that one pick. After a
+  clear the rows wait as bones for the re-read. Saves are still queued per set (`queueDefaults`) for two editors of
+  one set. The store drops a read asked before a write to its scope when it lands after (`defaultsWrites`), so an
+  older answer, or its failure, never replaces a saved set. "Different in N places" counts confirmed answers alone
+  ("Different in 1 confirmed place" once any place is as last read, "at least" only for places never heard from); with
+  none confirmed the count is left open ("Different in places"), and with none known to differ there is no row. It
+  names last-read places once ("As last read: …");
   the dialog's list marks each "(as last read)", with its failure and Retry, and holds its Use New threads. In a dialog
   narrower than 22rem, a place's row puts Use New threads under its name and set. A key that
   may only read sees each value in words (`ValueWords`, the size and tone Away and Digest use) and one `ManagedLine`

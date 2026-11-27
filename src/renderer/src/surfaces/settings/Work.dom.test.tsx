@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
   confirm: true,
   unread: new Set<string>(),
   readFails: new Set<string>(),
+  /** A write held open until the test lets it go. */
+  gate: null as null | Promise<void>,
   asked: [] as { title: string; body?: string; action: string }[],
 }));
 const ENVS = [
@@ -50,6 +52,7 @@ vi.mock("./parts/hostRpc", () => ({
         return { enabled: state.on.has(env) };
       }
       state.calls.push({ env, method, params });
+      await state.gate;
       if (state.refuse.has(env)) throw new Error("forbidden: work.set needs admin");
       return { enabled: params.enabled };
     },
@@ -91,6 +94,7 @@ afterEach(() => {
   state.asked = [];
   state.unread = new Set();
   state.readFails = new Set();
+  state.gate = null;
 });
 
 const rowOf = (env: string): HTMLElement => document.querySelector<HTMLElement>(`[data-work-on="${env}"]`)!;
@@ -172,6 +176,26 @@ describe("Settings → Work: Work is on for", () => {
     expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
     expect(screen.getByRole("alert").textContent).toBe("PURDUE-LT did not answer.");
     expect(within(rowOf("local")).getByRole("switch")).toBeTruthy();
+  });
+
+  it("holds a computer's switch while its own write is out: a second press sends nothing, and the flip stays shown", async () => {
+    render(<WorkPage />);
+    await settle();
+    let let_go!: () => void;
+    state.gate = new Promise<void>((done) => (let_go = done));
+    const flip = () => within(rowOf("local")).getByRole("switch");
+    await act(async () => fireEvent.click(flip()));
+    await settle();
+    expect(flip().getAttribute("aria-checked")).toBe("true");
+    await act(async () => fireEvent.click(flip()));
+    await settle();
+    expect(state.calls).toEqual([{ env: "local", method: "work.set", params: { enabled: true } }]);
+    await act(async () => {
+      let_go();
+      await state.gate;
+    });
+    await settle();
+    expect(flip().getAttribute("aria-checked")).toBe("true");
   });
 
   it("says an offline computer is offline, with no switch", async () => {

@@ -79,8 +79,9 @@ const computersOf = (groups: readonly ListGroup[]): ListRow[] => listPages(group
 /** What this window is, for rows a page draws only in some windows (`SettingEntry.needs`). */
 /** `workHere`: Work is on for this window's own computer (the capture key is that computer's). */
 /** `jobsOn`: the computers (environment ids) with Work on that hold a job, whose pages list their jobs. */
-/** `workCount`: how many computers have Work on. */
-export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean; workHere?: boolean; jobsOn?: readonly string[]; workCount?: number };
+/** `workCount`: how many linked computers have Work on; `placesDiffer`: a place may keep its own start set (New
+ *  threads draws its overrides row). */
+export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean; workHere?: boolean; jobsOn?: readonly string[]; workCount?: number; placesDiffer?: boolean };
 
 const drawn = (entry: SettingEntry, window: SearchWindow): boolean =>
   !entry.needs || entry.needs.every((need) =>
@@ -92,7 +93,9 @@ const drawn = (entry: SettingEntry, window: SearchWindow): boolean =>
           ? (window.workHere ?? window.work) !== false
           : need === "workMany"
             ? (window.workCount ?? 2) > 1
-            : window.work !== false,
+            : need === "placesDiffer"
+              ? window.placesDiffer !== false
+              : window.work !== false,
   );
 
 function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly SearchExtra[], window: SearchWindow): Indexed[] {
@@ -129,7 +132,8 @@ const UNCOUNTED: Record<string, string> = {
 };
 
 function rowResult(entry: SettingEntry, row: ListRow, place: string | undefined, vars: SettingVars): Indexed {
-  const title = vars.n === undefined && UNCOUNTED[entry.id] ? UNCOUNTED[entry.id] : settingWords(entry.title, vars);
+  const uncounted = vars.n === undefined ? UNCOUNTED[entry.id] : undefined;
+  const title = uncounted ?? settingWords(entry.title, vars);
   const section = entry.section ? settingWords(entry.section, vars) : undefined;
   return {
     key: `${row.id}:${entry.id}:${vars.computer ?? ""}`,
@@ -144,7 +148,8 @@ function rowResult(entry: SettingEntry, row: ListRow, place: string | undefined,
         : pathOf(place, place && row.title === place ? undefined : row.label, section === title ? undefined : section),
     page: row.id,
     row: entry.id,
-    names: title,
+    // A counted row is also found by its page's own words ("different in places").
+    names: uncounted ? `${title} ${settingWords(entry.title, vars)}` : title,
     // An old name says the computer a row was on ("Hosts › The box › Port"), never "a host".
     old: entry.was.map((was) => settingWords(was, vars)),
     rank: 1,

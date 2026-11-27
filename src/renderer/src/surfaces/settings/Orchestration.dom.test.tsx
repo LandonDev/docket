@@ -202,6 +202,20 @@ describe("Subagents", () => {
     expect((document.querySelector("[data-setting='sub.edits']") as HTMLElement).textContent).toContain("Saved");
   });
 
+  it("holds every control while a write of the set is out, so no pick is built on a change that may be refused", async () => {
+    let refuse!: () => void;
+    state.save.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => (refuse = () => reject(new Error("refused: the box said no")))));
+    render(<OrchestrationPage />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("switch", { name: "May edit files itself" }));
+    });
+    expect((screen.getByRole("switch", { name: "May run commands itself" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Add rule…" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => refuse());
+    expect((screen.getByRole("switch", { name: "May run commands itself" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(state.save).toHaveBeenCalledTimes(1);
+  });
+
   it("says once that both limits are for each thread, tells them apart by name, and names no limit", () => {
     render(<OrchestrationPage />);
     const limits = screen.getByRole("region", { name: "Limits" });

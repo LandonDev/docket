@@ -130,7 +130,8 @@ export function WorkOnRow({ environmentId, report }: { environmentId: string; re
   ) : may ? (
     <>
       <SaveMark state={saved.state} />
-      <SettingSwitch label={`Work on ${computerInLine(computer.name)}`} on={on} onChange={flip} />
+      {/* Held while its own write is out: one press, one answer, and the pending flip stays shown until it lands. */}
+      <SettingSwitch label={`Work on ${computerInLine(computer.name)}`} on={on} onChange={flip} disabled={saved.state === "saving" || saved.state === "slow"} />
     </>
   ) : (
     <StatusMark state="idle" glyph={false} word={on ? "On" : "Off"} className="text-xs" />

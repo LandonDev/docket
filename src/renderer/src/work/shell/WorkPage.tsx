@@ -85,8 +85,9 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
     .sort((a, b) => a.name.localeCompare(b.name));
   const { defaults, defaultsErrors, defaultsStale } = useWorkspaceCatalog();
   const [open, setOpen] = useState<WorkspaceMeta | null>(null);
-  // The filtered list's own Retry while it runs: the jobs it asks and the words it said, kept until every read settles.
-  const [retrying, setRetrying] = useState<{ keys: readonly string[]; words: string } | null>(null);
+  // The filtered list's own Retry while it runs, a job at a time: each job it asked, with the words it said for that
+  // job, until that job's read settles. A filter change never moves one job's words or busy state to another.
+  const [retrying, setRetrying] = useState<Readonly<Record<string, string>>>({});
   const may = useLinksMay();
   const names = useComputerNames();
   const key = jobs.map((j) => `${j.environmentId}:${j.id}`).join(",");
@@ -110,11 +111,12 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
   const matches = (job: WorkspaceMeta) => filter.shown.includes(job);
   // The jobs that answered, or are still out: a job whose read failed draws no row, the page's line stands for it; nor
   // one the filtered list is asking again.
-  const shown = jobs.filter((job) => !failed.includes(job) && !retrying?.keys.includes(keyOf(job)));
+  const inFlight = (job: WorkspaceMeta) => keyOf(job) in retrying;
+  const shown = jobs.filter((job) => !failed.includes(job) && !inFlight(job));
   // The rows the query leaves. A query that matches only jobs whose read failed says those failures at the list, with
   // one Retry, and the page's head leaves them out.
   const rows = shown.filter(matches);
-  const missed = rows.length === 0 ? jobs.filter((job) => matches(job) && (failed.includes(job) || !!retrying?.keys.includes(keyOf(job)))) : [];
+  const missed = rows.length === 0 ? jobs.filter((job) => matches(job) && (failed.includes(job) || inFlight(job))) : [];
   // One line a computer whose jobs did not answer (the page says a silence once: `ReadFailure`), its Retry asking them again.
   const failuresOf = (said: readonly WorkspaceMeta[]) =>
     [...new Set(said.map((job) => job.environmentId))].map((environmentId) => {
@@ -135,10 +137,19 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
   const settled = levels.length === shown.length;
   // Jobs on more than one computer: each row says its own.
   const several = new Set(jobs.map((job) => job.environmentId)).size > 1;
-  const missedWords = retrying?.words ?? missed.map((job) => `${job.name}: ${readFailWords(errorOf(job) ?? "", names(job.environmentId))}`).join(" ");
+  // Each missed job's own words: the ones its Retry said while its read is out, else its failure now.
+  const wordsOf = (job: WorkspaceMeta): string => retrying[keyOf(job)] ?? `${job.name}: ${readFailWords(errorOf(job) ?? "", names(job.environmentId))}`;
+  const missedWords = missed.map(wordsOf).join(" ");
+  // Retry asks the missed jobs not already being asked; it is busy only while every one of them is out.
+  const toAsk = missed.filter((job) => !inFlight(job));
+  const busy = missed.length > 0 && toAsk.length === 0;
   const retryMissed = (): void => {
-    setRetrying({ keys: missed.map(keyOf), words: missedWords });
-    void Promise.allSettled(missed.map((job) => workspaceStore.loadDefaults(job.environmentId, job.id))).then(() => setRetrying(null));
+    setRetrying((was) => ({ ...was, ...Object.fromEntries(toAsk.map((job) => [keyOf(job), wordsOf(job)])) }));
+    for (const job of toAsk) {
+      void workspaceStore.loadDefaults(job.environmentId, job.id).finally(() =>
+        setRetrying((was) => Object.fromEntries(Object.entries(was).filter(([key]) => key !== keyOf(job)))),
+      );
+    }
   };
   return (
     <>
@@ -150,8 +161,8 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
           <PageError
             data-missed=""
             action={
-              <Button variant="ghost" size="sm" disabled={retrying !== null} onClick={retryMissed}>
-                <BusyLabel busy={retrying !== null} label="Retry" />
+              <Button variant="ghost" size="sm" disabled={busy} onClick={retryMissed}>
+                <BusyLabel busy={busy} label="Retry" />
               </Button>
             }
           >

@@ -49,7 +49,7 @@ export function ReviewsPage() {
       <PageSection>
         {draft.value ? (
           <>
-            <ReviewFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked} readOnly={!may} />
+            <ReviewFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked || draft.busy} readOnly={!may} />
             {/* Shown with Reviews off too: a project may keep reviews on of its own. */}
             <DifferentProjects />
           </>

@@ -16,6 +16,7 @@ import { hostFailure } from "../../../lib/hostFailure";
 /** A running upgrade; one whose end this window could not confirm (it keeps watching; Retry reads the machine again);
  *  one that failed and put the size that stood back; or one that failed and could not put it back (Retry tries again). */
 export type Upgrade =
+  | { phase: "held" }
   | { phase: "running" }
   | { phase: "unconfirmed"; reason: string }
   | { phase: "failed"; reason: string }
@@ -57,12 +58,14 @@ export function resetUpgradesForTests(): void {
 }
 
 /** Fits my window is on its way from his pick: Screen size is held from the confirm, through the save, until the watch
- *  takes over (`runUpgrade`) or `releaseHold` lets it go. */
-export const holdForUpgrade = (environmentId: string): void => put(environmentId, { phase: "running" });
+ *  takes over (`runUpgrade`) or `releaseHold` lets it go. "held" draws no saving mark: nothing is written before his
+ *  yes, and the save's own mark starts with its write. */
+export const holdForUpgrade = (environmentId: string): void => put(environmentId, { phase: "held" });
 
 /** The hold ends with no watch behind it (his Cancel, or a save refused before the upgrade began). */
 export function releaseHold(environmentId: string): void {
-  if (!watching.has(environmentId) && upgrades.get(environmentId)?.phase === "running") put(environmentId, null);
+  const phase = upgrades.get(environmentId)?.phase;
+  if (phase === "held" || (phase === "running" && !watching.has(environmentId))) put(environmentId, null);
 }
 
 /** His next change of the screen size: what an old upgrade left to say has been said. */
@@ -77,7 +80,7 @@ export const forgetUpgrade = (environmentId: string): void => {
 /** Screen size is held while an upgrade is unresolved: running, its end unconfirmed, or the size that stood not put
  *  back (a restore in flight included); a pick then could be written over by the upgrade's own rollback. */
 export const upgradeHolds = (upgrade: Upgrade | null): boolean =>
-  upgrade?.phase === "running" || upgrade?.phase === "unconfirmed" || upgrade?.phase === "unrestored";
+  upgrade?.phase === "held" || upgrade?.phase === "running" || upgrade?.phase === "unconfirmed" || upgrade?.phase === "unrestored";
 
 /** It went through: awake, with no error, on the live-resize display. The display alone does not say so. */
 export const upgradeWorked = (end: WinvmState): boolean => end.state === "awake" && !end.error && end.display?.device === "virtio";

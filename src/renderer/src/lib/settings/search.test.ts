@@ -219,3 +219,11 @@ describe("rows search names as their page does", () => {
     expect(titles("new jobs are made", { work: true, workCount: 2 })).toContain("New jobs are made on");
   });
 });
+
+describe("the overrides row in search", () => {
+  it("is found by the page's words and only where a place may keep its own set", () => {
+    const rows = (query: string, window = {}) => searchSettings(query, settingsList(MAC), { mac: "this Mac" }, [], window).map((result) => result.row);
+    expect(rows("different in places")).toContain("defaults.different");
+    expect(rows("different from new threads", { placesDiffer: false })).not.toContain("defaults.different");
+  });
+});

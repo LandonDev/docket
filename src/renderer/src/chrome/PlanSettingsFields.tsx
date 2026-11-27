@@ -155,7 +155,7 @@ export function PlanSettingsEditor({ quiet = false }: { quiet?: boolean }) {
   return (
     <SettingSection of="plans.start">
       {draft.value ? (
-        <PlanSettingsFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked} readOnly={!may} />
+        <PlanSettingsFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked || draft.busy} readOnly={!may} />
       ) : failure ? (
         <ReadFailure computer={environmentId} error={failure.error} retry={failure.retry} />
       ) : (

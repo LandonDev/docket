@@ -10,9 +10,9 @@ import { settingsSearch, useSettingsSearch } from "../../lib/settings/searchStor
 import { settingsList } from "../../lib/settings/list";
 import { useListWindow, useSettingsKnown } from "../../lib/settings/useListWindow";
 import { thisDesktopInLine } from "../../lib/native";
-import { LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
+import { LOCAL_ENVIRONMENT_ID, useEnvironments } from "../../lib/connection";
 import { useWorkHosts } from "../../lib/workSwitch";
-import { useWorkspaces } from "../../lib/tcserver/workspaces";
+import { scopeKey, useWorkspaceCatalog, useWorkspaces } from "../../lib/tcserver/workspaces";
 import { ItemButton } from "../../components/ui/item";
 import { addonNames } from "./addons/useAddons";
 import { skillNames } from "./skills/useSkills";
@@ -44,12 +44,20 @@ export function useSearchResults(): SearchResult[] {
   const addons = addonNames.useExtras();
   const skills = skillNames.useExtras();
   const workHosts = useWorkHosts();
+  // As Setup counts them: the linked computers with Work on.
+  const workCount = useEnvironments().filter((environment) => workHosts.has(environment.id)).length;
+  // A place keeps its own start set, or has not been read yet: New threads may draw its overrides row.
+  const catalog = useWorkspaceCatalog();
+  const placesDiffer = catalog.workspaces.some((w) => {
+    const scope = catalog.defaults.get(scopeKey(w.environmentId, w.id));
+    return scope ? scope.overridden === true : !catalog.defaultsErrors.has(scopeKey(w.environmentId, w.id));
+  });
   const workHere = workHosts.has(LOCAL_ENVIRONMENT_ID);
   // The computers with Work on that hold a job: only their pages list jobs.
   const jobsOn = [...new Set(useWorkspaces().filter((workspace) => workspace.kind === "work" && workHosts.has(workspace.environmentId)).map((workspace) => workspace.environmentId))];
   // Found only where the list offers it (the press is mounted).
   const { addComputer } = useSettingsKnown();
-  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills, ...(window.work ? SIGN_IN_NAMES : []), ...(addComputer ? [ADD_COMPUTER_RESULT] : [])], { web: window.web, mac: window.platform === "darwin", work: window.work, workHere, jobsOn, workCount: workHosts.size });
+  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills, ...(window.work ? SIGN_IN_NAMES : []), ...(addComputer ? [ADD_COMPUTER_RESULT] : [])], { web: window.web, mac: window.platform === "darwin", work: window.work, workHere, jobsOn, workCount, placesDiffer });
 }
 
 /**

@@ -87,6 +87,20 @@ describe("Builds from plans", () => {
     expect(screen.getByRole("switch", { name: "Archive the plan's thread once the build starts" }).getAttribute("aria-checked")).toBe(String(DEFAULT_PLAN_SETTINGS.archiveAfterStart));
   });
 
+  it("holds every control while a save of the set is out, and frees them once it answers", async () => {
+    plans.scope = { settings: { ...DEFAULT_PLAN_SETTINGS, autoImplement: true }, overridden: false };
+    let answerSave!: () => void;
+    plans.save.mockImplementationOnce(() => new Promise<void>((resolve) => (answerSave = resolve)));
+    render(<PlanSettingsEditor />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("switch", { name: "Start the build when a plan is done" }));
+    });
+    expect(screen.getByRole("switch", { name: "Start the build when a plan is done" }).getAttribute("aria-checked")).toBe("false");
+    expect((screen.getByRole("switch", { name: "Archive the plan's thread once the build starts" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => answerSave());
+    expect((screen.getByRole("switch", { name: "Archive the plan's thread once the build starts" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("says each value as words for a key that may read but not change them", () => {
     keyRights.write = false;
     plans.scope = { settings: DEFAULT_PLAN_SETTINGS, overridden: false };

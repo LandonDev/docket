@@ -744,30 +744,38 @@ describe("onLatest", () => {
 });
 
 describe("Two edits to one set before the first answers", () => {
-  /** The first save waits for `answer()`; the store then holds what it sent, as `saveDefaults` does. */
-  function holdFirstSave(confirm: (sent: { permission: "safe" | "edits" | "auto" }) => void) {
+  /** The first save waits for `answer()` (or `refuse()`); the store then holds what it sent, as `saveDefaults` does. */
+  function holdFirstSave(confirm: (sent: { permission: "safe" | "edits" | "auto" } | null) => void) {
     let answer!: () => void;
+    let refuse!: () => void;
     let calls = 0;
     state.save.mockImplementation(async (...args: unknown[]) => {
       calls += 1;
-      const sent = args[2] as { permission: "safe" | "edits" | "auto" };
-      if (calls === 1) await new Promise<void>((resolve) => (answer = resolve));
+      const sent = args[2] as { permission: "safe" | "edits" | "auto" } | null;
+      if (calls === 1)
+        await new Promise<void>((resolve, reject) => {
+          answer = resolve;
+          refuse = () => reject(new Error("refused: the box said no"));
+        });
       confirm(sent);
     });
-    return () => act(async () => answer());
+    return { answer: () => act(async () => answer()), refuse: () => act(async () => refuse()) };
   }
+  const isHeld = (name: string, within_: HTMLElement = document.body) => (within(within_).getByRole("combobox", { name }) as HTMLButtonElement).disabled;
 
-  it("on New threads, applies the second to the set the first confirmed, never carrying the old Access", async () => {
+  it("on New threads, holds every control while the first save is out, its pick on screen, then lays the next on what it confirmed", async () => {
     state.permission = "auto";
     state.globalPermission = "auto";
-    const answer = holdFirstSave((sent) => (state.globalPermission = sent.permission));
+    const first = holdFirstSave((sent) => sent && (state.globalPermission = sent.permission));
     render(<ThreadDefaultsPage />);
     await pick("Access", "Auto-accept edits");
-    await pick("Effort", "High");
-    // The second waits for the first.
-    expect(state.save).toHaveBeenCalledTimes(1);
-    await answer();
+    // Out: the pick stays shown, and no control takes a new pick.
+    expect(screen.getByRole("combobox", { name: "Access" }).textContent).toContain("Auto-accept edits");
+    for (const name of ["Agent app", "Model", "Effort", "Access"]) expect(isHeld(name)).toBe(true);
+    await first.answer();
     await flush();
+    expect(isHeld("Effort")).toBe(false);
+    await pick("Effort", "High");
     expect(state.save).toHaveBeenCalledTimes(2);
     expect(state.save.mock.calls[1]![2]).toEqual(expect.objectContaining({ permission: "edits", reasoning: "high" }));
   });
@@ -775,22 +783,105 @@ describe("Two edits to one set before the first answers", () => {
   it("in a place's dialog (Change… from a job's or a workspace's page), the same", async () => {
     state.permission = "auto";
     state.placePermission = "auto";
-    const answer = holdFirstSave((sent) => (state.placePermission = sent.permission));
+    const first = holdFirstSave((sent) => sent && (state.placePermission = sent.permission));
     render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
-    await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("dialog");
     await act(async () => {});
     await pick("Access", "Auto-accept edits");
-    await pick("Effort", "High");
-    expect(state.save).toHaveBeenCalledTimes(1);
-    await answer();
+    expect(isHeld("Effort", dialog)).toBe(true);
+    await first.answer();
     await flush();
+    await pick("Effort", "High");
     expect(state.save.mock.calls[1]![1]).toBe("w1");
     expect(state.save.mock.calls[1]![2]).toEqual(expect.objectContaining({ permission: "edits", reasoning: "high" }));
+  });
+
+  it("rolls back only the refused pick, and frees the controls with their confirmed values", async () => {
+    state.permission = "auto";
+    const first = holdFirstSave(() => {});
+    render(<ThreadDefaultsPage />);
+    await pick("Access", "Auto-accept edits");
+    await first.refuse();
+    await flush();
+    expect(screen.getByRole("combobox", { name: "Access" }).textContent).toContain("Full access");
+    expect(screen.getByRole("combobox", { name: "Effort" }).textContent).toContain("Medium");
+    expect(isHeld("Effort")).toBe(false);
+    expect(state.save).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds Docket's defaults while a pick's save is out", async () => {
+    state.overridden = true;
+    const first = holdFirstSave(() => {});
+    render(<ThreadDefaultsPage />);
+    await pick("Effort", "High");
+    expect((within(document.querySelector("[data-setting='defaults.reset']") as HTMLElement).getByRole("button", { name: "Use…" }) as HTMLButtonElement).disabled).toBe(true);
+    await first.answer();
+  });
+
+  it("holds every pick through Use New threads' clear, and the rows wait for the re-read, so no old Access is written back", async () => {
+    state.overriding = new Set(["w1"]);
+    // The clear waits; once it answers the store drops the place until it is read again.
+    const first = holdFirstSave(() => (state.absent = true));
+    const view = render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    expect(state.save).toHaveBeenCalledWith("local", "w1", null);
+    for (const name of ["Agent app", "Model", "Effort", "Access"]) expect(isHeld(name, dialog)).toBe(true);
+    await first.answer();
+    view.rerender(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    // Cleared and not yet read again: bones, nothing to pick.
+    expect(within(screen.getByRole("dialog")).queryByRole("combobox")).toBeNull();
+    expect(state.save).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("The rest of a set's interleavings", () => {
+  it("holds Use New threads while a pick's save is out in a place's dialog", async () => {
+    state.overriding = new Set(["w1"]);
+    let answerSave!: () => void;
+    state.save.mockImplementationOnce(() => new Promise<void>((resolve) => (answerSave = resolve)));
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await pick("Effort", "High");
+    expect((within(dialog).getByRole("button", { name: "Use New threads" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => answerSave());
+    expect((within(dialog).getByRole("button", { name: "Use New threads" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("keeps the place's set and says why when Use New threads' clear is refused, its controls freed", async () => {
+    state.overriding = new Set(["w1"]);
+    state.save.mockImplementationOnce(async () => {
+      throw new Error("refused: orchestration rules and thread defaults live on The box; it is offline");
+    });
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    await flush();
+    expect(dialog.textContent).toContain("it is offline");
+    expect((within(dialog).getByRole("combobox", { name: "Effort" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(within(dialog).getByRole("button", { name: "Use New threads" })).toBeTruthy();
+  });
+
+  it("frees a last-read set's controls once Retry's read answers", () => {
+    state.stale = true;
+    const view = render(<ThreadDefaultsPage />);
+    expect((screen.getByRole("combobox", { name: "Effort" }) as HTMLButtonElement).disabled).toBe(true);
+    state.stale = false;
+    view.rerender(<ThreadDefaultsPage />);
+    expect((screen.getByRole("combobox", { name: "Effort" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(document.querySelector("[data-last-read]")).toBeNull();
   });
 });
 
 describe("Different in N places, with the section's own set and every place as last read", () => {
-  it("says the last read count, never 0 confirmed, and names the places once with no mark after each name", () => {
+  it("leaves the count open and names the last read's places once, with no mark after each name", () => {
     state.stale = true;
     state.workspaces = [
       { id: "w1", name: "Purdue Esports", environmentId: "local" },
@@ -800,10 +891,37 @@ describe("Different in N places, with the section's own set and every place as l
     state.stalePlaces = ["w1", "w2"];
     render(<ThreadDefaultsPage />);
     const row = document.querySelector("[data-setting='defaults.different']") as HTMLElement;
-    expect(row.textContent).toContain("Different in 2 places");
-    expect(row.textContent).not.toContain("0 confirmed");
+    expect(row.textContent).toContain("Different in places");
+    expect(row.textContent).not.toMatch(/\d/);
     expect(row.textContent).toContain("As last read: Purdue Esports, temp-code");
     expect(row.textContent).not.toContain("(as last read)");
+  });
+
+  it("never makes a floor from last-read answers when a place was also never heard from", () => {
+    state.workspaces = [
+      { id: "w1", name: "Purdue Esports", environmentId: "local" },
+      { id: "w2", name: "CosmicPrisons", environmentId: "local" },
+      { id: "w3", name: "temp-code", environmentId: "local" },
+    ];
+    state.overriding = new Set(["w1", "w2"]);
+    state.stalePlaces = ["w1", "w2"];
+    state.unheard = ["w3"];
+    render(<ThreadDefaultsPage />);
+    const row = document.querySelector("[data-setting='defaults.different']") as HTMLElement;
+    expect(row.textContent).toContain("Different in places");
+    expect(row.textContent).not.toContain("at least");
+    expect(row.textContent).toContain("As last read: CosmicPrisons, Purdue Esports. Not heard from temp-code");
+  });
+
+  it("draws no row, never \"at least 0\", when no place is known to differ and one was never heard from", () => {
+    state.workspaces = [
+      { id: "w1", name: "Purdue Esports", environmentId: "local" },
+      { id: "w2", name: "temp-code", environmentId: "local" },
+    ];
+    state.unheard = ["w2"];
+    render(<ThreadDefaultsPage />);
+    expect(document.querySelector("[data-setting='defaults.different']")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
   });
 
   it("keeps a floor only for places never heard from, never from last-read answers", () => {

@@ -16,7 +16,7 @@ const [MAC_COMMAND] = keyCaps("mod", true);
  */
 
 /** The page a row is on: a fixed page, any other computer's page, any job's or any code workspace's. */
-export type SettingNeed = "desktop" | "mac" | "work" | "workHere" | "workMany";
+export type SettingNeed = "desktop" | "mac" | "work" | "workHere" | "workMany" | "placesDiffer";
 
 export type SettingPage = StaticSettingsSectionId | "computer:*" | "job" | "workspace";
 
@@ -300,6 +300,8 @@ const NEEDS: Record<string, readonly SettingNeed[]> = {
   "keys.appshot": ["desktop", "mac"],
   // Setup asks where new jobs are made only when two computers have Work on.
   "work.home": ["desktop", "workMany"],
+  // New threads draws its overrides row only when a place keeps its own set.
+  "defaults.different": ["placesDiffer"],
   "files.word": ["desktop"],
   "accounts.connections": ["work"],
   // A computer's jobs are drawn only where Work is on.

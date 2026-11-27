@@ -367,6 +367,9 @@ function ToolRow({ environmentId, card, tool, mayWrite, onCard }: { environmentI
             label={tool.words}
             value={value ?? "held"}
             options={RULES}
+            // Held while its own save is out: the pick stays shown until that save answers, and no second pick can
+            // be overtaken by the first one's answer.
+            disabled={saved.state === "saving" || saved.state === "slow"}
             onChange={(next) => void change(next as ToolRule)}
           />
         </>

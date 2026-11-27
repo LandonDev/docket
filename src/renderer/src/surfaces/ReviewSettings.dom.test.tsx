@@ -283,6 +283,26 @@ describe("Reviews page", () => {
     }
   });
 
+  it("holds every control while a save of the set is out, the pick on screen, and frees them once it answers", async () => {
+    let answerSave!: () => void;
+    state.set.mockImplementation(() => new Promise<void>((resolve) => (answerSave = resolve)));
+    answer({ ...SETTINGS, beforeMerge: true });
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("combobox", { name: "Stop the merge for" }));
+    });
+    const option = await screen.findByRole("option", { name: "Any finding" });
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    expect(screen.getByRole("combobox", { name: "Stop the merge for" }).textContent).toContain("Any finding");
+    expect((screen.getByRole("switch", { name: "Review before merge" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("combobox", { name: "Stop the merge for" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => answerSave());
+    expect((screen.getByRole("switch", { name: "Review before merge" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("puts a refused change back and says why under its row", async () => {
     state.set.mockImplementation(async () => {
       throw new Error("refused: review settings live on box; it is offline");

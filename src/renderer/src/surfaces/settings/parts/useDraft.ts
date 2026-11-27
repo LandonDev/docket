@@ -35,5 +35,7 @@ export function useDraft<T>(confirmed: T | undefined) {
     if (!landed) setDraft(null);
     return landed;
   };
-  return { value, change };
+  // A save of this set is out: the page holds every control of the set (no new pick) until it answers, so no second
+  // change is ever laid on a set the first may yet replace, and a refusal puts back that one change alone.
+  return { value, change, busy: out > 0 };
 }

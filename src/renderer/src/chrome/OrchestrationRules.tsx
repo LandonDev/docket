@@ -167,6 +167,9 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
   };
   const cleared = useSaved();
   const moved = useSaved();
+  // Writes of this set still out: while any is, every control of the set is held, so no pick is built on a change the
+  // computer may yet refuse (the store shows each change at once and puts back the last set on a refusal).
+  const [out, setOut] = useState(0);
   const mayWrite = useLinkMay(environmentId, "rules.set", { workspaceId, rules: null });
   const computer = useComputerName(environmentId);
   usePublishHome("orchestration", workspaceId === null ? (scope ? (scope.home ?? null) : undefined) : undefined);
@@ -185,7 +188,21 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
   const capWords = (n: number) => (n === 0 ? "No limit" : String(n));
 
   // The store shows the change at once and puts the last set back on a refusal; the row's save says which.
-  const write = (next: OrchestrationRules) => rulesStore.save(environmentId, workspaceId, next);
+  const counted = <T,>(request: Promise<T>): Promise<T> => {
+    setOut((n) => n + 1);
+    return request.then(
+      (value) => {
+        setOut((n) => n - 1);
+        return value;
+      },
+      (err: unknown) => {
+        setOut((n) => n - 1);
+        throw err;
+      },
+    );
+  };
+  const write = (next: OrchestrationRules) => counted(rulesStore.save(environmentId, workspaceId, next));
+  const held = blocked || out > 0;
   const patchConduct = (row: ConductRow, patch: Partial<OrchestrationRules["conduct"]>) => saved[row].run(() => write({ ...rules, conduct: { ...rules.conduct, ...patch } }));
   const reset = async () => {
     const ok = await confirmAction(
@@ -193,7 +210,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         ? { title: "Use Docket's defaults", body: "Every row on this page goes back to Docket's, and every rule for which model gets which work is deleted.", action: "Use Docket's defaults", danger: true }
         : { title: "Use Subagents", body: "This workspace's own set is deleted. Its threads follow Subagents.", action: "Use Subagents", danger: true },
     );
-    if (ok) void cleared.run(() => rulesStore.clear(environmentId, workspaceId));
+    if (ok) void cleared.run(() => counted(rulesStore.clear(environmentId, workspaceId)));
   };
   const move = (from: number, to: number) => void moved.run(() => write(moveRoutingRule(rules, from, to)));
 
@@ -214,7 +231,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
             label="Gives its agents"
             value={rules.conduct.delegation}
             options={delegationChoices(rules.conduct.delegation)}
-            disabled={blocked}
+            disabled={held}
             onChange={(delegation) => void patchConduct("gives", { delegation })}
           />
           )}
@@ -224,7 +241,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
             {readOnly ? (
               <ValueWords>{rules.conduct[key] ? "On" : "Off"}</ValueWords>
             ) : (
-              <SettingSwitch label={TITLES[row]} on={rules.conduct[key]} disabled={blocked} onChange={(on) => patchConduct(row, { [key]: on } as Partial<OrchestrationRules["conduct"]>)} />
+              <SettingSwitch label={TITLES[row]} on={rules.conduct[key]} disabled={held} onChange={(on) => patchConduct(row, { [key]: on } as Partial<OrchestrationRules["conduct"]>)} />
             )}
           </SettingRow>
         ))}
@@ -232,10 +249,10 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
 
       <SettingSection of="sub.atOnce" description={LIMITS_LINE}>
         <SettingRow id="sub.atOnce" saved={saved.atOnce}>
-          {readOnly ? <ValueWords>{capWords(rules.conduct.maxParallel)}</ValueWords> : <CapSelect label="Agents at once" value={rules.conduct.maxParallel} options={[0, 2, 4, 8, 16, 32, 64, 128]} disabled={blocked} onChange={(maxParallel) => void patchConduct("atOnce", { maxParallel })} />}
+          {readOnly ? <ValueWords>{capWords(rules.conduct.maxParallel)}</ValueWords> : <CapSelect label="Agents at once" value={rules.conduct.maxParallel} options={[0, 2, 4, 8, 16, 32, 64, 128]} disabled={held} onChange={(maxParallel) => void patchConduct("atOnce", { maxParallel })} />}
         </SettingRow>
         <SettingRow id="sub.perThread" saved={saved.perThread}>
-          {readOnly ? <ValueWords>{capWords(rules.conduct.maxAgents)}</ValueWords> : <CapSelect label="Agents in all" value={rules.conduct.maxAgents} options={[0, 10, 20, 50]} disabled={blocked} onChange={(maxAgents) => void patchConduct("perThread", { maxAgents })} />}
+          {readOnly ? <ValueWords>{capWords(rules.conduct.maxAgents)}</ValueWords> : <CapSelect label="Agents in all" value={rules.conduct.maxAgents} options={[0, 10, 20, 50]} disabled={held} onChange={(maxAgents) => void patchConduct("perThread", { maxAgents })} />}
         </SettingRow>
       </SettingSection>
 
@@ -248,14 +265,14 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         action={
           // Nothing is offered that cannot work: no Add rule… while the box is out of reach or for a key that may not write.
           blocked || readOnly ? null : (
-            <Button variant="ghost" size="sm" data-setting="sub.addRule" onClick={() => setEditing("new")}>
+            <Button variant="ghost" size="sm" data-setting="sub.addRule" disabled={out > 0} onClick={() => setEditing("new")}>
               Add rule…
             </Button>
           )
         }
       >
         {rules.routing.map((r, i) => (
-          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} disabled={blocked} readOnly={readOnly} first={i === 0} last={i === rules.routing.length - 1} onEdit={() => setEditing(r)} onMove={(by) => move(i, i + by)} />
+          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} disabled={held} readOnly={readOnly} first={i === 0} last={i === rules.routing.length - 1} onEdit={() => setEditing(r)} onMove={(by) => move(i, i + by)} />
         ))}
         {rules.routing.length === 0 ? <PageEmpty>No rules</PageEmpty> : null}
         {moved.error ? <PageError>{moved.error}</PageError> : null}
@@ -266,13 +283,13 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         <SettingSection of="sub.reset">
           {workspaceId === null ? (
             <SettingRow id="sub.reset" description="Every row here goes back, and every rule is deleted" saved={cleared}>
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
+              <Button variant="ghost" size="sm" disabled={out > 0} className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
                 Use…
               </Button>
             </SettingRow>
           ) : (
             <PageRow title="This workspace's own set" description="Its threads follow Subagents once it is gone" error={cleared.error ?? undefined}>
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
+              <Button variant="ghost" size="sm" disabled={out > 0} className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
                 Use Subagents…
               </Button>
             </PageRow>
@@ -280,7 +297,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         </SettingSection>
       ) : null}
 
-      {modelsOpen ? <ModelsSheet rules={rules} catalog={catalog} disabled={blocked} readOnly={readOnly} write={write} onClose={() => setModelsOpen(false)} /> : null}
+      {modelsOpen ? <ModelsSheet rules={rules} catalog={catalog} disabled={held} readOnly={readOnly} write={write} onClose={() => setModelsOpen(false)} /> : null}
       {editing ? (
         <RuleDialog
           rule={editing === "new" ? null : editing}

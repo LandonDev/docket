@@ -700,6 +700,92 @@ describe("Screen size and picture quality", () => {
     expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).not.toContain("As last read");
   });
 
+  describe("one rule: a control is held while a write or read its value depends on is out", () => {
+    const isHeld = (name: string) => {
+      const select = screen.getByRole("combobox", { name }) as HTMLButtonElement;
+      return select.disabled || select.hasAttribute("data-disabled");
+    };
+    const mark = (id: string) => document.querySelector(`[data-setting='${id}'] [data-slot=save-mark]`)?.getAttribute("data-state");
+
+    it("holds Screen size while a fixed size saves, so Fits my window starts from the size confirmed", async () => {
+      h.state = at({ state: "awake", display: vga });
+      render(<WinvmHost env="box" />);
+      await flush();
+      let land: (v: unknown) => void = () => {};
+      h.settingsWriteHold = new Promise((resolve) => (land = resolve));
+      await pick("Screen size", "1920 × 1200");
+      await flush();
+      // Its own pick stays on screen, and the select takes no other until the save answers.
+      expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1920 × 1200");
+      expect(isHeld("Screen size")).toBe(true);
+      expect(confirmAction).not.toHaveBeenCalled();
+      h.settingsWriteHold = null;
+      h.screen = "1920x1200";
+      await act(async () => land({ sleepAfter: "30m", screen: "1920x1200", detail: "sharp" }));
+      await flush();
+      expect(isHeld("Screen size")).toBe(false);
+      // Now Fits my window starts from the size the box confirmed: a failure puts 1920 × 1200 back.
+      h.fail["work.winvm.display.upgrade"] = "A thread is using the Windows VM. Stop it or take over first.";
+      await pick("Screen size", "Fits my window");
+      await flush();
+      expect(h.calls.filter((c) => c.method === "work.winvm.settings" && (c.params as { screen?: string }).screen).at(-1)).toEqual({ method: "work.winvm.settings", params: { screen: "1920x1200" } });
+    });
+
+    it("holds Screen size through the Fits my window confirm with no Saving mark; Cancel frees it", async () => {
+      h.state = at({ state: "awake", display: vga });
+      let answer: (ok: boolean) => void = () => {};
+      vi.mocked(confirmAction).mockImplementationOnce(() => new Promise<boolean>((resolve) => (answer = resolve)));
+      render(<WinvmHost env="box" />);
+      await flush();
+      await pick("Screen size", "Fits my window");
+      await flush();
+      expect(isHeld("Screen size")).toBe(true);
+      expect(mark("winvm.screen")).not.toBe("slow");
+      expect(mark("winvm.screen")).not.toBe("saving");
+      await act(async () => answer(false));
+      await flush();
+      expect(isHeld("Screen size")).toBe(false);
+      expect(pressed()).toEqual([]);
+    });
+
+    it("holds Sleeps after and Picture quality while their own saves are out, their picks on screen", async () => {
+      h.state = at({ state: "awake", display: virtio });
+      h.screen = "fit";
+      render(<WinvmHost env="box" />);
+      await flush();
+      h.settingsWriteHold = new Promise(() => {});
+      await pick("Sleeps after", "2 hours");
+      await flush();
+      expect(screen.getByRole("combobox", { name: "Sleeps after" }).textContent).toContain("2 hours");
+      expect(isHeld("Sleeps after")).toBe(true);
+      // A push of the machine's state meanwhile does not take the pick off screen.
+      await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", display: virtio }) })));
+      expect(screen.getByRole("combobox", { name: "Sleeps after" }).textContent).toContain("2 hours");
+      await pick("Picture quality", "Faster");
+      await flush();
+      expect(screen.getByRole("combobox", { name: "Picture quality" }).textContent).toContain("Faster");
+      expect(isHeld("Picture quality")).toBe(true);
+    });
+
+    it("holds the selects while the reads their values come from are out again", async () => {
+      h.state = at({ state: "awake", display: virtio });
+      h.screen = "fit";
+      render(<WinvmHost env="box" />);
+      await flush();
+      expect(isHeld("Screen size")).toBe(false);
+      h.settingsRead = "pending";
+      // The machine's state read again hangs too: Sleeps after comes from it.
+      const was = h.state;
+      h.state = new Promise(() => {});
+      await act(async () => h.opens.forEach((fn) => fn()));
+      await flush();
+      expect(isHeld("Screen size")).toBe(true);
+      expect(isHeld("Picture quality")).toBe(true);
+      expect(isHeld("Sleeps after")).toBe(true);
+      h.state = was;
+    });
+  });
+
   it("ignores a reconnect's reply that lands after the watch settled", async () => {
     h.state = at({ state: "awake", display: vga });
     render(<WinvmHost env="box" />);

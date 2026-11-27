@@ -187,6 +187,9 @@ export function WinvmHost({ env }: { env: string }) {
   /** The machine's read's own reason, for the page's one failure line. */
   const [readError, setReadError] = useState<string | null>(null);
   const [pressing, setPressing] = useState(false);
+  /** Reads out now (a count, since a Retry may overlap the socket's own): a control whose value they bring is held. */
+  const [readingState, setReadingState] = useState(0);
+  const [readingDisplay, setReadingDisplay] = useState(0);
   const [showPoints, setShowPoints] = useState(false);
   const link = useMemo(() => registry.linkOf(env), [env]);
   const admin = useLinkMay(env, "work.winvm.settings");
@@ -208,30 +211,39 @@ export function WinvmHost({ env }: { env: string }) {
   // fails keeps the values last confirmed and says so.
   const loadSettings = useCallback((): Promise<void> => {
     if (!admin) return Promise.resolve();
-    return link.request<WinvmSettings>("work.winvm.settings", {}).then(
-      (v) => {
-        setSettings({ screen: v.screen, detail: v.detail ?? null });
-        setSettingsError(null);
-      },
-      // No answer is said as every read says it ("The box did not answer."); a refusal in the act's words.
-      (err: unknown) => setSettingsError({ words: err instanceof Error && err.message === NO_ANSWER ? null : hostFailure(env, err, "could not read the display settings") }),
-    );
+    setReadingDisplay((n) => n + 1);
+    return link
+      .request<WinvmSettings>("work.winvm.settings", {})
+      .then(
+        (v) => {
+          setSettings({ screen: v.screen, detail: v.detail ?? null });
+          setSettingsError(null);
+        },
+        // No answer is said as every read says it ("The box did not answer."); a refusal in the act's words.
+        (err: unknown) => setSettingsError({ words: err instanceof Error && err.message === NO_ANSWER ? null : hostFailure(env, err, "could not read the display settings") }),
+      )
+      .finally(() => setReadingDisplay((n) => n - 1));
   }, [link, env, admin]);
   // Fits my window's upgrade lives in its own store (winvmUpgrade.ts), so a page opened again mid-upgrade or after a
   // late failure still says so.
   const upgrade = useUpgrade(env);
   const upgradeFailed = upgrade?.phase === "failed";
   const load = useCallback((): Promise<void> => {
-    const read = link.request<WinvmState>("work.winvm.state", {}).then(stateOf).then(
-      (s) => {
-        setState(s);
-        setError(null);
-      },
-      (err: unknown) => {
-        setError(hostFailure(env, err, "could not read the Windows VM"));
-        setReadError(err instanceof Error ? err.message : String(err));
-      },
-    );
+    setReadingState((n) => n + 1);
+    const read = link
+      .request<WinvmState>("work.winvm.state", {})
+      .then(stateOf)
+      .then(
+        (s) => {
+          setState(s);
+          setError(null);
+        },
+        (err: unknown) => {
+          setError(hostFailure(env, err, "could not read the Windows VM"));
+          setReadError(err instanceof Error ? err.message : String(err));
+        },
+      )
+      .finally(() => setReadingState((n) => n - 1));
     void loadPoints();
     void loadSettings();
     return read;
@@ -314,10 +326,17 @@ export function WinvmHost({ env }: { env: string }) {
   /** Fits my window where live resize is off turns it on: Windows restarts once, so it asks first, saves, and asks
    *  for the restart only once the save landed. A refused restart puts the size that stands back: without live resize
    *  Fits my window would not hold. */
+  // One rule: while a write or a read a control's value depends on is out, the control takes no new pick; its own
+  // pending pick stays on screen until its own save answers.
+  const held: Record<keyof Changes, boolean> = {
+    sleepAfter: pending.sleepAfter !== undefined || readingState > 0,
+    screen: pending.screen !== undefined || readingDisplay > 0 || upgradeHolds(upgrade) || !!settingsError,
+    detail: pending.detail !== undefined || readingDisplay > 0 || !!settingsError,
+  };
   const pickScreen = async (screen: WinvmScreen): Promise<void> => {
     // Held while an upgrade is unresolved (its rollback could write the size that stood over this pick), and while the
     // values shown are only as last read (an upgrade's rollback needs the size that stands, freshly read).
-    if (upgradeHolds(upgrade) || settingsError) return;
+    if (held.screen) return;
     const live = state.display?.device === "virtio";
     if (screen === "fit" && state.display && !live) {
       forgetUpgrade(env);
@@ -348,14 +367,14 @@ export function WinvmHost({ env }: { env: string }) {
         settingsError={settingsError && (settingsError.words ?? readWords(NO_ANSWER))}
         onRetrySettings={loadSettings}
         saved={{ ...savers, screen: screenMark(savers.screen, upgrade) }}
-        screenHeld={upgradeHolds(upgrade)}
+        held={held}
         upgradeNote={upgrade?.phase === "unconfirmed" || upgrade?.phase === "unrestored" ? { words: upgrade.reason, retry: () => retryUpgrade(env) } : null}
         error={error}
         pressing={pressing}
         onPress={() => void press()}
-        onSleepAfter={(v) => void save("sleepAfter", v)}
+        onSleepAfter={(v) => void (held.sleepAfter ? undefined : save("sleepAfter", v))}
         onScreen={(v) => void pickScreen(v)}
-        onQuality={(v) => void (settingsError ? undefined : save("detail", v))}
+        onQuality={(v) => void (held.detail ? undefined : save("detail", v))}
         onPoints={() => setShowPoints(true)}
         may={{ admin, operate }}
       />
@@ -379,8 +398,9 @@ export interface WinvmViewProps {
   /** what Fits my window's upgrade left unsettled (an end not confirmed, a size not put back), under Screen size with
    *  its Retry */
   upgradeNote?: { words: string; retry: () => Promise<void> } | null;
-  /** Screen size takes no pick while Fits my window's upgrade is unresolved (`upgradeHolds`) */
-  screenHeld?: boolean;
+  /** Each select that takes no pick now: its own save out, a read its value comes from out, Fits my window's upgrade
+   *  unresolved (`upgradeHolds`), or its value only as last read */
+  held?: Partial<Record<keyof Changes, boolean>>;
   /** each select's save mark and refusal, on its own row */
   saved?: Partial<Record<keyof Changes, Saved>>;
   /** a refused press (Set up, Wake, Sleep), on the Windows row */
@@ -406,7 +426,7 @@ export function WinvmView({
   onRetrySettings,
   saved = {},
   upgradeNote = null,
-  screenHeld = false,
+  held = {},
   error,
   pressing,
   onPress,
@@ -440,7 +460,7 @@ export function WinvmView({
       {state.state !== "none" ? (
         <>
           <SettingRow id="winvm.sleeps" description={may.admin ? undefined : sleepWords} saved={may.admin ? saved.sleepAfter : undefined}>
-            {may.admin ? <ChoiceSelect size="sm" label="Sleeps after" value={state.sleepAfter} options={SLEEP_AFTER} onChange={(v) => onSleepAfter(v as WinvmSleepAfter)} /> : null}
+            {may.admin ? <ChoiceSelect size="sm" label="Sleeps after" value={state.sleepAfter} options={SLEEP_AFTER} disabled={!!held.sleepAfter} onChange={(v) => onSleepAfter(v as WinvmSleepAfter)} /> : null}
           </SettingRow>
           {!may.admin ? null : settings ? (
             <>
@@ -457,7 +477,7 @@ export function WinvmView({
                   label="Screen size"
                   value={settings.screen}
                   options={SCREENS}
-                  disabled={turning || state.state === "setting-up" || screenHeld || lastRead}
+                  disabled={turning || state.state === "setting-up" || !!held.screen || lastRead}
                   onChange={(v) => onScreen(v as WinvmScreen)}
                 />
               </SettingRow>
@@ -468,7 +488,7 @@ export function WinvmView({
               ) : null}
               {live && settings.detail ? (
                 <SettingRow id="winvm.quality" description={lastRead ? LAST_READ : undefined} saved={saved.detail}>
-                  <ChoiceSelect size="sm" label="Picture quality" value={settings.detail} options={QUALITIES} disabled={lastRead} onChange={(v) => onQuality(v as WinvmDetail)} />
+                  <ChoiceSelect size="sm" label="Picture quality" value={settings.detail} options={QUALITIES} disabled={!!held.detail || lastRead} onChange={(v) => onQuality(v as WinvmDetail)} />
                 </SettingRow>
               ) : null}
             </>
