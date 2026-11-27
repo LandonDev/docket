@@ -386,7 +386,7 @@ const sampleRows = (shape: TodaySection["bones"]): TodayRow[] =>
     title,
     when: "2:00 PM",
     ...(shape === "lines" ? { detail: "CoRec 2212, with Dana Reyes" } : {}),
-    ...(shape === "tick" ? { lead: { kind: "tick" as const, label: "Done", run: async () => {} } } : {}),
+    ...(shape === "tick" ? { lead: { kind: "tick" as const, label: title, run: async () => {} } } : {}),
     open: NO_PRESS,
   }));
 
