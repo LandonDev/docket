@@ -572,7 +572,8 @@ export function StepForm({
             <Textarea autoFocus={!timed} disabled={locked} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
           </Field>
         ) : null}
-        {down}
+        {/* An event that is over, or a pair no longer clashing, can send nothing: no sign-in is offered to unblock it. */}
+        {over || (cleared && !lost) ? null : down}
         <div role="alert" className="empty:hidden">
           <ErrorLine error={error ?? refused} />
         </div>
