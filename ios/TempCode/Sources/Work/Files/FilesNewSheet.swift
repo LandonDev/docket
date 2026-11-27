@@ -97,13 +97,14 @@ struct FilesNewSheet: View {
             .fileImporter(isPresented: $importing, allowedContentTypes: [.item]) { result in
                 guard case .success(let url) = result else { return }
                 guard let copy = try? FilesNewSheet.copy(url) else { return error = "That file did not open." }
-                upload(removing: copy) { try .file(copy) }
+                upload(named: copy.lastPathComponent, removing: copy) { try .file(copy) }
             }
             .onChange(of: photo) {
                 guard let photo else { return }
-                upload {
-                    guard let data = try await photo.loadTransferable(type: Data.self) else { throw ActionError.refused(message: "The photo did not load.", forbidden: false) }
-                    return .data(data, name: FilesNewSheet.photoName(photo.supportedContentTypes.first))
+                let name = FilesNewSheet.photoName(photo.supportedContentTypes.first)
+                upload(named: name) {
+                    guard let data = try? await photo.loadTransferable(type: Data.self) else { throw ActionError.refused(message: "The photo did not load.", forbidden: false) }
+                    return .data(data, name: name)
                 }
             }
         }
@@ -127,18 +128,19 @@ struct FilesNewSheet: View {
         }
     }
 
-    /// The sheet goes at once; the upload's row in the folder shows its progress, or why it failed.
-    /// `removing`: the app's own copy of a picked file, which goes once the upload ends either way.
-    private func upload(removing copy: URL? = nil, _ source: @escaping @MainActor () async throws -> UploadSource) {
+    /// The sheet goes at once; the upload's row, there from the pick, shows its progress, or why it failed,
+    /// a source that did not load included. `removing`: the app's own copy of a picked file, which goes once the
+    /// upload ends either way.
+    private func upload(named name: String, removing copy: URL? = nil, _ source: @escaping @MainActor () async throws -> UploadSource) {
         let files = files
         let workspaceId = workspaceId
         let at = at
-        dismiss()
         Task {
             defer { if let copy { OriginalFiles.remove(copy) } }
-            // A failure stays on the upload's row with its reason; a source that never loaded has no row to stay on.
-            do { try await files.upload(workspaceId, into: at, try await source()) } catch {}
+            // A failure stays on the row with its reason until Dismiss.
+            try? await files.upload(workspaceId, into: at, named: name, source)
         }
+        dismiss()
     }
 
     /// A file picked in Files, copied while the app may open it, so the upload's later reads need no grant.

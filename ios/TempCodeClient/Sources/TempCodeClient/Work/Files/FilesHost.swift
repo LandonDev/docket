@@ -48,12 +48,14 @@ public final class FilesHost {
     /// An upload under way into a folder, as its row draws it.
     public struct Upload: Identifiable, Equatable, Sendable {
         public let id: String
-        public let name: String
+        public var name: String
         public var sent: Int
-        public let size: Int
+        public var size: Int
         public var failed: String?
+        /// The bytes are still being read on the phone (a photo from Photos): the bar has no fraction yet.
+        public var reading = false
 
-        public var fraction: Double { size == 0 ? 1 : Double(sent) / Double(size) }
+        public var fraction: Double { reading ? 0 : size == 0 ? 1 : Double(sent) / Double(size) }
     }
 
     public let environmentId: String
@@ -327,9 +329,23 @@ public final class FilesHost {
     /// progress on `uploads` for the folder's row. A failure aborts the upload on the host and keeps the row
     /// with its reason until `dismissUpload`.
     public func upload(_ workspaceId: String, into folder: FolderRef, _ source: UploadSource) async throws {
+        try await upload(workspaceId, into: folder, named: source.name) { source }
+    }
+
+    /// The same, its row shown from the pick while `load` reads the bytes on the phone: a source that does not
+    /// load keeps the row with `load`'s reason, as a failed send does.
+    public func upload(_ workspaceId: String, into folder: FolderRef, named name: String, _ load: @MainActor () async throws -> UploadSource) async throws {
         let slot = Self.slot(workspaceId, folder)
-        let row = Upload(id: UUID().uuidString, name: source.name, sent: 0, size: source.size)
+        let row = Upload(id: UUID().uuidString, name: name, sent: 0, size: 0, reading: true)
         uploads[slot, default: []].append(row)
+        let source: UploadSource
+        do {
+            source = try await load()
+        } catch {
+            setUpload(slot, row.id) { $0.reading = false; $0.failed = ActionError.wrap(error).message }
+            throw error
+        }
+        setUpload(slot, row.id) { $0.reading = false; $0.name = source.name; $0.size = source.size }
         let begun: String
         do {
             begun = try await wire.request(Methods.WorkFilesUpload.self, .init(workspaceId: workspaceId, at: folder, name: source.name, size: source.size, sha256: source.sha256, op: FilesRules.op())).uploadId

@@ -97,9 +97,15 @@ public enum ShareRules {
         "Guest links open Docket documents and sheets only.",
     ]
 
+    /// The host's sentences the phone says in its own words: a Work workspace is a job here.
+    static let said = [
+        "Guests reach files on the box only. Keep this file in a workspace on the box to share it.":
+            "Guests reach files on the box only. Keep this file in a job on the box to share it.",
+    ]
+
     /// The refusal a host's words hold, whatever came before it: said as the sheet's line, not as a failure.
     public static func refusal(in message: String) -> String? {
-        refusals.first { message.contains($0) }
+        refusals.first { message.contains($0) }.map { said[$0] ?? $0 }
     }
 
     /// The host that keeps this item's links, when the one asked said another does (`served elsewhere: <env>`).

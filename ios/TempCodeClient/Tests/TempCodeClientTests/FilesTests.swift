@@ -462,6 +462,27 @@ actor StubFilesWire: FilesWire {
         #expect(await wire.methods().contains("attachment.abort"))
     }
 
+    @Test func `an upload's row stands from the pick; a source that does not load keeps it with the reason`() async throws {
+        let wire = StubFilesWire()
+        let host = FilesHost(wire: wire, environmentId: "env_box", caps: full)
+        let slot = FilesHost.slot("w1", root)
+        await #expect(throws: (any Error).self) {
+            try await host.upload("w1", into: root, named: "IMG_1.heic") {
+                // The row is there, still reading, before any byte is in hand.
+                #expect(host.uploads[slot]?.map(\.name) == ["IMG_1.heic"])
+                #expect(host.uploads[slot]?.first?.reading == true)
+                #expect(host.uploads[slot]?.first?.fraction == 0)
+                throw ActionError.refused(message: "The photo did not load.", forbidden: false)
+            }
+        }
+        #expect(host.uploads[slot]?.first?.failed == "The photo did not load.")
+        #expect(host.uploads[slot]?.first?.reading == false)
+        #expect(await wire.methods().isEmpty)
+        let failed = try #require(host.uploads[slot]?.first?.id)
+        host.dismissUpload("w1", root, id: failed)
+        #expect(host.uploads[slot]?.isEmpty == true)
+    }
+
     @Test func `open seats the file, or finds the thread that already shows it`() async throws {
         let wire = StubFilesWire()
         let host = FilesHost(wire: wire, environmentId: "env_box", caps: full)

@@ -62,7 +62,8 @@ struct FilesPlaceScreen: View {
             } else {
                 ForEach(bands) { band in
                     ShareRefusedSection(client: band.client, workspaceId: band.job.workspaceId)
-                    BandSection(band: band, named: bands.count > 1)
+                    // A job whose places did not read has no band: the failure line above already names it.
+                    if !band.ids.isEmpty { BandSection(band: band, named: bands.count > 1) }
                 }
             }
         }
@@ -189,6 +190,11 @@ private struct Shown: Identifiable {
         }
     }
     var band: FilesRoot.Band { FilesRoot.band(job, places: places ?? [], far: files.far[job.workspaceId]?.value ?? []) }
+    /// The job's own folder, where New in this bar makes and uploads.
+    var folder: FilePlace? { FilesRules.workspaceFolder(files.places[job.workspaceId]?.value ?? []) }
+    /// Uploads into the folder's top, each under way or failed with Dismiss: in sight over the places once New
+    /// closes, while he stays here.
+    var uploads: [FilesHost.Upload] { folder.map { files.uploads[FilesHost.slot(job.workspaceId, $0.root)] ?? [] } ?? [] }
     /// The rows' ids in the list's order, as `BandSection` draws them.
     var ids: [String] {
         let band = band
@@ -217,6 +223,12 @@ private struct BandSection: View {
     var body: some View {
         let shown = band.band
         Section {
+            if let folder = band.folder {
+                ForEach(band.uploads) { upload in
+                    UploadRow(upload: upload) { band.files.dismissUpload(band.job.workspaceId, folder.root, id: upload.id) }
+                        .listRowInsets(Layout.rowInsets)
+                }
+            }
             ForEach(shown.lenses + shown.places, id: \.id) { place in
                 PlaceRow(band: band, place: place)
             }

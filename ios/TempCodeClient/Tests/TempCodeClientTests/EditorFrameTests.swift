@@ -153,6 +153,8 @@ import TempCodeContract
         // A refusal is found inside whatever came before it.
         #expect(ShareRules.refusal(in: "bad request: This file lives in Teams. Share it from Teams.") == "This file lives in Teams. Share it from Teams.")
         #expect(ShareRules.refusal(in: "did not make the link") == nil)
+        // The host's "workspace" is the phone's job.
+        #expect(ShareRules.refusal(in: "Guests reach files on the box only. Keep this file in a workspace on the box to share it.") == "Guests reach files on the box only. Keep this file in a job on the box to share it.")
         #expect(ShareRules.elsewhere("served elsewhere: env_box") == "env_box")
         #expect(ShareRules.elsewhere("work.guests.forItem: served elsewhere: env_mac (try there)") == "env_mac")
         #expect(ShareRules.elsewhere("refused") == nil)
