@@ -322,9 +322,9 @@ struct RelayedHostsTests {
         carrier.deliver(rig.presencePushJSON([presenceJSON(power: "asleep")]))
         #expect(await rig.wait { rig.mac?.relayState == .asleep })
         #expect(rig.mac?.status.transport == .open)
-        #expect(rig.mac?.operateBlock == .hostAsleep(subject: "the Mac"))
+        #expect(rig.mac?.operateBlock == .hostAsleep(subject: "Studio Mac"))
         #expect(rig.mac?.approveBlock == .noApprove)
-        await #expect(throws: ActionError.blocked(.hostAsleep(subject: "the Mac"))) {
+        await #expect(throws: ActionError.blocked(.hostAsleep(subject: "Studio Mac"))) {
             try await rig.mac?.send("s1", text: "hello")
         }
     }

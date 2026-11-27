@@ -498,7 +498,7 @@ struct LiveServerTests {
             await client.start()
             #expect(await LiveServer.until { client.status.transport == .open && client.presence != nil })
             #expect(client.relayState == .asleep)
-            #expect(client.relayBlock == .hostAsleep(subject: "the Mac"))
+            #expect(client.relayBlock == .hostAsleep(subject: "MacBook Air"))
             do {
                 _ = try await client.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: nil))
                 Issue.record("an asleep host should refuse")

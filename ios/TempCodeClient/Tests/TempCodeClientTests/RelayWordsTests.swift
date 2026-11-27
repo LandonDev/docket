@@ -153,13 +153,13 @@ struct RelayBlockTests {
         let cache = try SessionCache.inMemory()
         #expect(EnvironmentClient(environment: environment, keys: keys, cache: cache, presence: presence()).relayBlock == nil)
         #expect(EnvironmentClient(environment: environment, keys: keys, cache: cache, presence: presence(screen: "locked")).relayBlock == nil)
-        #expect(EnvironmentClient(environment: environment, keys: keys, cache: cache, presence: presence(power: "asleep")).relayBlock == .hostAsleep(subject: "the Mac"))
+        #expect(EnvironmentClient(environment: environment, keys: keys, cache: cache, presence: presence(power: "asleep")).relayBlock == .hostAsleep(subject: "Studio Mac"))
         let down = EnvironmentClient(environment: environment, keys: keys, cache: cache, presence: presence(link: "down", since: 0))
         guard case .hostUnreachable(let subject, _)? = down.relayBlock else {
             Issue.record("a down link should block as unreachable")
             return
         }
-        #expect(subject == "the Mac")
+        #expect(subject == "Studio Mac")
         // A paired host has no presence and no block.
         let paired = PairedEnvironment(id: "env_box", name: "box", origin: URL(string: "https://box.example")!, caps: [.read, .operate], keyId: "K1", keyName: "iphone", addedAt: 0)
         #expect(EnvironmentClient(environment: paired, keys: keys, cache: cache).relayBlock == nil)
