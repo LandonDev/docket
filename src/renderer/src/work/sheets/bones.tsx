@@ -23,6 +23,8 @@ const SAMPLE_ROWS: Array<[string, string?, string?]> = [
 ];
 const SAMPLE_TABS = ["Budget", "Spring", "Notes"];
 const LETTERS = "ABCDEF";
+/** Where each column ends, from the grid's left edge: the row numbers' 40px, then each column's width. */
+const COLUMN_EDGES = SAMPLE_COLUMNS.map((_, c) => 40 + SAMPLE_COLUMNS.slice(0, c + 1).reduce((sum, w) => sum + w, 0) - 1);
 
 /** The format row's place while it comes: work-kit's 36px row (format/FormatRow.tsx), its frame drawn and its controls in bones. */
 export function FormatRowBone() {
@@ -55,7 +57,12 @@ export function SheetBones({ row = false, formula = null }: { row?: boolean; for
         )}
       </div>
       <Bones label="" fill className="overflow-hidden">
-        <div className="flex flex-col">
+        <div className="relative flex flex-col">
+          {/* The column hairlines, drawn once over the whole grid as they are: a cell with words is walked, and its own
+              edge would go with it. */}
+          {SAMPLE_COLUMNS.map((w, c) => (
+            <span key={c} skullet-own="" aria-hidden className="absolute inset-y-0 w-px bg-border" style={{ left: COLUMN_EDGES[c] }} />
+          ))}
           <div className="flex h-6 border-b border-border bg-sidebar" skullet-own="">
             <span className="w-10 flex-none border-r border-border" />
             {SAMPLE_COLUMNS.map((w, c) => (
@@ -71,9 +78,9 @@ export function SheetBones({ row = false, formula = null }: { row?: boolean; for
               </span>
               {SAMPLE_COLUMNS.map((w, c) => {
                 const value = c === 0 ? words : c === 3 ? was : c === 4 ? now : undefined;
-                // A cell of no words keeps its hairline as it is; one with words is walked, and its words are a bar.
+                // A cell's words are a bar; the cell itself is room, its edge one of the hairlines above.
                 return (
-                  <span key={c} skullet-own={value ? undefined : ""} className={c === 0 ? "flex flex-none items-center overflow-hidden border-r border-border px-2 text-xs whitespace-nowrap" : "flex flex-none items-center justify-end border-r border-border px-2 text-xs whitespace-nowrap tabular-nums"} style={{ width: w }}>
+                  <span key={c} className={c === 0 ? "flex flex-none items-center overflow-hidden px-2 text-xs whitespace-nowrap" : "flex flex-none items-center justify-end px-2 text-xs whitespace-nowrap tabular-nums"} style={{ width: w }}>
                     {value || null}
                   </span>
                 );
