@@ -216,6 +216,31 @@ describe("full screen, live", () => {
     expect(fullWindowTarget()).toBeNull();
   });
 
+  /** Council round 7, sitting E (Sol): full screen was aria-modal, but Tab reached controls of the app behind its picture. */
+  it("takes the keyboard as it opens, keeps Tab among its own controls, and gives focus back to its opener as it closes", () => {
+    h.tile = tile();
+    render(
+      <>
+        <button type="button">Behind</button>
+        <FullWindow onOpenSession={noop} />
+      </>,
+    );
+    const behind = screen.getByRole("button", { name: "Behind" });
+    behind.focus();
+    act(() => openFullWindow({ host: "box", threadId: "t1", name: "Live view" }));
+    const dialog = screen.getByRole("dialog");
+    expect(document.activeElement).toBe(dialog);
+    const stops = [...dialog.querySelectorAll<HTMLElement>("button:not(:disabled)")];
+    expect(stops.length).toBeGreaterThan(0);
+    stops.at(-1)!.focus();
+    fireEvent.keyDown(stops.at(-1)!, { key: "Tab" });
+    expect(document.activeElement).toBe(stops[0]);
+    fireEvent.keyDown(stops[0]!, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(stops.at(-1));
+    act(() => closeFullWindow());
+    expect(document.activeElement).toBe(behind);
+  });
+
   it("leaves on a double click on a picture he does not drive", () => {
     h.tile = tile();
     render(<FullWindow onOpenSession={noop} />);

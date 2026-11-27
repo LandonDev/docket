@@ -555,7 +555,7 @@ describe("the form kind, round two", () => {
       }),
     );
     await found("[data-form]");
-    const tabs = screen.getByRole("tablist", { name: "Half" }).closest<HTMLElement>("[data-narrow-hide]")!;
+    const tabs = screen.getByRole("tablist", { name: "Form view" }).closest<HTMLElement>("[data-narrow-hide]")!;
     expect(tabs).not.toBeNull();
     expect(tabs.className).toContain("@max-[560px]/bar:hidden");
     // On Questions the stepper steps through the changes on screen.
@@ -565,7 +565,7 @@ describe("the form kind, round two", () => {
     cleanup();
     open(view());
     await found("[data-form]");
-    const calm = screen.getByRole("tablist", { name: "Half" }).closest<HTMLElement>('[class*="shrink-0"]')!;
+    const calm = screen.getByRole("tablist", { name: "Form view" }).closest<HTMLElement>('[class*="shrink-0"]')!;
     expect(calm.hasAttribute("data-narrow-hide")).toBe(false);
     expect(calm.className).not.toContain("@max-[560px]/bar:hidden");
   });
@@ -582,7 +582,7 @@ describe("the form kind, round two", () => {
     expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
     expect(screen.queryByText("0/1")).toBeNull();
     // The switch gives way whole in a narrow bar, and the one compact control shows only there: never both.
-    const tabs = screen.getByRole("tablist", { name: "Half" }).closest<HTMLElement>("[data-narrow-hide]")!;
+    const tabs = screen.getByRole("tablist", { name: "Form view" }).closest<HTMLElement>("[data-narrow-hide]")!;
     expect(tabs.className).toContain("@max-[560px]/bar:hidden");
     const controls = document.querySelectorAll<HTMLElement>("[data-form-to-questions]");
     expect(controls).toHaveLength(1);

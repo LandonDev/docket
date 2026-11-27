@@ -239,6 +239,8 @@ describe("the Routines view", () => {
     await settle();
     expect(document.querySelector("[data-routine-row]")).toBeTruthy();
     expect(document.querySelector('[data-view-state="failed"]')?.textContent).toContain("Routines did not load");
+    // Council round 7, sitting E (Sol): the cut cause reads whole in the line's tip, as Forms' does.
+    expect(document.querySelector('[data-state-tip] [data-view-state="failed"]')).toBeTruthy();
     host.list = async () => ({ routines: [row()] });
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();

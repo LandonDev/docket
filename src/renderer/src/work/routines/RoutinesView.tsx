@@ -25,7 +25,7 @@ import { RoutineDialog } from "./RoutineForm";
 import { failedOver, loadFailure, usePlays, type Load } from "./plays/data";
 import { ViewStateLine } from "../views/ViewStateLine";
 import { noRunsLine, rowLine, rowMark, runMark, runWords } from "./model";
-import { Tip, useTruncated } from "../../components/tip";
+import { Tip, TruncateTip, useTruncated } from "../../components/tip";
 import { HostLine } from "../shell/DownLine";
 import { useHostLive } from "../shell/lifeosLive";
 
@@ -191,7 +191,14 @@ export function View({ env, workspace }: WorkViewProps) {
         <EmptyState title="No routines yet" />
       ) : (
         <div className="flex h-full min-h-0 flex-col">
-          {load.failed ? <ViewStateLine word="Routines did not load" detail={load.failed} onRetry={retry} /> : null}
+          {load.failed ? (
+            // The cause cut to one line reads whole in the line's tip (as Forms').
+            <TruncateTip text={load.failed}>
+              <div data-state-tip="">
+                <ViewStateLine word="Routines did not load" detail={load.failed} onRetry={retry} />
+              </div>
+            </TruncateTip>
+          ) : null}
           <div ref={setPane} className="@container/routines flex min-h-0 flex-1">
             {/* A list of buttons, the picked one marked current: Tab moves through them, as a listbox's arrows would not. */}
             <ul

@@ -348,6 +348,43 @@ function useLeaveOnEscape(leave: () => void): void {
   }, [leave]);
 }
 
+const FOCUSABLE = 'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Full screen covers the app, so the keyboard stays in it: focus enters it as it opens (unless something in it holds
+ * focus already), Tab and Shift+Tab go round its own controls, never to the app behind, and focus goes back to what
+ * opened it as it closes. A driven picture keeps Tab for the computer (its input marks the key handled); a menu of the
+ * bar is a popup of its own and keeps its keys.
+ */
+export function useFocusScope(root: RefObject<HTMLElement | null>, open: boolean): (event: KeyboardEvent) => void {
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const el = root.current;
+    if (el && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
+    return () => {
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, [root, open]);
+  return (event) => {
+    const el = root.current;
+    if (event.key !== "Tab" || event.defaultPrevented || !el) return;
+    if (event.target instanceof Element && event.target.closest("[data-driving]")) return;
+    const stops = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((node) => !node.closest("[inert]"));
+    const first = stops[0];
+    const last = stops[stops.length - 1];
+    const at = document.activeElement;
+    if (!first || !last) {
+      event.preventDefault();
+      return;
+    }
+    if (event.shiftKey ? at === first || at === el : at === last) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  };
+}
+
 /** Full screen, live, over the whole app while one is open (lib/fullWindow.ts). */
 export function FullWindow({ onOpenSession, reading = null }: { onOpenSession: (threadId: string, host: string) => void; reading?: BarReading | null }) {
   const target = useFullWindow();
@@ -359,6 +396,8 @@ export function FullWindow({ onOpenSession, reading = null }: { onOpenSession: (
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const focusOnDrive = useRef(false);
+  const dialog = useRef<HTMLDivElement>(null);
+  const onScopeKey = useFocusScope(dialog, !!target);
   const stream = useLiveStream(target ? (tile?.entry ?? null) : null, !!target, box as RefObject<HTMLElement | null>, measure, { room, read: true });
   const shownReading = reading ?? stream.reading;
   const floating = useFloatingBar(bar, shownReading?.link === "poor");
@@ -381,7 +420,7 @@ export function FullWindow({ onOpenSession, reading = null }: { onOpenSession: (
   });
   if (!target) return null;
   return (
-    <div role="dialog" aria-modal="true" aria-label={target.name} data-full-window className="fixed inset-0 z-(--layer-dialog) bg-matte text-foreground">
+    <div ref={dialog} role="dialog" aria-modal="true" aria-label={target.name} data-full-window tabIndex={-1} onKeyDown={(e) => onScopeKey(e.nativeEvent)} className="fixed inset-0 z-(--layer-dialog) bg-matte text-foreground outline-none">
       <FullWindowView
         tile={tile}
         stream={stream}

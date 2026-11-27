@@ -237,6 +237,38 @@ describe("the Money view", () => {
     expect(names.every((n) => /^Open receipt: .+, [A-Z][a-z]{2} \d+, \d{4}$/.test(n!))).toBe(true);
   });
 
+  /** Council round 7, sitting E (Sol): with the link cut, a row's dialog still offered Save and Return to the offline computer. */
+  it("holds an open entry's Save and Return while the link is down, says the link's words, and keeps the edit", async () => {
+    const { registry: links } = await import("../../lib/connection/registry");
+    const { IDLE_STATUS } = await import("../../lib/connection/types");
+    let transport: "open" | "offline" = "open";
+    vi.spyOn(links, "statusOf").mockImplementation((id) => (id === "box" ? { ...IDLE_STATUS, transport } : IDLE_STATUS));
+    vi.spyOn(links, "environment").mockReturnValue({ name: "The box" } as never);
+    const shown = mount();
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: /^Corner Fuel, \$42\.10, Nov 20, 2026/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Entry" });
+    const amount = within(dialog).getByLabelText("Amount") as HTMLInputElement;
+    fireEvent.change(amount, { target: { value: "43.00" } });
+    expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false);
+    transport = "offline";
+    shown.rerender(
+      <>
+        <div role="toolbar" aria-label="Money header">
+          <Head {...props} />
+        </div>
+        <View {...props} />
+      </>,
+    );
+    expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(dialog.querySelector("[data-link-down]")?.textContent).toBeTruthy();
+    fireEvent.keyDown(within(dialog).getByLabelText("For"), { key: "Enter" });
+    await settle();
+    expect(asked("work.money.entry")).toEqual([]);
+    expect(amount.value).toBe("43.00");
+    vi.restoreAllMocks();
+  });
+
   it("says the ledger changed and reads again when a write names a row that moved", async () => {
     host.answer = (method) => (method === "work.money.entry" ? { changed: true } : null);
     mount();
@@ -430,6 +462,8 @@ describe("the Money view", () => {
     await act(async () => reopen());
     await settle();
     expect(screen.getByText("Money did not load")).toBeTruthy();
+    // Council round 7, sitting E (Sol): a cause the line cuts reads whole in its tip (as Forms').
+    expect(document.querySelector('[data-state-tip] [data-view-state="failed"]')).toBeTruthy();
     expect(screen.queryByText("No money yet")).toBeNull();
     expect(screen.queryByRole("button", { name: "Add entry" })).toBeNull();
     host.read = EMPTY_READ;

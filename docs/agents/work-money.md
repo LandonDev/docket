@@ -554,7 +554,9 @@ its place, with no fade. Nothing is written from a kept read.
   whole in a tip. An entry's press is the whole row (the date's link,
   stretched): its focus ring is the row's, never the date's alone. While the
   host's link is down, Owed's Paid and Open ledger are held in place under
-  the view's link line.
+  the view's link line, More's host rows (Open ledger, Open mileage log,
+  Export…, Mileage rate…) wait, and an open entry's dialog says the link's
+  words and holds Save, Return and Open ledger, the edit kept in place.
 - `InvoiceDialog.tsx` (Invoice… and Purchase request…): under 30rem of
   dialog (its `invoice` container: the browser /ui on a phone) Number takes
   a row over Date and Due, and each line's What a row over Quantity, Rate,

@@ -277,7 +277,7 @@ export function Bar(props: Props) {
         data-narrow-hide={waiting > 0 || undefined}
         className={`mx-1 shrink-0 gap-0 ${waiting ? "@max-[560px]/bar:hidden" : ""}`}
       >
-        <TabsList aria-label="Half" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
+        <TabsList aria-label="Form view" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
           <TabsIndicator />
           <TabsTrigger value="questions" className={`${TABS_PILL_TRIGGER} ${HALF_TAB}`}>
             Questions

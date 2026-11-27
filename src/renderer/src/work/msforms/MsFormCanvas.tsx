@@ -331,7 +331,7 @@ export function Bar(props: Props) {
   return (
     <>
       <Tabs value={half} onValueChange={(next) => store.set({ half: next as Half })} className="mx-1 shrink-0 gap-0">
-        <TabsList aria-label="Half" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
+        <TabsList aria-label="Form view" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
           <TabsIndicator />
           <TabsTrigger value="form" className={`${TABS_PILL_TRIGGER} ${HALF_TAB}`}>
             Form

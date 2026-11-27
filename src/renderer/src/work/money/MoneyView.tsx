@@ -285,7 +285,16 @@ export function View({ env, workspace }: WorkViewProps) {
 
   return (
     <div ref={root} data-money-view className="@container/money flex h-full min-h-0 flex-col">
-      {linkDown ? <HostLinkLine word={linkDown} retryHost={env} /> : load.error ? <ViewStateLine word="Money did not load" detail={load.error} onRetry={reload} /> : null}
+      {linkDown ? (
+        <HostLinkLine word={linkDown} retryHost={env} />
+      ) : load.error ? (
+        // The shared line cuts its cause to one line; while it is cut, the whole of it is the line's tip (as Forms').
+        <TruncateTip text={load.error}>
+          <div data-state-tip="">
+            <ViewStateLine word="Money did not load" detail={load.error} onRetry={reload} />
+          </div>
+        </TruncateTip>
+      ) : null}
       {columns ? (
         columns.twice?.length ? (
           // Two columns of one name: which holds his figures cannot be said, so nothing is read until he renames or removes one.

@@ -10,6 +10,7 @@ import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/cn";
 import { atOf, openBook, saveEntry } from "./api";
+import { useHostLinkDown } from "../shell/hostLinkDown";
 import { Button } from "../../components/ui/button";
 import { AmountInput } from "./fields";
 import { newKey } from "./print";
@@ -124,14 +125,17 @@ function EntryBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startKey]);
 
-  const ready = canSave(form);
+  // With the link to the job's computer down nothing it would write can go: the link's words stand in the dialog and
+  // Save, Return and Open ledger wait, the edit kept in place.
+  const linkDown = useHostLinkDown(env);
+  const ready = canSave(form) && !linkDown;
   const finish = (fn: () => void) => (close ? close(fn) : fn());
   // A row with money both in and out does not fit the one-way form: it is shown, not edited, and the ledger is the way to change it.
   const sheet = mode === "edit" ? sheetRow(row) : null;
   const locked = sheet !== null;
 
   const submit = () => {
-    if (pending || busy) return;
+    if (pending || busy || linkDown) return;
     const fields = fieldsOfForm(form, row ?? null);
     if (!fields) return;
     setError(null);
@@ -155,7 +159,7 @@ function EntryBody({
   // Read only, the ledger is the way to change the row: the dialog waits for the host, says a refusal in its own line and stays; once
   // the ledger opens it closes, letting the row go, so a later press on that row opens it afresh.
   const openLedger = () => {
-    if (pending) return;
+    if (pending || linkDown) return;
     setError(null);
     setPending(true);
     openBook(env, workspaceId, "ledger").then(
@@ -192,6 +196,11 @@ function EntryBody({
       <p className="text-xs text-muted-foreground">{SHEET_WORDS[sheet!]}</p>
       <StoredFields row={row!} />
       <ErrorLine error={error} />
+      {linkDown ? (
+        <p data-link-down role="status" className="text-xs leading-5 text-muted-foreground">
+          {linkDown}
+        </p>
+      ) : null}
     </>
   ) : (
     <>
@@ -254,6 +263,11 @@ function EntryBody({
         </Field>
       ) : null}
       <ErrorLine error={error} />
+      {linkDown ? (
+        <p data-link-down role="status" className="text-xs leading-5 text-muted-foreground">
+          {linkDown}
+        </p>
+      ) : null}
     </>
   );
 
@@ -281,7 +295,7 @@ function EntryBody({
         <ModalBody className="@container/entry">{fields}</ModalBody>
       )}
       {locked ? (
-        <DialogFooter confirmLabel="Open ledger" pending={pending} onConfirm={openLedger}>
+        <DialogFooter confirmLabel="Open ledger" pending={pending} disabled={!!linkDown} onConfirm={openLedger}>
           <Button variant="secondary" disabled={pending} onClick={() => finish(onClose)}>
             Close
           </Button>

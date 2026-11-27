@@ -600,7 +600,10 @@ first wanted; nothing of it is in the first paint.
   (.temp-code/plans/vm-screen/proofs/M1/proof.md). A narrower column scales
   the picture down, whole.
 - **Full screen** (surfaces/threads/computer/FullWindow.tsx, its own chunk;
-  lib/fullWindow.ts; main's fullScreen.ts). The window itself goes full
+  lib/fullWindow.ts; main's fullScreen.ts). It keeps the keyboard
+  (`useFocusScope`): focus enters as it opens, Tab goes round its own
+  controls (the away bar's too, which focus calls back), never to the app
+  behind, and focus returns to its opener as it closes. The window itself goes full
   screen: the page asks `window:fullScreen { on }`, main answers whether it
   was full before and pushes `window:fullScreenChanged { on, popOut }`. On a
   Mac it is `setSimpleFullScreen`, as the slideshow's (present.ts): this
