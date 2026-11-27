@@ -29,6 +29,7 @@ import {
   teamsNote,
   trailFromOld,
   trailOf,
+  fileTrail,
   unknownMethod,
   wentBack,
   wentForward,
@@ -164,6 +165,26 @@ describe("a team's page and the trail", () => {
     expect(trailOf(general, trail).map((c) => c.name)).toEqual(["Esports Staff", "General"]);
     expect(trailOf(null, trail).map((c) => c.name)).toEqual(["General"]);
     expect(trailOf({ ...general, group: "General" }, trail).map((c) => c.name)).toEqual(["General"]);
+  });
+
+  it("names an open file's folders down from its place, each a press to that folder; the file itself is not one", () => {
+    const at = (path: string) => ({ at: "file" as const, host: "env_box", path });
+    // The workspace's folder: its top named by the place's id, as the host's trail names it.
+    const own = fileTrail(placeOfRef(sidebar, at("/w/Events")), at("/w/Events/Spring/Run of show.docx"));
+    expect(own).toEqual([
+      { name: expect.any(String), at: { at: "place", id: "folder" } },
+      { name: "Events", at: at("/w/Events") },
+      { name: "Spring", at: at("/w/Events/Spring") },
+    ]);
+    // A channel in the VM: its team first, the guest's own separator, the top as the place's root.
+    const vmFile = "C:\\Users\\tcuser\\Dummy U\\Esports Staff - Documents\\General\\Budgets\\Q3.xlsx";
+    const vm = fileTrail(placeOfRef(sidebar, at(vmFile)), at(vmFile));
+    expect(vm.map((c) => c.name)).toEqual(["Esports Staff", "General", "Budgets"]);
+    expect(vm[2]!.at).toEqual(at("C:\\Users\\tcuser\\Dummy U\\Esports Staff - Documents\\General\\Budgets"));
+    // At a place's top the place alone; nowhere known, or no file on a computer, no trail at all.
+    expect(fileTrail(placeOfRef(sidebar, at("/w")), at("/w/Notes.md")).map((c) => c.at)).toEqual([{ at: "place", id: "folder" }]);
+    expect(fileTrail(null, at("/elsewhere/a.md"))).toEqual([]);
+    expect(fileTrail(placeOfRef(sidebar, at("/w")), { at: "place", id: "recent" })).toEqual([]);
   });
 });
 

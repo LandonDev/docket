@@ -578,6 +578,28 @@ export function FilesFile() {
   );
 }
 
+const fileSteps = [
+  { name: "Dummy Esports", at: { at: "place" as const, id: "folder" } },
+  { name: "Events", at: { at: "file" as const, host: "env_box", path: "/w/Events" } },
+  { name: "Spring LAN 2027", at: { at: "file" as const, host: "env_box", path: "/w/Events/Spring LAN 2027" } },
+];
+
+/** An open file's trail: its folders before its name, at a wide tab, a narrow one (the folder that holds it stays) and with a line's presses. */
+export function FilesFileTrail() {
+  const head = (width: number, line: SavedLine | null) => (
+    <div style={{ maxWidth: width }} className="flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
+      <FileHeader name="Run of show.docx" line={line} where="Spring LAN 2027" trail={{ steps: fileSteps, onGo: noop }} running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} rename={{ on: false, start: noop, done: noop }} />
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      {head(760, { state: "saved", at: NOW - 13 * 60_000 })}
+      {head(760, { state: "conflict", detail: "This file changed at 2:04 PM", actions: [{ id: "reload", label: "Reload", run: noop }, { id: "keep", label: "Keep Both", run: noop }] })}
+      {head(400, { state: "saved", at: NOW - 13 * 60_000 })}
+    </div>
+  );
+}
+
 // ── states with a dialog, a menu or a field open ──────────────────────
 
 // The one host the dialogs and Go to ask: the names Go to finds, and nothing else.

@@ -2299,9 +2299,16 @@ Around the canvas:
   anywhere, Recent and Starred too, such a row opens from its own place,
   and Show in Its Folder goes to its project, else the top of LifeOS.
   A **file open as itself** has a 48px header: its kind's glyph in its
-  tint, its name at 14px semibold, and under it one 12px muted line that
-  says where it is kept ("In Events": a press goes back to the tab that
-  shows that folder, else opens one beside it) or whose copy it is ("A copy from
+  tint, then the trail of the folders it lies in, the page bar's own (each
+  a ghost press in `muted-foreground`, 14px chevrons), ending in its name
+  at 14px semibold, 8px off its chevron; the trail never wraps: the steps
+  above give way first, and under 520px of room the folder that holds the
+  file alone stays beside it. A folder's press brings forward the tab that
+  shows it (the one the file came from first), else takes the tab the file
+  came from there, else opens one beside it. Under the name one 12px muted
+  line says how the file stands; where no trail is known (a file of no
+  place this window knows) it says where it is kept ("In Events", a press
+  as the folder's is) or whose copy it is ("A copy from
   MacBook. Changes stay here", with Open on MacBook) or, for a kind that
   saves, where saving stands ("Saved 1:52 PM in Events": the last save the
   host answered, kept while his edits wait in the editor's own short pause;
@@ -3951,8 +3958,9 @@ the room sees, and the presenter's view. One state moves both.
   the next show. With none, "None" in 13px muted.
 - **The strip** at the foot is 60px on `sidebar` under a hairline, 12px
   inset: every slide a 58px picture in the 3px frame at radius 6 with its
-  number 12px tabular before it, the current one on `sidebar-group-selected`
-  with its number in foreground and kept in the middle, a hidden slide at 45%. A press jumps. G hands it the keyboard:
+  number 12px tabular before it, the current one in the deck's selected
+  ring (a 2px `accent` outline around its frame) with its number semibold
+  `foreground` and kept in the middle, a hidden slide at 45%. A press jumps. G hands it the keyboard:
   the arrows then move along it and Return jumps; at every other time the
   arrows are the show's, so a thumbnail is never a Tab stop. With no
   presenter's view, G opens the slideshow's own picker.
@@ -4676,7 +4684,12 @@ other picked shape is the outline alone.
 - **The Sorter** is the deck's grid: 16px in, four across (two under
   640px), 12px across and 16px down between them, each slide in the
   strip's 3px frame with its number and title 12/16 under it (the title in
-  foreground). A section is a heading 13/20 medium with its count 8px after
+  foreground). The selected slide, here, in the strip and the presenter's
+  strip, wears a 2px `accent` ring around its frame, 3px clear of the
+  picture with its corners following the frame's 6px, and its number in
+  semibold `foreground`, as PowerPoint and Keynote mark it; hover is only
+  the frame's quiet fill, and the ring comes at once, never faded, since
+  the arrows move it. No fill sits under the ring. A section is a heading 13/20 medium with its count 8px after
   it in regular muted tabular, 24px above it and 16px under. A press goes
   back to that slide on the stage; the arrows move four ways. A drag shows
   a 2px `accent` bar in the 12px gap where it will land and carries the

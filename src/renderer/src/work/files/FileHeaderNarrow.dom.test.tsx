@@ -225,3 +225,63 @@ describe("a file tab's ⋯", () => {
     expect(word && word.kind === "item" ? word.label : null).toBe("Ask Before Saving to Word");
   });
 });
+
+/** The owner: "Breadcrumbs should still show on an open file so you can easily go back." */
+describe("an open file's trail", () => {
+  const events = { at: { at: "file" as const, host: "env_box", path: "/w/Events" }, name: "Events" };
+  const steps = [{ name: "Dummy Esports", at: { at: "place" as const, id: "folder" } }, { name: "Events", at: events.at }];
+  const drawTrail = (onGo: (page: { at: unknown; name: string }) => void) =>
+    render(
+      <FileHeader
+        name="Run of show.docx"
+        line={{ state: "saved", at: Date.now() - 60_000 }}
+        where="Events"
+        trail={{ steps, onGo }}
+        running={null}
+        onRun={() => undefined}
+        onShowFolder={() => undefined}
+        rows={[]}
+        onPick={() => undefined}
+        ask={{ disabled: false, pressed: false, run: () => undefined }}
+      />,
+    );
+
+  it("names the folders before the file's name, each a press back to its folder; the name is the trail's end", () => {
+    const onGo = vi.fn();
+    drawTrail(onGo);
+    const nav = screen.getByRole("navigation", { name: "File" });
+    expect(within(nav).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Dummy Esports", "Events", "Run of show.docx"]);
+    // The name is the heading at the end, no press to a folder.
+    const end = nav.querySelector<HTMLElement>("[data-trail-step=file]")!;
+    expect(within(end).getByRole("heading").textContent).toBe("Run of show.docx");
+    expect(within(end).queryByRole("button")).toBeNull();
+    fireEvent.click(within(nav).getByRole("button", { name: "Events" }));
+    expect(onGo).toHaveBeenCalledWith({ at: events.at, name: "Events" });
+    // The trail names the folder, so the save line does not again.
+    expect(document.querySelector("[data-files-save-line]")!.textContent).not.toContain("Events");
+  });
+
+  it("never wraps: under 520px of room the folder that holds the file stays beside it, the steps above it give way", () => {
+    drawTrail(() => undefined);
+    const nav = screen.getByRole("navigation", { name: "File" });
+    expect(nav.querySelector("ol")!.className.split(" ")).toContain("flex-nowrap");
+    const [above, holder, file] = [...nav.querySelectorAll<HTMLElement>("[data-trail-step]")];
+    expect(above!.getAttribute("data-trail-step")).toBe("above");
+    expect(above!.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "@[520px]/files-bar:flex"]));
+    expect(holder!.getAttribute("data-trail-step")).toBe("holder");
+    expect(holder!.className.split(" ")).not.toContain("hidden");
+    expect(holder!.className.split(" ")).toEqual(expect.arrayContaining(["overflow-hidden", "min-w-9"]));
+    // The file's name never shrinks; it leaves the folder that holds it its least room at any width.
+    expect(file!.className.split(" ")).toEqual(expect.arrayContaining(["shrink-0", "max-w-[calc(100%-var(--trail-holder))]"]));
+    expect(file!.style.getPropertyValue("--trail-holder")).toBe("38px");
+    // The chevron before the name always shows; the holder's own shows only once a step stands before it.
+    expect(file!.querySelector("[data-slot=breadcrumb-separator]")!.className.split(" ")).not.toContain("hidden");
+    expect(holder!.querySelector("[data-slot=breadcrumb-separator]")!.className.split(" ")).toContain("hidden");
+  });
+
+  it("keeps the line's folder where no trail is known", () => {
+    render(<FileHeader name="Notes.md" line={null} where="Events" trail={{ steps: [], onGo: () => undefined }} running={null} onRun={() => undefined} rows={[]} onPick={() => undefined} ask={{ disabled: false, pressed: false, run: () => undefined }} />);
+    expect(screen.queryByRole("navigation")).toBeNull();
+    expect(screen.getByText("In Events")).toBeTruthy();
+  });
+});

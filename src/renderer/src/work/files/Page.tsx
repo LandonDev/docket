@@ -210,17 +210,21 @@ export function BarBones() {
 
 /**
  * The trail over a folder (the shared Breadcrumb, at the bar's 13px and 14px chevrons): each step above it a press,
- * the folder itself the medium last step.
+ * the folder itself the medium last step. Over an open file (`file`, its header's name) the file is the last step and
+ * the folders it lies in are the presses: the folder that holds it is named at every width, so the way back stays.
  */
-function Trail({ trail, name, onGo, onEmpty }: { trail: readonly FileCrumb[]; name: string; onGo(page: FilePage): void; onEmpty?(): void }) {
-  const steps = trail.length ? trail : [{ name, at: null as FolderRef | null }];
+export function Trail({ trail, name, file, onGo, onEmpty }: { trail: readonly FileCrumb[]; name: string; file?: ReactNode; onGo(page: FilePage): void; onEmpty?(): void }) {
+  const steps = file ? [...trail, { name, at: null as FolderRef | null }] : trail.length ? trail : [{ name, at: null as FolderRef | null }];
   // The folder never shrinks (an ellipsis shows at any part of a pixel lost): it may take all the bar but the room
   // the steps above keep at their least, a letter or two and an ellipsis each, with their chevrons and gaps.
   const above = steps.length - 1;
   const aboveLeast = above ? 36 + 52 * (above - 1) + 2 * above : 0;
+  // Over a file, under 520px of bar the step that holds it stays, as the first named: its letter or two and the gap.
+  const holder = file && above ? above - 1 : -1;
+  const holderLeast = holder >= 0 ? 38 : 0;
   return (
     <Breadcrumb
-      aria-label="Folder"
+      aria-label={file ? "File" : "Folder"}
       className="flex h-full flex-1 items-center overflow-hidden"
       // A press on the trail's empty part turns it into Go to's field.
       onClick={(event) => {
@@ -235,12 +239,21 @@ function Trail({ trail, name, onGo, onEmpty }: { trail: readonly FileCrumb[]; na
             // own name is cut; under 520px of bar the folder alone is named, cut only where it alone is wider than the bar.
             <BreadcrumbItem
               key={i}
-              data-trail-step={folder ? "folder" : "above"}
-              className={folder ? "max-w-full shrink-0 @[520px]/files-bar:max-w-[calc(100%-var(--trail-above))]" : `hidden overflow-hidden @[520px]/files-bar:flex ${i > 0 ? "min-w-13" : "min-w-9"}`}
-              style={folder ? ({ "--trail-above": `${aboveLeast}px` } as CSSProperties) : undefined}
+              data-trail-step={folder ? (file ? "file" : "folder") : i === holder ? "holder" : "above"}
+              className={
+                folder
+                  ? "max-w-[calc(100%-var(--trail-holder))] shrink-0 @[520px]/files-bar:max-w-[calc(100%-var(--trail-above))]"
+                  : i === holder
+                    ? `flex overflow-hidden min-w-9 ${i > 0 ? "@[520px]/files-bar:min-w-13" : ""}`
+                    : `hidden overflow-hidden @[520px]/files-bar:flex ${i > 0 ? "min-w-13" : "min-w-9"}`
+              }
+              style={folder ? ({ "--trail-above": `${aboveLeast}px`, "--trail-holder": `${holderLeast}px` } as CSSProperties) : undefined}
             >
-              {i > 0 ? <BreadcrumbSeparator className={`[&_svg]:size-3.5 ${folder ? "hidden @[520px]/files-bar:flex" : ""}`} /> : null}
-              {folder ? (
+              {i > 0 ? <BreadcrumbSeparator className={`[&_svg]:size-3.5 ${(folder && holder < 0) || i === holder ? "hidden @[520px]/files-bar:flex" : ""}`} /> : null}
+              {folder && file ? (
+                // The file's name stands 8px off its chevron, as the place he is in does (BreadcrumbPage's own room).
+                <span className="flex min-w-0 ps-2">{file}</span>
+              ) : folder ? (
                 // Cut in a narrow bar, the folder's whole name is in its tooltip.
                 <TruncateTip text={crumb.name}>
                   <BreadcrumbPage className="max-w-none font-medium">{crumb.name}</BreadcrumbPage>

@@ -7,6 +7,7 @@ import type { PdfDoc } from "../pdf/engine";
 import type { DeckStore } from "./deck";
 import type { HandSession } from "./edit/session";
 import { moveOp, removeSlide, sayWaits, slideAct, slideRows, slidesOpen, type NameAsk } from "./edit/slides";
+import { NUMBER_PICKED, SLIDE_PICKED } from "./picked";
 import { Picture } from "./Picture";
 
 /**
@@ -197,19 +198,19 @@ export const Strip = memo(function Strip({
                     className={`pointer-events-none absolute z-20 rounded-full bg-accent ${narrow ? `inset-y-0 w-0.5 ${before ? "-left-[3px]" : "-right-[3px]"}` : `right-0 left-6 h-0.5 ${before ? "-top-px" : "-bottom-px"}`}`}
                   />
                 ) : null}
-                <span className={`w-5 shrink-0 pt-1 text-end text-xs leading-4 tabular-nums ${on ? "text-foreground" : "text-muted-foreground"}`}>{slide.number ?? ""}</span>
+                <span className={`w-5 shrink-0 pt-1 text-end text-xs leading-4 tabular-nums ${on ? NUMBER_PICKED : "text-muted-foreground"}`}>{slide.number ?? ""}</span>
                 <span
                   className={`block rounded-md p-[3px] transition-[background-color] duration-(--dur-hover) ease-(--ease-out) motion-reduce:transition-none ${
                     slide.tint === "add"
-                      ? on
-                        ? "bg-[color-mix(in_srgb,var(--success)_30%,transparent)]"
-                        : FRAME_TINT.add
+                      ? FRAME_TINT.add
                       : slide.tint === "del"
                         ? FRAME_TINT.del
-                        : on || sortable.draggingId === slide.key
+                        : sortable.draggingId === slide.key
                           ? "bg-sidebar-group-selected"
-                          : "group-hover/th:bg-foreground/5 group-active/th:bg-foreground/12 group-active/th:transition-none"
-                  }`}
+                          : on
+                            ? ""
+                            : "group-hover/th:bg-foreground/5 group-active/th:bg-foreground/12 group-active/th:transition-none"
+                  } ${on ? SLIDE_PICKED : ""}`}
                 >
                   <Picture doc={pictures ? picture.doc : null} page={picture.page} width={THUMB} ghost={slide.tint === "del" || slide.hidden} title={slide.title} thumb waitTitle />
                 </span>

@@ -3,6 +3,7 @@ import type { DeckSlide, DeckView } from "@shared/contract-work-slides";
 import { bareKey } from "../../lib/keys";
 import { moveOp, removeSlide, sayWaits, slidesOpen } from "./edit/slides";
 import { Picture } from "./Picture";
+import { NUMBER_PICKED, SLIDE_PICKED } from "./picked";
 import { SlideMenu, useDropped, useRefocus, type PictureOf, type SlideHand } from "./Strip";
 
 /**
@@ -210,16 +211,16 @@ export function Sorter({
                           : slide.tint === "del"
                             ? "bg-(--del-bg)"
                             : on
-                              ? "bg-muted"
+                              ? ""
                               : "group-hover/gi:bg-foreground/5 group-active/gi:bg-foreground/12 group-active/gi:transition-none"
-                    }`}
+                    } ${on && !hole ? SLIDE_PICKED : ""}`}
                   >
                     <span className={hole ? "block opacity-0" : "block"}>
                       <Picture doc={pictures ? picture.doc : null} page={picture.page} width={thumb} ghost={slide.tint === "del" || slide.hidden} title={slide.title} thumb first />
                     </span>
                   </span>
                   <span className="flex min-w-0 gap-1.5 px-[3px] text-xs leading-4 text-muted-foreground">
-                    <span className="shrink-0 tabular-nums">{slide.number ?? ""}</span>
+                    <span className={`shrink-0 tabular-nums ${on ? NUMBER_PICKED : ""}`}>{slide.number ?? ""}</span>
                     <span className="min-w-0 truncate text-foreground">{slide.title || "Untitled"}</span>
                   </span>
                 </button>

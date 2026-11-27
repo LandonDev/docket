@@ -195,6 +195,23 @@ export function trailOf(row: PlaceRow | null, trail: readonly FileCrumb[]): File
   return [{ name: row.group, at: teamPage(row.group).at }, ...trail];
 }
 
+/**
+ * The folders a file lies in, as the trail over its folder names them: the place (a team's name over a library of
+ * it), then each folder down to the file's own. Empty where the file lies in no place this window knows, or is no
+ * file on a computer (a LifeOS document, a Drive file): its header then names no trail.
+ */
+export function fileTrail(found: { copy: PlaceCopy; row: PlaceRow | null } | null, file: FolderRef | CanvasSource | null): FileCrumb[] {
+  const root = found?.copy.place.root;
+  if (!found || !root || root.at !== "file" || file?.at !== "file") return [];
+  const top = root.path.replace(/[\\/]+$/, "");
+  const sep = top.includes("\\") && !top.includes("/") ? "\\" : "/";
+  const parts = file.path.slice(top.length).split(/[\\/]/).filter(Boolean).slice(0, -1);
+  // The workspace's own folder is a place the sidebar names by its id, as the host's trail does (places/folder.ts).
+  const place = found.copy.place;
+  const head: FileCrumb = { name: place.name, at: place.kind === "folder" ? { at: "place", id: place.id } : root };
+  return trailOf(found.row, [head, ...parts.map((name, i) => ({ name, at: { at: "file" as const, host: root.host, path: [top, ...parts.slice(0, i + 1)].join(sep) } }))]);
+}
+
 // ── where a file opens ────────────────────────────────────────────────
 
 /**

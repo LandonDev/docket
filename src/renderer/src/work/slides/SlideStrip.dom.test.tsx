@@ -207,6 +207,19 @@ describe("the Sorter", () => {
     expect(thumb("9").getAttribute("aria-current")).toBe("true");
   });
 
+  it("rings the slide on the stage in accent with its number semibold; the others keep the quiet hover fill", async () => {
+    const grid = await sorter();
+    const [on, off] = [...grid.querySelectorAll<HTMLElement>("[data-sorter-slide]")];
+    expect(on!.getAttribute("aria-selected")).toBe("true");
+    const frame = (cell: HTMLElement) => cell.querySelector(".p-\\[3px\\]")!.className.split(" ");
+    expect(frame(on!)).toEqual(expect.arrayContaining(["outline-2", "outline-offset-0", "outline-accent"]));
+    expect(frame(on!)).not.toContain("bg-muted");
+    expect(frame(off!)).not.toContain("outline-accent");
+    expect(frame(off!)).toContain("group-hover/gi:bg-foreground/5");
+    expect(on!.querySelector(".tabular-nums")!.className.split(" ")).toEqual(expect.arrayContaining(["font-semibold", "text-foreground"]));
+    expect(off!.querySelector(".tabular-nums")!.className.split(" ")).not.toContain("font-semibold");
+  });
+
   it("has the strip's menu, Delete, and the arrows four ways", async () => {
     const grid = await sorter();
     const cell = (key: string) => grid.querySelector<HTMLElement>(`[data-slide="${key}"]`)!;

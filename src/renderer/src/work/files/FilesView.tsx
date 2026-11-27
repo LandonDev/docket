@@ -38,7 +38,7 @@ import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
 import { MoveDialog, placeIcon, type MoveTarget } from "./MoveDialog";
 import { cutsMiddle, lastWord, MiddleCut } from "../canvas/TabName";
-import { carryRefusal, readRefused, tabEnds, tabShowing, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeDownloads, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type Sidebar as SidebarModel, type SidebarRow } from "./model";
+import { carryRefusal, readRefused, tabEnds, tabShowing, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeDownloads, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, fileTrail, type FilesNote, type PlaceCopy, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import { tellOrigin } from "./saveAsPort";
 import "./bindings";
 import { closeOf, filesKeys, landFocus } from "./chords";
@@ -750,9 +750,14 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
         onCloseSide={() => closeAtSide(tab)}
         onCloseHistory={closeHistory}
         onShowFolder={(page) => {
+          // A tab that shows the folder comes forward (the one the file came from first); else the tab it came from
+          // goes there, as a press on the trail over that tab's own list does; else the folder opens in a tab of its own.
           const there = tabShowing(view.tabs, page.at, tab.opener);
-          if (there) void selectTab(link, workspace.id, there.id);
-          else newTab(page);
+          if (there) return void selectTab(link, workspace.id, there.id);
+          const opener = view.tabs.find((t) => t.id === tab.opener && t.kind === "page");
+          if (!opener) return newTab(page);
+          selectTab(link, workspace.id, opener.id);
+          void goTo(link, workspace.id, opener.id, page).catch((err: unknown) => say("The folder did not open", err));
         }}
       />
     );
@@ -1196,6 +1201,8 @@ function OpenFile({
   const file = item ? fileOf(tab, item) : null;
   const lies = file?.at === "file" ? placeOfRef(reach.sidebar, { at: "file", host: file.host, path: file.path.replace(/[\\/]+[^\\/]*$/, "") }) : null;
   const place = lies ? (lies.row ? (lies.row.copies.includes(lies.copy) && lies.copy.place.state.state !== "unreachable" ? lies.copy : readCopy(lies.row)) : lies.copy) : null;
+  // The folders it lies in, over its name: each a press back to that folder, as the trail over a folder is.
+  const steps = fileTrail(lies, file);
   // The ⋯ says Star or Unstar as his marks stand: the Starred lens on the workspace's host, which follows each star; his
   // own press stands until it does.
   const starredLens = reach.sidebar.marks.find((m) => m.place.kind === "starred") ?? null;
@@ -1244,6 +1251,7 @@ function OpenFile({
       panelId={filesPanelId(tab.id)}
       workspace={workspace}
       where={where}
+      {...(steps.length ? { trail: { steps, onGo: onShowFolder } } : {})}
       copy={copy}
       sideItem={sideItem}
       onCloseSide={onCloseSide}

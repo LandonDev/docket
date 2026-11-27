@@ -235,7 +235,7 @@ describe("the presenter's view", () => {
     const strip = within(root.querySelector<HTMLElement>("[data-show-strip]")!);
     expect(strip.getAllByRole("option")).toHaveLength(12);
     expect(strip.getByRole("option", { name: "Slide 3: Slide 3" }).getAttribute("aria-selected")).toBe("true");
-    expect(strip.getByRole("option", { name: "Slide 3: Slide 3" }).querySelector(".p-\\[3px\\]")!.className).toContain("bg-sidebar-group-selected");
+    expect(strip.getByRole("option", { name: "Slide 3: Slide 3" }).querySelector(".p-\\[3px\\]")!.className.split(" ")).toEqual(expect.arrayContaining(["outline-2", "outline-accent"]));
     fireEvent.click(strip.getByRole("option", { name: "Slide 9: Slide 9" }));
     expect(root.querySelector("[data-show-place]")!.textContent).toBe("9/12");
     fireEvent.click(within(root).getByRole("button", { name: "Blank" }));

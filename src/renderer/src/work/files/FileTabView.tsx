@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { confirmAction, confirmChoice } from "../../chrome/ConfirmDialog";
-import type { CopyBack, FileTab } from "@shared/contract-work-files";
+import type { CopyBack, FileCrumb, FilePage, FileTab } from "@shared/contract-work-files";
 import type { OfficeLiveOf } from "@shared/contract-work-office";
 import { filesPaneOf, type CanvasItem, type CanvasKind, type ContextChip } from "@shared/work";
 import { kindOfEntry } from "@shared/work/files";
@@ -46,6 +46,7 @@ import { importLosses } from "../formats/importOnce";
 import { canvasFlushPort } from "../../lib/canvasFlushPort";
 import { saveKeyPort } from "../../lib/saveKey";
 import { NameField, useSideOver } from "./rowParts";
+import { Trail } from "./Page";
 import { useEscapeOver } from "./escapeOver";
 import { cloudLine, cloudOfBack, copyBackDue, copyLine, isCopyBack, newestBack, offlineNamed, staysLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { FolderLink, HEAD_NARROW, LINK_ROOM, SaveActions, SaveLine, TUCKED, tuckedRows } from "./SaveLine";
@@ -175,6 +176,7 @@ export function FileHeader({
   name,
   line,
   where,
+  trail,
   running,
   onRun,
   onShowFolder,
@@ -190,6 +192,9 @@ export function FileHeader({
   name: string;
   line: SavedLine | null;
   where: string | null;
+  /** the folders the file lies in (`fileTrail`), drawn before its name, each a press back to that folder; absent or
+   *  empty where they are not known, and the line names the folder instead */
+  trail?: { steps: readonly FileCrumb[]; onGo(page: FilePage): void };
   /** the id of the line's press that is under way */
   running: string | null;
   onRun(action: SavedAction): void;
@@ -225,6 +230,23 @@ export function FileHeader({
     if (id === TUCKED && actions?.[1]) return onRun(actions[1]);
     onPick(id);
   };
+  const crumbs = !!trail?.steps.length;
+  const title = rename?.on ? (
+    <NameField name={name} className="h-5 flex-none text-sm font-semibold" onDone={rename.done} />
+  ) : (
+    <TruncateTip text={shownName(name)}>
+      {rename ? (
+        // The name cuts in its own span, so the press's 24px hit area (over its 20px line) is not cut by the heading.
+        <h2 className="min-w-0 text-sm leading-5 font-semibold text-foreground">
+          <Button variant="link" data-files-rename-name className="relative h-5 max-w-full min-w-0 justify-start rounded-sm p-0 text-sm leading-5 font-semibold after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-[''] hover:no-underline" onClick={rename.start}>
+            <span className="truncate">{shownName(name)}</span>
+          </Button>
+        </h2>
+      ) : (
+        <h2 className="min-w-0 truncate text-sm leading-5 font-semibold text-foreground">{shownName(name)}</h2>
+      )}
+    </TruncateTip>
+  );
   return (
     // One 48px row (its least height; the name and its line are 36px). Where the line has presses the name and its
     // line keep 16rem: past that the presses take a second row at the end, as the Beside seat's bar does, so the name
@@ -232,28 +254,21 @@ export function FileHeader({
     <header ref={head} data-files-header className={`@container/file-head relative flex min-h-12 shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-border py-1 pe-2 ${leave ? "ps-20" : "ps-3"}`}>
       <div data-files-head-name className={`flex min-w-0 items-center gap-2.5 ${actions || end ? "flex-[1_1_16rem]" : "flex-1"}`}>
         <KindGlyph kind={kindOfEntry(name).kind} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          {rename?.on ? (
-            <NameField name={name} className="h-5 flex-none text-sm font-semibold" onDone={rename.done} />
+        <div className="@container/files-bar flex min-w-0 flex-1 flex-col">
+          {crumbs ? (
+            // The trail's first press stands out of the column by its own padding, so its words start over the line's.
+            <div className="-ms-2 flex min-w-0">
+              <Trail trail={trail!.steps} name={name} file={title} onGo={trail!.onGo} />
+            </div>
           ) : (
-            <TruncateTip text={shownName(name)}>
-              {rename ? (
-                // The name cuts in its own span, so the press's 24px hit area (over its 20px line) is not cut by the heading.
-                <h2 className="min-w-0 text-sm leading-5 font-semibold text-foreground">
-                  <Button variant="link" data-files-rename-name className="relative h-5 max-w-full min-w-0 justify-start rounded-sm p-0 text-sm leading-5 font-semibold after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-[''] hover:no-underline" onClick={rename.start}>
-                    <span className="truncate">{shownName(name)}</span>
-                  </Button>
-                </h2>
-              ) : (
-                <h2 className="min-w-0 truncate text-sm leading-5 font-semibold text-foreground">{shownName(name)}</h2>
-              )}
-            </TruncateTip>
+            title
           )}
           {note ? (
             <p className="min-w-0 truncate text-xs leading-4 text-muted-foreground">{note}</p>
           ) : line ? (
-            <SaveLine line={line} where={where} onShowFolder={onShowFolder} />
-          ) : where ? (
+            // The trail names the folder: the line says only how the file stands.
+            <SaveLine line={line} where={crumbs ? null : where} onShowFolder={crumbs ? undefined : onShowFolder} />
+          ) : where && !crumbs ? (
             // With no save line the folder is still the way back to it, as in "Saved … in Events".
             <p className={`min-w-0 truncate text-xs leading-4 text-muted-foreground ${onShowFolder ? LINK_ROOM : ""}`}>
               In {onShowFolder ? <FolderLink place={where} onShow={onShowFolder} /> : where}
@@ -301,6 +316,7 @@ export function FileTabView({
   panelId,
   workspace,
   where,
+  trail,
   copy,
   manage,
   sideItem = null,
@@ -320,6 +336,8 @@ export function FileTabView({
   workspace: Pick<WorkspaceMeta, "id" | "environmentId" | "path">;
   /** the folder the file is kept in, as the trail names it */
   where: string | null;
+  /** the folders the file lies in, each a press back to that folder (FileHeader) */
+  trail?: { steps: readonly FileCrumb[]; onGo(page: FilePage): void };
   /** the tab shows a copy of a file on another computer */
   copy: CopyWords | null;
   /** the verbs for the file, as its row's menu has them (`actsFor`); absent where nothing here changes it */
@@ -589,6 +607,7 @@ export function FileTabView({
         name={name}
         line={line}
         where={where}
+        {...(trail ? { trail } : {})}
         running={running}
         onRun={runAction}
         onShowFolder={onShowFolder}

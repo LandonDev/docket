@@ -190,9 +190,15 @@ describe("the slides kind", () => {
     await found("[data-slides-stage]");
     expect(thumbs()).toHaveLength(12);
     expect(thumbs()[0].getAttribute("aria-current")).toBe("true");
-    // The current slide's frame is the selected fill on the strip's sidebar ground, which shows in light (dark: muted).
-    expect(thumbs()[0].querySelector(".p-\\[3px\\]")!.className).toContain("bg-sidebar-group-selected");
-    expect(thumbs()[1].querySelector(".p-\\[3px\\]")!.className).not.toContain("bg-sidebar-group-selected");
+    // The current slide's frame wears the 2px accent ring and its number is semibold foreground; another keeps only
+    // the quiet hover fill and a muted number.
+    const frame = (i: number) => thumbs()[i]!.querySelector(".p-\\[3px\\]")!.className.split(" ");
+    expect(frame(0)).toEqual(expect.arrayContaining(["outline-2", "outline-offset-0", "outline-accent"]));
+    expect(frame(0)).not.toContain("group-hover/th:bg-foreground/5");
+    expect(frame(1)).not.toContain("outline-accent");
+    expect(frame(1)).toContain("group-hover/th:bg-foreground/5");
+    expect(thumbs()[0]!.querySelector(".tabular-nums")!.className.split(" ")).toEqual(expect.arrayContaining(["font-semibold", "text-foreground"]));
+    expect(thumbs()[1]!.querySelector(".tabular-nums")!.className.split(" ")).toContain("text-muted-foreground");
     await waitFor(() => expect(document.querySelector("[data-slides-stage]")?.textContent).toContain("Slide 1"));
     expect(screen.getByText("Open with the turnout.")).toBeTruthy();
     fireEvent.click(thumbs()[1]);

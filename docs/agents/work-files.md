@@ -231,8 +231,14 @@ the first paint.
   A kind's Offline names the computer that is not answering ("The box is not answering. Changes wait here",
   with no count: the text kind counts keys, not changes;
   `offlineNamed` in fileText.ts); a download says "Downloading… 2.1 of 8.4 MB" in the header as in the row.
-  The folder the line names ("Saved 1:52 PM in Events", or "In Events" with no save line) is one press,
-  `FolderLink` in SaveLine.tsx, 24px to hit over its 16px line. A copy's line sets the window's own computer
+  The header's name row is the trail to the file: `Trail` (Page.tsx) with `file`, the folders from `fileTrail`
+  (model.ts: the place, a team's name over a library, each folder down to the file's, from the place's root and
+  the file's path, no host asked), the name its last step (`data-trail-step="file"`, `nav` named File). Under
+  520px of room (the column is `@container/files-bar`) the folder that holds it stays (`data-trail-step="holder"`)
+  and the steps above give way. A step's press is FilesView's `onShowFolder`: a tab showing the folder comes
+  forward (the opener first), else the opener goes there by `goTo`, else a new tab. With a trail the save line
+  names no folder. Where no trail is known the folder the line names ("Saved 1:52 PM in Events", or "In Events"
+  with no save line) is one press, `FolderLink` in SaveLine.tsx, 24px to hit over its 16px line. A copy's line sets the window's own computer
   mid-line ("Saving to this Mac…", `copyHostOf` through `nameInLine`). ⋯ is tidied (`tidy()`), so no divider
   leads it. Quick Look's cut name says the whole of itself on hover.
 - An empty place gets its first tab from `tabOpen {first: true}`: the host

@@ -13,6 +13,7 @@ import { MediaTransport, SlideMedia, usePicture, useStage } from "./stage";
 import { atStart, nextPress, NOTES_SIZES, placeLabel, placeText, type ShowAct, type ShowState } from "./state";
 import { clockOf, elapsedOf, overTarget, TARGETS, type ShowTimer, type Target } from "./timer";
 import { notesShown } from "../notesText";
+import { NUMBER_PICKED, SLIDE_PICKED } from "../picked";
 
 /**
  * The presenter's view (docs/DESIGN.md "The show"; the approved page is
@@ -392,10 +393,10 @@ function Strip({ state, doc, loading, ratio, dispatch, surface }: { state: ShowS
             onClick={() => dispatch({ t: "goto", number: slide.number })}
             className="group/th flex shrink-0 items-start gap-1 rounded-md text-start"
           >
-            <span className={`min-w-4 shrink-0 pt-1 text-end text-xs leading-4 tabular-nums ${on ? "text-foreground" : "text-muted-foreground"}`}>{slide.number}</span>
+            <span className={`min-w-4 shrink-0 pt-1 text-end text-xs leading-4 tabular-nums ${on ? NUMBER_PICKED : "text-muted-foreground"}`}>{slide.number}</span>
             <span
               className={`block rounded-md p-[3px] transition-[background-color] duration-(--dur-hover) ease-(--ease-out) motion-reduce:transition-none ${
-                on ? "bg-sidebar-group-selected" : "group-hover/th:bg-foreground/5 group-active/th:bg-foreground/12 group-active/th:transition-none"
+                on ? SLIDE_PICKED : "group-hover/th:bg-foreground/5 group-active/th:bg-foreground/12 group-active/th:transition-none"
               } ${slide.hidden ? "opacity-45" : ""}`}
             >
               <Thumb doc={doc} page={slide.page} width={STRIP_THUMB - 6} ratio={ratio} title="" />

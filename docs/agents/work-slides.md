@@ -1425,9 +1425,9 @@ How it works:
 - **The strip** is 140px on `sidebar`: each slide a 96px picture in a 3px
   frame at 6px radius that carries the tint (`--add-bg` for a slide a
   change rewords, adds or lands; `--del-bg` for the place a slide leaves,
-  its picture at 45%; the current slide's frame on `sidebar-group-selected`,
-  which shows in light where `muted` vanishes on `sidebar`, dark's value
-  being `muted`, as in the presenter's strip), its number 12px tabular to its left, and a
+  its picture at 45%), the current slide's frame ringed in a 2px `accent` outline with its number semibold
+  `foreground` (`SLIDE_PICKED`, `NUMBER_PICKED` in slides/picked.ts, the Sorter's and the presenter's strip's
+  too; no fill under it), its number 12px tabular to its left, and a
   section's name over the slide that starts it. A thumbnail paints only
   near the view and after the stage, and lets pdf.js free its page when it
   leaves. Under 400px of canvas the

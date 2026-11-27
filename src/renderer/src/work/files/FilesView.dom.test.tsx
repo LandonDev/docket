@@ -628,7 +628,9 @@ describe("tabs", () => {
     await waitFor(() => expect(screen.getByTestId("pane").textContent).toBe("sheet: Budget.xlsx"));
     const header = document.querySelector("[data-files-header]")!;
     expect(header.querySelector("h2")!.textContent).toBe("Budget.xlsx");
-    expect(header.textContent).toContain("In w");
+    // The trail names the folder it lies in before its name; the line does not name it again.
+    expect(within(header as HTMLElement).getByRole("navigation", { name: "File" }).textContent).toBe("Dummy EsportsBudget.xlsx");
+    expect(header.textContent).not.toContain("In w");
     expect(within(header as HTMLElement).getByRole("button", { name: "Ask" })).toBeTruthy();
     // No thread was made for it.
     expect(calls(host, "session.create")).toEqual([]);
@@ -638,6 +640,27 @@ describe("tabs", () => {
     fireEvent.doubleClick(row("Budget.xlsx"));
     await waitFor(() => expect(screen.getByTestId("pane")).toBeTruthy());
     await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports", "Budget.xlsx"]));
+  });
+
+  it("goes back from an open file by its trail: the tab it came from shows the folder pressed", async () => {
+    const { host } = await mount();
+    await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+    fireEvent.doubleClick(row("Events"));
+    await waitFor(() => expect(rows()).toEqual(["Poster.png"]));
+    fireEvent.doubleClick(row("Poster.png"));
+    await waitFor(() => expect(tabNames()).toEqual(["Events", "Poster.png"]));
+    const nav = await waitFor(() => within(document.querySelector<HTMLElement>("[data-files-header]")!).getByRole("navigation", { name: "File" }));
+    expect(within(nav).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Dummy Esports", "Events", "Poster.png"]);
+    // The folder that holds it: the tab it came from already shows it, and comes forward.
+    fireEvent.click(within(nav).getByRole("button", { name: "Events" }));
+    await waitFor(() => expect(rows()).toEqual(["Poster.png"]));
+    expect(tabNames()).toEqual(["Events", "Poster.png"]);
+    // A folder above it: that same tab goes there, as a press on its own trail does, and Back returns.
+    fireEvent.pointerDown(within(screen.getByRole("tablist", { name: "Open tabs" })).getAllByRole("tab")[1]!, { button: 0 });
+    fireEvent.click(within(await waitFor(() => within(document.querySelector<HTMLElement>("[data-files-header]")!).getByRole("navigation", { name: "File" }))).getByRole("button", { name: "Dummy Esports" }));
+    await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
+    expect(tabNames()).toEqual(["Dummy Esports", "Poster.png"]);
+    expect(calls(host, "work.files.open")).toHaveLength(1);
   });
 
   it("opens a file in a tab, never a thread, when another computer answers before the workspace's own host", async () => {
