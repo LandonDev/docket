@@ -330,8 +330,8 @@ move the pin in package.json and in `lib/bonesGuard.test.ts`.
 ## The held list
 
 `HELD` in `src/renderer/src/lib/bonesGuard.test.ts`: the folders not yet
-converted, one line a folder. On 2026-11-27 it names `hosted/guest`, `aliax`,
-`surfaces` and 36 folders under `work/`. A thread that converts a folder
+converted, one line a folder. The list itself says which
+are left: it shrinks as each folder lands. A thread that converts a folder
 deletes its line. When the list is empty, delete
 `components/ui/skeleton.tsx` and the cases that speak of it.
 
