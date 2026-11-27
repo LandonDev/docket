@@ -88,14 +88,14 @@ private struct PrepPageView: View {
             }
             .listStyle(.insetGrouped)
             .scrollDismissesKeyboard(.interactively)
-        } else if let readError {
+        } else if let failure = readError {
             ContentUnavailableView {
                 Label("Can’t Read This Meeting", systemImage: "calendar")
             } description: {
-                Text(readError)
+                Text(failure)
             } actions: {
                 // The spinner in the error's place while it reads, then the page or the new reason.
-                Button("Try Again") { readError = nil; Task { await read() } }
+                Button("Try Again") { self.readError = nil; Task { await read() } }
             }
         } else {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
