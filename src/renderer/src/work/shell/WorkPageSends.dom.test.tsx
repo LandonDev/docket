@@ -18,6 +18,10 @@ const box = vi.hoisted(() => ({
   gate: null as null | Promise<void>,
   /** The box's linear add-on lists ten tools (past the find field's eight). */
   many: false,
+  /** The box reaches a second add-on, figma, beside linear. */
+  two: false,
+  /** A whole read of the rules held open until the test lets it go (its answer what the box held when asked). */
+  readGate: null as null | Promise<void>,
 }));
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
@@ -65,16 +69,23 @@ const linearTools = (): { tool: string; words: string; rule: string | null }[] =
   { tool: "create_issue", words: "Create issue", rule: "held" },
   ...(box.many ? Array.from({ length: 9 }, (_, i) => ({ tool: `t${i}`, words: `Other tool ${i}`, rule: "runs" })) : []),
 ];
+const figmaTools = (): { tool: string; words: string; rule: string | null }[] => [{ tool: "get_file", words: "Get file", rule: "held" }];
 vi.mock("../../surfaces/settings/parts/hostRpc", () => ({
   hostRequest: async (env: string, method: string, params: { addonId: string; rules: Record<string, string> }) => {
     box.calls.push({ env, method, params });
     if (method === "work.outbox.rules" && box.rulesOut.has(env)) return new Promise(() => {});
     if (method === "work.outbox.rules" && box.rulesFail.has(env)) throw new Error(NO_ANSWER);
-    if (method === "work.outbox.rules")
-      return { addons: env === "env_box" ? [card("a1", "linear", linearTools()), card("lo", "LifeOS", [{ tool: "x", words: "X", rule: null }], true)] : [] };
+    if (method === "work.outbox.rules") {
+      // What the box holds when the read is asked, answered when the test lets it go.
+      const held = env === "env_box" ? [card("a1", "linear", linearTools()), ...(box.two ? [card("a2", "figma", figmaTools())] : []), card("lo", "LifeOS", [{ tool: "x", words: "X", rule: null }], true)] : [];
+      await box.readGate;
+      return { addons: held };
+    }
     await box.gate;
     if (box.refuse) throw new Error("forbidden: work.outbox.setRules needs admin");
     const [tool, rule] = Object.entries(params.rules)[0]!;
+    // The save answers its own add-on's card alone, as the host does.
+    if (params.addonId === "a2") return card("a2", "figma", figmaTools().map((t) => (t.tool === tool ? { ...t, rule } : t)));
     return card("a1", "linear", linearTools().map((t) => (t.tool === tool ? { ...t, rule } : t)));
   },
 }));
@@ -98,6 +109,8 @@ afterEach(() => {
   box.rulesOut = new Set();
   box.gate = null;
   box.many = false;
+  box.two = false;
+  box.readGate = null;
 });
 
 describe("Things threads may send on their own", () => {
@@ -378,5 +391,77 @@ describe("What each add-on's tools may do", () => {
     });
     await settle();
     expect(within(row()).getByRole("combobox").textContent).toContain("Runs");
+  });
+
+  it("keeps a computer's failed tools read, and its Retry, when one add-on's save answers: only a whole read clears it", async () => {
+    box.two = true;
+    render(<ToolsRow />);
+    const opener = screen.getByRole("button", { name: "What each add-on's tools may do" });
+    fireEvent.click(opener);
+    await screen.findByRole("dialog");
+    await settle();
+    await act(async () => fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" }));
+    await settle();
+    // Reopened, the box's re-read fails: both add-ons stay as read before, under the failure and its Retry.
+    box.rulesFail = new Set(["env_box"]);
+    fireEvent.click(opener);
+    const sheet = await screen.findByRole("dialog");
+    await settle();
+    expect(within(sheet).getByRole("alert").textContent).toBe("The box did not answer.");
+    // A save of one linear tool answers with linear's card alone: the failure and Retry stay, figma as read before.
+    const row = sheet.querySelector<HTMLElement>('[data-tool="create_issue"]')!;
+    await act(async () => fireEvent.click(within(row).getByRole("combobox")));
+    const option = await screen.findByRole("option", { name: "Runs" });
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    await settle();
+    expect(within(sheet.querySelector<HTMLElement>('[data-tool="create_issue"]')!).getByRole("combobox").textContent).toContain("Runs");
+    expect(within(sheet).getByRole("alert").textContent).toBe("The box did not answer.");
+    expect(within(sheet).getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(sheet.querySelector('[data-addon="a2"]')).toBeTruthy();
+    // A whole read that answers clears it.
+    box.rulesFail = new Set();
+    await act(async () => fireEvent.click(within(sheet).getByRole("button", { name: "Retry" })));
+    await settle();
+    expect(within(sheet).queryByRole("alert")).toBeNull();
+  });
+
+  it("never lets a whole read asked before a save answered put that add-on's old rule back", async () => {
+    render(<ToolsRow />);
+    fireEvent.click(screen.getByRole("button", { name: "What each add-on's tools may do" }));
+    const sheet = await screen.findByRole("dialog");
+    await settle();
+    // The box's re-read fails, then Retry asks again and its answer is held: what the box held then, the old rule.
+    box.rulesFail = new Set(["env_box"]);
+    await act(async () => fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" }));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "What each add-on's tools may do" }));
+    const again = await screen.findByRole("dialog");
+    await settle();
+    box.rulesFail = new Set();
+    let let_go!: () => void;
+    box.readGate = new Promise<void>((done) => (let_go = done));
+    await act(async () => fireEvent.click(within(again).getByRole("button", { name: "Retry" })));
+    // Meanwhile a pick is saved, and its answer lands first.
+    const row = () => again.querySelector<HTMLElement>('[data-tool="create_issue"]')!;
+    await act(async () => fireEvent.click(within(row()).getByRole("combobox")));
+    const option = await screen.findByRole("option", { name: "Off" });
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    await settle();
+    expect(within(row()).getByRole("combobox").textContent).toContain("Off");
+    // The read asked before the save answers now, with the old rule: the saved rule stays, and the failure clears.
+    await act(async () => {
+      let_go();
+      await box.readGate;
+    });
+    await settle();
+    expect(within(row()).getByRole("combobox").textContent).toContain("Off");
+    expect(within(again).queryByRole("alert")).toBeNull();
+    void sheet;
   });
 });

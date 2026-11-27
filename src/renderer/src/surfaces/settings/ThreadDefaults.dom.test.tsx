@@ -117,7 +117,7 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
 }));
 
 const { ThreadDefaultsPage } = await import("./ThreadDefaults");
-const { ThreadDefaultsDialog, ThreadDefaultsEditor } = await import("../../chrome/ThreadDefaultsDialog");
+const { ThreadDefaultsDialog, ThreadDefaultsEditor, resetDefaultsEditingForTests } = await import("../../chrome/ThreadDefaultsDialog");
 const { usePageHome, resetPageHomesForTests } = await import("../../lib/settings/pageHome");
 const { StartSetRow } = await import("./parts/StartSetRow");
 
@@ -137,6 +137,7 @@ async function pick(field: string, option: string) {
 const ALPHA = { id: "w1", name: "Alpha", environmentId: "local" } as never;
 
 beforeEach(() => {
+  resetDefaultsEditingForTests();
   state.failed = false;
   state.retry.mockClear();
   state.ladder = ["low", "medium", "high"];
@@ -1008,5 +1009,139 @@ describe("Different in N places, with the section's own set and every place as l
     const row = document.querySelector("[data-setting='defaults.different']") as HTMLElement;
     expect(row.textContent).toContain("Different in at least 1 confirmed place");
     expect(row.textContent).toContain("Purdue Esports. As last read: CosmicPrisons. Not heard from temp-code");
+  });
+});
+
+describe("Use New threads, held by computer and place", () => {
+  const spinning = (button: HTMLElement) => button.querySelector("[data-slot=busy-label][data-busy]") !== null;
+
+  it("keeps the hold when the dialog is closed during the check and opened again: a pick and a second press are refused", async () => {
+    state.overriding = new Set(["w1"]);
+    const first = render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    let dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    // The press's check waits.
+    state.inheritedOut = true;
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    first.unmount();
+    state.inheritedOut = false;
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await pick("Effort", "High");
+    const reads = state.inheritedReads;
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    expect(state.inheritedReads).toBe(reads);
+    expect(state.save).not.toHaveBeenCalled();
+    expect(state.confirm).not.toHaveBeenCalled();
+  });
+
+  it("holds the place on a job's page too: Change… reopened during the check refuses a pick", async () => {
+    state.overriding = new Set(["w1"]);
+    const row = () => <StartSetRow id="job.threads" workspace={ALPHA} whose="job" may />;
+    const view = render(row());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    });
+    let dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    state.inheritedOut = true;
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    view.unmount();
+    render(row());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    });
+    dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await pick("Effort", "High");
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it("spins the pressed button from 150 ms of the press through its check, not before", async () => {
+    state.overriding = new Set(["w1"]);
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    state.inheritedOut = true;
+    const press = within(dialog).getByRole("button", { name: "Use New threads" });
+    await act(async () => {
+      fireEvent.click(press);
+    });
+    expect(spinning(press)).toBe(false);
+    await pastHoldLook();
+    expect(spinning(within(dialog).getByRole("button", { name: "Use New threads" }))).toBe(true);
+  });
+
+  it("does not spin while the Full access confirm is open", async () => {
+    state.overriding = new Set(["w1"]);
+    state.globalPermission = "auto";
+    let decide!: (ok: boolean) => void;
+    state.confirm.mockImplementation(() => new Promise<boolean>((resolve) => (decide = resolve)));
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    await flush();
+    expect(state.confirm).toHaveBeenCalledTimes(1);
+    await pastHoldLook();
+    expect(spinning(within(dialog).getByRole("button", { name: "Use New threads" }))).toBe(false);
+    await act(async () => decide(false));
+  });
+
+  it("in the places dialog spins once, on the button, never also on the row's mark", async () => {
+    state.workspaces = [{ id: "w1", name: "Purdue Esports", environmentId: "local" }];
+    state.overriding = new Set(["w1"]);
+    let answerClear!: () => void;
+    state.save.mockImplementationOnce(() => new Promise<void>((resolve) => (answerClear = resolve)));
+    render(<ThreadDefaultsPage />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Different in 1 place" }));
+    });
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    await flush();
+    await pastHoldLook();
+    expect(within(dialog).queryAllByLabelText("Saving")).toHaveLength(0);
+    expect(dialog.querySelectorAll("[data-slot=busy-label][data-busy]")).toHaveLength(1);
+    await act(async () => answerClear());
+  });
+
+  it("after a close and reopen during a pick's save, a new pick waits for it and is laid on what it confirmed", async () => {
+    state.permission = "auto";
+    state.placePermission = "auto";
+    let answerFirst!: () => void;
+    let calls = 0;
+    state.save.mockImplementation(async (...args: unknown[]) => {
+      calls += 1;
+      if (calls === 1) await new Promise<void>((resolve) => (answerFirst = resolve));
+      state.placePermission = (args[2] as { permission: "safe" | "edits" | "auto" }).permission;
+    });
+    const first = render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    await screen.findByRole("dialog");
+    await act(async () => {});
+    await pick("Access", "Auto-accept edits");
+    first.unmount();
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    await screen.findByRole("dialog");
+    await act(async () => {});
+    await pick("Effort", "High");
+    // Queued behind the first.
+    expect(state.save).toHaveBeenCalledTimes(1);
+    await act(async () => answerFirst());
+    await flush();
+    expect(state.save).toHaveBeenCalledTimes(2);
+    expect(state.save.mock.calls[1]![2]).toEqual(expect.objectContaining({ permission: "edits", reasoning: "high" }));
   });
 });

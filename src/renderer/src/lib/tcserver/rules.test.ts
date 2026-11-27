@@ -276,4 +276,32 @@ describe("rulesStore", () => {
     await Promise.all([rulesStore.loadCatalog("local", true), rulesStore.loadCatalog("local", true)]);
     expect(link.of("catalog.get")).toHaveLength(2);
   });
+
+  it("says a catalog past its deadline, and fills it when the late answer comes", async () => {
+    vi.useFakeTimers();
+    const ask = link.request.bind(link);
+    let answer!: () => void;
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> =>
+      method === "catalog.get" ? new Promise<T>((resolve) => (answer = () => void ask<T>(method, params).then(resolve))) : ask<T>(method, params)) as typeof link.request;
+    void rulesStore.loadCatalog("local").catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(LOAD_DEADLINE_MS);
+    expect(rulesStore.getSnapshot().catalogErrors.get("local")).toBe(NO_ANSWER);
+    expect(rulesStore.getSnapshot().catalogs.has("local")).toBe(false);
+    answer();
+    await vi.advanceTimersByTimeAsync(0);
+    vi.useRealTimers();
+    expect(rulesStore.getSnapshot().catalogs.has("local")).toBe(true);
+    expect(rulesStore.getSnapshot().catalogErrors.has("local")).toBe(false);
+  });
+
+  it("asks the catalog again on Retry even while a read is still out past its deadline", async () => {
+    const ask = link.request.bind(link);
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> =>
+      method === "catalog.get" ? (link.calls.push({ method, params }), new Promise<T>(() => {})) : ask<T>(method, params)) as typeof link.request;
+    void rulesStore.loadCatalog("local").catch(() => undefined);
+    void rulesStore.loadCatalog("local", true).catch(() => undefined);
+    expect(link.of("catalog.get")).toHaveLength(1);
+    void rulesStore.loadCatalog("local", true, true).catch(() => undefined);
+    expect(link.of("catalog.get")).toHaveLength(2);
+  });
 });

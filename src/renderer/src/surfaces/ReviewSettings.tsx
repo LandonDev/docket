@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReviewSettings } from "@server/shared/review";
 import { loadReviewScope, ReviewFields, ReviewSkeleton, saveReviewSettings, useReviewScope, type ReviewRow } from "../chrome/ReviewFields";
 import { DialogFooter } from "../chrome/ConfirmDialog";
+import { LastRead } from "./settings/parts/LastRead";
 import { Modal, ModalBody } from "../chrome/Modal";
 import { ProjectSettingsDialog } from "../chrome/ProjectDialogs";
 import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
@@ -35,11 +36,15 @@ export function ReviewsPage() {
   usePublishHome("reviews", scope ? (scope.home ?? null) : undefined);
   const draft = useDraft(scope?.settings);
   const saved: Record<ReviewRow, Saved> = { on: useSaved(), model: useSaved(), effort: useSaved(), stop: useSaved(), wait: useSaved() };
-  const { blocked } = homeNote(scope?.home);
+  // A later read that failed over the set held: the set stays, marked as last read, with the failure and Retry, and
+  // takes no change until a fresh read answers (as New threads).
+  const stale = scope && error ? { error, retry } : null;
+  const blocked = homeNote(scope?.home).blocked || stale !== null;
   // A key that may read the set but not change it sees each value as words, and one line saying who can.
   const may = useLinkMay(environmentId, "review.set", { projectId: null, settings: null });
   const computer = useComputerName(environmentId);
-  const change = (next: ReviewSettings, row: ReviewRow) => draft.change(saved[row], next, (set) => saveReviewSettings(environmentId, null, set));
+  const change = (next: ReviewSettings, row: ReviewRow) =>
+    blocked ? Promise.resolve(false) : draft.change(saved[row], next, (set) => saveReviewSettings(environmentId, null, set));
   // While a save is out a new pick is refused (`useDraft`); the rows are drawn held only once it has lasted 150 ms.
   const slow = useHeldLook(draft.busy);
   const look = blocked || slow;
@@ -53,6 +58,7 @@ export function ReviewsPage() {
       <PageSection>
         {draft.value ? (
           <>
+            {stale ? <LastRead environmentId={environmentId} stale={stale} /> : null}
             <ReviewFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={look} readOnly={!may} />
             {/* Shown with Reviews off too: a project may keep reviews on of its own. */}
             <DifferentProjects />

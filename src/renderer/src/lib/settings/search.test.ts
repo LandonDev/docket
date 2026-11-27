@@ -228,5 +228,10 @@ describe("the overrides row in search", () => {
     expect(rows("different from new threads", { placesDiffer: false })).not.toContain("defaults.different");
     // Reviews' exceptions row is drawn only once every project answered: search offers the page, not the row.
     expect(rows("projects that differ from reviews")).not.toContain("reviews.different");
+    // …and the Reviews page stands for it, by its words and with its count typed.
+    const pages = (query: string) => searchSettings(query, settingsList(MAC), { mac: "this Mac" }).map((result) => result.page);
+    expect(pages("projects that differ from reviews")).toContain("reviews");
+    expect(pages("different in projects")).toContain("reviews");
+    expect(pages("different in 1 project")).toContain("reviews");
   });
 });

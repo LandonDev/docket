@@ -1,5 +1,5 @@
 import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { registry } from "../lib/connection";
 import { useEnvironments } from "../lib/connection/status";
 import { ACCESS_LABEL, ACCESS_LINE, ACCESS_ORDER, FULL_ACCESS_CONFIRM } from "../lib/settings/access";
@@ -25,6 +25,9 @@ import { Skeleton } from "../components/ui/skeleton";
 import { useDraft } from "../surfaces/settings/parts/useDraft";
 import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
 import { useHeldLook } from "../surfaces/settings/parts/useHeldLook";
+import { AS_LAST_READ, LastRead } from "../surfaces/settings/parts/LastRead";
+
+export { AS_LAST_READ };
 import { confirmAction, DialogFooter } from "./ConfirmDialog";
 import { FieldRow } from "./DialogField";
 import { Modal, ModalBody } from "./Modal";
@@ -85,9 +88,38 @@ export function queueDefaults<T>(environmentId: string, workspaceId: string | nu
   return run;
 }
 
-/** One scope's set as an editor holds it: what the computer confirmed, what is shown, each row's save. `pressing`:
- *  Use New threads is under way for this place (its check, confirm, clear), which holds the set as a save does. */
-function useDefaultsSet(environmentId: string, workspaceId: string | null, pressing = false) {
+/**
+ * Use New threads under way, by computer and place (`scopeKey`), from the press to the clear's answer: its check of the
+ * set it would bring, the confirm, the clear. Kept here, not in the row or dialog that pressed it, so closing and
+ * reopening any editor of the place keeps the hold: a second press is refused, and so is every pick in its set.
+ */
+type PressPhase = "checking" | "confirming" | "clearing";
+const presses = new Map<string, PressPhase>();
+const pressListeners = new Set<() => void>();
+function setPress(key: string, phase: PressPhase | null): void {
+  if (phase) presses.set(key, phase);
+  else presses.delete(key);
+  for (const listener of pressListeners) listener();
+}
+const subscribePress = (listener: () => void): (() => void) => {
+  pressListeners.add(listener);
+  return () => pressListeners.delete(listener);
+};
+/** Where a place's Use New threads stands, if under way. */
+function usePress(key: string | null): PressPhase | undefined {
+  return useSyncExternalStore(subscribePress, () => (key ? presses.get(key) : undefined));
+}
+/** For tests: no press under way and no save queued anywhere, so a test that leaves one out holds up no other. */
+export function resetDefaultsEditingForTests(): void {
+  presses.clear();
+  saving.clear();
+  for (const listener of pressListeners) listener();
+}
+
+/** One scope's set as an editor holds it: what the computer confirmed, what is shown, each row's save. Use New threads
+ *  under way for the place (`usePress`) holds the set as a save does. */
+function useDefaultsSet(environmentId: string, workspaceId: string | null) {
+  const pressing = usePress(workspaceId === null ? null : scopeKey(environmentId, workspaceId)) !== undefined;
   const scope = useThreadDefaults(environmentId, workspaceId, true);
   const failure = useThreadDefaultsError(environmentId, workspaceId);
   // A refresh that failed over a held answer: the rows stay, as last read, under the failure and its Retry.
@@ -127,22 +159,6 @@ function useDefaultsSet(environmentId: string, workspaceId: string | null, press
   return { scope, failure, stale, value: draft.value, saved, write, blocked, held, look, clear, cleared, may };
 }
 type DefaultsSet = ReturnType<typeof useDefaultsSet>;
-
-/** The words that mark a held set whose refresh failed: its values are the last answer, not the current one. */
-export const AS_LAST_READ = "As last read";
-
-/** A failed refresh over a held set: the failure (said at the page's or the dialog's head, with Retry), and one muted
- *  line over the rows saying they are the last answer. */
-function LastRead({ environmentId, stale }: { environmentId: string; stale: { error: string; retry: () => void } }) {
-  return (
-    <>
-      <ReadFailure computer={environmentId} error={stale.error} retry={stale.retry} />
-      <p data-last-read="" className="pb-1 text-xs text-muted-foreground">
-        {AS_LAST_READ}.
-      </p>
-    </>
-  );
-}
 
 /** The set's rows: on the New threads page each is its map row, in a dialog a field row. Effort only for a model
  *  with a ladder; Linked projects start on only on the one set, with two or more computers. */
@@ -327,7 +343,7 @@ function StartWith({ environmentId }: { environmentId: string }) {
 function WorkspaceSet({ environmentId, workspaceId }: { environmentId: string; workspaceId: string }) {
   const workspace = useWorkspaceCatalog().workspaces.find((w) => w.id === workspaceId && w.environmentId === environmentId);
   const reset = useUseNewThreads({ id: workspaceId, environmentId, name: workspace?.name ?? "This workspace" });
-  const set = useDefaultsSet(environmentId, workspaceId, reset.pressing);
+  const set = useDefaultsSet(environmentId, workspaceId);
   return (
     <PageSection
       title="New threads"
@@ -470,7 +486,8 @@ function OwnSetRow({ place }: { place: WorkspaceMeta }) {
     <PageRow title={place.name} description={words} error={saved.error ?? undefined} className={PLACE_ROW}>
       {failure ? <ReadFailure computer={place.environmentId} error={failure.error} retry={failure.retry} /> : null}
       {stale ? <ReadFailure computer={place.environmentId} error={stale.error} retry={stale.retry} /> : null}
-      <SaveMark state={saved.state} />
+      {/* The button's own spinner says the wait; the row keeps only the Saved check. */}
+      <SaveMark state={saved.state === "saved" ? "saved" : "idle"} />
       {own && reset.may ? <UseNewThreadsPress reset={reset} saved={saved} held={blocked} disabled={blocked} variant="outline" /> : null}
     </PageRow>
   );
@@ -501,14 +518,15 @@ function UseNewThreadsPress({
     <Button
       variant={variant}
       size="sm"
-      disabled={disabled || reset.look}
+      disabled={disabled || reset.spin}
       onClick={() => {
         if (held) return;
         void reset.run(saved);
       }}
     >
-      {/* Saving once the clear has been out 150 ms, as the row's spinner. */}
-      <BusyLabel busy={saved.state === "slow"} label="Use New threads" />
+      {/* The button pressed is the one that spins: from 150 ms of the press, through the check and the clear (never while
+          the confirm is open), in every editor of the place. */}
+      <BusyLabel busy={reset.spin} label="Use New threads" />
     </Button>
   );
 }
@@ -557,19 +575,17 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
       live = false;
     };
   }, [read, attempt]);
-  // From the press to the clear's answer (its check, the confirm, the clear) the place's set is held: a second press
-  // or any pick is refused. The re-read after it holds the set by itself: the store has no set to pick from until then.
-  const [pressing, setPressing] = useState(false);
-  const going = useRef(false);
-  const look = useHeldLook(pressing);
+  // From the press to the clear's answer (its check, the confirm, the clear) the place's set is held, by computer and
+  // place (`presses`): a second press, from this editor or one opened after it, is refused, and so is any pick. The
+  // re-read after the clear holds the set by itself: the store has no set to pick from until then. The button spins
+  // from 150 ms of the press through the check and the clear, but not while the confirm is open.
+  const key = scopeKey(place.environmentId, place.id);
+  const phase = usePress(key);
+  const spin = useHeldLook(phase === "checking" || phase === "clearing");
   const run = (saved: Saved): Promise<boolean> => {
-    if (going.current) return Promise.resolve(false);
-    going.current = true;
-    setPressing(true);
-    const done = () => {
-      going.current = false;
-      setPressing(false);
-    };
+    if (presses.has(key)) return Promise.resolve(false);
+    setPress(key, "checking");
+    const done = () => setPress(key, null);
     return press(saved).then(
       (cleared) => {
         done();
@@ -594,6 +610,7 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
     const own = workspaceStore.defaultsAt(place.environmentId, place.id);
     const today = own?.overridden ? ACCESS_LABEL[own.defaults.permission] : null;
     const todayWords = today ? ` Today they start with ${today}.` : "";
+    if (now.unverified || now.scope.defaults.permission === "auto") setPress(key, "confirming");
     if (now.unverified) {
       // The keeper cannot be asked, so the set it keeps is not known: asked first as if it were Full access.
       const ok = await confirmAction({
@@ -610,6 +627,7 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
       });
       if (!ok) return false;
     }
+    setPress(key, "clearing");
     return saved.run(() => queueDefaults(place.environmentId, place.id, () => workspaceStore.saveDefaults(place.environmentId, place.id, null)));
   };
   return {
@@ -618,8 +636,8 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
     failure: fresh.error === null ? null : { error: fresh.error, retry: () => setAttempt((n) => n + 1) },
     environmentId,
     run,
-    pressing,
-    look,
+    pressing: phase !== undefined,
+    spin,
   };
 }
 
@@ -630,7 +648,7 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
  */
 export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: WorkspaceMeta; onClose: () => void }) {
   const reset = useUseNewThreads(workspace);
-  const set = useDefaultsSet(workspace.environmentId, workspace.id, reset.pressing);
+  const set = useDefaultsSet(workspace.environmentId, workspace.id);
   const computer = useComputerName(workspace.environmentId);
   return (
     <Modal title="New threads" description={workspace.name} size="sm" onClose={onClose}>

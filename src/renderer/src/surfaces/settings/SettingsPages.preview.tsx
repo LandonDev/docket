@@ -983,7 +983,32 @@ const PAGES: Record<
         settings={{ screen: "fit", detail: null }}
         saved={{ screen: { state: "idle", error: "The box did not fit the Windows VM to your window.", run: async () => false } }}
         upgradeNote={{ words: "The box did not put the screen size back to 1280 × 800.", retry: async () => {} }}
-        held={{ screen: true }}
+        standing={{ screen: true }}
+        error={null}
+        pressing={false}
+        onPress={() => {}}
+        onSleepAfter={() => {}}
+        onScreen={() => {}}
+        onQuality={() => {}}
+        onPoints={() => {}}
+      />
+    ),
+  },
+  // The machine's state read again failed: the Windows row as last read with its verb held, the line with Retry, the
+  // selects held at once.
+  "winvm-state": {
+    title: "Windows VM",
+    description: settingsSectionDescription("winvm"),
+    environments: THREE_COMPUTERS,
+    body: () => (
+      <WinvmView
+        state={{ ...(ANSWERS["env_box:work.winvm.state"] as WinvmState), state: "awake" }}
+        points={(ANSWERS["env_box:work.winvm.points"] as { points: WinvmPoint[] }).points}
+        settings={{ screen: "fit", detail: "sharp" }}
+        stateError="The box did not answer."
+        onRetryState={() => {}}
+        stateLastRead
+        standing={{ sleepAfter: true, screen: true, detail: true }}
         error={null}
         pressing={false}
         onPress={() => {}}

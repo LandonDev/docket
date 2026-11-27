@@ -250,11 +250,12 @@ class RulesStore {
    *  at each mount: the probed rows land after boot, Muse Code's once it is
    *  signed in) while the last answer stays on screen. Concurrent asks share
    *  one request. */
-  loadCatalog(environmentId: string, fresh = false): Promise<RulesCatalog> {
+  loadCatalog(environmentId: string, fresh = false, again = false): Promise<RulesCatalog> {
     const cached = this.state.catalogs.get(environmentId);
     if (cached && !fresh) return Promise.resolve(cached);
     const pending = this.catalogInflight.get(environmentId);
-    if (pending) return pending;
+    // Retry asks again even with a read still out past its deadline; whichever answers fills the sheet.
+    if (pending && !again) return pending;
     const link = this.links.get(environmentId);
     if (!link) return Promise.resolve(this.state.catalogs.get(environmentId) ?? {});
     const failed = (error: string | null) => {
@@ -265,13 +266,16 @@ class RulesStore {
       this.set({ ...this.state, catalogErrors });
     };
     failed(null);
-    // Under the house's deadline: a catalog that never comes is said with Retry, never an empty sheet for ever.
-    const request = withDeadline(link.request<RulesCatalog>("catalog.get"))
+    // The store follows the read itself, so an answer past the deadline still fills the sheet and clears the failure;
+    // the house's deadline only says the wait, with Retry, never an empty sheet for ever.
+    const asked = link.request<RulesCatalog>("catalog.get");
+    const request = asked
       .then(
         (catalog) => {
           const catalogs = new Map(this.state.catalogs);
           catalogs.set(environmentId, catalog);
           this.set({ ...this.state, catalogs });
+          failed(null);
           return catalog;
         },
         (err: unknown) => {
@@ -279,7 +283,13 @@ class RulesStore {
           throw err;
         },
       )
-      .finally(() => this.catalogInflight.delete(environmentId));
+      .finally(() => {
+        if (this.catalogInflight.get(environmentId) === request) this.catalogInflight.delete(environmentId);
+      });
+    withDeadline(asked).catch((err: unknown) => {
+      // Past the deadline with no answer yet: said, while the read stays open for a late answer.
+      if (this.catalogInflight.get(environmentId) === request) failed(err instanceof Error ? err.message : String(err));
+    });
     this.catalogInflight.set(environmentId, request);
     return request;
   }
@@ -399,7 +409,7 @@ export function useRulesScope(
     retry: () => void rulesStore.load(environmentId, workspaceId).catch(() => {}),
     catalogFailure:
       !state.catalogs.has(environmentId) && state.catalogErrors.has(environmentId)
-        ? { error: state.catalogErrors.get(environmentId) ?? "", retry: () => void rulesStore.loadCatalog(environmentId, true).catch(() => {}) }
+        ? { error: state.catalogErrors.get(environmentId) ?? "", retry: () => void rulesStore.loadCatalog(environmentId, true, true).catch(() => {}) }
         : null,
   };
 }

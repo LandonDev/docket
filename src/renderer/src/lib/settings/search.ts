@@ -26,6 +26,11 @@ export type SearchResult = {
 };
 
 /** What pages were called, for a search by an old page name. */
+/** Words a page is also found by: a row it draws only sometimes, which search cannot know, stands as its page. */
+const PAGE_ALSO: Partial<Record<SettingPage, string>> = {
+  reviews: "Projects that differ from Reviews, different in projects",
+};
+
 export const PAGE_WAS: Partial<Record<SettingPage, readonly string[]>> = {
   keybindings: ["Keybindings"],
   updates: ["General › About", "Hosts › Release › Code updates"],
@@ -108,7 +113,7 @@ function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly
     const kind = pageKind(row);
     // A page is found by its row's label and by its own title, and a result says the title ("Threads on this Mac").
     const title = row.title ?? row.label;
-    out.push({ key: `page:${row.id}`, title, path: pathOf(group.label), page: row.id, names: `${title} ${row.label}`, old: kind === "computer:*" ? [`Hosts › ${row.label}`] : (PAGE_WAS[kind] ?? []), rank: 0 });
+    out.push({ key: `page:${row.id}`, title, path: pathOf(group.label), page: row.id, names: `${title} ${row.label} ${PAGE_ALSO[kind] ?? ""}`, counted: PAGE_ALSO[kind] !== undefined, old: kind === "computer:*" ? [`Hosts › ${row.label}`] : (PAGE_WAS[kind] ?? []), rank: 0 });
     // A computer, a job or a workspace is its own place: its rows say its name, not the heading it stands under.
     const place = row.kind === "page" ? group.label : undefined;
     const own: SettingVars = row.kind === "computer" ? { ...vars, computer: nameInLine(row.label) } : vars;

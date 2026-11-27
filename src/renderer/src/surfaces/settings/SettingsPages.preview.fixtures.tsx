@@ -7,6 +7,7 @@ const PAGES = [
   "winvm-change",
   "winvm-reread",
   "winvm-upgrade",
+  "winvm-state",
   // The box's page as /ui draws it: a browser, so before the Mac windows.
   "computer-box-web",
   "away",

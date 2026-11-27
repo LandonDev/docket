@@ -206,4 +206,12 @@ describe("Access for each job's new threads", () => {
     expect(document.querySelector('[data-job="j2"]')!.textContent).not.toContain("as last read");
     expect(screen.queryByText(/^Full access asks/, { selector: "section > p" })).toBeNull();
   });
+
+  it("reads the set of a job pushed into the list while it is open", () => {
+    const { rerender } = render(<JobsAccess />);
+    store.loads.length = 0;
+    store.jobs = [...JOBS, { id: "j4", name: "Unify", kind: "work", sector: "unify", environmentId: "env_box" }];
+    rerender(<JobsAccess />);
+    expect(store.loads).toContain("env_box:j4");
+  });
 });

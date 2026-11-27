@@ -249,17 +249,37 @@ export function ToolsRow() {
 type HostCards = { cards?: ToolRulesCard[]; error?: string };
 
 /** Each computer with Work on, asked for its add-ons' tools while the sheet is open. A failed read keeps what an
- *  earlier one brought, beside its failure. */
+ *  earlier one brought, beside its failure; only a whole read that answers clears the failure, never one saved card. */
 function useToolCards(open: boolean, hosts: readonly string[]) {
   const [byHost, setByHost] = useState<Record<string, HostCards>>({});
   // The sheet's open spell: an answer from one it closed on is dropped.
   const spell = useRef(0);
+  // Each whole read still out, by computer: the add-ons a save answered for since it was asked, whose cards that read
+  // (asked before the save landed) must not put back.
+  const reading = useRef(new Map<string, Set<Set<string>>>());
   const load = useCallback(
     (id: string, asked?: number) => {
       const at = asked ?? spell.current;
+      const saved = new Set<string>();
+      const out = reading.current.get(id) ?? new Set<Set<string>>();
+      out.add(saved);
+      reading.current.set(id, out);
+      const done = () => void out.delete(saved);
       return withDeadline(hostRequest<{ addons: ToolRulesCard[] }>(id, "work.outbox.rules", {})).then(
-        (answer) => void (at === spell.current && setByHost((was) => ({ ...was, [id]: { cards: answer.addons } }))),
-        (err: unknown) => void (at === spell.current && setByHost((was) => ({ ...was, [id]: { ...was[id], error: err instanceof Error ? err.message : String(err) } }))),
+        (answer) => {
+          done();
+          if (at !== spell.current) return;
+          setByHost((was) => {
+            const held = was[id]?.cards ?? [];
+            const cards = answer.addons.map((card) => (saved.has(card.addonId) ? (held.find((c) => c.addonId === card.addonId) ?? card) : card));
+            return { ...was, [id]: { cards } };
+          });
+        },
+        (err: unknown) => {
+          done();
+          if (at !== spell.current) return;
+          setByHost((was) => ({ ...was, [id]: { ...was[id], error: err instanceof Error ? err.message : String(err) } }));
+        },
       );
     },
     [],
@@ -272,8 +292,11 @@ function useToolCards(open: boolean, hosts: readonly string[]) {
     for (const id of hosts) void load(id, at);
     return () => void (spell.current += 1);
   }, [open, key]);
-  const put = (id: string, card: ToolRulesCard): void =>
-    setByHost((was) => ({ ...was, [id]: { cards: (was[id]?.cards ?? []).map((c) => (c.addonId === card.addonId ? card : c)) } }));
+  /** One add-on's card as its save answered: merged into the list as read, its computer's read failure kept. */
+  const put = (id: string, card: ToolRulesCard): void => {
+    for (const saved of reading.current.get(id) ?? []) saved.add(card.addonId);
+    setByHost((was) => ({ ...was, [id]: { ...was[id], cards: (was[id]?.cards ?? []).map((c) => (c.addonId === card.addonId ? card : c)) } }));
+  };
   return { byHost, put, retry: (id: string) => load(id) };
 }
 

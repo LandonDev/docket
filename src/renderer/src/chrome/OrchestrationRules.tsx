@@ -11,6 +11,7 @@ import { Facts } from "../surfaces/settings/hosts/Facts";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
 import { ChoiceCombobox } from "../components/choice-combobox";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton } from "../components/page";
+import { Skeleton } from "../components/ui/skeleton";
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
 import { Field, FieldRow } from "./DialogField";
@@ -47,7 +48,7 @@ import { OpenCue, SettingRow, SettingSection } from "../surfaces/settings/parts/
 import { ValueWords } from "../surfaces/settings/parts/ValueWords";
 import { ManagedLine } from "../surfaces/settings/parts/ManagedLine";
 import { useLinkMay } from "../lib/linkMay";
-import { useComputerName } from "../lib/settings/computerName";
+import { useComputerName, useReadFailWords } from "../lib/settings/computerName";
 import { ListFilter, useListFilter } from "../surfaces/settings/parts/ListFilter";
 import { SaveMark } from "../surfaces/settings/parts/SaveMark";
 import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
@@ -176,6 +177,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
   const outLook = useHeldLook(out > 0);
   const mayWrite = useLinkMay(environmentId, "rules.set", { workspaceId, rules: null });
   const computer = useComputerName(environmentId);
+  const catalogWords = useReadFailWords(environmentId);
   usePublishHome("orchestration", workspaceId === null ? (scope ? (scope.home ?? null) : undefined) : undefined);
   // A computer's link coming or going may move where the copy can be written: the answer says so again.
   const statuses = useEnvironmentStatuses();
@@ -270,7 +272,20 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
       </SettingSection>
 
       <SettingSection of="sub.models">
-        <SettingRow id="sub.models" description={catalog ? `${allowed} of ${models.length} allowed` : undefined} onOpen={() => setModelsOpen(true)} openLabel="Models agents may run on" />
+        {/* The catalog's failure is said here, once, with Retry; its late answer still fills the row and the sheet. */}
+        <SettingRow
+          id="sub.models"
+          description={catalog ? `${allowed} of ${models.length} allowed` : catalogFailure ? undefined : <Skeleton className="inline-block h-3 w-28 align-middle" />}
+          error={catalogFailure ? catalogWords(catalogFailure.error) : undefined}
+          onOpen={() => setModelsOpen(true)}
+          openLabel="Models agents may run on"
+        >
+          {catalogFailure ? (
+            <Button variant="ghost" size="sm" onClick={catalogFailure.retry}>
+              Retry
+            </Button>
+          ) : null}
+        </SettingRow>
       </SettingSection>
 
       <SettingSection
@@ -285,7 +300,20 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         }
       >
         {rules.routing.map((r, i) => (
-          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} disabled={look} readOnly={readOnly} first={i === 0} last={i === rules.routing.length - 1} onEdit={() => setEditing(r)} onMove={(by) => move(i, i + by)} />
+          <RuleRow
+            key={r.id}
+            rule={r}
+            rules={rules}
+            catalog={catalog}
+            catalogFailed={catalogFailure !== null}
+            disabled={look}
+            blocked={blocked}
+            readOnly={readOnly}
+            first={i === 0}
+            last={i === rules.routing.length - 1}
+            onEdit={() => !isHeld() && setEditing(r)}
+            onMove={(by) => move(i, i + by)}
+          />
         ))}
         {rules.routing.length === 0 ? <PageEmpty>No rules</PageEmpty> : null}
         {moved.error ? <PageError>{moved.error}</PageError> : null}
@@ -567,7 +595,9 @@ function RuleRow({
   rule,
   rules,
   catalog,
+  catalogFailed = false,
   disabled,
+  blocked = false,
   readOnly = false,
   first,
   last,
@@ -577,7 +607,12 @@ function RuleRow({
   rule: RoutingRule;
   rules: OrchestrationRules;
   catalog: RulesCatalog | null;
+  /** The computer's model catalog did not come: the model by the name this window knows, never a bone for ever. */
+  catalogFailed?: boolean;
+  /** Drawn held (a write past 150 ms, or the box out of reach). */
   disabled?: boolean;
+  /** The box that keeps the set is out of reach: the row's ⋯ gives way to its cue. */
+  blocked?: boolean;
   /** A key that may read the rules but not change them: the row says the rule and opens nothing. */
   readOnly?: boolean;
   first: boolean;
@@ -603,7 +638,14 @@ function RuleRow({
         <Facts
           parts={[
             rule.enabled ? null : "Off",
-            model ? modelName(rule.provider, model.id, model.label) : modelId,
+            // While the catalog is read the model's words wait as a bone: never a raw id.
+            model ? (
+              modelName(rule.provider, model.id, model.label)
+            ) : catalog || catalogFailed ? (
+              modelId ? modelName(rule.provider, modelId, modelId) : "Default"
+            ) : (
+              <Skeleton data-model-bone="" className="inline-block h-3 w-24 align-middle" />
+            ),
             model?.reasoning.length ? EFFORT_LABELS[rule.reasoning] : null,
             leadOnly ? "Lead threads only" : !approved ? <span className="text-warning">Not allowed</span> : null,
           ]}
@@ -611,14 +653,15 @@ function RuleRow({
       }
       {...(readOnly ? {} : { onOpen: onEdit, openLabel: `Edit rule: ${rule.task}`, openDisabled: disabled })}
     >
-      {/* The ⋯ only moves a rule, so a lone rule, or a set the box cannot take now, has none: the row ends in its cue. */}
-      {readOnly ? null : (first && last) || disabled ? (
+      {/* The ⋯ only moves a rule, so a lone rule, or a set the box cannot take now, has none: the row ends in its cue. A
+          write in flight keeps the ⋯, drawn held. */}
+      {readOnly ? null : (first && last) || blocked ? (
         <OpenCue />
       ) : (
         <RowsMenu
           label={`${rule.task} actions`}
           trigger={
-            <Button variant="ghost" size="icon-sm" aria-label={`${rule.task} actions`} className="text-muted-foreground">
+            <Button variant="ghost" size="icon-sm" aria-label={`${rule.task} actions`} disabled={disabled} className="text-muted-foreground">
               <MoreHorizontal />
             </Button>
           }
@@ -642,15 +685,27 @@ type RuleDialogProps = {
 };
 
 export function RuleDialog(props: RuleDialogProps) {
+  // While Save or Delete is out the dialog cannot be closed (Escape, the backdrop, the header's close): a refusal then
+  // lands in view, the draft and its reason kept.
+  const [running, setRunning] = useState<"save" | "delete" | null>(null);
   return (
-    <Modal onClose={props.onClose} title={props.rule ? "Edit rule" : "Add rule"} size="sm">
-      <RuleForm {...props} />
+    <Modal onClose={props.onClose} busy={running !== null} title={props.rule ? "Edit rule" : "Add rule"} size="sm">
+      <RuleForm {...props} running={running} setRunning={setRunning} />
     </Modal>
   );
 }
 
 /** Save and Delete… change the rules, then play the dialog's exit; a refusal stays, its reason over the footer. */
-function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialogProps) {
+function RuleForm({
+  rule,
+  rules,
+  catalog,
+  onSave,
+  onDelete,
+  onClose,
+  running,
+  setRunning,
+}: RuleDialogProps & { running: "save" | "delete" | null; setRunning: (running: "save" | "delete" | null) => void }) {
   const close = useModalClose();
   const providers = providersOf(catalog).filter((p) => (catalog?.[p]?.models.length ?? 0) > 0);
   const [enabled, setEnabled] = useState(rule?.enabled ?? true);
@@ -658,7 +713,6 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
   const [provider, setProvider] = useState<ProviderId>(rule?.provider ?? providers[0] ?? "claude");
   const [model, setModel] = useState(rule?.model ?? "");
   const [reasoning, setReasoning] = useState<Effort>(rule?.reasoning ?? "medium");
-  const [running, setRunning] = useState<"save" | "delete" | null>(null);
   const [error, setError] = useState<string | null>(null);
   // While Save or Delete is out the fields take no edit (it would be dropped when the dialog closes); drawn held only
   // once it has lasted 150 ms.

@@ -202,6 +202,27 @@ describe("Settings → Work: Work is on for", () => {
     expect(flip().hasAttribute("data-disabled")).toBe(false);
   });
 
+  it("keeps the pending flip shown when a push moves the switch while its write is out, then shows what the write answered", async () => {
+    const { rerender } = render(<WorkPage />);
+    await settle();
+    let let_go!: () => void;
+    state.gate = new Promise<void>((done) => (let_go = done));
+    const flip = () => within(rowOf("local")).getByRole("switch");
+    await act(async () => fireEvent.click(flip()));
+    // A push (another window, the phone) says Work is off there while this write is out: the press's flip stands.
+    state.on = new Set(["env_box"]);
+    rerender(<WorkPage />);
+    expect(flip().getAttribute("aria-checked")).toBe("true");
+    await act(async () => {
+      let_go();
+      await state.gate;
+    });
+    await settle();
+    rerender(<WorkPage />);
+    expect(flip().getAttribute("aria-checked")).toBe("true");
+    expect(state.on.has("local")).toBe(true);
+  });
+
   it("says an offline computer is offline, with no switch", async () => {
     state.offline = new Set(["env_pc"]);
     render(<WorkPage />);

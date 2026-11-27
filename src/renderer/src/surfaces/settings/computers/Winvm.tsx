@@ -190,10 +190,13 @@ export function WinvmHost({ env }: { env: string }) {
   /** The machine's state read failed (`null` words: no answer): the page head's line with none shown yet; over a
    *  state shown, a line with Retry under the Windows row, and the selects whose values it brings held. */
   const [stateError, setStateError] = useState<{ words: string | null } | null>(null);
+  const stateStale = stateError !== null;
   const [pressing, setPressing] = useState(false);
   /** Reads out now (a count, since a Retry may overlap the socket's own): a control whose value they bring is held. */
   const [readingState, setReadingState] = useState(0);
   const [readingDisplay, setReadingDisplay] = useState(0);
+  /** The Windows row's verb waits while the state it comes from is being read again. */
+  const pressFlight = readingState > 0;
   const [showPoints, setShowPoints] = useState(false);
   const link = useMemo(() => registry.linkOf(env), [env]);
   const admin = useLinkMay(env, "work.winvm.settings");
@@ -256,7 +259,11 @@ export function WinvmHost({ env }: { env: string }) {
   useEffect(() => {
     void load();
     const offPush = link.onPush((push) => {
-      if (push.push === "work.winvm") setState(push.state as WinvmState);
+      if (push.push === "work.winvm") {
+        // A state the machine pushed is current: it answers what a failed read again could not.
+        setState(push.state as WinvmState);
+        setStateError(null);
+      }
       if (push.push === "work.winvm.points") {
         setPoints(push.points as WinvmPoint[]);
         setPointsError(null);
@@ -297,7 +304,8 @@ export function WinvmHost({ env }: { env: string }) {
     );
   const press = async (): Promise<void> => {
     const verb = winvmRow(state).press;
-    if (!verb || pressing) return;
+    // The verb comes from the state: none while that state is being read again or is only as last read.
+    if (!verb || pressing || pressFlight || stateStale) return;
     setPressing(true);
     try {
       await link.request(`work.winvm.${verb}`, {});
@@ -336,16 +344,23 @@ export function WinvmHost({ env }: { env: string }) {
   // The machine's state is a read every select's value depends on: Sleeps after is its own, and the display's two
   // read whether live resize is on from it (Fits my window's path, Picture quality's row). On a reconnect they are held
   // until both the state and the display have answered.
-  const stateOut = readingState > 0 || !!stateError;
-  const held: Record<keyof Changes, boolean> = {
-    sleepAfter: pending.sleepAfter !== undefined || stateOut,
-    screen: pending.screen !== undefined || readingDisplay > 0 || stateOut || upgradeHolds(upgrade) || !!settingsError,
-    detail: pending.detail !== undefined || readingDisplay > 0 || stateOut || !!settingsError,
+  // A hold in flight (a save or a read out now) is drawn only once it lasts; a standing one (a failed read, values as
+  // last read, an upgrade left unresolved) is drawn at once: it will not pass by itself.
+  const flight: Record<keyof Changes, boolean> = {
+    sleepAfter: pending.sleepAfter !== undefined || readingState > 0,
+    screen: pending.screen !== undefined || readingDisplay > 0 || readingState > 0,
+    detail: pending.detail !== undefined || readingDisplay > 0 || readingState > 0,
   };
+  const standing: Record<keyof Changes, boolean> = {
+    sleepAfter: stateStale,
+    screen: stateStale || upgradeHolds(upgrade) || !!settingsError,
+    detail: stateStale || !!settingsError,
+  };
+  const held = (field: keyof Changes): boolean => flight[field] || standing[field];
   const pickScreen = async (screen: WinvmScreen): Promise<void> => {
     // Held while an upgrade is unresolved (its rollback could write the size that stood over this pick), and while the
     // values shown are only as last read (an upgrade's rollback needs the size that stands, freshly read).
-    if (held.screen) return;
+    if (held("screen")) return;
     const live = state.display?.device === "virtio";
     if (screen === "fit" && state.display && !live) {
       forgetUpgrade(env);
@@ -376,20 +391,23 @@ export function WinvmHost({ env }: { env: string }) {
         settingsError={settingsError && (settingsError.words ?? readWords(NO_ANSWER))}
         onRetrySettings={loadSettings}
         saved={{ ...savers, screen: screenMark(savers.screen, upgrade) }}
-        held={held}
+        flight={flight}
+        standing={standing}
+        stateLastRead={stateStale}
+        pressFlight={pressFlight}
         stateError={state && stateError ? (stateError.words ?? readWords(NO_ANSWER)) : null}
         onRetryState={load}
         upgradeNote={upgrade?.phase === "unconfirmed" || upgrade?.phase === "unrestored" ? { words: upgrade.reason, retry: () => retryUpgrade(env) } : null}
         error={error}
         pressing={pressing}
         onPress={() => void press()}
-        onSleepAfter={(v) => void (held.sleepAfter ? undefined : save("sleepAfter", v))}
+        onSleepAfter={(v) => void (held("sleepAfter") ? undefined : save("sleepAfter", v))}
         onScreen={(v) => void pickScreen(v)}
-        onQuality={(v) => void (held.detail ? undefined : save("detail", v))}
+        onQuality={(v) => void (held("detail") ? undefined : save("detail", v))}
         onPoints={() => setShowPoints(true)}
         may={{ admin, operate }}
       />
-      {showPoints ? <PointsDialog env={env} state={state} points={points ?? []} admin={admin} onClose={() => setShowPoints(false)} /> : null}
+      {showPoints ? <PointsDialog env={env} state={state} stale={stateStale || pressFlight} points={points ?? []} admin={admin} onClose={() => setShowPoints(false)} /> : null}
     </>
   );
 }
@@ -409,9 +427,15 @@ export interface WinvmViewProps {
   /** what Fits my window's upgrade left unsettled (an end not confirmed, a size not put back), under Screen size with
    *  its Retry */
   upgradeNote?: { words: string; retry: () => Promise<void> } | null;
-  /** Each select that takes no pick now: its own save out, a read its value comes from out, Fits my window's upgrade
-   *  unresolved (`upgradeHolds`), or its value only as last read */
-  held?: Partial<Record<keyof Changes, boolean>>;
+  /** Each select held by a save or a read in flight: drawn disabled only once the hold lasts (`useHeldLook`) */
+  flight?: Partial<Record<keyof Changes, boolean>>;
+  /** Each select held by something that will not pass by itself (a failed read, values as last read, an upgrade left
+   *  unresolved): drawn disabled at once */
+  standing?: Partial<Record<keyof Changes, boolean>>;
+  /** the state shown failed its read again: the Windows row says so and its verb is held */
+  stateLastRead?: boolean;
+  /** the state is being read again: the verb waits (drawn held once it lasts) */
+  pressFlight?: boolean;
   /** the machine's state read again failed over the state shown: its line with Retry under the Windows row */
   stateError?: string | null;
   onRetryState?: () => void | Promise<void>;
@@ -440,7 +464,10 @@ export function WinvmView({
   onRetrySettings,
   saved = {},
   upgradeNote = null,
-  held = {},
+  flight = {},
+  standing = {},
+  stateLastRead = false,
+  pressFlight = false,
   stateError = null,
   onRetryState,
   error,
@@ -457,9 +484,11 @@ export function WinvmView({
   const lastRead = !!settingsError && !!settings;
   // A held select refuses a pick at once (its handler); it is drawn disabled only once the hold has lasted, so a save
   // that answers in a few frames never flashes the row.
-  const sleepLook = useHeldLook(!!held.sleepAfter);
-  const screenLook = useHeldLook(!!held.screen || lastRead);
-  const detailLook = useHeldLook(!!held.detail || lastRead);
+  // A standing hold is drawn at once.
+  const sleepLook = useHeldLook(!!flight.sleepAfter) || !!standing.sleepAfter;
+  const screenLook = useHeldLook(!!flight.screen) || !!standing.screen || lastRead;
+  const detailLook = useHeldLook(!!flight.detail) || !!standing.detail || lastRead;
+  const pressLook = useHeldLook(pressFlight) || stateLastRead;
   // a computer before live resize says no display: the size is a new Set up's
   const live = state.display?.device === "virtio";
   const turning = resizing(state);
@@ -467,9 +496,13 @@ export function WinvmView({
   const sleepWords = SLEEP_AFTER.find((o) => o.value === state.sleepAfter)?.label;
   return (
     <PageSection>
-      <SettingRow id="winvm.windows" description={row.words} error={state.blocked ?? state.error ?? error ?? undefined}>
+      <SettingRow
+        id="winvm.windows"
+        description={stateLastRead ? `${row.words}, as last read` : row.words}
+        error={state.blocked ?? state.error ?? error ?? undefined}
+      >
         {press ? (
-          <Button variant="secondary" size="sm" disabled={pressing} onClick={onPress}>
+          <Button variant="secondary" size="sm" disabled={pressing || pressLook} onClick={onPress}>
             <BusyLabel busy={pressing} label={PRESS_WORDS[press]} />
           </Button>
         ) : row.press || !row.busy ? null : (
@@ -596,10 +629,25 @@ function RetryButton({ retry }: { retry: () => void | Promise<void> }) {
 }
 
 /** Restore points: saved while it sleeps, three kept; going back and deleting each after a confirm that says what is lost. */
-export function PointsDialog({ env, state, points, admin, onClose }: { env: string; state: WinvmState; points: readonly WinvmPoint[]; admin: boolean; onClose: () => void }) {
+export function PointsDialog({
+  env,
+  state,
+  stale = false,
+  points,
+  admin,
+  onClose,
+}: {
+  env: string;
+  state: WinvmState;
+  /** the state is being read again or failed that read: whether it sleeps is not known, so no point is made or used */
+  stale?: boolean;
+  points: readonly WinvmPoint[];
+  admin: boolean;
+  onClose: () => void;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const asleep = state.state === "asleep";
+  const asleep = state.state === "asleep" && !stale;
   const link = registry.linkOf(env);
   const run = async (which: string, method: string, params: object, act: string): Promise<void> => {
     setBusy(which);

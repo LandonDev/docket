@@ -281,6 +281,70 @@ describe("Subagents", () => {
     await act(async () => answer());
   });
 
+  it("refuses a rule row's open while a write is out, and keeps every ⋯ drawn, held, never the open cue", async () => {
+    state.scope = { rules: rules(), overridden: true };
+    let answer!: () => void;
+    state.save.mockImplementationOnce(() => new Promise<void>((resolve) => (answer = resolve)));
+    render(<OrchestrationPage />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("switch", { name: "May edit files itself" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Edit rule: Bulk work" }));
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await pastHoldLook();
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-rule]")];
+    expect(rows.length).toBeGreaterThan(1);
+    for (const row of rows) {
+      expect(row.querySelector("[data-slot=open-cue]")).toBeNull();
+      expect((within(row).getByRole("button", { name: /actions$/ }) as HTMLButtonElement).disabled).toBe(true);
+    }
+    await act(async () => answer());
+  });
+
+  it("says a failed catalog once, on the Models row with Retry, and names rule models without raw ids", async () => {
+    state.scope = { rules: rules(), overridden: true };
+    state.catalog = null;
+    const view = render(<OrchestrationPage />);
+    // Loading: the model words wait as bones.
+    expect(document.querySelectorAll("[data-model-bone]").length).toBeGreaterThan(0);
+    state.catalogFailure = { error: NO_ANSWER, retry: state.retry };
+    view.rerender(<OrchestrationPage />);
+    const models = document.querySelector("[data-setting='sub.models']") as HTMLElement;
+    expect(models.textContent).toContain("This Mac did not answer.");
+    await act(async () => {
+      fireEvent.click(within(models).getByRole("button", { name: "Retry" }));
+    });
+    expect(state.retry).toHaveBeenCalled();
+    expect(document.querySelectorAll("[data-model-bone]")).toHaveLength(0);
+    expect(document.body.textContent).not.toMatch(/claude-opus-5-5|gpt-6\.2-sol/);
+  });
+
+  it("cannot be closed by Escape or its header's close while Save is out; a refusal keeps the draft and the reason in view", async () => {
+    let refuse!: () => void;
+    state.save.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => (refuse = () => reject(new Error("refused: orchestration rules live on box; it is offline")))));
+    render(<OrchestrationPage />);
+    const dialog = await openRule("Reviews");
+    await act(async () => {
+      fireEvent.change(within(dialog).getByLabelText("When the task is"), { target: { value: "Reviews and docs" } });
+    });
+    await saveDialog(dialog);
+    await act(async () => {
+      fireEvent.keyDown(dialog, { key: "Escape" });
+    });
+    const close = within(dialog).queryByRole("button", { name: "Close" });
+    if (close) {
+      await act(async () => {
+        fireEvent.click(close);
+      });
+    }
+    expect(screen.getByRole("dialog")).toBe(dialog);
+    await act(async () => refuse());
+    expect(within(dialog).getByText("orchestration rules live on box; it is offline")).toBeTruthy();
+    expect((within(dialog).getByLabelText("When the task is") as HTMLInputElement).value).toBe("Reviews and docs");
+  });
+
   it("says once that both limits are for each thread, tells them apart by name, and names no limit", () => {
     render(<OrchestrationPage />);
     const limits = screen.getByRole("region", { name: "Limits" });

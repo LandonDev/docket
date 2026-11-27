@@ -241,9 +241,11 @@ through `useSaved`.
   read a select's value depends on is out (its own save, the machine's state for Sleeps after, the display read for
   the other two, which also read whether live resize is on from the machine's state), it takes no new pick, and its
   own pending pick stays on screen until its save answers; on a reconnect all three wait for both the state and the
-  display. The handler refuses at once; the select is drawn disabled only once the hold has lasted (`useHeldLook`), so
-  a fast save never flashes the row. A failed state read again over a state shown is a line with Retry under the
-  Windows row. The hold through Fits my window's confirm draws no Saving mark; the save's mark starts with its write. Its sign-ins and its
+  display. The handler refuses at once; a hold in flight (a save or a read out now) is drawn disabled only once it has
+  lasted (`useHeldLook`), so a fast save never flashes the row, and a standing hold (a failed read, values as last read,
+  an upgrade left unresolved) is drawn at once. A failed state read again over a state shown is a line with Retry under
+  the Windows row, whose state then reads "as last read" with its verb (Set up, Wake, Sleep) held, and Restore points
+  makes and uses no point; a `work.winvm` push answers it. The verb also waits while the state is being read again. The hold through Fits my window's confirm draws no Saving mark; the save's mark starts with its write. Its sign-ins and its
   edition's end are Connections' rows alone. The Work page no longer has it.
 
 The preview (`SettingsPages.preview.tsx`) answers per computer: `<environment id>:<method>` answers first, a fixture
@@ -293,7 +295,14 @@ the set the computer last confirmed on a refusal.
   out, the Models sheet and the rule dialog's fields during Save and Delete included). The hold refuses a pick at once
   in the handler, but the controls are drawn held only once it has lasted 150 ms (`parts/useHeldLook.ts`), so a fast
   save never flashes the page; a blocked set (its home out of reach, or as last read) is drawn held at once. A refusal
-  puts back the set the last good save sent (`useDraft`'s `accepted`), else the confirmed one. After a
+  puts back the set the last good save sent (`useDraft`'s `accepted`), else the confirmed one. Use New threads' hold is
+  kept by computer and place (`presses` in ThreadDefaultsDialog.tsx), not by the row or dialog that pressed it, so a
+  close and reopen of any editor of the place keeps it; its button spins from 150 ms of the press through the check
+  and the clear (never while the confirm is open), and the places dialog's row keeps only its Saved check. Reviews
+  says a later read's failure over the set it holds as New threads does (`parts/LastRead.tsx`: "As last read",
+  Retry, the set held). Subagents' rule dialog cannot be closed during Save or Delete (`Modal`'s `busy`); the model
+  catalog's late answer still fills the row and the sheet (the deadline only says the wait); a failed catalog is the
+  Models row's red line with Retry, and a rule row's model words are a bone while it loads. After a
   clear the rows wait as bones for the re-read. Saves are still queued per set (`queueDefaults`) for two editors of
   one set. The store drops a read asked before a write to its scope when it lands after (`defaultsWrites`), so an
   older answer, or its failure, never replaces a saved set. "Different in N places" counts confirmed answers alone

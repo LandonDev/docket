@@ -641,8 +641,6 @@ describe("Screen size and picture quality", () => {
     // The box still holds Fits my window: the select says so, not the size that was not put back.
     expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("Fits my window");
     h.settingsWriteFail = null;
-  h.settingsWriteHold = null;
-  h.lookMs = 150;
     await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
     await flush();
     expect(document.querySelector("[data-upgrade-note]")).toBeNull();
@@ -678,8 +676,6 @@ describe("Screen size and picture quality", () => {
     expect(await held()).toBe(true);
     // The old size goes back: Screen size takes picks again.
     h.settingsWriteFail = null;
-  h.settingsWriteHold = null;
-  h.lookMs = 150;
     const line = document.querySelector("[data-upgrade-note]")!.closest("[data-slot=page-error-line]") as HTMLElement;
     await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
     await flush();
@@ -752,7 +748,6 @@ describe("Screen size and picture quality", () => {
       expect(await isHeld("Screen size")).toBe(true);
       expect(confirmAction).not.toHaveBeenCalled();
       h.settingsWriteHold = null;
-  h.lookMs = 150;
       h.screen = "1920x1200";
       await act(async () => land({ sleepAfter: "30m", screen: "1920x1200", detail: "sharp" }));
       await flush();
@@ -894,9 +889,11 @@ describe("Screen size and picture quality", () => {
     await flush();
     const line = document.querySelector("[data-state-failure]")!.closest("[data-slot=page-error-line]") as HTMLElement;
     expect(line.textContent).toContain("did not answer.");
-    await pick("Sleeps after", "Never");
-    await flush();
-    expect(h.calls.some((c) => c.method === "work.winvm.settings" && (c.params as { sleepAfter?: string }).sleepAfter)).toBe(false);
+    // A standing hold: drawn disabled at once, no wait.
+    for (const name of ["Sleeps after", "Screen size", "Picture quality"]) {
+      const select = screen.getByRole("combobox", { name }) as HTMLButtonElement;
+      expect(select.disabled || select.hasAttribute("data-disabled")).toBe(true);
+    }
     h.state = was;
     await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
     await flush();
@@ -904,6 +901,137 @@ describe("Screen size and picture quality", () => {
     await pick("Sleeps after", "Never");
     await flush();
     expect(h.calls.some((c) => c.method === "work.winvm.settings" && (c.params as { sleepAfter?: string }).sleepAfter === "never")).toBe(true);
+  });
+
+  describe("the machine's state read again, and holds that will not pass by themselves", () => {
+    const drawnHeld = (el: Element | null) => !!el && ((el as HTMLButtonElement).disabled || el.hasAttribute("data-disabled"));
+    const failStateRead = async () => {
+      const failing = Promise.reject(new Error("The computer did not answer"));
+      void failing.catch(() => undefined);
+      h.state = failing as never;
+      await act(async () => h.opens.forEach((fn) => fn()));
+      await flush();
+    };
+
+    it("marks the Windows row last read and holds its verb at once, so an old Awake never sends Sleep", async () => {
+      h.state = at({ state: "awake", display: virtio });
+      h.screen = "fit";
+      render(<WinvmHost env="box" />);
+      await flush();
+      await failStateRead();
+      const row = document.querySelector("[data-setting='winvm.windows']")!;
+      expect(row.textContent).toContain("Awake, as last read");
+      const sleep = screen.getByRole("button", { name: "Sleep" });
+      // Drawn held at once: a standing hold, no wait.
+      expect(drawnHeld(sleep)).toBe(true);
+      fireEvent.click(sleep);
+      await flush();
+      expect(pressed()).toEqual([]);
+    });
+
+    it("lets a pushed state answer a failed read: the line goes, the row is current, its verb and the selects free", async () => {
+      h.state = at({ state: "awake", display: virtio });
+      h.screen = "fit";
+      render(<WinvmHost env="box" />);
+      await flush();
+      await failStateRead();
+      expect(document.querySelector("[data-state-failure]")).not.toBeNull();
+      await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "asleep", display: virtio }) })));
+      await flush();
+      expect(document.querySelector("[data-state-failure]")).toBeNull();
+      expect(document.querySelector("[data-setting='winvm.windows']")?.textContent).not.toContain("as last read");
+      expect(drawnHeld(screen.getByRole("button", { name: "Wake" }))).toBe(false);
+      for (const name of ["Sleeps after", "Screen size", "Picture quality"]) expect(drawnHeld(screen.getByRole("combobox", { name }))).toBe(false);
+      fireEvent.click(screen.getByRole("button", { name: "Wake" }));
+      await flush();
+      expect(pressed()).toEqual(["work.winvm.wake"]);
+    });
+
+    it("holds the verb while the state is being read again: refused at once, drawn held once it lasts", async () => {
+      h.state = at({ state: "awake", display: virtio });
+      h.screen = "fit";
+      render(<WinvmHost env="box" />);
+      await flush();
+      h.lookMs = 60_000;
+      h.state = new Promise(() => {}) as never;
+      await act(async () => h.opens.forEach((fn) => fn()));
+      await flush();
+      const sleep = screen.getByRole("button", { name: "Sleep" });
+      expect(drawnHeld(sleep)).toBe(false);
+      fireEvent.click(sleep);
+      await flush();
+      expect(pressed()).toEqual([]);
+      // At the real 150 ms it is drawn held (a points push redraws the page; the state read is still out).
+      h.lookMs = 150;
+      await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm.points", points: [] })));
+      await lasted();
+      expect(drawnHeld(screen.getByRole("button", { name: "Sleep" }))).toBe(true);
+    });
+
+    it("draws standing holds at once: values as last read, and an upgrade left unresolved on a page opened again", async () => {
+      vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+      h.state = at({ state: "awake", display: vga });
+      render(<WinvmHost env="box" />);
+      await flush();
+      // Values as last read: held with no wait.
+      h.settingsRead = "refused";
+      await act(async () => h.opens.forEach((fn) => fn()));
+      await flush();
+      expect(drawnHeld(screen.getByRole("combobox", { name: "Screen size" }))).toBe(true);
+      h.settingsRead = "answers";
+      const line = document.querySelector("[data-display-failure]")!.closest("[data-slot=page-error-line]") as HTMLElement;
+      await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
+      await flush();
+      // An upgrade that failed and could not put the old size back, then the page closed and opened again.
+      await pick("Screen size", "Fits my window");
+      await flush();
+      await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "setting-up", step: "Restarting Windows", display: vga }) })));
+      h.settingsWriteFail = "The box refused the change.";
+      await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", error: "Windows did not start with the new display.", display: vga }) })));
+      await flush();
+      cleanup();
+      h.screen = "fit";
+      render(<WinvmHost env="box" />);
+      await flush();
+      expect(document.querySelector("[data-upgrade-note]")).not.toBeNull();
+      expect(drawnHeld(screen.getByRole("combobox", { name: "Screen size" }))).toBe(true);
+    });
+
+    it("makes and uses no restore point while the state is only as last read", async () => {
+      h.state = at({ state: "asleep", display: virtio });
+      h.screen = "fit";
+      h.points = [{ id: "p1", name: "Before the Office update", at: 1 }];
+      render(<WinvmHost env="box" />);
+      await flush();
+      await failStateRead();
+      fireEvent.click(screen.getByRole("button", { name: "Restore points" }));
+      await flush();
+      expect((screen.getByRole("button", { name: "Save a point" }) as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByRole("button", { name: "Go back…" }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it("a page closed while a save is out and opened again shows what the box answers, and its next pick goes after", async () => {
+      h.state = at({ state: "awake", display: virtio });
+      h.screen = "fit";
+      render(<WinvmHost env="box" />);
+      await flush();
+      let land: (v: unknown) => void = () => {};
+      h.settingsWriteHold = new Promise((resolve) => (land = resolve));
+      await pick("Sleeps after", "2 hours");
+      cleanup();
+      h.settingsWriteHold = null;
+      render(<WinvmHost env="box" />);
+      await flush();
+      // The box has not taken it yet: the page shows what it holds, free to pick.
+      expect(screen.getByRole("combobox", { name: "Sleeps after" }).textContent).toContain("30 minutes");
+      await pick("Sleeps after", "Never");
+      await flush();
+      await act(async () => land({ sleepAfter: "2h", screen: "fit", detail: "sharp" }));
+      const writes = h.calls.filter((c) => c.method === "work.winvm.settings" && (c.params as { sleepAfter?: string }).sleepAfter).map((c) => (c.params as { sleepAfter: string }).sleepAfter);
+      // One link, in order: the newer pick is sent after the older and stands.
+      expect(writes).toEqual(["2h", "never"]);
+      expect(screen.getByRole("combobox", { name: "Sleeps after" }).textContent).toContain("Never");
+    });
   });
 
   it("ignores a reconnect's reply that lands after the watch settled", async () => {

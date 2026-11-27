@@ -143,6 +143,35 @@ describe("Reviews page", () => {
     expect(read).toHaveBeenCalledTimes(2);
   });
 
+  it("says a later read's failure over the set held, marks the set as last read, holds it, and offers Retry", async () => {
+    vi.useFakeTimers();
+    const offline = { name: "box", online: false };
+    const scope = { override: null, global: { ...SETTINGS, beforeMerge: true }, settings: { ...SETTINGS, beforeMerge: true }, source: "global" };
+    // The page's first read answers with the box offline; its next check is refused.
+    state.get = vi.fn().mockResolvedValueOnce({ ...scope, home: offline }).mockRejectedValue(new Error("The computer did not answer"));
+    render(<ReviewsPage />);
+    await act(async () => {});
+    expect(document.querySelector("[data-last-read]")).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(HOME_RECHECK_MS));
+    vi.useRealTimers();
+    expect(document.querySelector("[data-last-read]")!.textContent).toBe("As last read.");
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    // The set stays, held at once.
+    const flip = screen.getByRole("switch", { name: "Review before merge" }) as HTMLButtonElement;
+    expect(flip.getAttribute("aria-checked")).toBe("true");
+    expect(flip.disabled).toBe(true);
+    // Retry's read answers: the mark and the failure go.
+    state.get = async () => ({ ...scope, home: { name: "box", online: true } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    });
+    await act(async () => {});
+    expect(document.querySelector("[data-last-read]")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect((screen.getByRole("switch", { name: "Review before merge" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("shows skeleton rows before review.get answers", () => {
     state.get = () => new Promise(() => {});
     render(<ReviewsPage />);
