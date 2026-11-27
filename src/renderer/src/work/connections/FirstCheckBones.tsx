@@ -9,14 +9,15 @@ import { StatusMark } from "../../components/ui/status";
  */
 export const STATE_LINE = "flex [&>[data-slot=status-detail]]:whitespace-normal [&>[data-slot=status-glyph]]:mt-px [&>[data-slot=status-glyph]]:self-start";
 
-/** Six connections of one section, in the shape the page's rows take: a title, then its state and its line. */
+/** Six connections of one section, in the shape the page's rows take: a title, then its state and its line. Only their
+ *  lengths count, so no word here is a state line's (lib/stateLinesGuard.test.ts). */
 const SAMPLE_ROWS = [
-  { title: "LifeOS", line: "Signed in" },
-  { title: "Microsoft 365", line: "Signed in, Purdue University" },
-  { title: "Office add-in", line: "Connected" },
-  { title: "Google", line: "Signed in" },
+  { title: "LifeOS", line: "maya.chen@example.com" },
+  { title: "Microsoft 365", line: "Purdue University, its own sign-in" },
+  { title: "Office add-in", line: "Two add-ins paired" },
+  { title: "Google", line: "maya.chen@example.com" },
   { title: "Teams files", line: "3 libraries" },
-  { title: "Windows VM", line: "Stopped, its disk is ready" },
+  { title: "Windows VM", line: "Stopped, its disk is kept" },
 ];
 
 /**
@@ -29,7 +30,7 @@ export function FirstCheckBones() {
     <Bones label="Checking connections">
       <PageSection title="Microsoft">
         {SAMPLE_ROWS.map((row) => (
-          <PageRow key={row.title} title={row.title} description={<StatusMark className={STATE_LINE} state="done" word="Ready" detail={row.line} still />} />
+          <PageRow key={row.title} title={row.title} description={<StatusMark className={STATE_LINE} state="done" word="Working" detail={row.line} still />} />
         ))}
       </PageSection>
     </Bones>
