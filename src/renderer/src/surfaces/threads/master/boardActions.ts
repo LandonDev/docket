@@ -50,7 +50,7 @@ export function pausableRows<T extends { meta: SessionMeta }>(rows: readonly T[]
 /** The ⋯ menu: the fleet switches for this batch, a row with nothing to act on disabled. */
 export function boardMenuItems(counts: { pausable: number; paused: number; done: number; all: number }): MenuRow[] {
   return [
-    { kind: "item", id: "pause", label: "Pause all", icon: Pause, disabled: counts.pausable === 0 },
+    { kind: "item", id: "pause", label: "Pause all…", icon: Pause, disabled: counts.pausable === 0 },
     { kind: "item", id: "resume", label: "Resume all", icon: Play, disabled: counts.paused === 0 },
     { kind: "sep" },
     { kind: "item", id: "archive-done", label: "Archive done…", icon: Archive, disabled: counts.done === 0 },

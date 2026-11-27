@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { SECTION_SKELETON, StatsView, paceHeight, paceLine, paceTitle, resetPaceCount } from "./stats";
+import { OUTPUT_UNIT, SECTION_SKELETON, StatsView, paceHeight, paceLine, paceTitle, resetPaceCount, tokenValue } from "./stats";
 import { HEATMAP_HEIGHT } from "./stats/heatmap";
 import { STATS_SECTIONS } from "@renderer/surfaces/statsSkeletonShape";
 import { STATS } from "./stats.fixtures";
@@ -56,6 +56,17 @@ describe("Stats", () => {
     expect(busiest.textContent).not.toContain("30 days");
   });
 
+  it("names output tokens once by Daily output and Model mix, and says tokens in each hover value", () => {
+    render(<StatsView data={STATS} status={null} />);
+    for (const name of ["Daily output", "Model mix"]) {
+      const region = screen.getByRole("region", { name });
+      expect(region.querySelectorAll("p").length, name).toBeGreaterThan(0);
+      expect(region.textContent!.split(OUTPUT_UNIT).length - 1, name).toBe(1);
+    }
+    expect(OUTPUT_UNIT).toBe("Output tokens a day");
+    expect(tokenValue(12_400)).toBe("12.4k tokens");
+  });
+
   it("names Cache hit rate's 30 days on its empty line when no rate gives it a description", () => {
     render(<StatsView data={{ ...STATS, cacheDaily: [], totals: { ...STATS.totals, cache_read: 0, input: 0, cache_write: 0 } }} status={null} />);
     const cache = screen.getByRole("region", { name: "Cache hit rate" });
@@ -100,7 +111,7 @@ describe("Stats", () => {
     expect(height("Top projects")).toBe("232px");
     expect(height("Tools used")).toBe("232px");
     expect(height("Busiest hours")).toBe(`${HEATMAP_HEIGHT}px`);
-    // The two sections with a description line keep it.
+    // The sections with a description line keep it.
     for (const h of ORDER) {
       const region = screen.getByRole("region", { name: h });
       const line = region.querySelector("p [data-slot=skeleton]");

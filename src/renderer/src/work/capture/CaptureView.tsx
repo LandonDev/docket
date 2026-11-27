@@ -2,6 +2,7 @@ import { forwardRef, type ClipboardEvent, type DragEvent, type KeyboardEvent } f
 import { ChoiceToggle } from "../../components/choice-toggle";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Kbd } from "../../components/ui/kbd";
+import { Spinner } from "../../components/ui/spinner";
 import { X } from "../../chrome/icons";
 import { FileTypeIcon } from "../../chrome/FileTypeIcon";
 import { ErrorLine } from "../../chrome/ConfirmDialog";
@@ -24,8 +25,9 @@ export interface CaptureViewProps {
   sector: SectorChoice;
   /** his jobs by their workspaces' names (`CaptureState.jobs`); the sector's word where none names one */
   jobs?: readonly { sector: SectorKey; name: string }[];
-  /** offline: LifeOS cannot take a capture here now (`lifeos` says why); silent: this computer's host did not answer the window's ask */
-  status: "ready" | "offline" | "silent";
+  /** offline: LifeOS cannot take a capture here now (`lifeos` says why); silent: this computer's host did not answer the window's ask;
+   *  loading: the first ask with nothing kept from before is still out, so the jobs and the last one used are not known yet */
+  status: "ready" | "offline" | "silent" | "loading";
   /** the host's LifeOS state while offline; none from a host a build behind */
   lifeos?: LifeosStateName;
   /** this computer's name ("This Mac"), named in every state */
@@ -71,7 +73,7 @@ export function captureDown(p: Pick<CaptureViewProps, "status" | "lifeos" | "hos
 export const FIELD_LINES = "min-h-11 max-h-[17.875rem]";
 
 export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(function CaptureView(p, field) {
-  // Held while nothing can be filed: LifeOS away, or this computer's host silent (Retry stands beside them).
+  // Held while nothing can be filed: LifeOS away, this computer's host silent (Retry stands beside them), or its first answer still out.
   const off = p.status !== "ready" || !p.canFile;
   const down = captureDown(p);
   return (
@@ -120,6 +122,12 @@ export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(fun
             </Button>
           ) : null}
         </div>
+      ) : p.status === "loading" ? (
+        // The first ask, with no state kept from an earlier one: the jobs and the last one used are on their way; the draft is his to type.
+        <p role="status" className="flex items-center gap-2 px-4 pb-2 text-xs text-muted-foreground">
+          <Spinner aria-hidden className="size-3.5" />
+          Loading jobs…
+        </p>
       ) : down ? (
         // A state, not a fault: muted, and no press here (ruling 29); the fix is on Connections.
         <p className="px-4 pb-2 text-xs text-muted-foreground">{down.words}</p>

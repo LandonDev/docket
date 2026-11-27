@@ -184,7 +184,7 @@ describe("HostsRow", () => {
     const names = within(screen.getByRole("menu", { name: "box actions" }))
       .getAllByRole("menuitem")
       .map((el) => el.textContent);
-    expect(names).toEqual(["Switch to box", "Add workspace here…", "Mark all read", "Pause all", "Resume all", "Stop all", "Archive done…", "Settings"]);
+    expect(names).toEqual(["Switch to box", "Add workspace here…", "Mark all read", "Pause all…", "Resume all", "Stop all…", "Archive done…", "Settings"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Add workspace here…" }));
     expect(onAdd).toHaveBeenCalledWith("env_box");
   });
@@ -262,7 +262,7 @@ describe("HostsRow", () => {
     );
     await openHost(/^box/);
     expect(screen.getByRole("menuitem", { name: "Resume all" }).getAttribute("aria-disabled")).toBe("true");
-    fireEvent.click(screen.getByRole("menuitem", { name: "Stop all" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Stop all…" }));
     expect(screen.getByTestId("pending").textContent).toBe('stop:{"kind":"host","environmentId":"env_box","name":"box"}');
   });
 

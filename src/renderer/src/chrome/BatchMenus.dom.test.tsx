@@ -43,9 +43,9 @@ describe("the fleet switches as menu rows", () => {
     expect(screen.getAllByRole("menuitem")[0]!.textContent).toBe("Customize…");
     expect(screen.getByRole("menuitem", { name: "Resume all" }).getAttribute("aria-disabled")).toBe("true");
     // Stop all loses nothing (Resume all follows it): the row keeps the menu's ink, only its confirm's verb is red (council M F6.1).
-    expect(screen.getByRole("menuitem", { name: "Stop all" }).getAttribute("data-variant")).toBe("default");
+    expect(screen.getByRole("menuitem", { name: "Stop all…" }).getAttribute("data-variant")).toBe("default");
     expect(screen.getByRole("menuitem", { name: "Archive done…" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all…" }));
     expect(onPick).toHaveBeenCalledWith("batch-pause");
   });
 
@@ -60,8 +60,8 @@ describe("the fleet switches as menu rows", () => {
       </DropdownMenu>,
     );
     const names = screen.getAllByRole("menuitem").map((el) => el.textContent);
-    expect(names).toEqual(["Mark all read", "Pause all", "Resume all", "Stop all", "Archive done…"]);
-    expect(screen.getByRole("menuitem", { name: "Pause all" }).getAttribute("aria-disabled")).toBe("true");
+    expect(names).toEqual(["Mark all read", "Pause all…", "Resume all", "Stop all…", "Archive done…"]);
+    expect(screen.getByRole("menuitem", { name: "Pause all…" }).getAttribute("aria-disabled")).toBe("true");
     expect(screen.getByRole("menuitem", { name: "Resume all" }).getAttribute("aria-disabled")).toBeNull();
     expect(screen.getAllByRole("menuitem").every((el) => el.querySelector("svg"))).toBe(true);
     fireEvent.click(screen.getByRole("menuitem", { name: "Mark all read" }));
@@ -152,7 +152,7 @@ describe("the fleet switches as mounted", () => {
     expect(options).toHaveLength(1);
     fireEvent.click(options[0]);
     expect((await screen.findByRole("menuitem", { name: "Resume all" })).getAttribute("aria-disabled")).toBe("true");
-    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all…" }));
     const pending = JSON.parse(screen.getByTestId("pending").textContent ?? "null");
     expect(pending).toMatchObject({ action: "pause", scope: { kind: "project", path: MAC, paths: [MAC, BOX], name: "app" } });
   });
@@ -163,7 +163,7 @@ describe("the fleet switches as mounted", () => {
     await act(() => new Promise((r) => setTimeout(r, 0)));
     fireEvent.click(await screen.findByRole("menuitem", { name: /^box/ }));
     await act(() => new Promise((r) => setTimeout(r, 0)));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Pause all" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pause all…" }));
     const pending = JSON.parse(screen.getByTestId("pending").textContent ?? "null");
     expect(pending).toEqual({ action: "pause", scope: { kind: "host", environmentId: "env_box", name: "box" } });
   });
@@ -185,7 +185,7 @@ describe("the fleet switches as mounted", () => {
       ["local", "env_box"],
     );
     fireEvent.click(screen.getAllByRole("button", { name: "Workspace options" })[0]);
-    const pause = await screen.findByRole("menuitem", { name: "Pause all" });
+    const pause = await screen.findByRole("menuitem", { name: "Pause all…" });
     expect(pause.getAttribute("aria-disabled")).toBe("true");
     expect(pause.getAttribute("aria-description")).toBe("This Mac is offline");
     fireEvent.click(pause);

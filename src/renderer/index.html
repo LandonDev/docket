@@ -53,18 +53,13 @@
         align-items: center;
         justify-content: center;
         pointer-events: none;
-        /* index.css's `--dur-fast` on `--ease-out`, written out: it is not loaded yet. */
+        /* index.css's `--dur-fast` on `--ease-out`, written out: it is not loaded yet. Opacity alone, so it
+           stays under reduced motion (DESIGN "Reduced motion": fades stay). */
         transition: opacity 120ms cubic-bezier(0.16, 1, 0.3, 1);
       }
 
       #boot-splash.boot-splash-out {
         opacity: 0;
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        #boot-splash {
-          transition: none;
-        }
       }
 
       /* The mark is the icon's slabs as one shape (scripts/make-icons.ts):

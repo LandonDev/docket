@@ -312,6 +312,9 @@ it("modelLabel names the catalog's model, the native id when the catalog lacks i
   resetHarnessModelOverlays();
   expect(modelLabel("claude", "muse-wonder-1.0")).toBe("Muse Wonder 1.0");
   expect(modelLabel("codex", "gpt-nope")).toBe("gpt-nope");
+  // Before a host sends its list, the shared catalog names its built-in models: never the raw id.
+  expect(findModel("codex:gpt-6.1-sol")).toBeUndefined();
+  expect(modelLabel("codex", "gpt-6.1-sol")).toBe("GPT-6.1 Sol");
   expect(modelLabel(undefined, undefined)).toBe("");
   expect(modelLabel("claude", undefined)).toBe("");
   expect(modelLabel("", "claude-opus-5-5")).toBe("");

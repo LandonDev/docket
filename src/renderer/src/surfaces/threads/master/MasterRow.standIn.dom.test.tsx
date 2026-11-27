@@ -50,7 +50,8 @@ describe("a board row for a stand-in child", () => {
     expect([...rows].map((r) => r.getAttribute("data-menu-id"))).toEqual(["far", "near"]);
     expect(rows[0].querySelector("[data-model]")).toBeNull();
     expect(rows[0].textContent).toContain("Update 35 cont child");
-    expect(rows[1].querySelector("[data-model-name]")?.textContent).toBe("gpt-6.1-sol");
+    // No host has sent its list here: the shared catalog names it, never the raw id (council 9 S F6.3).
+    expect(rows[1].querySelector("[data-model-name]")?.textContent).toBe("GPT-6.1 Sol");
     expect(rows[1].querySelector("[data-model-effort]")?.textContent).toBe("High");
   });
 

@@ -104,7 +104,10 @@ A frame change in the main process, kept small:
   dead key) owns every key until it ends; a dragged link or words land in the
   field as typed, only files are the window's. The last state
   the host gave is kept in localStorage, so the window is whole the instant
-  it shows. The state names his jobs (`CaptureState.jobs`: each sector's Work
+  it shows; on the first capture, with nothing kept, the line says "Loading
+  jobs…" (a spinner beside it) until the host answers, File, Start thread,
+  Return and mod+Return held so nothing files as Unsorted before the job he
+  last used arrives, and the draft his to type. The state names his jobs (`CaptureState.jobs`: each sector's Work
   workspace on this host by its name, the first made where a sector has two),
   so the Job toggle reads "Purdue Esports", not "Purdue"; the sector's word
   stands only where no workspace names it, and a host a build behind sends

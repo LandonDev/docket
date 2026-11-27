@@ -101,11 +101,12 @@ export function BatchFoot({
   return (
     <div
       ref={toastAnchor ? registerToastAnchor : undefined}
-      className="flex shrink-0 flex-col border-t border-border bg-background px-3 py-2"
+      // Never over three fifths of the board: past that its steps scroll inside, the heading, Edit… and the thread list stay in view.
+      className="flex max-h-3/5 min-h-0 shrink-0 flex-col border-t border-border bg-background px-3 py-2"
       data-batch-foot
       data-foot-mode={active ? "console" : "idle"}
     >
-      <div className="flex h-6 items-center gap-2">
+      <div className="flex h-6 shrink-0 items-center gap-2">
         <h3 className="flex-1 text-xs font-medium text-muted-foreground">When done</h3>
         {/* The foot's trailing buttons end their word on the 12px edge the times keep (-me-2 takes the button's own 8px back). */}
         {onSave && !failed ? (
@@ -118,14 +119,14 @@ export function BatchFoot({
       </div>
       {blocked ? (
         // The word and what blocks, two spans in the failed tone (DESIGN "Typography and text hierarchy"), never "Blocked: …".
-        <StatusMark state="failed" glyph={false} word="Blocked" detail={blocked} className="flex" data-blocked />
+        <StatusMark state="failed" glyph={false} word="Blocked" detail={blocked} className="flex shrink-0" data-blocked />
       ) : null}
 
       {failed ? (
         <RulesFailed onRetry={onRetry} />
       ) : (
         <>
-          <ol className="mt-1 flex flex-col">
+          <ol className="mt-1 flex min-h-0 flex-col overflow-x-hidden overflow-y-auto" data-steps>
             {steps.map((step) => (
               <StepRow
                 key={step.id}
@@ -140,7 +141,7 @@ export function BatchFoot({
             ))}
           </ol>
 
-          <p className="mt-1 text-xs text-muted-foreground" data-then>
+          <p className="mt-1 shrink-0 text-xs text-muted-foreground" data-then>
             {rules.then === "archive-children" ? "Then archive the threads" : "Then notify you"}
           </p>
         </>
@@ -320,6 +321,16 @@ function Console({ step }: { step: LiveStep }) {
     const el = logRef.current;
     if (el && follow.current) el.scrollTop = el.scrollHeight;
   }, [lines.length, step.id]);
+  // A box that gets shorter (a shorter window) keeps its newest line in view too, unless he scrolled up.
+  useLayoutEffect(() => {
+    const el = logRef.current;
+    if (!el || typeof ResizeObserver !== "function") return;
+    const ro = new ResizeObserver(() => {
+      if (follow.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   return (
     <pre

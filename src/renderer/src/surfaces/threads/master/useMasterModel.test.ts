@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { EnvironmentStatus } from "../../../lib/connection/types";
 import { DEFAULT_BATCH_RULES, DEFAULT_BATCH_STEPS, emptyBatch, type BatchState } from "@server/shared/contract-batch";
 import type { SessionMeta, SessionStatus } from "../../../lib/tcserver/types";
 import { marksAtRest } from "../../../lib/threadStripModel";
@@ -24,6 +25,7 @@ import {
   mergeBatchChildren,
   standInMeta,
   mergedLine,
+  hostDown,
   rowHost,
   typeWord,
 } from "./useMasterModel";
@@ -105,15 +107,30 @@ describe("a row's host", () => {
   ];
   const master = { environmentId: "local" };
   it("is nothing for a thread on the master's host", () => {
-    expect(rowHost(meta("idle"), master, envs, () => ({ transport: "open", fresh: true }))).toBeNull();
+    expect(rowHost(meta("idle"), master, envs, () => false)).toBeNull();
   });
-  it("names another host, and offline while its link is not open", () => {
+  it("names another host, and offline while it is down", () => {
     const away = meta("idle", { environmentId: "box" });
-    expect(rowHost(away, master, envs, () => ({ transport: "open", fresh: true }))).toEqual({ id: "box", name: "The box", offline: false });
-    expect(rowHost(away, master, envs, () => ({ transport: "offline", fresh: false }))).toEqual({ id: "box", name: "The box", offline: true });
-    expect(rowHost(away, master, envs, () => ({ transport: "reconnecting", fresh: false }))).toMatchObject({ offline: true });
-    expect(rowHost(away, master, envs, () => undefined)).toMatchObject({ offline: true });
-    expect(rowHost(meta("idle", { environmentId: "studio" }), master, envs, () => undefined)?.name).toBe("studio");
+    expect(rowHost(away, master, envs, () => false)).toEqual({ id: "box", name: "The box", offline: false });
+    expect(rowHost(away, master, envs, () => true)).toEqual({ id: "box", name: "The box", offline: true });
+    expect(rowHost(meta("idle", { environmentId: "studio" }), master, envs, () => true)?.name).toBe("studio");
+  });
+  it("is down as every held control is: a dropped link only past the 1.5 s grace, a stopped host or a refused key at once", () => {
+    vi.useFakeTimers();
+    try {
+      const status = (transport: EnvironmentStatus["transport"]) => ({ transport, fresh: false }) as EnvironmentStatus;
+      expect(hostDown("grace-box", status("reconnecting"))).toBe(false);
+      vi.advanceTimersByTime(1000);
+      expect(hostDown("grace-box", status("reconnecting"))).toBe(false);
+      vi.advanceTimersByTime(600);
+      expect(hostDown("grace-box", status("reconnecting"))).toBe(true);
+      expect(hostDown("grace-box", status("open"))).toBe(false);
+      expect(hostDown("stopped-box", status("offline"))).toBe(true);
+      expect(hostDown("refused-box", status("unauthorized"))).toBe(true);
+      expect(hostDown("unknown-box", undefined)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

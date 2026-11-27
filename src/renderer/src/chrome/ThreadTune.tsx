@@ -7,6 +7,7 @@ import { ChoiceSelect } from "../components/choice-select";
 import { PageRow } from "../components/page";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
+import { Field } from "./DialogField";
 import { useRulesScope, type OrchestrationRules } from "../lib/tcserver/rules";
 import { normalizeTune } from "./threadTuneRules";
 import { isWorkWorkspace } from "../lib/workRow";
@@ -86,14 +87,16 @@ export function ThreadTune({
   return (
     // No inset of its own: the dialog or popover it sits in gives it one.
     <div className="flex flex-col gap-4">
-      <Textarea
-        rows={3}
-        aria-label="Custom instructions"
-        value={tune.instructions ?? ""}
-        placeholder="Custom instructions for this run…"
-        onChange={(e) => onChange({ ...tune, instructions: e.target.value })}
-        className="resize-none"
-      />
+      {/* Named by its label, as the Goal above it in Start the build: a placeholder leaves once he types. */}
+      <Field label="Instructions">
+        <Textarea
+          rows={3}
+          value={tune.instructions ?? ""}
+          placeholder="Optional"
+          onChange={(e) => onChange({ ...tune, instructions: e.target.value })}
+          className="resize-none"
+        />
+      </Field>
       {base ? (
         <div>
           <p className="mb-2 text-xs font-medium text-muted-foreground">Rules</p>

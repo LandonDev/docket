@@ -2053,7 +2053,7 @@ rows, Mark all read first: a project's menu (the rail's row and the project
 header; for a workspace linked across hosts the row's menu acts on every
 copy, one `session.batch` per host), a host's submenu (in the rail's Hosts
 row when more than one host is paired, `HostsRow` in chrome/HostRows.tsx), and the
-Threads menu for every host at once (Pause All, Resume All, Stop All,
+Threads menu for every host at once (Pause All…, Resume All, Stop All…,
 Archive Done). No shortcuts: menu rows only. A row with nothing to act on is
 disabled, not hidden, in the native menu too (the window's `menu:state`). The phone has the same four
 rows in its host and project menus (ios/TempCode/Sources/Shell/FleetSwitches.swift

@@ -175,6 +175,25 @@ describe("the research view", () => {
     expect(document.querySelector("[data-detail]")?.textContent).toMatch(/^0 of 2 angles/);
   });
 
+  it("counts only finished angles, and a queued or paused angle says its state on its row", () => {
+    seed();
+    metas.a1 = { status: "queued", title: "Bundler angle" };
+    metas.a2 = { status: "paused", title: "Cache angle" };
+    docs[REPORT] = "---\ntitle: Build speed\nstatus: draft\n---\n";
+    const view = render(<ResearchView {...props(session())} />);
+    expect(document.querySelector("[data-detail]")?.textContent).toMatch(/^0 of 2 angles/);
+    expect(screen.getByRole("button", { name: /Bundler angle/ }).textContent).toContain("Queued");
+    expect(screen.getByRole("button", { name: /Cache angle/ }).textContent).toContain("Paused");
+    view.unmount();
+    // Done, idle after its turn and failed are finished; a finished row says nothing, a failed one says so.
+    metas.a1 = { status: "error", title: "Bundler angle" };
+    metas.a2 = { status: "idle", title: "Cache angle" };
+    render(<ResearchView {...props(session())} />);
+    expect(document.querySelector("[data-detail]")?.textContent).toMatch(/^2 of 2 angles/);
+    expect(screen.getByRole("button", { name: /Bundler angle/ }).textContent).toContain("Failed");
+    expect(screen.getByRole("button", { name: /Cache angle/ }).textContent).toBe("Cache angle");
+  });
+
   it("a source opens its address, shows its host and its claim", () => {
     seed();
     const open = vi.spyOn(window, "open").mockImplementation(() => null);

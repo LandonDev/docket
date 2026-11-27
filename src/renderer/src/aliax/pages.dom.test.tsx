@@ -359,6 +359,67 @@ describe('AccountsPage', () => {
     expect(within(screen.getByRole('dialog')).queryByText('Waiting for sign-in')).toBeNull()
   })
 
+  it("says a one-year token, a convert-all tally and a failed switch in the page's own words, never main's", async () => {
+    heldRefresh = Promise.resolve()
+    aliax.convertStatic = vi.fn(async () => ({ ok: true, name: 'a@x.com', notes: ['one-year token saved, lapses 11/26/2027'] }))
+    render(<AccountsPage />)
+    await act(flush)
+    const section = screen.getByRole('region', { name: 'Claude Code' })
+    const openRowMenu = async () => {
+      await act(async () => { fireEvent.click(within(section).getByRole('button', { name: 'More actions for Main' })) })
+    }
+    await openRowMenu()
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Replace with a one-year token' })) })
+    await act(flush)
+    expect(toasts.success).toHaveBeenLastCalledWith('One-year token saved for Main')
+    aliax.convertStatic.mockResolvedValue({ ok: false, error: 'no claude.ai session is stored for this account' })
+    await openRowMenu()
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Replace with a one-year token' })) })
+    await act(flush)
+    expect(toasts.error).toHaveBeenLastCalledWith("Couldn't make a one-year token for Main")
+    // A sign-in the person closed says nothing.
+    toasts.error.mockReset()
+    aliax.convertStatic.mockResolvedValue({ ok: false, error: 'cancelled' })
+    await openRowMenu()
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Replace with a one-year token' })) })
+    await act(flush)
+    expect(toasts.error).not.toHaveBeenCalled()
+    // Every account: main's tally as one comma sentence; any other error in the page's words.
+    aliax.convertStatic.mockResolvedValue({ ok: false, error: '2 of 3 converted, 1 needs a sign-in', notes: ['2 of 3 converted', '1 needs a sign-in'] })
+    await act(async () => { fireEvent.click(within(section).getByRole('button', { name: 'Claude Code actions' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Convert all to one-year tokens' })) })
+    await act(flush)
+    expect(toasts.error).toHaveBeenLastCalledWith('2 of 3 converted, 1 needs a sign-in')
+    aliax.convertStatic.mockResolvedValue({ ok: false, error: 'a conversion is already running' })
+    await act(async () => { fireEvent.click(within(section).getByRole('button', { name: 'Claude Code actions' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Convert all to one-year tokens' })) })
+    await act(flush)
+    expect(toasts.error).toHaveBeenLastCalledWith("Couldn't make the one-year tokens")
+    // A refused switch names the account, never "unknown profile".
+    aliax.loginStart.mockResolvedValue({ ok: true, name: 'a@x.com' })
+    await act(async () => { fireEvent.click(within(section).getByRole('button', { name: 'Add account' })) })
+    await act(flush)
+    const [, options] = toasts.success.mock.calls.at(-1) as [string, { action: { onClick: () => void } }]
+    aliax.activate.mockResolvedValue({ ok: false, error: 'unknown profile' })
+    await act(async () => { options.action.onClick() })
+    await act(flush)
+    expect(toasts.error).toHaveBeenLastCalledWith("Couldn't switch to Main")
+    expect(JSON.stringify([...toasts.error.mock.calls, ...toasts.success.mock.calls])).not.toMatch(/unknown profile|lapses|already running/)
+  })
+
+  it("a failed Codex sign-in says so in plain words in the dialog, never the CLI's exit or path", async () => {
+    aliax.loginStart.mockResolvedValue({ ok: false, error: 'spawn /opt/homebrew/bin/codex ENOENT' })
+    render(<AccountsPage />)
+    await act(flush)
+    const section = screen.getByRole('region', { name: 'Codex' })
+    await act(async () => { fireEvent.click(within(section).getByRole('button', { name: 'Add account' })) })
+    await act(flush)
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText("Couldn't sign in to Codex").className).toContain('text-destructive')
+    expect(dialog.textContent).not.toMatch(/ENOENT|homebrew|exited/)
+    expect(within(dialog).getByRole('button', { name: 'Try again' })).toBeTruthy()
+  })
+
   it('a refreshed sign-in says Updated, and a new one Added with Switch to it', async () => {
     aliax.loginStart.mockResolvedValue({ ok: true, name: 'Main', notes: ['Sign-in refreshed'] })
     await addClaude()
@@ -527,6 +588,15 @@ describe('StatsPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Reindex' }))
     })
     expect(aliax.statsReindex).toHaveBeenCalledTimes(1)
+  })
+
+  it('says no count while the pass has none yet: never "0 of 0"', async () => {
+    aliax.statsStatus.mockResolvedValue({ indexing: true, filesDone: 0, filesTotal: 0, rows: 0 })
+    render(<StatsPage />)
+    await act(flush)
+    await act(flush)
+    expect(screen.getAllByText('Indexing session logs…')).toHaveLength(1)
+    expect(document.body.textContent).not.toContain('0 of 0')
   })
 
   it('says a stats worker that is gone in one red line, never that there are no session logs', async () => {

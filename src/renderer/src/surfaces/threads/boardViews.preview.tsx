@@ -261,6 +261,20 @@ export function ResearchStates() {
 }
 
 /** A batch child opened from the master board while its rows load: the pane's own bar, Back and the title. */
+/** Both angles waiting their turn: one queued behind the running cap, one paused. Neither counts as finished. */
+export function ResearchQueued() {
+  const session = researchSession();
+  useEffect(() => {
+    const template = FIXTURE_ROWS[0].meta;
+    seedPreviewThreads([
+      { ...template, id: "q1", parentId: "report-queued", masterId: null, status: "queued", title: "Bundler" },
+      { ...template, id: "q2", parentId: "report-queued", masterId: null, status: "paused", title: "Cache" },
+    ], {}, (method, params) => method === "file.read" ? docs.get(String(params.path)) ?? null : null);
+  }, []);
+  const thread = { ...session.thread, agents: ["q1", "q2"], sources: [] };
+  return <Frame><ResearchView {...viewProps({ ...session, id: "report-queued", status: "idle", planPath: reportPath, thread } as Session)} /></Frame>;
+}
+
 export function ChildPaneLoadingPreview() {
   return (
     <Frame>

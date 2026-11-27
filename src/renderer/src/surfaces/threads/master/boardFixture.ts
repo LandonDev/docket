@@ -185,3 +185,16 @@ export const FIXTURE_BATCH: BatchState = {
   blocked: null,
   finishedAt: null,
 } as BatchState;
+
+/** A batch of twenty steps (the reviewers' 520px window): the foot holds three fifths of the board, its steps scroll inside. */
+export const MANY_STEPS_BATCH: BatchState = {
+  ...FIXTURE_BATCH,
+  rules: {
+    ...FIXTURE_BATCH.rules,
+    steps: [
+      { id: "land", name: "Land", kind: "land" },
+      ...Array.from({ length: 19 }, (_, i) => ({ id: `check-${i + 1}`, name: `Check ${i + 1}`, kind: "shell" as const, run: `bun run check:${i + 1}` })),
+    ],
+  },
+  steps: [FIXTURE_BATCH.steps[0]],
+};

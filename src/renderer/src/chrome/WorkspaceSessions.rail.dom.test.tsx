@@ -38,6 +38,7 @@ vi.mock("../lib/tcserver/workspaces", async (importOriginal) => ({
 import WorkspaceSessions, { forgetColumnMemory } from "./WorkspaceSessions";
 import { WORK_CHATS } from "../lib/tcserver/workspaces";
 import { devRenders } from "../lib/devRenders";
+import { initialShellState, shell, shellStore } from "../stores/shell";
 
 const chat = (i: number): SessionMeta =>
   ({
@@ -395,7 +396,7 @@ describe("a project card's menu", () => {
     fireEvent.click(within(card).getAllByRole("button", { name: "More" })[0]);
     const menu = await screen.findByRole("menu");
     const names = within(menu).getAllByRole("menuitem").map((item) => item.textContent?.trim());
-    expect(names).toEqual(expect.arrayContaining(["Pause all", "Resume all", "Stop all"]));
+    expect(names).toEqual(expect.arrayContaining(["Pause all…", "Resume all", "Stop all…"]));
     expect(names).not.toContain("Archive done");
     for (const gone of ["Continue paused threads", "Pause active threads", "Stop active threads"]) expect(names).not.toContain(gone);
     // Counted over the scope: one thread runs, none is paused.
@@ -472,5 +473,35 @@ describe("a switch renders the rows it touches", () => {
     view.rerender(<Column shown scope="w1" active="c1" />);
     expect(count()).toEqual({ cards: before.cards, rows: before.rows + 2 });
     expect(current()).toEqual(["c1"]);
+  });
+});
+
+describe("a page in front of the threads", () => {
+  afterEach(() => shellStore.setState(initialShellState()));
+  const lit = (container: HTMLElement) => [...container.querySelectorAll('[aria-current="true"]')].map((el) => el.closest("[data-menu-id]")?.getAttribute("data-menu-id"));
+
+  it("lights no Work Chats row while Today, the Outbox or Settings covers it, and the open one again once it leaves", () => {
+    h.metas = [0, 1, 2].map((i) => ({ ...chat(i), scope: "work" }) as SessionMeta);
+    const view = render(<Column shown scope={WORK_CHATS} active="c1" />);
+    expect(lit(view.container)).toEqual(["c1"]);
+    const before = devRenders.railRow ?? 0;
+    act(() => shell.openWorkPlace("today"));
+    expect(lit(view.container)).toEqual([]);
+    // Only the row that was lit draws again.
+    expect((devRenders.railRow ?? 0) - before).toBe(1);
+    act(() => shell.openWorkPlace(null));
+    expect(lit(view.container)).toEqual(["c1"]);
+    act(() => shellStore.setState({ outboxViewOpen: true }));
+    expect(lit(view.container)).toEqual([]);
+    act(() => shellStore.setState({ outboxViewOpen: false, settingsOpen: true }));
+    expect(lit(view.container)).toEqual([]);
+  });
+
+  it("lights no home chat under a page either", () => {
+    h.metas = [0, 1].map(chat);
+    const view = render(<Column shown active="c0" />);
+    expect(lit(view.container)).toEqual(["c0"]);
+    act(() => shellStore.setState({ inboxViewOpen: true }));
+    expect(lit(view.container)).toEqual([]);
   });
 });

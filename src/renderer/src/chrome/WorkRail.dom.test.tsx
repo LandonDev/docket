@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry, type Environment, type EnvironmentStatus, type Link } from "../lib/connection";
 import type { ServerPush, WorkspaceMeta } from "../lib/tcserver/types";
 import { sessionStore } from "../lib/tcserver/store";
 import { workspaceStore } from "../lib/tcserver/workspaces";
-import { setOutboxFailed, setOutboxWaiting, setWorkOn, workSwitch } from "../lib/workSwitch";
+import { setOutboxFailed, setOutboxWaiting, setWorkOn, workRailPort, workSwitch } from "../lib/workSwitch";
+import { menuChunk, workShellChunk } from "../surfaces/chunks";
+import { resetMenus, warmMenus } from "./menuRows";
 import { WORK_PLACE_ROWS } from "../lib/workPlaces";
 import { shellStore } from "../stores/shell";
 import { Clock } from "./icons";
@@ -297,5 +300,34 @@ describe("the settings list", () => {
     expect(on.find((g) => g.includes("Digest"))).toEqual(["Setup", "Digest", "Mail", "Files", "Connections"]);
     expect(on.find((g) => g.includes("Purdue Esports"))).toEqual(["Purdue Esports"]);
     expect(on.find((g) => g.includes("temp-code"))).toEqual(["temp-code"]);
+  });
+});
+
+describe("the Work heading's + menu", () => {
+  afterEach(() => {
+    workRailPort.set(null);
+    resetMenus();
+  });
+
+  // The menu opens from a request (a point and the menu's id), so the control that asked is passed along: Escape gives it focus back.
+  it.each([
+    ["the heading's +", [CODE, WORK], '[aria-label="Add Work workspace"]'],
+    ["the Add workspace row of a Work with no workspace", [CODE], 'nav button[aria-label="Add Work workspace…"]'],
+  ] as const)("gives focus back to %s on Escape", async (_name, workspaces, selector) => {
+    setWorkOn("local", true);
+    vi.spyOn(workShellChunk, "load").mockResolvedValue(undefined as never);
+    workRailPort.set({ addRows: () => [{ kind: "item", id: "work:add:cosmic", label: "Cosmic" }], sectorRows: () => [], pick: () => {} });
+    await menuChunk.load();
+    warmMenus();
+    const root = await mountRail([...workspaces]);
+    const add = root.querySelector<HTMLButtonElement>(selector)!;
+    add.focus();
+    await probe!.act(async () => {
+      fireEvent.click(add);
+      await flush();
+    });
+    const menu = await screen.findByRole("menu", { name: "Workspace actions" });
+    fireEvent.keyDown(menu, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(add));
   });
 });

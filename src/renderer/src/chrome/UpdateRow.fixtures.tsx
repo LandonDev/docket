@@ -3,7 +3,7 @@
 import { UpdateRow, type UpdateRowState } from "./UpdateRow";
 
 const states: UpdateRowState[] = [
-  { kind: "checking", version: "v1.0.380" },
+  { kind: "checking", version: "1.0.380" },
   { kind: "available", version: "1.0.381", retry: false, notes: "Opens notes lists faster." },
   { kind: "available", version: "1.0.381", retry: true, error: "The download stopped. Try again." },
   { kind: "downloading", percent: 62 },

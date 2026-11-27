@@ -158,7 +158,7 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
         </>
       );
     case "accounts":
-      // The page's frame and title, then its sections' rows where the page
+      // The page's frame and its title in words (known before anything loads, as Stats'), then its sections' rows where the page
       // draws them (aliax/views/accounts/usageSkeleton.tsx AccountsSkeleton):
       // no line, since the page has none. The usage bars' bones stay with the
       // page's chunk (6 kB the first paint does not carry); an empty box their
@@ -168,9 +168,7 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
           <div data-skeleton-strip className={STRIP} />
           <div data-skeleton-scroller className={PAGE_SCROLLER}>
             <div data-skeleton-column className={`mx-auto w-full p-6 ${PAGE_WIDTH.table}`}>
-              <span className="flex h-6 items-center">
-                <Skeleton className="h-4 w-32" />
-              </span>
+              <p className="text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">Accounts</p>
               <div className="@container/accounts mt-6 flex flex-col gap-6">
                 {[0, 1, 2].map((section) => (
                   <div key={section} className="flex flex-col">

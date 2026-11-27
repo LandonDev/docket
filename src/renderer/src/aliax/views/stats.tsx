@@ -49,6 +49,10 @@ const tooltip = (props: { active?: boolean; payload?: readonly unknown[]; label?
   <ChartTooltipContent active={props.active} payload={props.payload as TooltipProps["payload"]} label={props.label as TooltipProps["label"]} {...options} />
 );
 
+/** Daily output's and Model mix's unit, said once under each title; their hover values say "tokens" too. */
+export const OUTPUT_UNIT = "Output tokens a day";
+export const tokenValue = (v: number): string => `${compact(v)} tokens`;
+
 function Section({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
   return (
     <PageSection title={title} description={description}>
@@ -188,12 +192,12 @@ function PaceLegend({ pace }: { pace: readonly PaceSeries[] }) {
  * What each section holds once loaded, so the skeleton takes its shape and
  * the page does not jump when the bundle lands: the plot's height, a legend
  * where the chart draws one, the ranked lists at their eight rows, and the
- * description lines Cache hit rate and Busiest hours carry.
+ * description lines Daily output, Model mix, Cache hit rate and Busiest hours carry.
  */
 export const SECTION_SKELETON: Record<(typeof HEADINGS)[number], { height: number; description?: boolean }> = {
   Pace: { height: paceHeight(1) },
-  "Daily output": { height: LEGEND_PX + CHART_HEIGHT },
-  "Model mix": { height: LEGEND_PX + CHART_HEIGHT },
+  "Daily output": { height: LEGEND_PX + CHART_HEIGHT, description: true },
+  "Model mix": { height: LEGEND_PX + CHART_HEIGHT, description: true },
   "Top projects": { height: rankedHeight(RANKED_ROWS) },
   "Cache hit rate": { height: CHART_HEIGHT, description: true },
   "Busiest hours": { height: HEATMAP_HEIGHT, description: true },
@@ -307,7 +311,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
         )}
       </Section>
 
-      <Section title="Daily output">
+      <Section title="Daily output" description={OUTPUT_UNIT}>
         {data.daily.length === 0 ? (
           <NoData />
         ) : (
@@ -324,7 +328,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
                 <CartesianGrid {...GRID} />
                 <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(days.daily.length, width)} />
                 <YAxis {...VALUE_AXIS} tickFormatter={compactTick} />
-                <ChartTooltip cursor={BAR_CURSOR} isAnimationActive={false} content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: compact })} />
+                <ChartTooltip cursor={BAR_CURSOR} isAnimationActive={false} content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: tokenValue })} />
                 <Bar {...BAR} dataKey="claude" name="Claude Code" fill={SERVICE_SERIES["claude-code"]} />
                 <Bar {...BAR} dataKey="codex" name="Codex" fill={SERVICE_SERIES.codex} />
               </BarChart>
@@ -334,7 +338,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
         )}
       </Section>
 
-      <Section title="Model mix">
+      <Section title="Model mix" description={OUTPUT_UNIT}>
         {mix.rows.length === 0 ? (
           <NoData />
         ) : (
@@ -349,7 +353,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
                 <ChartTooltip
                   cursor={LINE_CURSOR}
                   isAnimationActive={false}
-                  content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: compact, nameFormatter: (n) => (n === "Other" ? n : modelLabel(n)) })}
+                  content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: tokenValue, nameFormatter: (n) => (n === "Other" ? n : modelLabel(n)) })}
                 />
                 {mix.series.map((m) => (
                   <Area key={m.key} {...LINE} dataKey={m.key} name={m.name} stackId="mix" stroke={m.color} strokeWidth={1.5} fill={m.color} fillOpacity={0.2} />

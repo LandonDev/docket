@@ -40,6 +40,8 @@ const asResult = async (fn: () => Promise<ActionResult>): Promise<ActionResult> 
   try {
     return await fn()
   } catch (e) {
+    // The raw text (an exit code, a path) is the log's; the page says what failed in its own words.
+    console.warn(`[aliax] ${(e as Error).message}`)
     return { ok: false, error: (e as Error).message }
   }
 }

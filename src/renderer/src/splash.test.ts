@@ -21,11 +21,13 @@ describe("the boot splash", () => {
     expect(splash.light.get("--boot-foreground")).toBe(resolve(app.light, "var(--foreground)"));
   });
 
-  it("fades on the motion tokens, and not at all under reduced motion", () => {
+  it("fades on the motion tokens, the fade kept under reduced motion (opacity alone)", () => {
     const css = readFileSync(join(__dirname, "index.css"), "utf8");
     const token = (name: string) => css.match(new RegExp(`${name}: ([^;]+);`))![1];
     expect(style).toContain(`transition: opacity ${token("--dur-fast")} ${token("--ease-out")};`);
-    expect(style).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*#boot-splash \{\s*transition: none;/);
+    // DESIGN "Reduced motion": fades stay; the splash reads no media query of its own (lib/motion.ts is the one rule).
+    expect(style).not.toContain("prefers-reduced-motion");
+    expect(style).not.toMatch(/transition: none/);
     // The cover is removed after the fade, never before it ends.
     const wait = Number(readFileSync(join(__dirname, "main.tsx"), "utf8").match(/splash\.remove\(\), (\d+)\)/)![1]);
     expect(wait).toBeGreaterThanOrEqual(parseInt(token("--dur-fast")));

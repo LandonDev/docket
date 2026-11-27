@@ -54,6 +54,12 @@ export function AccountsPage(): React.JSX.Element {
   );
   const localName = environments.find((e) => e.id === registry.primary().environmentId)?.name ?? "this machine";
 
+  /** An account as its row names it (nickname, else address). */
+  const labelOf = (serviceId: ServiceId, name: string): string => {
+    const profile = views?.find((v) => v.id === serviceId)?.profiles.find((p) => p.name === name);
+    return profile ? displayName(profile) : name;
+  };
+
   const reload = async () => {
     setRefreshing(true);
     try {
@@ -70,9 +76,12 @@ export function AccountsPage(): React.JSX.Element {
    * lapsed.
    */
   const convert = async (name?: string) => {
-    const result = await window.aliax.convertStatic(name);
-    if (!result.ok) toast.error(result.error ?? "No token was made");
-    else toast.success(result.notes?.[0] ?? `Token saved for ${result.name}`);
+    const result: Result = await window.aliax.convertStatic(name);
+    const label = name ? labelOf("claude-code", name) : "";
+    // The page's own words: one account by its name, every account by main's tally (a comma sentence,
+    // on a failure too); main's other errors stay in its log. A closed sign-in says nothing.
+    if (result.ok) toast.success(name ? `One-year token saved for ${label}` : (result.notes ?? []).join(", ") || "One-year tokens saved");
+    else if (result.error !== CANCELLED) toast.error(name ? `Couldn't make a one-year token for ${label}` : result.notes?.length ? result.notes.join(", ") : "Couldn't make the one-year tokens");
     await refresh(true);
   };
   const local = () => registry.primary();
@@ -85,13 +94,14 @@ export function AccountsPage(): React.JSX.Element {
     await refresh(true);
   };
 
-  /** One action, one toast; the key stays busy until the refreshed list lands, so a switch holds on until the new snapshot does. */
-  const run = async (key: string, action: () => Promise<Result>, fallback: string) => {
+  /** One action, one toast; the key stays busy until the refreshed list lands, so a switch holds on until the new snapshot does.
+   *  A failure is the page's own words (`failed`), never main's raw error. */
+  const run = async (key: string, action: () => Promise<Result>, fallback: string, failed: string) => {
     setBusy(key);
     try {
       const result = await action();
       if (result.ok) toast.success(result.notes?.[0] ?? fallback);
-      else toast.error(result.error ?? "Something went wrong");
+      else toast.error(failed);
       await refresh(true);
     } finally {
       setBusy(null);
@@ -107,7 +117,7 @@ export function AccountsPage(): React.JSX.Element {
     await refresh(true);
   };
 
-  const onUse = (serviceId: ServiceId, name: string) => run(`use:${serviceId}:${name}`, () => window.aliax.activate(serviceId, name), "Switched");
+  const onUse = (serviceId: ServiceId, name: string) => run(`use:${serviceId}:${name}`, () => window.aliax.activate(serviceId, name), "Switched", `Couldn't switch to ${labelOf(serviceId, name)}`);
 
   /**
    * Adding never switches; the toast offers the switch. A hint pre-fills the
@@ -122,7 +132,9 @@ export function AccountsPage(): React.JSX.Element {
     if (n !== attempt.current) return;
     if (!result.ok) {
       if (result.error === CANCELLED) setLogin(null);
-      else setLogin({ serviceId, hint, error: result.error ?? "Sign-in failed" });
+      // Claude's sign-in sends its own plain lines (shared/signInWords); a CLI's (Codex, Cursor) is raw, an exit
+      // code or a path, so the dialog says it in plain words and the raw text stays in main's log.
+      else setLogin({ serviceId, hint, error: serviceId === "claude-code" && result.error ? result.error : `Couldn't sign in to ${views?.find((v) => v.id === serviceId)?.name ?? "the account"}` });
       return;
     }
     setLogin(null);
@@ -226,7 +238,7 @@ export function AccountsPage(): React.JSX.Element {
           environments={peerList}
           localName={localName}
           mint={snapshot.providers.claude.mint}
-          onCapture={(id) => void run(`capture:${id}`, () => window.aliax.capture(id), "Saved")}
+          onCapture={(id) => void run(`capture:${id}`, () => window.aliax.capture(id), "Saved", "Couldn't save the current account")}
           onAdd={(id) => void addAccount(id)}
           onAddKey={setKeyFor}
           onReauth={(id, email) => void addAccount(id, email)}
@@ -358,7 +370,10 @@ export function StatsPage(): React.JSX.Element {
       </span>
     </Tip>
   ) : status?.indexing
-    ? `Indexing ${status.filesDone.toLocaleString()} of ${status.filesTotal.toLocaleString()} session logs`
+    ? // No count until the worker has one: "0 of 0" reads as broken.
+      status.filesTotal > 0
+      ? `Indexing ${status.filesDone.toLocaleString()} of ${status.filesTotal.toLocaleString()} session logs`
+      : "Indexing session logs…"
     : data && data.totals.turns > 0
       ? `${compact(data.totals.turns)} turns in the last 30 days, updated ${dayTime(data.generatedAt)}`
       : undefined;

@@ -21,13 +21,13 @@ const snap = (over: Partial<UpdaterSnapshot>): UpdaterSnapshot => ({ phase: "idl
 describe("updateRowState", () => {
   it("offers a check with the running version while idle, current or after a failed check", () => {
     for (const phase of ["idle", "current", "error"] as const) {
-      expect(updateRowState(snap({ phase }), null)).toEqual({ kind: "check", version: "v1.0.10" });
+      expect(updateRowState(snap({ phase }), null)).toEqual({ kind: "check", version: "1.0.10" });
     }
   });
 
   it("says Checking… only while a check the person asked for runs", () => {
-    expect(updateRowState(snap({ phase: "checking" }), null, true)).toEqual({ kind: "checking", version: "v1.0.10" });
-    expect(updateRowState(snap({ phase: "checking" }), null, false)).toEqual({ kind: "check", version: "v1.0.10" });
+    expect(updateRowState(snap({ phase: "checking" }), null, true)).toEqual({ kind: "checking", version: "1.0.10" });
+    expect(updateRowState(snap({ phase: "checking" }), null, false)).toEqual({ kind: "check", version: "1.0.10" });
   });
 
   it("names no version before the first status", () => {
@@ -57,7 +57,7 @@ describe("updateRowState", () => {
     expect(updateRowState(snap({ phase: "downloading", percent: 5, codeSubject: "Fix" }), null)).toEqual({ kind: "downloading", percent: 5 });
     expect(updateRowState(snap({ phase: "current", currentVersion: "1.0.10 + 3f9c2ab" }), null)).toEqual({
       kind: "check",
-      version: "v1.0.10 + 3f9c2ab",
+      version: "1.0.10 + 3f9c2ab",
     });
   });
 
@@ -85,22 +85,22 @@ describe("UpdateRow", () => {
 
   it("idle: Check for updates with the running version, which asks the feed", () => {
     const onCheck = vi.fn();
-    render(createElement(UpdateRow, { state: { kind: "check", version: "v1.0.307" }, onCheck }));
-    const row = screen.getByRole("button", { name: "Check for updates, v1.0.307" });
-    expect(row.textContent).toContain("v1.0.307");
+    render(createElement(UpdateRow, { state: { kind: "check", version: "1.0.307" }, onCheck }));
+    const row = screen.getByRole("button", { name: "Check for updates, 1.0.307" });
+    expect(row.textContent).toContain("1.0.307");
     // In a narrow rail the version yields to the label; the name still says it.
-    expect(screen.getByText("v1.0.307").className).toContain("@max-[15rem]/railrow:hidden");
+    expect(screen.getByText("1.0.307").className).toContain("@max-[15rem]/railrow:hidden");
     fireEvent.click(row);
     expect(onCheck).toHaveBeenCalledOnce();
     cleanup();
     // With a staged commit the longer version yields sooner, so the label is never cut for it.
-    render(createElement(UpdateRow, { state: { kind: "check", version: "v1.0.307 + 3f9c2ab" }, onCheck }));
-    expect(screen.getByRole("button", { name: "Check for updates, v1.0.307 + 3f9c2ab" })).toBeTruthy();
-    expect(screen.getByText("v1.0.307 + 3f9c2ab").className).toContain("@max-[18rem]/railrow:hidden");
+    render(createElement(UpdateRow, { state: { kind: "check", version: "1.0.307 + 3f9c2ab" }, onCheck }));
+    expect(screen.getByRole("button", { name: "Check for updates, 1.0.307 + 3f9c2ab" })).toBeTruthy();
+    expect(screen.getByText("1.0.307 + 3f9c2ab").className).toContain("@max-[18rem]/railrow:hidden");
   });
 
   it("checking: Checking… with the spinner, disabled", () => {
-    render(createElement(UpdateRow, { state: { kind: "checking", version: "v1.0.307" } }));
+    render(createElement(UpdateRow, { state: { kind: "checking", version: "1.0.307" } }));
     const row = screen.getByRole("button", { name: /^Checking…/ });
     expect((row as HTMLButtonElement).disabled).toBe(true);
     expect(row.querySelector('[data-slot="spinner"]')).not.toBeNull();

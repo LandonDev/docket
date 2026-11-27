@@ -292,6 +292,32 @@ describe("the capture window", () => {
    * Council round 7 (Sol, the rest 2): a state ask that failed read "Not signed in to LifeOS". Council round 10 (Sol
    * rest 1): File and Start thread stayed live, and Return cleared the draft to file on the old state.
    */
+  it("on a first capture with nothing kept, says Loading jobs… and holds File, Start thread and their keys until the host answers, the draft his to type", async () => {
+    let answerState: (s: CaptureState) => void = () => {};
+    const slow: CaptureHost = { ...host(), state: () => new Promise<CaptureState>((r) => (answerState = r)) };
+    render(<CapturePage host={slow} bridge={bridge} />);
+    act(() => shown());
+    await flush();
+    fireEvent.change(field(), { target: { value: "Book the arena" } });
+    expect(field().value).toBe("Book the arena");
+    expect(screen.getByRole("status").textContent).toBe("Loading jobs…");
+    expect((screen.getByText("Start thread").closest("button") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText("File").closest("button") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(field(), { key: "Enter", code: "Enter" });
+    fireEvent.keyDown(field(), { key: "Enter", code: "Enter", metaKey: true, ctrlKey: true });
+    await flush();
+    expect(filed).toEqual([]);
+    expect(bridge.hide).not.toHaveBeenCalled();
+    // The answer lands: the last job used leads, the line goes, and Return files there.
+    await act(async () => answerState(state));
+    await flush();
+    expect(screen.queryByText("Loading jobs…")).toBeNull();
+    expect(pressed()).toBe("Purdue");
+    fireEvent.keyDown(field(), { key: "Enter", code: "Enter" });
+    await flush();
+    expect(filed).toEqual([{ key: expect.any(String), text: "Book the arena", sector: "purdue" }]);
+  });
+
   it("says a state ask that failed as this computer's silence, with Retry, keeps the draft, and holds File and Return until it answers", async () => {
     const real = state;
     let asks = 0;

@@ -1,6 +1,6 @@
 // bun run ui:preview src/renderer/src/surfaces/threads/master/board.preview.tsx#MasterPreview --shot --fresh
 // Exports BoardPreview, TaskBarPreview, TaskBarWidthPreview, MasterPreview,
-// MasterReadOnly, MasterOffline, MasterRowFailed, MasterRevealed, MasterAtCap and MasterFolded.
+// MasterReadOnly, MasterOffline, MasterRowFailed, MasterRevealed, MasterAtCap, MasterFolded and MasterManySteps.
 // A data-popup-open marker holds the row's reveal. Drag, hover timing and Retry need a live page.
 import { useEffect, useRef } from "react";
 import { setHarnessModels } from "../../../lib/models";
@@ -13,7 +13,7 @@ import { Button } from "../../../components/ui/button";
 import { HeldTip } from "../../../components/heldTip";
 import { SplitShell } from "../SplitShell";
 import { BatchFoot } from "./BatchFoot";
-import { BOARD_FIXTURE_CLOCK, FIXTURE_BATCH, FIXTURE_ROWS, fixtureGroups, TASK_BAR_ROWS, TASK_BAR_WIDTH_ROWS, type FixtureRow } from "./boardFixture";
+import { BOARD_FIXTURE_CLOCK, FIXTURE_BATCH, MANY_STEPS_BATCH, FIXTURE_ROWS, fixtureGroups, TASK_BAR_ROWS, TASK_BAR_WIDTH_ROWS, type FixtureRow } from "./boardFixture";
 import { MasterRowView } from "./MasterRow";
 
 /**
@@ -148,6 +148,14 @@ export function MasterAtCap() {
 }
 
 export function MasterFolded() { return <MasterPreview collapsed />; }
+// Twenty steps in a 520px board: the foot stops at three fifths of the board and its steps scroll, the thread list keeps the rest.
+export function MasterManySteps() {
+  return (
+    <div className="flex h-[520px] max-w-full flex-col bg-background">
+      <BoardPreview batch={MANY_STEPS_BATCH} />
+    </div>
+  );
+}
 
 // A Done chat that never landed has nothing to say under its title: line one alone.
 export function MasterSettledChat() {

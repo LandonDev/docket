@@ -33,7 +33,8 @@ export function updateRowState(snapshot: UpdaterSnapshot, notice: InstalledUpdat
     return { kind: "available", version: snapshot.availableVersion, notes: snapshot.notes, retry, error: retry ? snapshot.error : undefined };
   }
   if (notice) return { kind: "updated", version: notice.version };
-  const version = /^\d/.test(snapshot.currentVersion) ? `v${snapshot.currentVersion}` : undefined;
+  // The bare number, as "Update to 1.0.381" and What's New say it: one name for a version.
+  const version = /^\d/.test(snapshot.currentVersion) ? snapshot.currentVersion : undefined;
   return { kind: snapshot.phase === "checking" && manual ? "checking" : "check", version };
 }
 

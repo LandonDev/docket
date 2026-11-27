@@ -285,7 +285,7 @@ export function RailRealistic({ width = 200 }: { width?: number }) {
           working={rows}
           rows={
             <>
-              <UpdateRow state={{ kind: "check", version: "v1.0.308" }} onCheck={noop} />
+              <UpdateRow state={{ kind: "check", version: "1.0.308" }} onCheck={noop} />
               <HostsRow tones={["bg-muted-foreground", "bg-muted-foreground/30"]} />
               <RailRow icon={Settings} label="Settings" />
             </>
@@ -320,7 +320,7 @@ function FirstRun({ signedIn, pending = false, width = 260 }: { signedIn: boolea
           rows={
             <>
               {signedIn ? null : <SignInRowView provider="claude" pending={pending} onClick={noop} />}
-              <UpdateRow state={{ kind: "check", version: "v1.0.307" }} onCheck={noop} />
+              <UpdateRow state={{ kind: "check", version: "1.0.307" }} onCheck={noop} />
               <RailRow icon={Settings} label="Settings" />
             </>
           }

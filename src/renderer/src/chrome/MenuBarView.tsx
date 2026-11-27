@@ -18,7 +18,8 @@ import { RowsMenu, type MenuRow } from "./menuRows";
  * titles, which share one tab stop, and while a menu is open Left and Right
  * open its neighbour instead; Escape with no menu open, or Alt again,
  * closes it and gives the focus back to where it was, and so does a pick,
- * before its command runs.
+ * before its command runs. Focus that leaves the bare bar closes it and stays
+ * where it went.
  */
 
 const KEY_NAMES: Record<string, string> = { Left: "←", Right: "→", Up: "↑", Down: "↓", Plus: "+" };
@@ -202,6 +203,16 @@ export function MenuBar({ onCommand, disabled, place = "web" }: Props) {
       aria-label="Menu bar"
       aria-orientation="horizontal"
       onKeyDown={onBarKeyDown}
+      // Left before any menu expands (a Tab, a click on the page), the bare bar goes and the focus stays where he
+      // put it. An open menu's blurs bubble here through React's tree: those are the menu's own. A window that
+      // loses focus keeps the bar.
+      onBlur={(event) => {
+        if (activeMenu || pendingPick.current || !document.hasFocus()) return;
+        const next = event.relatedTarget;
+        if (next instanceof Node && barRef.current?.contains(next)) return;
+        returnFocus.current = null;
+        setOpen(false);
+      }}
       className="flex h-7 shrink-0 items-center gap-0.5 border-b border-border bg-sidebar px-2 text-xs"
       data-tauri-drag-region="false"
     >

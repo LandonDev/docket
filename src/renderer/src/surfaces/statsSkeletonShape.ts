@@ -7,8 +7,8 @@
  */
 export const STATS_SECTIONS: readonly { title: string; height: number; description?: true }[] = [
   { title: "Pace", height: 488 },
-  { title: "Daily output", height: 224 },
-  { title: "Model mix", height: 224 },
+  { title: "Daily output", height: 224, description: true },
+  { title: "Model mix", height: 224, description: true },
   { title: "Top projects", height: 232 },
   { title: "Cache hit rate", height: 200, description: true },
   { title: "Busiest hours", height: 180, description: true },

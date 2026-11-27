@@ -13,6 +13,7 @@ import { blockedReason } from "@shared/batchWords";
 import { AgentSummaries } from "./agentSummary";
 import { registry } from "../../../lib/connection";
 import { useEnvironmentStatuses } from "../../../lib/connection/status";
+import { degradedNow } from "../../../lib/connection/degraded";
 import * as commands from "../../../lib/tcserver/commands";
 import { failureReason } from "../../../lib/threadActionFailure";
 import type { SessionBatchResult } from "@server/shared/contract";
@@ -111,16 +112,19 @@ export function rowHost(
   meta: Pick<SessionMeta, "environmentId">,
   master: Pick<SessionMeta, "environmentId">,
   environments: readonly { id: string; name: string }[],
-  statusOf: (id: string) => Pick<EnvironmentStatus, "transport" | "fresh"> | undefined,
+  downOf: (id: string) => boolean,
 ): RowHost | null {
   if (meta.environmentId === master.environmentId) return null;
-  const status = statusOf(meta.environmentId);
   return {
     id: meta.environmentId,
     name: environments.find((e) => e.id === meta.environmentId)?.name ?? meta.environmentId,
-    offline: status?.transport !== "open",
+    offline: downOf(meta.environmentId),
   };
 }
+
+/** A row's host is out of reach as every held control is (`degradedFor`): a refused key or a stopped host at
+ *  once, a dropped link only past the 1.5 s grace counted from the drop; a host the window does not know, at once. */
+export const hostDown = (id: string, status: EnvironmentStatus | undefined): boolean => !status || degradedNow(id, status) !== null;
 
 /** One child as `batch.get` may list it once the host spans hosts: the
  *  thread, its host and its state as the master's host last saw them.

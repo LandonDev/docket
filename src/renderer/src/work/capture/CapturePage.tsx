@@ -143,6 +143,8 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
   const file = (start: boolean) => {
     // Nothing is filed on a state that is not known to be good: the host away or silent asks again, the draft kept.
     if (offline || silent) return refresh();
+    // The first answer is still out (nothing kept from an earlier one): the job he last used may yet lead, so nothing files.
+    if (state === null) return;
     if (refusal !== null) {
       if (refusal) setError(refusal);
       return;
@@ -250,7 +252,7 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
         files={draft.files}
         sector={draft.sector}
         jobs={state?.jobs}
-        status={silent ? "silent" : offline ? "offline" : "ready"}
+        status={silent ? "silent" : state === null ? "loading" : offline ? "offline" : "ready"}
         lifeos={state?.lifeos}
         host={thisComputer()}
         onRetry={retry}

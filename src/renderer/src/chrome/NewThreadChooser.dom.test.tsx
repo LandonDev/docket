@@ -98,7 +98,9 @@ describe("NewThreadChooser", () => {
     expect(screen.getByText("Research options")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Chat/ })).toBeNull();
     // The tune view is threadTuneChunk's: it lands a tick after the header.
-    const field = await screen.findByPlaceholderText("Custom instructions for this run…");
+    const field = await screen.findByLabelText("Instructions");
+    // Named by its label, the placeholder only says it may stay empty.
+    expect(field.getAttribute("placeholder")).toBe("Optional");
     await act(async () => {
       fireEvent.change(field, {
         target: { value: "  cite every claim  " },

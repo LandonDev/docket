@@ -129,6 +129,42 @@ describe("MenuBar from the keyboard", () => {
     expect(document.activeElement).toBe(field);
   });
 
+  it("goes when the focus leaves the bare bar, and the focus stays where it went", () => {
+    render(
+      <>
+        <button>Before</button>
+        <button>Elsewhere</button>
+        <MenuBar onCommand={() => {}} />
+      </>,
+    );
+    const windowFocused = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    act(() => screen.getByRole("button", { name: "Before" }).focus());
+    tapAlt();
+    expect(document.activeElement).toBe(menuButton("File"));
+    // The window losing the focus (another app in front) keeps the bar.
+    windowFocused.mockReturnValue(false);
+    act(() => menuButton("File").blur());
+    expect(screen.getByRole("menubar")).toBeTruthy();
+    windowFocused.mockReturnValue(true);
+    act(() => menuButton("File").focus());
+    const elsewhere = screen.getByRole("button", { name: "Elsewhere" });
+    act(() => elsewhere.focus());
+    expect(screen.queryByRole("menubar")).toBeNull();
+    expect(document.activeElement).toBe(elsewhere);
+    // The next Alt opens the bar again, on File.
+    tapAlt();
+    expect(document.activeElement).toBe(menuButton("File"));
+    windowFocused.mockRestore();
+  });
+
+  it("stays while the focus moves between its titles", () => {
+    render(<MenuBar onCommand={() => {}} />);
+    tapAlt();
+    fireEvent.keyDown(menuButton("File"), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(menuButton("Edit"));
+    expect(screen.getByRole("menubar")).toBeTruthy();
+  });
+
   it("opens a title's menu from the keyboard", async () => {
     render(<MenuBar onCommand={() => {}} />);
     tapAlt();
@@ -136,6 +172,20 @@ describe("MenuBar from the keyboard", () => {
     fireEvent.click(document.activeElement!);
     expect(await screen.findByRole("menu")).toBeTruthy();
     expect(menuButton("Edit").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("keeps the bar when Escape closes an open menu and the focus goes back to its title", async () => {
+    const windowFocused = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    render(<MenuBar onCommand={() => {}} />);
+    tapAlt();
+    fireEvent.click(menuButton("File"));
+    const menu = await screen.findByRole("menu");
+    await act(async () => {
+      fireEvent.keyDown(menu, { key: "Escape" });
+    });
+    await act(async () => {});
+    expect(screen.getByRole("menubar")).toBeTruthy();
+    windowFocused.mockRestore();
   });
 });
 

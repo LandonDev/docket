@@ -3511,7 +3511,9 @@ host anything per row: the rows read the session summaries (`workOutcome`) and L
   Right-click or ⋯ (over the time on hover) is the thread's menu; a double-click renames it. **Work Chats** draws
   the code rows (its state at the row's end) with the same two marks: the provider in the lead, a type other than
   chat after the title. With nothing listed it is the home's one `Empty`, "No chats" with New chat (a Work chat),
-  above the archived row.
+  above the archived row. While a page covers the threads (Today, Review, the Outbox, Settings: `threadsCovered`)
+  no thread row is lit, here or in any column: the page is the one place lit, and the open thread's row lights
+  again once it leaves.
 - **Archived**: a quiet row on the names' column at the end of Threads, "3 archived", opening the archived list
   (`ThreadListPopover`, Restore on hover) of the job's threads, loose and in projects; a pick restores and opens
   the thread. Work Chats ends its list with the same row. Nothing while none are archived.
@@ -5072,7 +5074,10 @@ display too narrow for 680), where seven whole short names and the two presses n
 second row at its end (a container query on the foot) and the Job track wraps onto a second line inside its border,
 each choice still 26px, so nothing overlaps and the window grows with its page. A capture on
 its way shows nothing, since the window is already gone and the next draft
-starts empty. While the host says LifeOS cannot take a capture, the line
+starts empty. The first capture, with no state kept from an earlier
+answer, says "Loading jobs…" in muted ink with a spinner in the line's place
+until the host answers; both presses and their keys are held meanwhile (the
+job he last used may yet lead), and the field takes his words. While the host says LifeOS cannot take a capture, the line
 says why in the rule's words, this computer named ("Not signed in to LifeOS
 on this Mac", "The LifeOS sign-in on this Mac waits for your approval",
 "LifeOS refused this Mac's sign-in", "Work is off on this Mac", "LifeOS is

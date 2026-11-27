@@ -7,6 +7,7 @@ import { hasRefresh, isStaticBlob } from 'aliax-core/sync'
 import type { MintedToken, RefreshMintOutcome } from 'aliax-core/mint'
 import type { SessionMintInput, SessionMintResult } from './staticMint'
 import { StaticTokens } from './staticTokens'
+import { CANCELLED } from '@shared/signInWords'
 
 // No Keychain in tests: nothing here reads the CLI's live sign-in anyway.
 vi.mock('aliax-core/keychain', () => ({
@@ -141,8 +142,11 @@ describe('StaticTokens.convert', () => {
     expect(await tokens.convert('one', false)).toEqual({ ok: false, error: 'the stored claude.ai session has lapsed' })
     expect(tokens.progress()).toEqual({ rows: { one: { state: 'needs-sign-in', at: NOW, detail: 'the stored claude.ai session has lapsed' } }, run: null })
     expect(tokensOf('one').accessToken).toBe('OLD')
-    expect(await tokens.convert('one', true)).toEqual({ ok: false, error: 'sign-in cancelled' })
+    expect(await tokens.convert('one', true)).toEqual({ ok: false, error: CANCELLED })
     expect(tokens.progress()).toBeNull()
+    // One account that needs a sign-in is said in the singular.
+    const all = await tokens.convertAll(false)
+    expect(all).toEqual({ ok: false, error: '0 of 1 converted, 1 needs a sign-in', notes: ['0 of 1 converted', '1 needs a sign-in'] })
   })
 
   it('a token for another account is refused by name and nothing is filed', async () => {
@@ -237,7 +241,8 @@ describe('StaticTokens.convertAll and renewals', () => {
     ;(tokens as unknown as { deps: { exchange: unknown } }).deps.exchange = vi.fn(async () => minted({ account: { uuid: 'ua', email: 'a@x.test' } }))
     const out = await tokens.convertAll(true)
     expect(out.ok).toBe(false)
-    expect(out.ok ? '' : out.error).toBe('1 of 3 converted · 2 failed')
+    // One comma sentence, and the tally in its notes too, so the page can tell it from any other error.
+    expect(out).toEqual({ ok: false, error: '1 of 3 converted, 2 failed', notes: ['1 of 3 converted', '2 failed'] })
     expect(runs.filter(Boolean).map((r) => `${r!.done}/${r!.total}`)).toEqual(expect.arrayContaining(['0/3', '1/3', '2/3', '3/3']))
     expect(tokens.progress()?.run ?? null).toBeNull()
     expect(vault.profiles('claude-code').find((p) => p.name === 'a')?.static).toBe(true)
@@ -247,7 +252,7 @@ describe('StaticTokens.convertAll and renewals', () => {
   it('says so when every account already holds a fresh one-year token, and refuses a second run meanwhile', async () => {
     seed('fresh', staticBlob(NOW + 200 * DAY), { static: true })
     const { tokens } = make()
-    expect(await tokens.convertAll()).toEqual({ ok: true, notes: ['every Claude account already holds a one-year token'] })
+    expect(await tokens.convertAll()).toEqual({ ok: true, notes: ['Every Claude account already holds a one-year token'] })
     seed('one', grantBlob(), { accountId: 'u2', email: 'two@x.test' })
     let release: () => void = () => {}
     const slow = make({ mintFromRefresh: vi.fn(() => new Promise<RefreshMintOutcome>((r) => (release = () => r({ ok: false, reason: 'endpoint', detail: 'slow' })))) })

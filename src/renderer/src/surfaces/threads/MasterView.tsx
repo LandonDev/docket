@@ -1,7 +1,7 @@
 import { measureElement, useVirtualizer, type Virtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactElement, type RefObject } from "react";
 import { useLinkMay } from "../../lib/linkMayCore";
-import { useHostHeld } from "../../lib/connection/degraded";
+import { useGraceEnd, useHostHeld } from "../../lib/connection/degraded";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { RowsContextMenu, RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { HeldTip } from "../../components/heldTip";
@@ -36,6 +36,7 @@ import {
   BoardDigestContext,
   doneTally,
   groupOf,
+  hostDown,
   rowHost,
   rowModels,
   setBatchRules,
@@ -334,13 +335,16 @@ function MasterBoardView(props: ThreadViewProps) {
   const mayAdopt = useLinkMay(masterHost, "batch.adopt");
   // Round 2: all of them go to the master's host; held while it is away.
   const footHeld = useHostHeld(masterHost);
+  // A row's host goes offline as every held control does, past the 1.5 s grace: the memo reads again when a grace ends.
+  const graceEnded = useGraceEnd(useMemo(() => environments.map((e) => e.id), [environments]));
   const hostOf = useMemo(() => {
+    void graceEnded;
     const cache = new Map<string, RowHost | null>();
     return (environmentId: string): RowHost | null => {
-      if (!cache.has(environmentId)) cache.set(environmentId, rowHost({ environmentId }, { environmentId: masterHost }, environments, (id) => statuses.get(id)));
+      if (!cache.has(environmentId)) cache.set(environmentId, rowHost({ environmentId }, { environmentId: masterHost }, environments, (id) => hostDown(id, statuses.get(id))));
       return cache.get(environmentId) ?? null;
     };
-  }, [environments, statuses, masterHost]);
+  }, [environments, statuses, masterHost, graceEnded]);
   const [chatOpen, setChatOpen] = useChatFold(session.id, true, session.status === "waiting");
   // A board that arrives live (the first child, or a step starting after
   // the batch emptied) comes with the chat open: a fold remembered from an

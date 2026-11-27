@@ -159,9 +159,9 @@ describe('menu tree', () => {
       ['Away for Code Threads'],
       ['Away for Work Threads'],
       '—',
-      ['Pause All'],
+      ['Pause All…'],
       ['Resume All'],
-      ['Stop All'],
+      ['Stop All…'],
       ['Archive Done']
     ])
     expect(section('Window')).toEqual([])

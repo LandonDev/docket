@@ -48,5 +48,6 @@ export const fixtures = [
   { name: "The sign-in waits", props: { ...base, text: "Call the ref assigner", status: "offline", lifeos: "pairing", host: "This Mac", canFile: true } },
   { name: "The host did not answer", props: { ...base, text: "Call the ref assigner", status: "silent", host: "This Mac", onRetry: () => {}, canFile: true } },
   { name: "Retry asking again", props: { ...base, text: "Call the ref assigner", status: "silent", host: "This Mac", onRetry: () => {}, retrying: true, canFile: true } },
+  { name: "The first capture, its jobs on their way", props: { ...base, sector: "unsorted", text: "Book the arena", status: "loading", host: "This Mac", canFile: true } },
   { name: "Dragging a file", props: { ...base, dragging: true } },
 ];

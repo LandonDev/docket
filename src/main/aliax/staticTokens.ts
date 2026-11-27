@@ -18,6 +18,7 @@ import {
   type PlainCookie
 } from 'aliax-core'
 import type { MintProgress, MintState } from '@shared/accounts'
+import { CANCELLED } from '@shared/signInWords'
 import type { SessionMintInput, SessionMintResult } from './staticMint'
 
 /**
@@ -150,7 +151,8 @@ export class StaticTokens {
     if (this.running) return Promise.resolve({ ok: false, error: 'a conversion is already running' })
     const work = this.one(name, interactive).then((out): ActionResult => {
       if (out.state === 'done') return { ok: true, name, notes: [`one-year token saved, lapses ${new Date(out.expiresAt).toLocaleDateString()}`] }
-      if (out.state === 'cancelled') return { ok: false, error: 'sign-in cancelled' }
+      // The person closed the sign-in: the page says nothing (CANCELLED).
+      if (out.state === 'cancelled') return { ok: false, error: CANCELLED }
       return { ok: false, error: out.detail }
     })
     this.running = work.finally(() => (this.running = null))
@@ -162,7 +164,7 @@ export class StaticTokens {
     if (this.running) return Promise.resolve({ ok: false, error: 'a conversion is already running' })
     const work = (async (): Promise<ActionResult> => {
       const names = this.candidates()
-      if (names.length === 0) return { ok: true, notes: ['every Claude account already holds a one-year token'] }
+      if (names.length === 0) return { ok: true, notes: ['Every Claude account already holds a one-year token'] }
       this.run = { total: names.length, done: 0 }
       this.deps.nudge()
       const tally = { done: 0, signIn: 0, failed: 0, cancelled: 0 }
@@ -182,11 +184,14 @@ export class StaticTokens {
       }
       const notes = [
         `${tally.done} of ${names.length} converted`,
-        tally.signIn ? `${tally.signIn} need a sign-in` : '',
+        tally.signIn ? `${tally.signIn} ${tally.signIn === 1 ? 'needs' : 'need'} a sign-in` : '',
         tally.failed ? `${tally.failed} failed` : '',
         tally.cancelled ? `${tally.cancelled} cancelled` : ''
       ].filter(Boolean)
-      return tally.done === names.length ? { ok: true, notes } : { ok: false, error: notes.join(' · ') }
+      // The tally rides a failure's notes too: the page toasts it as one comma sentence, and words any other error itself.
+      if (tally.done === names.length) return { ok: true, notes }
+      const failed = { ok: false as const, error: notes.join(', '), notes }
+      return failed
     })()
     this.running = work.finally(() => (this.running = null))
     return work

@@ -45,7 +45,8 @@ three ids and nothing else it is asked). Open File… is greyed while no Work fi
 bar": a lone Alt focuses its first title, Left, Right, Home and End move
 between the titles (one tab stop; while a menu is open Left and Right open
 its neighbour), and Escape with no menu open, or Alt again, closes it and
-puts the focus back where it was, as a pick does before its command runs. Go to Symbol is ⌘⇧O and
+puts the focus back where it was, as a pick does before its command runs; focus that leaves the bar before
+a menu opens (a Tab, a click on the page) closes it and stays where it went (a window that loses focus keeps it). Go to Symbol is ⌘⇧O and
 Open Project ⌘O, in the menu and the renderer's resolver alike; New
 Terminal is ⌃` (⌘` is macOS's window cycle).
 While focus is inside Work's Files place (`[data-files-view]`, with its port

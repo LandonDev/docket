@@ -1851,7 +1851,7 @@ describe("Stop, archive and delete a batch thread from the board", () => {
     renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all…" }));
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^Pause \d+$/ }));
     await flush();
     await waitFor(() =>
@@ -2324,7 +2324,7 @@ describe("the batch across hosts", () => {
     renderView();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pause all…" }));
     let dialog = screen.getByRole("alertdialog");
     expect(within(dialog).getByText("Pause 2 running threads?")).toBeTruthy();
     // The rail's words for the same confirm: one line, the count on the button.

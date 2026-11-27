@@ -41,11 +41,18 @@ const NO_AGENTS: string[] = [];
 const subscribeMeta = (listener: () => void): (() => void) =>
   sessionStore.onMetaChange(listener);
 
-/** A child that has settled: not running, starting or waiting. */
+/** A child that has finished: done, idle after its turn, or failed. A queued, paused, stopped or watching
+ *  angle (or one not listed yet) still has work ahead, so it is never counted. */
 const settled = (status: SessionStatus | undefined): boolean =>
-  status !== "running" && status !== "starting" && status !== "waiting";
+  status === "idle" || status === "done" || status === "error";
 /** A child at work: running or starting (one waiting on an answer needs him, it is not running). */
 const working = (status: SessionStatus | undefined): boolean => status === "running" || status === "starting";
+
+/** A state an angle's row leaves unsaid: finished and quiet, or not listed yet. */
+const quietState = (status: SessionStatus | undefined): boolean => {
+  const state = threadStateOf(status);
+  return state === "idle" || state === "done";
+};
 
 /** How many of the spawned angles `is` holds for (a primitive, for useSyncExternalStore). */
 function useAngleCount(agents: string[], is: (status: SessionStatus | undefined) => boolean): number {
@@ -339,7 +346,8 @@ function AngleGroup({
       <ItemContent>
         <ItemTitle>{label}</ItemTitle>
       </ItemContent>
-      {live ? <StatusMark state="working" detail={angleStatus(agent.blocks)} /> : agent.status === "waiting" ? <StatusMark state="waiting" /> : null}
+      {/* Any state but finished says itself through the one mark: Queued, Paused, Needs you, Failed. */}
+      {live ? <StatusMark state="working" detail={angleStatus(agent.blocks)} /> : quietState(agent.status) ? null : <StatusMark state={threadStateOf(agent.status)} />}
     </>
   );
   return (

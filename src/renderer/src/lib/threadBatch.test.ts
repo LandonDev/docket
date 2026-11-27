@@ -17,6 +17,8 @@ import {
   confirmThreadBatch,
   hostScope,
   needsConfirm,
+  BATCH_ACTIONS,
+  BATCH_LABEL,
   requestThreadBatch,
   resetThreadBatchForTests,
   resourcesHeldBy,
@@ -128,6 +130,12 @@ describe("batchTargets", () => {
     expect(ids(batchTargets("stop", list, { ...all, scope }))).toEqual(["leader"]);
     expect(ids(batchTargets("resume", list, { ...all, scope }))).toEqual(["copy"]);
     expect(batchConfirm("stop", 1, scope).title).toBe("Stop 1 running thread in app?");
+  });
+});
+
+describe("the fleet switches' labels", () => {
+  it("end in … exactly where they open a confirm (Pause all…, Stop all…, Archive done…; Resume all runs at once)", () => {
+    for (const action of BATCH_ACTIONS) expect(BATCH_LABEL[action].endsWith("…")).toBe(needsConfirm(action));
   });
 });
 

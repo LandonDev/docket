@@ -109,7 +109,7 @@ import type { GitDiffStats } from "../lib/fs";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { useComputersMark } from "../lib/computers";
 import { CUSTOMIZE, groupMenuRows } from "./TabGroupMenu";
-import { RowsContextMenu, tidy, type MenuRow } from "./menuRows";
+import { RowsContextMenu, tidy, type MenuOpen, type MenuRow } from "./menuRows";
 import { aliaxChunk, computersChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, customizeChunk, workOutboxChunk, workSearchChunk, workShellChunk } from "../surfaces/chunks";
 import { openWorkSearch } from "../lib/workSearchPort";
 import { shortcutFor } from "../lib/settings";
@@ -319,7 +319,7 @@ export function ProjectRail({
   const openPort = useSyncExternalStore(addOpen ? hearPort : noPort, () => (addOpen ? workRailPort.get() : null));
   const [customizing, setCustomizing] = useState<{ path: string; projectKey: string } | null>(null);
   const [renaming, setRenaming] = useState<{ workspaceId: string; name: string; projectKey: string } | null>(null);
-  const projectMenu = useRef<((at: { x: number; y: number; id: string | null }) => void) | null>(null);
+  const projectMenu = useRef<((at: MenuOpen) => void) | null>(null);
   const [removing, setRemoving] = useState<{
     path: string;
     name: string;
@@ -578,12 +578,14 @@ export function ProjectRail({
   };
   const workSortable = useSortable(workIds, onReorderWork, { axis: "y", onActivate: onSelectProject });
   // The Work heading's + lists the sectors with no workspace yet (work/shell/WorkRailHost.tsx).
+  // The control that asked (the + or the Add workspace row) gets focus back when the menu closes.
   const openWorkAdd = (event: { currentTarget: HTMLElement }) => {
-    const box = event.currentTarget.getBoundingClientRect();
+    const opener = event.currentTarget;
+    const box = opener.getBoundingClientRect();
     void workShellChunk
       .load()
       .then(() => workRailPort.ready())
-      .then(() => projectMenu.current?.({ x: box.left, y: box.bottom + 4, id: WORK_ADD_MENU }));
+      .then(() => projectMenu.current?.({ x: box.left, y: box.bottom + 4, id: WORK_ADD_MENU, opener }));
   };
   const outboxWaiting = useOutboxWaiting();
   const outboxFailed = useOutboxFailed();

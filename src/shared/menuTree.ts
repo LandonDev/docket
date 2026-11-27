@@ -213,9 +213,9 @@ export const MENU_TREE: MenuSection[] = [
       cmd('away_code', 'Away for Code Threads', undefined, { checkbox: true }),
       cmd('away_work', 'Away for Work Threads', undefined, { checkbox: true, workOnly: true }),
       sep,
-      cmd('pause_all_threads', 'Pause All'),
+      cmd('pause_all_threads', 'Pause All…'),
       cmd('resume_all_threads', 'Resume All'),
-      cmd('stop_all_threads', 'Stop All'),
+      cmd('stop_all_threads', 'Stop All…'),
       cmd('archive_done_threads', 'Archive Done')
     ]
   },

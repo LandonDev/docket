@@ -288,12 +288,17 @@ export type RowsContextMenuProps = {
    *  of its list, a workspace switch's every row). */
   lazyMount?: boolean;
   /** Set to a function that opens the menu at a point for an id: a row's
-   *  ⋯ and a request from elsewhere open the same menu the right-click does. */
-  openRef?: MutableRefObject<((at: { x: number; y: number; id: string | null }) => void) | null>;
+   *  ⋯ and a request from elsewhere open the same menu the right-click does.
+   *  `opener` is the control that asked (a heading's +), given focus back when
+   *  the menu closes; without one it is the row of that id. */
+  openRef?: MutableRefObject<((at: MenuOpen) => void) | null>;
 };
 
 /** Where a right-click asked for the menu: the point, the row's id, the row itself. */
 export type MenuAt = { x: number; y: number; id: string | null; row: HTMLElement | null };
+
+/** A request to open a row's menu from elsewhere (`openRef`). */
+export type MenuOpen = { x: number; y: number; id: string | null; opener?: HTMLElement | null };
 
 /**
  * A menu of verbs at the pointer (`ContextMenu`). The list stays the same
@@ -322,13 +327,14 @@ export function RowsContextMenu(props: RowsContextMenuProps) {
   };
   if (props.openRef) {
     props.openRef.current = (at) => {
-      const row = at.id ? document.querySelector<HTMLElement>(`[data-menu-id="${CSS.escape(at.id)}"]`) : null;
+      const row = at.opener ?? (at.id ? document.querySelector<HTMLElement>(`[data-menu-id="${CSS.escape(at.id)}"]`) : null);
       if (!props.rowsFor(at.id)?.length) return;
+      const asked = { x: at.x, y: at.y, id: at.id, row };
       // From the keyboard there is no pointer: under the row it came from.
       if (at.x === 0 && at.y === 0 && row) {
         const rect = row.getBoundingClientRect();
-        open({ ...at, x: rect.left, y: rect.bottom, row });
-      } else open({ ...at, row });
+        open({ ...asked, x: rect.left, y: rect.bottom });
+      } else open(asked);
     };
   }
   const child = props.disabled

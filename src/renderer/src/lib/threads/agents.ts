@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { contextPercent } from "../contextUsage";
 import { STATUS_WORD, statusNeedsYou, statusToneClass, threadStateOf, type ThreadState } from "../../components/ui/status";
+import { modelInfo, type ProviderId } from "@server/shared/catalog";
 import { findModel } from "../models";
 import { markDrawing, type MarkId } from "../../chrome/HarnessIcon";
 import { HARNESS_TITLE, type Block, type Session } from "../session";
@@ -163,9 +164,13 @@ export function agentSummaryParts(s: AgentSummary): { text: string; tone?: strin
  *  (a board stand-in for a child its host has not described). */
 export function modelLabel(provider: string | null | undefined, model: string | null | undefined): string {
   if (!provider || !model) return "";
-  const found = findModel(pickerModelId(asHarness(provider), model));
-  if (!found) return model;
-  return found.harness === "claude" && !found.vendor && !/^Claude\s/.test(found.name) ? `Claude ${found.name}` : found.name;
+  const harness = asHarness(provider);
+  const found = findModel(pickerModelId(harness, model));
+  // Before a host sends its list, the shared catalog still knows the built-in names ("GPT-6.1 Sol", never "gpt-6.1-sol").
+  const info = found ? null : modelInfo(provider as ProviderId, model);
+  const known = found ?? (info ? { harness: provider, name: info.label, vendor: info.vendor } : null);
+  if (!known) return model;
+  return known.harness === "claude" && !known.vendor && !/^Claude\s/.test(known.name) ? `Claude ${known.name}` : known.name;
 }
 
 /** The maker of a (provider, native model) pair when it is not the

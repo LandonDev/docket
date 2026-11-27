@@ -95,6 +95,7 @@ import { LIFEOS_CARD, openWorkView, useLifeosProjects, useWorkHosts, workColumnP
 import { loadToast } from "../components/ui/toaster";
 import { actionFailed } from "../lib/threadActionToast";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
+import { threadsCovered, useShell } from "../stores/shell";
 import {
   cardThreads,
   groupWorkspaceSessions,
@@ -306,20 +307,29 @@ export type RailThreadMenu = {
 /** The column's open thread, held outside the rows' props: each row asks
  *  what it reads of it (`useActive`), so a switch renders the row it leaves
  *  and the row it reaches, never every card. */
-type ActiveRow = { get(): string | undefined; subscribe(listener: () => void): () => void; set(id: string | undefined): void };
+type ActiveRow = {
+  get(): string | undefined;
+  /** The row drawn lit: none while a page (Today, Review, the Outbox, Settings) covers the threads (`threadsCovered`). */
+  lit(): string | undefined;
+  subscribe(listener: () => void): () => void;
+  set(id: string | undefined, covered: boolean): void;
+};
 
-function createActiveRow(initial: string | undefined): ActiveRow {
+function createActiveRow(initial: string | undefined, initialCovered: boolean): ActiveRow {
   let id = initial;
+  let covered = initialCovered;
   const listeners = new Set<() => void>();
   return {
     get: () => id,
+    lit: () => (covered ? undefined : id),
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    set(next) {
-      if (next === id) return;
+    set(next, nextCovered) {
+      if (next === id && nextCovered === covered) return;
       id = next;
+      covered = nextCovered;
       for (const listener of listeners) listener();
     },
   };
@@ -333,6 +343,12 @@ const NO_STORE = () => () => undefined;
 function useActive<T extends string | boolean | null | undefined>(actions: RowActions, pick: (id: string | undefined) => T): T {
   const store = useContext(ActiveRowContext);
   return useSyncExternalStore(store?.subscribe ?? NO_STORE, () => pick(store ? store.get() : actions.activeSessionId));
+}
+
+/** Whether a thread row draws lit: the open thread, unless a page covers the threads. */
+function useLit(actions: RowActions, threadId: string): boolean {
+  const store = useContext(ActiveRowContext);
+  return useSyncExternalStore(store?.subscribe ?? NO_STORE, () => (store ? store.lit() : actions.activeSessionId) === threadId);
 }
 
 /** Scrolls the list's selected row into view when the selection moves, and
@@ -612,7 +628,7 @@ const ChatRow = memo(function ChatRow({
   tallyRender("railRow");
   const offline = useHostsOffline([thread.environmentId]);
   const renaming = actions.renamingId === thread.id;
-  const selected = useActive(actions, (id) => id === thread.id);
+  const selected = useLit(actions, thread.id);
   return (
     <ThreadRowView
       row={thread}
@@ -664,7 +680,7 @@ const ChildRow = memo(function ChildRow({
   actions: RowActions;
 }) {
   const offline = useHostsOffline([thread.environmentId]);
-  const selected = useActive(actions, (id) => id === thread.id);
+  const selected = useLit(actions, thread.id);
   return (
     <ThreadRowView
       row={thread}
@@ -1796,13 +1812,15 @@ export default function WorkspaceSessions({
   // The open thread and its tree reach the rows without riding their props:
   // a row asks the store (`useActive`), and the tree, read when a menu opens,
   // is one set kept current after each commit. A switch renders two rows.
-  const [activeRow] = useState(() => createActiveRow(activeSessionId));
+  // A page in front (Today, Review, the Outbox, Settings) is the one place lit: read once here, never per row.
+  const covered = useShell(threadsCovered);
+  const [activeRow] = useState(() => createActiveRow(activeSessionId, covered));
   const [focusedNow] = useState(() => new Set(focused));
   useLayoutEffect(() => {
-    activeRow.set(activeSessionId);
+    activeRow.set(activeSessionId, covered);
     focusedNow.clear();
     for (const id of focused) focusedNow.add(id);
-  }, [activeRow, activeSessionId, focused, focusedNow]);
+  }, [activeRow, activeSessionId, covered, focused, focusedNow]);
   const rows = useMemo<RowActions>(
     () => ({
       focusedTree: focusedNow,

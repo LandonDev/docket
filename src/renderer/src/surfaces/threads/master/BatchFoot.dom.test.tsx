@@ -109,4 +109,43 @@ describe("BatchFoot", () => {
     await act(async () => finish());
     expect(stop.querySelector('[data-slot="busy-label"]')?.hasAttribute("data-busy")).toBe(false);
   });
+
+  it("stops at three fifths of the board: twenty steps scroll inside while the heading and the last line stay", () => {
+    const state = emptyBatch("m");
+    const many: BatchState = {
+      ...state,
+      steps: [],
+      rules: { ...state.rules, steps: [{ id: "land", name: "Land", kind: "land" }, ...Array.from({ length: 19 }, (_, i) => ({ id: `c${i}`, name: `Check ${i}`, kind: "shell" as const, run: "true" }))] },
+    };
+    render(<BatchFoot batch={many} titleOf={() => undefined} onSave={noop} />);
+    const foot = document.querySelector("[data-batch-foot]") as HTMLElement;
+    expect(foot.className.split(/\s+/)).toEqual(expect.arrayContaining(["max-h-3/5", "min-h-0"]));
+    const list = document.querySelector("[data-steps]") as HTMLElement;
+    expect(list.querySelectorAll("[data-step]")).toHaveLength(20);
+    expect(list.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-0", "overflow-y-auto", "overflow-x-hidden"]));
+    // The heading and the last line never give way to the list.
+    expect((screen.getByText("When done").parentElement as HTMLElement).className.split(/\s+/)).toContain("shrink-0");
+    expect((document.querySelector("[data-then]") as HTMLElement).className.split(/\s+/)).toContain("shrink-0");
+  });
+
+  it("keeps the console's newest line in view when its box gets shorter, unless he scrolled up", () => {
+    const observers: Array<() => void> = [];
+    vi.stubGlobal("ResizeObserver", class { constructor(cb: () => void) { observers.push(cb); } observe() {} disconnect() {} });
+    try {
+      render(<BatchFoot batch={failedGate()} titleOf={() => undefined} onSave={noop} onStop={noop} />);
+      const log = document.querySelector("[data-console]") as HTMLElement;
+      Object.defineProperty(log, "scrollHeight", { configurable: true, value: 400 });
+      Object.defineProperty(log, "clientHeight", { configurable: true, value: 60 });
+      log.scrollTop = 0;
+      act(() => observers.forEach((cb) => cb()));
+      expect(log.scrollTop).toBe(400);
+      // Scrolled up: a resize leaves him where he is.
+      log.scrollTop = 10;
+      fireEvent.scroll(log);
+      act(() => observers.forEach((cb) => cb()));
+      expect(log.scrollTop).toBe(10);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

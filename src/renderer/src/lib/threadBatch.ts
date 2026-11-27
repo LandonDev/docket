@@ -124,11 +124,11 @@ export function batchTargets(
 
 // ── copy ───────────────────────────────────────────────────────────────
 
-/** The menu item's label for an action. */
+/** The menu item's label for an action; a row that opens a confirm ends in "…" (`needsConfirm`). */
 export const BATCH_LABEL: Record<BatchAction, string> = {
-  pause: "Pause all",
+  pause: "Pause all…",
   resume: "Resume all",
-  stop: "Stop all",
+  stop: "Stop all…",
   archiveDone: "Archive done…",
 };
 

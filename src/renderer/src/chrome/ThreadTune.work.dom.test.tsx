@@ -23,6 +23,14 @@ describe("ThreadTune", () => {
     expect(screen.queryByRole("switch", { name: "Worktree isolation" })).toBeNull();
   });
 
+  it("names its instructions box by a label, not by its placeholder", () => {
+    render(<ThreadTune environmentId="local" workspaceId="repo" tune={{}} onChange={() => {}} />);
+    const box = screen.getByLabelText("Instructions");
+    expect(box.tagName).toBe("TEXTAREA");
+    expect(box.getAttribute("placeholder")).toBe("Optional");
+    expect(box.hasAttribute("aria-label")).toBe(false);
+  });
+
   it("keeps it for a code workspace", () => {
     render(<ThreadTune environmentId="local" workspaceId="repo" tune={{}} onChange={() => {}} />);
     expect(screen.getByRole("switch", { name: "Worktree isolation" })).toBeTruthy();

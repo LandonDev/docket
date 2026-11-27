@@ -46,7 +46,7 @@ describe("the board's menus", () => {
   it("disables a switch with nothing to act on", () => {
     const items = boardMenuItems({ pausable: 0, paused: 1, done: 0, all: 3 });
     const by = (id: string) => items.find((i) => i.kind === "item" && i.id === id) as { label: string; disabled?: boolean };
-    expect(by("pause")).toMatchObject({ label: "Pause all", disabled: true });
+    expect(by("pause")).toMatchObject({ label: "Pause all…", disabled: true });
     expect(by("resume")).toMatchObject({ label: "Resume all", disabled: false });
     expect(by("archive-done")).toMatchObject({ label: "Archive done…", disabled: true });
     expect(by("archive-all")).toMatchObject({ label: "Archive all…", disabled: false });

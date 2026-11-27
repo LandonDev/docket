@@ -62,8 +62,10 @@ describe("SurfaceSkeleton", () => {
     expect(readFileSync(resolve(__dirname, "SurfaceSkeleton.tsx"), "utf8")).not.toMatch(/from "\.\.\/aliax/);
     const column = container.querySelector("[data-skeleton-column]")!;
     expect(column.className).toContain("max-w-6xl");
-    // The title's bone alone, then the rows 24px under it: no page line.
+    // The title in words, as Stats writes its own, then the rows 24px under it: no page line.
     expect(column.children).toHaveLength(2);
+    expect(column.children[0]!.textContent).toBe("Accounts");
+    expect(column.children[0]!.querySelector("[data-slot=skeleton]")).toBeNull();
     expect(column.children[1]!.className).toContain("mt-6");
   });
 
