@@ -83,7 +83,7 @@ export interface SearchAnswer {
 }
 
 /** The order the kinds' groups stand in; a kind not named here follows them, in the order it came. */
-export const SEARCH_ORDER: readonly SearchKind[] = ['person', 'mail', 'message', 'chat', 'task', 'event', 'file', 'doc', 'project', 'thread', 'item', 'held', 'routine', 'card', 'msform']
+export const SEARCH_ORDER: readonly SearchKind[] = ['person', 'mail', 'message', 'task', 'event', 'file', 'doc', 'project', 'thread', 'chat', 'item', 'held', 'routine', 'card', 'msform']
 
 /** A group's heading: the `@` list's own words. */
 export const SEARCH_LABELS: Readonly<Record<string, string>> = {
