@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { byPressing, byTarget, type TrackerOverview, type TrackerProject, type TrackerThread } from "@shared/work/tracker";
 import { registry } from "../../lib/connection";
+import { DEGRADED_GRACE_MS, degradedNow } from "../../lib/connection/degraded";
 import { nameInLine } from "../../lib/hostWords";
 import { quietPoll } from "../../lib/quietPoll";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -112,11 +113,16 @@ let kept: HostAnswer[] | null = null;
 /** Nothing kept (tests). */
 export const resetTracker = (): void => void (kept = null);
 
-/** Every host with Work on: an open link is asked, one that is not open answers its line. */
-export function askHosts(ask: (environmentId: string) => Promise<TrackerOverview>, hosts: Iterable<string> = workSwitch.hosts()): Promise<HostAnswer[]> {
+/** A link not open that is still inside its grace (lib/connection/degraded.ts): a cold window's first connect, a drop
+ *  under 1.5 s old. Its host is pending, its page's bones stand, and nothing says it is down yet. */
+const inGraceNow = (environmentId: string): boolean => degradedNow(environmentId) === null;
+
+/** Every host with Work on: an open link is asked, one inside its grace is pending, one past it answers its line. */
+export function askHosts(ask: (environmentId: string) => Promise<TrackerOverview>, hosts: Iterable<string> = workSwitch.hosts(), inGrace: (environmentId: string) => boolean = inGraceNow): Promise<HostAnswer[]> {
   return Promise.all(
     [...hosts].map((environmentId): Promise<HostAnswer> => {
       const transport = registry.statusOf(environmentId).transport;
+      if (transport !== "open" && inGrace(environmentId)) return Promise.resolve({ environmentId, overview: null, error: null });
       if (transport !== "open") return Promise.resolve({ environmentId, overview: null, error: closedWords(hostIn(environmentId), transport), closed: true });
       return ask(environmentId).then(
         (overview) => ({ environmentId, overview: plain(overview, environmentId), error: null }),
@@ -126,20 +132,21 @@ export function askHosts(ask: (environmentId: string) => Promise<TrackerOverview
   );
 }
 
-const askOverview = (environmentId: string): Promise<TrackerOverview> => registry.linkOf(environmentId).request<TrackerOverview>("work.projects.overview", {});
+/** A read that changes nothing: asked again when the socket is not open yet or drops (a window's cold open), never failed on the spot. */
+const askOverview = (environmentId: string): Promise<TrackerOverview> => registry.linkOf(environmentId).request<TrackerOverview>("work.projects.overview", {}, { retry: true });
 
 /**
  * The kept answers as a visit opens on them, held to the Work hosts there are now: a host whose link is not open says
  * its line at once, a host that is new (or was not asked) is pending, and a host no longer a Work host goes. A visit
  * after a host dropped never opens on an all-clear that host can no longer vouch for. Pure.
  */
-export function reconcileKept(kept: readonly HostAnswer[] | null, hosts: Iterable<string>, transportOf: (environmentId: string) => string): HostAnswer[] | null {
+export function reconcileKept(kept: readonly HostAnswer[] | null, hosts: Iterable<string>, transportOf: (environmentId: string) => string, inGrace: (environmentId: string) => boolean = () => false): HostAnswer[] | null {
   if (!kept) return null;
   const by = new Map(kept.map((a) => [a.environmentId, a]));
   return [...hosts].map((environmentId): HostAnswer => {
     const transport = transportOf(environmentId);
     const old = by.get(environmentId);
-    if (transport !== "open") {
+    if (transport !== "open" && !inGrace(environmentId)) {
       const error = closedWords(hostIn(environmentId), transport);
       // The same line as before is the same answer: a roster that did not move is not new.
       return old && !old.overview && old.error === error ? old : { environmentId, overview: null, error, closed: true };
@@ -155,7 +162,7 @@ export function reconcileKept(kept: readonly HostAnswer[] | null, hosts: Iterabl
  * host's link opens or drops.
  */
 export function useTracker(): TrackerView {
-  const [answers, setAnswers] = useState<HostAnswer[] | null>(() => reconcileKept(kept, workSwitch.hosts(), (id) => registry.statusOf(id).transport));
+  const [answers, setAnswers] = useState<HostAnswer[] | null>(() => reconcileKept(kept, workSwitch.hosts(), (id) => registry.statusOf(id).transport, inGraceNow));
   const [asked, setAsked] = useState(0);
   // Each Retry waits for the read it starts: `show` settles every one asked before it.
   const waiting = useRef<(() => void)[]>([]);
@@ -180,11 +187,15 @@ export function useTracker(): TrackerView {
     };
     // When the last read began: a focus inside a minute of it asks nothing.
     const last = { at: 0 };
+    // A link inside its grace is pending; when the grace ends with the link still not open, its line is due.
+    const graceEnd = { timer: 0 };
     const read = (): void => {
       reads.latest += 1;
       const n = reads.latest;
       last.at = Date.now();
       poll.heard();
+      window.clearTimeout(graceEnd.timer);
+      if ([...workSwitch.hosts()].some((id) => registry.statusOf(id).transport !== "open" && inGraceNow(id))) graceEnd.timer = window.setTimeout(read, DEGRADED_GRACE_MS + 1);
       void askHosts(askOverview).then((got) => {
         if (n !== reads.latest) return;
         show(got);
@@ -209,13 +220,14 @@ export function useTracker(): TrackerView {
       if (now === was) return;
       was = now;
       reads.latest += 1;
-      show(reconcileKept(kept ?? [], workSwitch.hosts(), (id) => registry.statusOf(id).transport)!);
+      show(reconcileKept(kept ?? [], workSwitch.hosts(), (id) => registry.statusOf(id).transport, inGraceNow)!);
       read();
     };
     const offs = [registry.subscribe(moved), workSwitch.subscribe(moved)];
     window.addEventListener("focus", focused);
     return () => {
       alive = false;
+      window.clearTimeout(graceEnd.timer);
       for (const off of offs) off();
       poll.stop();
       window.removeEventListener("focus", focused);

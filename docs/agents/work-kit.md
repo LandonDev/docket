@@ -100,8 +100,8 @@ runs the same guard on its own lock.
 
 ## Bumping the pin
 
-The pin is `154b2753b72df05926c480a50833d0597538a3db` (v100: every wait through
-`Wait`). It keeps `WORK_KIT_API` at 3. The pin needs a signed Docket release.
+The pin is `e54d3cb26fa394572bd5acf4dc0af4146fe68aca` (v101: every wait through
+`Wait`, word samples for every wait with words). It keeps `WORK_KIT_API` at 3. The pin needs a signed Docket release.
 
 A bump changes five pin files in one commit: `package.json`, `bun.lock`,
 `ios/TempCode/project.yml`, the tracked `ios/TempCode/TempCode.xcodeproj/project.pbxproj`,

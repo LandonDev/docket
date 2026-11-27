@@ -50,10 +50,10 @@ describe("asking the hosts", () => {
     vi.spyOn(registry, "statusOf").mockImplementation((id) => ({ transport: linkState[id] }) as never);
   };
 
-  it("every host with Work on answers: an open link is asked, one not open says it is connecting or not connected", async () => {
+  it("every host with Work on answers: an open link is asked, one not open past its grace says it is connecting or not connected", async () => {
     rigged();
     const ask = vi.fn(async () => ({ jobs: [job("b-purdue", "purdue", [project("lan")])] }));
-    const got = await askHosts(ask, ["box", "mac", "pc"]);
+    const got = await askHosts(ask, ["box", "mac", "pc"], () => false);
     expect(ask).toHaveBeenCalledTimes(1);
     expect(got.map((a) => [a.environmentId, a.error, a.overview?.jobs.length ?? null])).toEqual([
       ["box", null, 1],
@@ -61,6 +61,15 @@ describe("asking the hosts", () => {
       ["pc", "Office PC is not connected.", null],
     ]);
     expect(closedWords("the box", "unauthorized")).toBe("The box is not connected.");
+  });
+
+  it("a link inside its grace (a cold window's first connect, a drop under 1.5 s old) is pending, never down", async () => {
+    rigged();
+    const ask = vi.fn(async () => ({ jobs: [] }));
+    const got = await askHosts(ask, ["box", "mac", "pc"], (id) => id === "pc");
+    expect(got.find((a) => a.environmentId === "pc")).toEqual({ environmentId: "pc", overview: null, error: null });
+    expect(got.find((a) => a.environmentId === "mac")?.error).toBe("This Mac is connecting.");
+    expect(reconcileKept([{ environmentId: "pc", overview: { jobs: [] }, error: null }], ["pc"], () => "connecting", () => true)).toEqual([{ environmentId: "pc", overview: { jobs: [] }, error: null }]);
   });
 
   it("keeps the last answer for the window: a second visit draws it at once while the hosts are asked again", async () => {

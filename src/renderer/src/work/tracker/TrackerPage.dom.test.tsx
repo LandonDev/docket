@@ -179,14 +179,18 @@ describe("the tracker", () => {
     expect(rowsOf("purdue")).toEqual(["p-budget", "p-lan"]);
   });
 
-  it("draws bones in the rows' shape while the hosts are asked", () => {
+  it("draws bones in the rows' shape while the hosts are asked, from words, and the rows land in the same region", () => {
     vi.useFakeTimers();
     try {
-      render(body({ loading: true, jobs: [] as MergedJob[] }));
+      const { rerender } = render(body({ loading: true, jobs: [] as MergedJob[] }));
       act(() => void vi.advanceTimersByTime(200));
-      const held = document.querySelector("[aria-busy=true]") as HTMLElement;
-      expect(held.querySelectorAll(".pk-track-row")).toHaveLength(6);
+      const region = document.querySelector("[data-region]") as HTMLElement;
+      expect(region.querySelectorAll("[skullet-loading] .pk-track-row:not(.pk-track-head)")).toHaveLength(6);
+      expect(region.querySelector("[skullet-loading]")!.textContent).toContain("Spring tournament");
       expect(document.querySelector("section[data-job]")).toBeNull();
+      rerender(body());
+      expect(document.querySelector("[data-region]")).toBe(region);
+      expect(region.querySelector("section[data-job]")).not.toBeNull();
     } finally {
       vi.useRealTimers();
     }

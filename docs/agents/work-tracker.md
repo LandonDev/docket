@@ -50,13 +50,17 @@ minute after the last read, never while the window is hidden (once as it shows a
 only when no read began in the last minute, at once when the roster moves, and on a down job's Retry (`reload`). Its
 due words and ages move on the window's one minute clock (`useMinuteClock`, lib/turnClock.ts). The roster is the Work hosts and whether
 each link is open, held by one rule, `reconcileKept`, on the first read and on every change from then on (a host joins
-or leaves Work, a link drops or opens again): a host whose link is not open is marked closed and says its line at once,
-a host that is new, or whose link opens again, is pending, and a host that left Work goes; the other hosts' groups
+or leaves Work, a link drops or opens again): a host whose link is not open is marked closed and says its line once
+its 1.5 s grace has passed (`degradedNow`, lib/connection/degraded.ts: a cold window's first connect, a drop just now),
+pending until then, and the page asks again as the grace ends; a host that is new, or whose link opens again, is pending, and a host that left Work goes; the other hosts' groups
 stand, the read in flight is dropped and every host is asked again. So no all-clear stands on a host it cannot vouch
 for; only the newest read lands, never an older one that answers late. A host
 whose link is not open is not asked: it answers its own line, "The box is connecting." or "The box is not connected."
-(`closedWords`). The last answer is kept for the window's life, so a second visit draws it at once while the hosts
-are asked again; bones show while it reads and while a pending host leaves the page empty (TrackerPage.tsx). `mergeOverviews` makes one job a sector: LifeOS's rows are the same
+(`closedWords`). The overview is asked with `retry: true`: a read that changes nothing waits for a socket that is not
+open yet rather than failing on the spot (a cold window once landed on "Box is not connected" for a minute with its
+link open). The last answer is kept for the window's life, so a second visit draws it at once while the hosts
+are asked again; bones show while it reads and while a pending host leaves the page empty: one `Region` round the rows,
+its bones work-kit's `ProjectFactsSample`, so the rows come in over them (TrackerPage.tsx). `mergeOverviews` makes one job a sector: LifeOS's rows are the same
 from every host of a sector, so a project's facts come from the first host that read them; its threads live on each
 host, so the counts add up and the most pressing lead wins, with the host it lives on. A job one host failed to read
 stands on the host that read it. A host that did not answer, or is not linked, is one quiet line over the groups; the

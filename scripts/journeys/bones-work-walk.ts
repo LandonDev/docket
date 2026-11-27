@@ -9,6 +9,8 @@
 //   bun scripts/journeys/bones-work-walk.ts [--out <dir>] [--theme dark|light|both] [--delay 400] [--views Mail,Agenda]
 //     [--places Today,Outbox] [--files sheet,pdf,deck]
 //
+// Besides a view's name, --views takes the scenes in SCENES: Projects board, Project.
+//
 // Build first (electron-vite build). Nothing here touches the installed app or its data.
 import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -23,7 +25,7 @@ import type { Window } from './lib/window'
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
-  options: { out: { type: 'string' }, theme: { type: 'string', default: 'both' }, delay: { type: 'string', default: '400' }, views: { type: 'string', default: 'Mail,Agenda,Messages,Routines,Tasks,People,Money,Files' }, places: { type: 'string', default: 'Today,Projects,Review,Outbox' }, files: { type: 'string', default: 'sheet,pdf,deck' } }
+  options: { out: { type: 'string' }, theme: { type: 'string', default: 'both' }, delay: { type: 'string', default: '400' }, views: { type: 'string', default: 'Mail,Agenda,Messages,Routines,Tasks,People,Money,Files,Projects,Projects board,Project' }, places: { type: 'string', default: 'Today,Projects,Review,Outbox' }, files: { type: 'string', default: 'sheet,pdf,deck' } }
 })
 const THEMES = values.theme === 'both' ? (['dark', 'light'] as const) : ([values.theme as 'dark' | 'light'] as const)
 const DELAY = Number(values.delay)
@@ -82,7 +84,10 @@ const LANDED: Record<string, string> = {
 const placeLanded = (place: string): string =>
   place === 'Outbox'
     ? `(${shows('[data-outbox-empty]')} || ${shows('[data-outbox-detail]')} || ${shows('[role="listitem"]')}) && ${NOTHING_WAITS}`
-    : `${shows(`[data-work-place="${place.toLowerCase()}"]`)} && ${NOTHING_WAITS}`
+    : // The Projects place lands on its rows: a link not open yet is a wait, never a landing on its line.
+      place === 'Projects'
+      ? `${shows('[data-work-place="projects"] [data-project]')} && ${NOTHING_WAITS}`
+      : `${shows(`[data-work-place="${place.toLowerCase()}"]`)} && ${NOTHING_WAITS}`
 /** A file opened in a Files tab, landed: its kind's own content drawn with nothing waiting. */
 const FILE_LANDED: Record<'sheet' | 'pdf' | 'deck', string> = {
   sheet: `${shows('[data-sheet-item]')} && ${NOTHING_WAITS}`,
@@ -90,8 +95,53 @@ const FILE_LANDED: Record<'sheet' | 'pdf' | 'deck', string> = {
   // A box without the conversion tools (a pair started without them) says it cannot open the deck: an error is content.
   deck: `(${shows('[data-slides-main]')} || ${shows('[data-canvas-failed]')}) && ${NOTHING_WAITS}`,
 }
+const PROJECTS_PLACE = 'work.projects.place.v1'
+/** work-kit's Projects as a list and a board, and a project's page: each opened, then the window reloaded on it. */
+type Scene = { open: (pair: Pair, workspace: Workspace) => Promise<void>; landed: string }
+const placeAs = (pair: Pair, workspace: Workspace, place: object) =>
+  pair.page.eval(`localStorage.setItem(${js(PROJECTS_PLACE)}, JSON.stringify({ ...JSON.parse(localStorage.getItem(${js(PROJECTS_PLACE)}) ?? '{}'), [${js(workspace.id)}]: ${js(place)} }))`)
+/** The workspace's own Projects view: the column's Projects heading, pressed only when its view is not the one open. */
+async function openProjects(pair: Pair, workspace: Workspace): Promise<void> {
+  await pair.showWork(workspace, 'Mail')
+  // From a project's page the heading goes back to the list, and from the list it closes the view: press until it stands.
+  await pair.page.until('the Projects view', 30_000, async () => {
+    if (await pair.page.eval<boolean>(`!!document.querySelector('[data-work-projects] > button[aria-current="true"]') && !!document.querySelector('.tc-projects')`)) return true
+    await pair.page.clickOn('[data-work-projects] > button', 'Projects')
+    await Bun.sleep(1500)
+    return false
+  })
+}
+const SCENES: Record<string, Scene> = {
+  Projects: {
+    open: async (pair, workspace) => {
+      await placeAs(pair, workspace, { at: 'list', layout: 'list', tab: 'all' })
+      await openProjects(pair, workspace)
+    },
+    landed: `${shows('.tc-projects [data-part="row"]')} && ${NOTHING_WAITS}`,
+  },
+  'Projects board': {
+    open: async (pair, workspace) => {
+      await placeAs(pair, workspace, { at: 'list', layout: 'board', tab: 'all' })
+      await openProjects(pair, workspace)
+    },
+    landed: `${shows('.tc-projects [data-card]')} && ${NOTHING_WAITS}`,
+  },
+  Project: {
+    open: async (pair, workspace) => {
+      await placeAs(pair, workspace, { at: 'list', layout: 'list', tab: 'all' })
+      await openProjects(pair, workspace)
+      // The list as the place says (a board scene before it leaves the board standing until a reload).
+      await pair.page.reload()
+      await pair.page.until('the projects list', 30_000, () => pair.page.eval(`!!document.querySelector('.tc-projects [data-part="row"] button')`))
+      await pair.page.clickOn('.tc-projects [data-part="row"] button', 'Spring LAN')
+      await pair.page.until('the project page', 15_000, () => pair.page.eval(`!!document.querySelector('.tc-projects section[aria-label="Plan"]')`))
+    },
+    landed: `${shows('.tc-projects section[aria-label="Plan"]')} && ${NOTHING_WAITS}`,
+  },
+}
+
 /** A view with no landing of its own: its heading drawn, with nothing waiting. */
-const landedOf = (view: string): string => LANDED[view] ?? `${shows('[data-view-heading]', view)} && ${NOTHING_WAITS}`
+const landedOf = (view: string): string => SCENES[view]?.landed ?? LANDED[view] ?? `${shows('[data-view-heading]', view)} && ${NOTHING_WAITS}`
 
 async function film(page: Window, name: string, landed: () => Promise<boolean>, { settle = 900, most = 20_000 } = {}): Promise<Frame[]> {
   const start = Date.now()
@@ -145,10 +195,10 @@ async function main(): Promise<void> {
       await page.eval(`localStorage.setItem('docket.colorScheme', ${js(theme)})`)
       for (const [i, view] of VIEWS.entries()) {
         // Opened, then the window reloaded on it: the chunk, the session and every read come cold.
-        await pair.showWork(workspace, view)
+        await (SCENES[view] ? SCENES[view].open(pair, workspace) : pair.showWork(workspace, view))
         await page.reload()
         await page.resize(1280, 800)
-        judge(`${theme} ${view}`, await film(page, `${theme}-${i + 1}-${view.toLowerCase()}`, () => page.eval<boolean>(landedOf(view))))
+        judge(`${theme} ${view}`, await film(page, `${theme}-${i + 1}-${view.toLowerCase().replaceAll(' ', '-')}`, () => page.eval<boolean>(landedOf(view))))
       }
       for (const [i, place] of PLACES.entries()) {
         // The window reloads on the workspace's own view (a Work workspace reopens where it was): the place is pressed
