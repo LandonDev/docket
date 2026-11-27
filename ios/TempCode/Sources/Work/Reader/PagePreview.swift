@@ -43,7 +43,15 @@ struct PagePreview: View {
     }
 
     private func load() async throws -> Data {
-        let data = try await source.data(opened: { words = PagePreviewSource.loadingWords(pages: $0.pages) }, progress: { progress.share = $0 })
+        let data: Data
+        do {
+            data = try await source.data(opened: { words = PagePreviewSource.loadingWords(pages: $0.pages) }, progress: { progress.share = $0 })
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // In Work's words, naming the computer, never a program or its id ("libreoffice is not installed on env_…").
+            throw Worded(description: WorkErrorWords.readFailure(ActionError.wrap(error).message, host: client.environment.name))
+        }
         guard DeckRender.opens(pageCount: PDFDocument(data: data)?.pageCount) else { throw Unreadable() }
         return data
     }
@@ -61,6 +69,11 @@ struct PagePreview: View {
 
     private struct Unreadable: LocalizedError, CustomStringConvertible {
         var description: String { "The pages did not open." }
+        var errorDescription: String? { description }
+    }
+
+    private struct Worded: LocalizedError, CustomStringConvertible {
+        let description: String
         var errorDescription: String? { description }
     }
 }

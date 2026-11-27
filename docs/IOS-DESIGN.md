@@ -4982,8 +4982,9 @@ it. What Work adds (the plan "All of Work on the iPhone", M0d):
   fold or a pose change that rebuilds a list comes back at its row. The list scrolls
   by `ScrollPosition` over its rows' ids (`placeTop`). The memory is not kept across
   launches. A list with no row to come back to goes to its top edge once its first rows
-  land, so rows that arrive while the push still moves never leave it scrolled past its
-  large title (Connections lost its title so, about four opens in five).
+  land. Connections can still open scrolled past its large title when its rows arrive
+  while the push still moves (2 of 5 simulator opens kept the title with this, 1 of 5
+  without, Nov 26): not yet fixed; holding the rows until the push ends is the next try.
 - **A place's frame.** `WorkPlaceScreen` is the one frame a place's list uses: the
   place's title, a job filter in the bar (All Jobs, then each job with its sector's
   dot), search when the place has it, the rows' shape redacted on the first load,

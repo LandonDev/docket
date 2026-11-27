@@ -6,6 +6,8 @@ import Testing
 struct WorkErrorWordsTests {
     @Test func `known raw forms have their sentence, with the computer named`() {
         #expect(WorkErrorWords.say("lifeos is not connected", host: "Mac") == "Mac cannot use LifeOS now. See why under Settings, Connections.")
+        // A host's "<program> is not installed on <its id>" names neither the program nor the id on screen.
+        #expect(WorkErrorWords.say("libreoffice is not installed on env_nvQV9vsaJzZar12u_CmxGA", host: "Box") == "A program Box needs for this is missing there.")
         #expect(WorkErrorWords.say("no handler for work.money.owed", host: "Mac") == "This part of Work is not running on Mac. Look under Settings, Connections; if the two computers run different versions, update both.")
         #expect(WorkErrorWords.say("refused: lifeos is signed out", host: "Box") == "Not signed in to LifeOS on Box. Sign in under Settings, Connections.")
         #expect(WorkErrorWords.say("Not connected", host: "Box") == "Box is not connected. Try again once it is back.")

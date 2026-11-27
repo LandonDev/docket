@@ -24,7 +24,7 @@ public enum WorkErrorWords {
         (#"^(unknown|no such) workspace\b"#, { h, _, _, _, _ in "This job is no longer on \(h)." }),
         (#"^(there is )?no canvas item\b"#, { _, _, _, _, _ in "This tab is no longer open. Open the file again from Files." }),
         (#"^not a work workspace\b|^unknown thread\b"#, { _, _, _, _, _ in "The thread or job this belongs to is gone. Open it again from Work." }),
-        (#"\bspawn \S+ ENOENT\b"#, { h, _, _, _, _ in "A program \(h) needs for this is missing there." }),
+        (#"\bspawn \S+ ENOENT\b|\bis not installed on\b"#, { h, _, _, _, _ in "A program \(h) needs for this is missing there." }),
         (#"\bENOENT\b|^there is no file at |^no file at "#, { _, _, _, _, _ in "The file or folder was moved or removed. Refresh Files and open it from where it is now." }),
         (#"\b(EACCES|EPERM|EROFS)\b"#, { _, _, _, _, _ in "This computer could not change the file in that folder. Check that you may edit it there, or save a copy somewhere you may." }),
         (#"\bENOSPC\b"#, { h, _, _, _, _ in "The disk on \(h) is full." }),
