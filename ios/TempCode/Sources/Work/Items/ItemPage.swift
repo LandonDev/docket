@@ -325,6 +325,8 @@ struct ItemLoad<Value, Content: View>: View {
     var initial: Value? = nil
     /// What stands in while nothing is known yet, in place of the spinner: the paper's shape with its bar.
     var loading: (() -> AnyView)? = nil
+    /// The computer the read asks, named in its failure (`WorkErrorWords.readFailure`), never a program or an id.
+    var host: String? = nil
     let read: () async throws -> Value
     /// Each read that answers, for a view that holds something newer than the last value until the next one lands.
     var onRead: ((Value) -> Void)? = nil
@@ -370,7 +372,10 @@ struct ItemLoad<Value, Content: View>: View {
                 error = nil
                 onRead?(next)
             } catch {
-                if value == nil { self.error = ActionError.wrap(error).message } else { onRefreshFailed?(ActionError.wrap(error).message) }
+                // A read cut off by the next one, or by the view leaving, is no failure.
+                if error is CancellationError || Task.isCancelled { return }
+                let words = WorkErrorWords.readFailure(ActionError.wrap(error).message, host: host)
+                if value == nil { self.error = words } else { onRefreshFailed?(words) }
             }
         }
     }

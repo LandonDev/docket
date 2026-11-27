@@ -29,6 +29,7 @@ struct PdfItemView: View {
         ItemLoad(
             initial: ReaderCache.shared.latest(cacheKey).map { Loaded(rev: $0.rev, data: $0.data) },
             loading: { AnyView(ReaderLoading(progress: progress.share, picture: progress.picture)) },
+            host: client.environment.name,
             read: { try await load() }
         ) { loaded, _ in
             PdfLayered(client: client, item: item, data: loaded.data, rev: loaded.rev, view: loaded.view, ask: ask)
@@ -189,6 +190,7 @@ struct SlidesItemView: View {
             dropsOnReload: true,
             initial: remembered,
             loading: { AnyView(ReaderLoading(aspect: ReaderMetrics.slideAspect, progress: progress.share, picture: progress.picture)) },
+            host: client.environment.name,
             read: { try await load() }
         ) { loaded, reload in
             VStack(spacing: 0) {

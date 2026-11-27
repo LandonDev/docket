@@ -24,6 +24,9 @@ public enum WorkErrorWords {
         (#"^(unknown|no such) workspace\b"#, { h, _, _, _, _ in "This job is no longer on \(h)." }),
         (#"^(there is )?no canvas item\b"#, { _, _, _, _, _ in "This tab is no longer open. Open the file again from Files." }),
         (#"^not a work workspace\b|^unknown thread\b"#, { _, _, _, _, _ in "The thread or job this belongs to is gone. Open it again from Work." }),
+        // The converter's "<why not here>, and no linked host converts docx to pdf" (formats/jobs.ts): the whole sentence
+        // is that nothing can draw it, before the program's rule below, so no program, id or format pair shows.
+        (#"\bno linked host converts\b"#, { _, _, _, _, _ in "No connected computer can draw this preview." }),
         (#"\bspawn \S+ ENOENT\b|\bis not installed on\b"#, { h, _, _, _, _ in "A program \(h) needs for this is missing there." }),
         (#"\bENOENT\b|^there is no file at |^no file at "#, { _, _, _, _, _ in "The file or folder was moved or removed. Refresh Files and open it from where it is now." }),
         (#"\b(EACCES|EPERM|EROFS)\b"#, { _, _, _, _, _ in "This computer could not change the file in that folder. Check that you may edit it there, or save a copy somewhere you may." }),
@@ -57,11 +60,13 @@ public enum WorkErrorWords {
         return words.prefix(1).uppercased() + words.dropFirst()
     }
 
-    /// A read that failed, in one line a screen can show: Work's words for it, else that `host` could not read it.
-    /// Never the host's raw text.
-    public static func readFailure(_ error: String, host: String) -> String {
+    /// A read that failed, in one line a screen can show: Work's words for it, else that `host` could not read it, else
+    /// with no host named that it did not open. Never the host's raw text.
+    public static func readFailure(_ error: String, host: String?) -> String {
         let words = say(error, host: host)
-        return words.isEmpty ? "\(host.prefix(1).uppercased() + host.dropFirst()) could not read this." : words
+        guard words.isEmpty else { return words }
+        guard let host = host?.trimmingCharacters(in: .whitespaces), !host.isEmpty else { return "This did not open." }
+        return "\(host.prefix(1).uppercased() + host.dropFirst()) could not read this."
     }
 
     /// The error in Work's words, `host` the computer asked ("the box", "Mac"); "" where it has none.

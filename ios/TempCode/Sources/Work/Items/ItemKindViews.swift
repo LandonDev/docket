@@ -13,7 +13,7 @@ struct MeetingItemView: View {
     @State private var refresh = RefreshFailure()
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.meeting(item.id) }, onRead: { _ in refresh.answered() },
+        ItemLoad(host: client.environment.name, read: { try await client.work.canvas.meeting(item.id) }, onRead: { _ in refresh.answered() },
                  onRefreshFailed: { refresh.failed($0) }) { meeting, reload in
             if let meeting, !meeting.segments.isEmpty || !MeetingActions.shown(meeting).isEmpty {
                 MeetingPage(client: client, item: item, initial: meeting, refresh: refresh, reload: reload)
@@ -344,7 +344,7 @@ struct FormItemView: View {
     @State private var refresh = RefreshFailure()
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.responses(item.id) }, onRead: { _ in refresh.answered() },
+        ItemLoad(host: client.environment.name, read: { try await client.work.canvas.responses(item.id) }, onRead: { _ in refresh.answered() },
                  onRefreshFailed: { refresh.failed($0) }) { responses, reload in
             if responses.rows.isEmpty {
                 ContentUnavailableView("No Responses", systemImage: "list.bullet.clipboard")
@@ -405,7 +405,7 @@ struct DashboardItemView: View {
 
     var body: some View {
         let refreshes = client.work.may(.dashboardsRefresh)
-        ItemLoad(read: { [fresh] in
+        ItemLoad(host: client.environment.name, read: { [fresh] in
             try await (fresh && refreshes ? client.work.refreshDashboard(item.id) : client.work.canvas.dashboard(item.id))
         }, onRead: { _ in
             fresh = false
@@ -546,7 +546,7 @@ struct HistoryItemView: View {
     @State private var testCompare: String?
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.versions(source) }) { history, reload in
+        ItemLoad(host: client.environment.name, read: { try await client.work.canvas.versions(source) }) { history, reload in
             let ids = history.versions.map(\.id)
             List(history.versions, id: \.id) { version in
                 NavigationLink {
@@ -602,7 +602,7 @@ private struct CompareView: View {
 
     var body: some View {
         // A restore's reread drops the compare from before it: the spinner, then the new compare or why not, with Try Again.
-        ItemLoad(read: { try await client.work.canvas.compare(source, from: versionId) }) { compare, _ in
+        ItemLoad(host: client.environment.name, read: { try await client.work.canvas.compare(source, from: versionId) }) { compare, _ in
             let stats = compare.diff.stats
             List {
                 Section {
@@ -698,7 +698,7 @@ struct MailItemView: View {
     var body: some View {
         if let workspace = client.workspaces.first(where: { $0.id == item.workspaceId }) {
             let host = WorkLifeHost.of(client, workspace: workspace)
-            ItemLoad(read: { try await host.draft(draftId) }) { doc, _ in
+            ItemLoad(host: client.environment.name, read: { try await host.draft(draftId) }) { doc, _ in
                 let message = doc.row.message
                 List {
                     Section {

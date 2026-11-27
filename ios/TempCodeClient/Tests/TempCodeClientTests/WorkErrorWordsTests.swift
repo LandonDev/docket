@@ -29,5 +29,19 @@ struct WorkErrorWordsTests {
         #expect(WorkErrorWords.readFailure("internal: failed by the answer seam (TEMP_CODE_FAIL_ANSWERS)", host: "the box") == "The box could not read this.")
         #expect(WorkErrorWords.readFailure("Not connected", host: "Box") == "Box is not connected. Try again once it is back.")
         #expect(WorkErrorWords.readFailure("The ledger is open elsewhere", host: "Mac") == "The ledger is open elsewhere")
+        // No computer named: the line says it did not open, never "That computer could not read this."
+        #expect(WorkErrorWords.readFailure("internal: failed by the answer seam (TEMP_CODE_FAIL_ANSWERS)", host: nil) == "This did not open.")
+        #expect(WorkErrorWords.readFailure("unknown method work.canvas.compare", host: " ") == "This did not open.")
+    }
+
+    /// The converter's refusal with its "no linked host" tail (formats/jobs.ts) reads whole in Work's words: no
+    /// program, no host's id, no format pair; worded once more it stays the same.
+    @Test func `no computer that can draw a file is one sentence`() {
+        let drawn = "No connected computer can draw this preview."
+        #expect(WorkErrorWords.readFailure("libreoffice is not installed on env_nvQV9vsaJzZar12u_CmxGA, and no linked host converts docx to pdf", host: "the box") == drawn)
+        #expect(WorkErrorWords.readFailure("box cannot convert docx to pdf+word now, and no linked host converts docx to pdf+word", host: "Box") == drawn)
+        #expect(WorkErrorWords.readFailure(drawn, host: "Box") == drawn)
+        // Without the tail, the program's own rule still holds.
+        #expect(WorkErrorWords.say("libreoffice is not installed on env_nvQV9vsaJzZar12u_CmxGA", host: "Box") == "A program Box needs for this is missing there.")
     }
 }

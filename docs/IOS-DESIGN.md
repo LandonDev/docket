@@ -2960,7 +2960,11 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   ink); history as a version list, each opening a compare with now, headed
   by the counts above zero alone ("2 changed"; `HistoryRestore.counts`),
   what went struck through in red, what came underlined in green. A held mail shows as it will go;
-  once sent, the rule his edits suggest is one muted line with Add Rule.
+  once sent, the rule his edits suggest is one muted line with Add Rule. A kind's first read that
+  fails is "Can’t Open This" with Try Again, its reason in Work's words naming the computer
+  (`ItemLoad`'s `host`, `WorkErrorWords.readFailure`), never a program, an id or a format pair: a
+  file no computer can draw is "No connected computer can draw this preview." A read cut off is
+  no failure.
 - **The live picture** (`Work/Items/LivePicture.swift`, docs/agents/live-video.md):
   the computer an agent drives as video, in the field corner with the
   hairline, at its own aspect on the one gray fill until the first frame.
@@ -3231,7 +3235,8 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   bar, or its reason in destructive text with Dismiss, a photo that did not
   load included ("The photo did not load."). New from the Files bar puts
   the job's own folder's upload rows at the head of its band, over its
-  places, so they stay in sight where the sheet closes.
+  places, or over the results while that job is searched, so they stay in
+  sight where the sheet closes.
 - **Open**: a LifeOS document or sheet, a PDF, a deck, a picture or a video
   is seated in the workspace's Files pane (`work.files.open`, or the thread
   that already shows it) and opens on the reader page ("A file on the
@@ -3742,7 +3747,7 @@ as it will print, its Word file drawn on the host, in the system's viewer,
 continuous, with the page stamp at its foot and Print (`printer`) as the one
 bar item, which opens the system's print sheet over the pages shown. Loading
 is the paper's shape with its bar and, once the host has said how many,
-"Drawing 5 pages". A PDF and a deck have no Page Preview: More's Print… prints
+"Drawing 5 pages"; a failed draw says so as a kind's read does (Native kinds above). A PDF and a deck have no Page Preview: More's Print… prints
 a PDF as itself and a deck as its file's own render.
 
 The Duo: the page lays out by its container's size class. Its route, its

@@ -21,7 +21,7 @@ struct MediaItemView: View {
 
     var body: some View {
         let canRead = client.environment.caps.contains(.admin)
-        ItemLoad(read: { try await client.work.canvas.media(item.id, canRead: canRead) }, onRead: { _ in refresh.answered() },
+        ItemLoad(host: client.environment.name, read: { try await client.work.canvas.media(item.id, canRead: canRead) }, onRead: { _ in refresh.answered() },
                  onRefreshFailed: { refresh.failed($0) }) { view, reload in
             if let version = view.versions.max(by: { $0.n < $1.n }) {
                 switch version.state {
