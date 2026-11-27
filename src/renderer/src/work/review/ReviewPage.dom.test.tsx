@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DESK_NOTE, HOURS_NOTE, LEFT, NOT_KNOWN } from "@shared/work/review";
 import { registry } from "../../lib/connection";
@@ -7,6 +7,7 @@ import { setLifeosStatus } from "../shell/lifeos";
 import { fixtureView, HOST_NAMES, type FixtureState } from "./fixtures";
 import { reviewLifeosWords } from "./lifeosLine";
 import { HeadView } from "./Head";
+import { BONES } from "../../lib/ease";
 import { ReviewPageView, stillAway } from "./ReviewPage";
 
 /** The page in each of its states, over the made-up week: what it says, what it leaves out, and what a press does. */
@@ -20,11 +21,11 @@ const draw = (state: FixtureState, over: Partial<Parameters<typeof ReviewPageVie
   return { ...out, props, view };
 };
 const section = (name: string) => screen.getByRole("heading", { name, level: 2 }).closest("section")!;
-/** An element's words as read: each text node a word run, a space between runs. */
+/** An element's words as read: each text node a word run, a space between runs. A wait's sample words are not read. */
 const text = (el: Element): string => {
   const runs: string[] = [];
   const walk = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  for (let node = walk.nextNode(); node; node = walk.nextNode()) if (node.textContent?.trim()) runs.push(node.textContent.trim());
+  for (let node = walk.nextNode(); node; node = walk.nextNode()) if (node.textContent?.trim() && !node.parentElement?.closest("[skullet-loading]")) runs.push(node.textContent.trim());
   return runs.join(" ").replace(/ ,/g, ",").replace(/\s+/g, " ");
 };
 
@@ -433,7 +434,7 @@ describe("the other states", () => {
     expect(text(hours)).toContain("Calendar time is measured.");
   });
 
-  it("waits, and claims nothing, while a host is still answering: an empty list and a job with no hours are bones until all are in", () => {
+  it("waits, and claims nothing, while a host is still answering: an empty list and a job with no hours are bones until all are in", async () => {
     const { view, now } = fixtureView("clear");
     // The first host is in; the second has not answered yet, so "nothing" is not known and nothing has failed.
     const partial = { ...view, settled: false, review: { ...view.review!, known: { calendar: true, calendarCounted: true, desk: false, shipped: false, slipped: false } } };
@@ -445,7 +446,8 @@ describe("the other states", () => {
     expect(text(container)).not.toContain("could not be read");
     rerender(<ReviewPageView {...props} view={view} />);
     expect(text(section("Slipped"))).toBe("Slipped Nothing slipped");
-    expect(container.querySelector("[data-review-pending]")).toBeNull();
+    expect(text(section("Hours").querySelector('[data-review-job="unify"]')!)).toBe("Unify Nothing seen about 6 hr 15 min the week before");
+    await waitFor(() => expect(container.querySelector("[data-review-pending]")).toBeNull());
   });
 
   it("says a host's last answer is shown when it is, and holds the presses of rows nobody could check", () => {
@@ -488,22 +490,38 @@ describe("the other states", () => {
     expect(section("Hours").querySelectorAll("[data-review-job]")).toHaveLength(6);
   });
 
-  it("shows the sections' bones until the first host answers", () => {
-    const { container } = draw("loading");
-    expect([...container.querySelectorAll("h2")].map((h) => h.textContent)).toEqual(["Hours", "Shipped", "Slipped"]);
-    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(20);
-    expect(container.querySelector("[data-review-made]")).toBeNull();
-    expect(container.querySelector("[data-review-job]")).toBeNull();
-    // One thing is read out of the wait; the bones are for the eye, and Slipped's have nothing at a row's end.
-    expect(screen.getAllByRole("status").map(text)).toEqual(["Loading the review"]);
-    for (const bones of container.querySelectorAll("section")) expect(bones.getAttribute("aria-hidden")).toBe("true");
-    const ends = (title: string) => [...container.querySelectorAll("section")].find((s) => s.querySelector("h2")!.textContent === title)!.querySelectorAll(".ms-auto").length;
-    expect([ends("Shipped"), ends("Slipped")]).toEqual([6, 0]);
+  it("draws the sections from a sample week until the first host answers, their headings as they are", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    try {
+      const { container } = draw("loading");
+      const drawing = container.querySelector("[data-region][data-bones] [skullet-loading] section")!.closest("[skullet-loading]")!;
+      expect([...drawing.querySelectorAll("h2")].map((h) => h.textContent)).toEqual(["Hours", "Shipped", "Slipped"]);
+      // Known at once: each heading's words are drawn as they are, not as a bar, and are no place for the keyboard.
+      expect([...drawing.querySelectorAll("h2 [skullet-own]")]).toHaveLength(3);
+      expect(drawing.querySelector("[data-review-heading]")).toBeNull();
+      // Nothing of the drawing is the week's: no made line, no row a screen reader or a test reads.
+      expect(container.querySelector("[data-review-made]")).toBeNull();
+      expect(screen.queryAllByRole("heading")).toHaveLength(0);
+      expect(drawing.querySelectorAll("[data-review-job]").length).toBe(6);
+      // One thing is read out of the wait, once its bones show.
+      act(() => vi.advanceTimersByTime(BONES.holdMs));
+      expect(screen.getAllByRole("status").map(text)).toEqual(["Loading the review"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("brings the week in over its bones when the first host answers", async () => {
+    const { rerender, props, container } = draw("loading");
+    const { view } = fixtureView("full");
+    rerender(<ReviewPageView {...props} view={view} />);
+    expect(text(container.querySelector("[data-review-made]")!)).toBe("Made Fri 4:00 PM");
+    expect(section("Hours").querySelectorAll("[data-review-job]")).toHaveLength(6);
+    await waitFor(() => expect(container.querySelector("[skullet-loading]")).toBeNull());
   });
 
   it("draws Hours' bones one row a job the window knows, so nothing jumps when a one-job week lands (council R1-A12)", () => {
-    // The bones are for the eye alone (aria-hidden): found by their section, the first.
-    const rows = (root: HTMLElement) => root.querySelector("section")!.querySelectorAll(".h-8").length;
+    const rows = (root: HTMLElement) => root.querySelector("[skullet-loading] section")!.querySelectorAll("[data-review-job]").length;
     const { view, now } = fixtureView("loading");
     expect(rows(draw("loading", { view: { ...view, jobs: 1 }, now }).container)).toBe(1);
     cleanup();
@@ -511,14 +529,11 @@ describe("the other states", () => {
   });
 
   it("draws Shipped's and Slipped's bones one group for a one-job week, two at most (council R2-A3)", () => {
-    const groups = (root: HTMLElement, title: string) =>
-      [...root.querySelectorAll("section")].find((s) => s.querySelector("h2")!.textContent === title)!.querySelectorAll(".flex.flex-col.gap-4 > div").length;
+    const groups = (root: HTMLElement) => [root.querySelectorAll("[skullet-loading] [data-review-shipped]").length, root.querySelectorAll("[skullet-loading] [data-review-slipped]").length];
     const { view, now } = fixtureView("loading");
-    const one = draw("loading", { view: { ...view, jobs: 1 }, now }).container;
-    expect([groups(one, "Shipped"), groups(one, "Slipped")]).toEqual([1, 1]);
+    expect(groups(draw("loading", { view: { ...view, jobs: 1 }, now }).container)).toEqual([1, 1]);
     cleanup();
-    const six = draw("loading").container;
-    expect([groups(six, "Shipped"), groups(six, "Slipped")]).toEqual([2, 2]);
+    expect(groups(draw("loading").container)).toEqual([2, 2]);
   });
 
   it("keeps the first lines in one rhythm: the red line with Retry is Retry's height, never overhung (council R1-A14)", () => {
@@ -640,11 +655,13 @@ describe("LifeOS left out, the host saying why", () => {
     expect(text(lines(container)[0]!)).toContain("Not signed in to LifeOS on the box");
     act(() => setLifeosStatus("env-box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] }));
     expect(onRetryHost).toHaveBeenCalledWith("env-box");
-    expect(lines(container).map((l) => l.getAttribute("data-review-lifeos"))).toEqual(["again"]);
+    expect(lines(container).map((l) => l.getAttribute("data-review-lifeos"))).toContain("again");
+    // The old state goes out under the bones, and is not left standing.
+    await waitFor(() => expect(lines(container).map((l) => l.getAttribute("data-review-lifeos"))).toEqual(["again"]));
     expect(container.textContent).not.toContain("Not signed in to LifeOS");
     await act(async () => done());
-    // The page's week, not changed in this test, says the state it holds again.
-    expect(lines(container)[0]!.getAttribute("data-review-lifeos")).toBe("signed-out");
+    // The page's week, not changed in this test, says the state it holds again, and the bones go.
+    await waitFor(() => expect(lines(container).map((l) => l.getAttribute("data-review-lifeos"))).toEqual(["signed-out"]));
   });
 
   /** Council round 10 (Sol rest 3): an older host's stateless reply hid the current host's named line. */

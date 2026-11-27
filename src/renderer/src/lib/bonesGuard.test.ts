@@ -29,16 +29,10 @@ export const HELD: readonly string[] = [
   "renderer/src/work/browser",
   "renderer/src/work/canvas",
   "renderer/src/work/docs",
-  "renderer/src/work/files",
   "renderer/src/work/formats",
   "renderer/src/work/history",
-  "renderer/src/work/outbox",
   "renderer/src/work/pdf",
-  "renderer/src/work/projects",
-  "renderer/src/work/review",
   "renderer/src/work/sheets",
-  "renderer/src/work/slides",
-  "renderer/src/work/tasks",
   "renderer/src/work/today",
 ];
 

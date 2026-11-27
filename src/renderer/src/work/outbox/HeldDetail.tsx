@@ -5,7 +5,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
 import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones } from "../../components/bones";
 import { StatusMark } from "../../components/ui/status";
 import { Textarea } from "../../components/ui/textarea";
 import { loadToast } from "../../components/ui/toaster";
@@ -55,6 +55,7 @@ import {
 } from "./store";
 import { aheadTime, changesOf, isScheduled, laterChoices, type Piece } from "./waiting";
 import { heldWhen } from "./when";
+import { SAMPLE_ITEM, SAMPLE_NOW, SAMPLE_THING } from "./samples";
 import { unreadDown, useMailUnread } from "./MailUnread";
 import { refreshLifeos, useLifeosStatusHeard } from "../shell/lifeos";
 
@@ -133,6 +134,33 @@ export function DetailFacts({ item, job, when, onOpenSession, extra }: { item: H
       <SectorDot sector={item.sector} className="-ms-1 size-4 shrink-0" />
       <Facts parts={[job, link, when, extra]} className="min-w-0" />
     </div>
+  );
+}
+
+/**
+ * While the Outbox first loads: the detail's own head (its facts, title and effect) given the sample, and the thing
+ * as a mail's view draws it, its rows on the 72px label column and its body under the hairline.
+ */
+export function DetailBones() {
+  return (
+    <DetailColumn>
+      <header className="flex flex-col">
+        <DetailFacts item={SAMPLE_ITEM} job="Purdue Esports" when={heldWhen(SAMPLE_ITEM.createdAt, SAMPLE_NOW)} />
+        <h1 className="mt-1 text-base font-semibold leading-6 tracking-[-0.01em] text-balance">{itemTitle(SAMPLE_ITEM, false)}</h1>
+      </header>
+      <Effect item={SAMPLE_ITEM} />
+      <div className="mt-5 flex flex-col gap-4">
+        <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
+          {SAMPLE_THING.fields.map((field) => (
+            <div key={field.label} className="contents">
+              <dt className="truncate text-muted-foreground">{field.label}</dt>
+              <dd className="min-w-0 break-words text-foreground">{field.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="whitespace-pre-wrap break-words border-t border-border pt-4 text-sm leading-[22px] text-foreground">{SAMPLE_THING.body}</div>
+      </div>
+    </DetailColumn>
   );
 }
 
@@ -968,7 +996,13 @@ export function HeldDetail({
             <ActView item={item} env={item.environmentId} onReady={setViewLoaded} />
           )}
           {/* While the mail is read whole, a bone where its quote may land: Send waits on it. */}
-          {item.kind === "mail.send" && !read && (!unread || unreadDown(unreadError) === "wait") ? <Skeleton data-mail-quote-bone className="h-4 w-2/3 rounded" /> : null}
+          {item.kind === "mail.send" && !read && (!unread || unreadDown(unreadError) === "wait") ? (
+            <div data-mail-quote-bone>
+              <Bones label="">
+                <p className="text-[13px] leading-5 text-muted-foreground">On Tue, Nov 17, Priya Shah wrote:</p>
+              </Bones>
+            </div>
+          ) : null}
           {item.kind === "computer.act" ? <KeptPicture item={item} picture={picture} /> : null}
         </div>
       </DetailColumn>

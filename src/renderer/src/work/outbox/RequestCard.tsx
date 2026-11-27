@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { StatusMark } from "../../components/ui/status";
 import { loadToast } from "../../components/ui/toaster";
 import { Tip } from "../../components/tip";
@@ -27,6 +27,7 @@ import { shell } from "../../stores/shell";
 import { ownZone } from "work-kit/mail/lib/zones";
 import { SummaryList, type SummaryRow } from "./SummaryList";
 import { aheadTime, doneWords, itemKey, resultsHead, type RowResult } from "./waiting";
+import { SAMPLE_NOW, SAMPLE_SECTIONS } from "./samples";
 
 /**
  * A thread's request for his press (docs/DESIGN.md "The Outbox", "A
@@ -375,9 +376,11 @@ export function RequestCard({
   commands?: RefObject<DetailCommands | null>;
 }) {
   const { request, error, retry } = useRequest(environmentId, id);
-  if (!request) {
-    if (error)
-      return (
+  return (
+    <Region loading={!request && !error} label="Loading the request" fill={frame === "page"} bones={frame === "card" ? CardBones : DetailBones}>
+      {request ? (
+        <RequestShown request={request} frame={frame} host={host} onOpenSession={onOpenSession} commands={commands} />
+      ) : error ? (
         <NoticeLine
           data-outbox-request-line
           glyph={<StatusMark state="failed" word={false} />}
@@ -389,49 +392,68 @@ export function RequestCard({
             </Button>
           }
         />
-      );
-    return frame === "card" ? <CardBones /> : <DetailBones />;
-  }
+      ) : null}
+    </Region>
+  );
+}
+
+/** A request once read: a muted line when it was put away, else the request itself. */
+function RequestShown({ request, frame, host, onOpenSession, commands }: { request: HostRequest; frame: "card" | "page"; host?: (item: HostItem) => string; onOpenSession?: (sessionId: string, environmentId: string) => void; commands?: RefObject<DetailCommands | null> }) {
   // Put away without his press, or by his Not now: one muted line, in the card's place and in the Outbox alike.
   if (request.state === "declined") return <RequestLine lead="Not now" detail={request.head} />;
   if (request.state === "void") return <RequestLine lead="No longer open" detail={request.why ? workErrorWords(request.why) || request.why : request.head} />;
   return <RequestBody key={`${request.environmentId}:${request.id}`} request={request} frame={frame} host={host} onOpenSession={onOpenSession} commands={commands} />;
 }
 
-/** The card while its request is read: the card's own frame, its head, the ask, two rows and the presses' place, so nothing moves when it lands. */
+/** The rows a request asks most often: two mails, ticked, in the summary list's own shape. */
+const SAMPLE_ROWS: SummaryRow[] = SAMPLE_SECTIONS[0]!.items.slice(0, 2).map((item) => ({ item, on: true }));
+const SAMPLE_QUOTE = "send the travel mails to Priya and Coach";
+const SAMPLE_HEAD = "Send 2 mails to 2 people";
+
+/** The card while its request is read: the card itself from the sample, its presses held, so nothing moves when it lands. */
 function CardBones() {
   return (
-    <div role="status" aria-label="Loading the request" aria-busy data-outbox-request-bones className={cn("w-full border border-border bg-card", QUESTION_SHAPE)}>
-      <div className="flex h-5 items-center gap-2">
+    <section className={cn("w-full border border-border bg-card font-sans text-card-foreground", QUESTION_SHAPE)}>
+      <div className="flex min-h-5 items-center gap-2">
         <Outbox aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-        <Skeleton className="h-3.5 w-48 max-w-full" />
+        <h3 className="min-w-0 text-sm leading-5 font-medium text-pretty">{SAMPLE_HEAD}</h3>
       </div>
-      <div className="mt-1 flex h-5 items-center ps-[22px]">
-        <Skeleton className="h-3 w-64 max-w-full" />
+      <div className="mt-1 ps-[22px]">
+        <Asked quote={SAMPLE_QUOTE} />
       </div>
-      <div className="mt-3 flex flex-col divide-y divide-border">
-        {[56, 44].map((width) => (
-          <span key={width} className="flex h-9 items-center gap-2 ps-0.5">
-            <Skeleton className="size-3.5 shrink-0 rounded-sm" />
-            <Skeleton className="h-3" style={{ width: `${width}%` }} />
-          </span>
-        ))}
+      <div className="mt-3">
+        <SummaryList head={null} rows={SAMPLE_ROWS} />
       </div>
-      <div className="mt-3 flex justify-end gap-2">
-        <Skeleton className="h-7 w-16 rounded-md" />
-        <Skeleton className="h-7 w-20 rounded-md" />
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <Button variant="ghost" size="sm" disabled>
+          Not now
+        </Button>
+        <Button size="sm" disabled>
+          Send 2
+        </Button>
       </div>
-    </div>
+    </section>
   );
 }
 
+/** The Outbox's detail while its request is read: the facts, the head, what he asked and its rows, in the column. */
 function DetailBones() {
   return (
-    <div role="status" aria-label="Loading the request" aria-busy className="mx-auto flex w-full max-w-[688px] flex-col px-8 pt-6">
-      <Skeleton className="h-3 w-40" />
-      <Skeleton className="mt-3 h-4 w-64 max-w-full" />
-      <Skeleton className="mt-5 h-32 w-full rounded-lg" />
-    </div>
+    <DetailColumn>
+      <header className="flex flex-col">
+        <div className="flex min-h-7 items-center gap-1 text-xs text-muted-foreground">
+          <SectorDot sector={null} className="-ms-1 size-4 shrink-0" />
+          <Facts parts={["Purdue Esports", "from Nationals roster", clockTime(SAMPLE_NOW)]} className="min-w-0" />
+        </div>
+        <h1 className="mt-1 text-base font-semibold leading-6 tracking-[-0.01em] text-balance">{SAMPLE_HEAD}</h1>
+      </header>
+      <div className="mt-2">
+        <Asked quote={SAMPLE_QUOTE} />
+      </div>
+      <div className="mt-4">
+        <SummaryList head={null} rows={SAMPLE_ROWS} />
+      </div>
+    </DetailColumn>
   );
 }
 

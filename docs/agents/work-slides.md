@@ -1965,7 +1965,8 @@ the look and every key are docs/DESIGN.md "The show"). He presses Present on
 a deck and gives a talk from it: the slideshow full screen or in a window,
 a presenter's view with the notes, the next press and a timer, and every
 key a clicker sends. While the deck is read, the presenter's notes are two
-bones, never "None", which is said only of a slide with no notes.
+lines of sample words in Skullet's bones (Presenter.tsx `SAMPLE_SHOW_NOTES`),
+never "None", which is said only of a slide with no notes.
 
 - **What is shown.** The file as it is, read with `work.slides.show`: its
   slides in its own order and the file's render. An agent's suggestion that

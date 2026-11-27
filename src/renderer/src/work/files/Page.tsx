@@ -7,10 +7,10 @@ import { FORM_KIND_WORDS, type FormKind } from "../msforms/newForm";
 import { RowsContextMenu, RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { VirtualRows } from "../../chrome/railVirtualRows";
 import { Tip, TruncateTip } from "../../components/tip";
+import { Bones, Region } from "../../components/bones";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../../components/ui/breadcrumb";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../../components/ui/empty";
-import { Skeleton } from "../../components/ui/skeleton";
 import { ROW_PRESS } from "../../components/ui/press";
 import { Spinner } from "../../components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
@@ -71,7 +71,8 @@ import { busyOf, type Busy, type RowBusy } from "./busy";
 import { dragging, dragProps, dropVerb, heldRow, howOf, NAME_LINE, NameField, onNameOf, ROWS_MIME, RowState, RowWords, setDragging, setDragLabel, stepHow, whenDragEnds, WhereWords, type RowDrag, type ShapeProps } from "./rowParts";
 import type { PictureFrom } from "./previews";
 import { QuickLook } from "./QuickLook";
-import { FileColumns, FileGrid } from "./Shapes";
+import { FileColumns, FileGrid, GridBones } from "./Shapes";
+import { SAMPLE_ENTRIES } from "./samples";
 import { keepPageLook, pageLookOf, usePageLook, type ListFrom, type Listing } from "./store";
 
 /**
@@ -175,36 +176,46 @@ function NoteLine({ note, fixes }: { note: FilesNote; fixes: NoteFixes }) {
   );
 }
 
-/** The list's own bones: rows in its shape, so nothing moves when the names land. */
-export function ListBones({ compact = false }: { compact?: boolean }) {
-  const widths = ["w-[34%]", "w-[52%]", "w-[41%]", "w-[60%]", "w-[38%]", "w-[47%]"];
+const STILL = (): void => undefined;
+
+/**
+ * The list's own bones: its column heads and its rows from the sample, at rest, so each name's bar is where the name
+ * lands and nothing moves when it does. `second` is the list's second fact, as the loaded list names it.
+ */
+export function ListBones({ compact = false, second = "Last change by" }: { compact?: boolean; second?: string }) {
   return (
-    <div role="status" aria-label="Loading" aria-busy className="select-none px-2 pt-1">
-      {widths.map((width, i) => (
-        <div key={i} className="flex items-center gap-2 px-2" style={{ height: compact ? ROW_COMPACT_PX : ROW_PX }}>
-          <Skeleton className="size-4 shrink-0 rounded-sm" />
-          <Skeleton className={`h-3 ${width}`} />
-        </div>
-      ))}
+    <div className="@container/files-list flex min-h-0 min-w-0 flex-1 flex-col">
+      <Head sort={DEFAULT_SORT} second={second} onSort={STILL} />
+      <FileList entries={SAMPLE_ENTRIES} picked={NOTHING_PICKED} compact={compact} busy={null} more={false} loadingMore={false} renaming={null} onPick={STILL} onOpen={STILL} onMore={STILL} onRenamed={STILL} />
     </div>
   );
 }
 
 /**
- * The page bar's bones while a place loads: Back and Forward where the bar draws them and a bone where the trail
- * will name the folder, 44px like the bar, so the list under it does not move when the bar lands.
+ * The page bar while a place loads: Back and Forward as the bar draws them (known at once, so kept as they are) and the
+ * trail's folder from a sample, 44px like the bar, so the list under it does not move when the bar lands.
  */
 export function BarBones() {
   return (
-    <div aria-hidden data-files-bar-bones className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-2">
-      <Button variant="ghost" size="icon-sm" disabled tabIndex={-1} className="shrink-0 text-muted-foreground">
+    <div data-files-bar-bones className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-2">
+      <Button variant="ghost" size="icon-sm" disabled tabIndex={-1} skullet-own="" className="shrink-0 text-muted-foreground">
         <ChevronLeft />
       </Button>
-      <Button variant="ghost" size="icon-sm" disabled tabIndex={-1} className="shrink-0 text-muted-foreground">
+      <Button variant="ghost" size="icon-sm" disabled tabIndex={-1} skullet-own="" className="shrink-0 text-muted-foreground">
         <ChevronRight />
       </Button>
-      <Skeleton className="ms-2 h-3 w-24" />
+      <span className="ms-2 min-w-0 truncate text-[13px] font-medium text-foreground">Team files</span>
     </div>
+  );
+}
+
+/** A page with nothing known yet (its tab on its way): the bar and the list, drawn as one wait. */
+export function PageBones() {
+  return (
+    <Bones fill label="Loading the folder">
+      <BarBones />
+      <ListBones />
+    </Bones>
   );
 }
 
@@ -1237,6 +1248,10 @@ export function PageView({
   const retrying = !!listing?.retrying;
   const pressedOn = !!listing?.error || !!gap?.fix || !!down?.fix;
   const reading = !!listing && ((listing.loading && !(retrying && pressedOn)) || (!!searchHost && hostSays && hostLive.waits));
+  // The folder's one wait: the shape it will land in, drawn from the sample.
+  const waits = !note && !lifeosDown && (!listing || !listing.loaded || (!entries.length && (lifeosAgain || listing.searching || !!listing.pending?.length || reading)));
+  const second = inTrash ? "Was in" : manyPlaces && acts?.place.kind !== "made" ? "Where" : "Last change by";
+  const shapeBones = (): ReactNode => (shape === "grid" ? <GridBones size={tile} /> : <ListBones compact={compact} second={second} />);
   let body: ReactNode;
   if (note) body = <NoteEmpty note={note} fixes={fixes} />;
   else if (lifeosDown)
@@ -1248,7 +1263,7 @@ export function PageView({
         onRetry={() => refreshLifeos(copy!.link).catch(() => undefined).then(() => listing?.retry())}
       />
     );
-  else if (!listing || !listing.loaded || (!entries.length && (lifeosAgain || listing.searching || !!listing.pending?.length || reading))) body = <ListBones compact={compact} />;
+  else if (waits || !listing) body = null;
   else if (listing.error && !entries.length) body = listing.away ? null : <FailedEmpty title="This folder did not load" line={listing.error} {...(way ? { action: way } : {})} busy={retrying && way?.label === "Retry"} />;
   else if (!entries.length && filter) body = (
       // Clear filters puts the whole folder and its trail back; Return in the field still searches every place.
@@ -1300,7 +1315,6 @@ export function PageView({
   else if (shape === "gallery") body = <FileGallery {...shapeProps} from={pics} {...(onFetch ? { onFetch } : {})} />;
   else if (shape === "beside") body = <FileBeside {...shapeProps} from={pics} seat={inTrash ? null : sessionHeld?.size && seat ? { ...seat, can: (entry) => !sessionHeld.has(entry.key) && seat.can(entry) } : seat} onParent={toParent} {...(onFetch ? { onFetch } : {})} />;
   else {
-    const second = inTrash ? "Was in" : manyPlaces && acts?.place.kind !== "made" ? "Where" : "Last change by";
     const folder =
       shape === "grid" ? (
         <FileGrid {...shapeProps} size={tile} from={pics} onParent={toParent} />
@@ -1455,7 +1469,9 @@ export function PageView({
             acts.upload([...event.dataTransfer.files]);
           }}
         >
-          {body}
+          <Region loading={waits} fill label="Loading the folder" bones={shapeBones}>
+            {body}
+          </Region>
           {filesOver ? (
             // The document surface's wash (formats/Import.tsx, canvas/fileDrop.tsx): 12px inside, a hairline, one line.
             <div data-files-drop aria-live="polite" className="pointer-events-none absolute inset-3 z-20 grid place-items-center rounded-lg border border-border bg-muted/70 px-6 transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 motion-reduce:transition-none">

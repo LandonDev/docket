@@ -602,9 +602,12 @@ describe("History", () => {
     deckHost.hold = new Promise<void>((done) => (answer = done));
     const bar = await found("[data-canvas-bar]");
     fireEvent.click(within(bar).getByRole("button", { name: "History" }));
-    await found("[data-slides-history-loading]");
+    // Skullet's bones, drawn from the sample's rows, until the versions come; then the empty line in their place.
+    const rows = await found("[skullet-loading] [data-slides-history-loading]");
+    expect(rows.closest("[data-region]")?.hasAttribute("data-bones")).toBe(true);
     act(() => answer());
     expect(await screen.findByText("No versions yet")).toBeTruthy();
+    await waitFor(() => expect(document.querySelector("[data-slides-history-loading]")).toBeNull());
   });
 });
 

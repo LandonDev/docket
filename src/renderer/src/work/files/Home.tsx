@@ -7,7 +7,7 @@ import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Modal, ModalBody } from "../../chrome/Modal";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { ViewStateLine } from "../views/ViewStateLine";
@@ -18,6 +18,7 @@ import { readsSession } from "./lifeosPlace";
 import { homeLists, shownName, type Sidebar } from "./model";
 import { busyOf, type Busy } from "./busy";
 import { NAME_LINE, RowState, RowWords, WhereWords } from "./rowParts";
+import { SAMPLE_HOME } from "./samples";
 
 /**
  * Home (docs/DESIGN.md "The Files place"): the page a new tab opens on. Three short lists from the workspace's
@@ -90,6 +91,8 @@ function HomeLists({ home, busy, held, onOpen }: { home: FilesHome; busy: Busy; 
   );
 }
 
+const STILL = (): void => undefined;
+
 export function HomePage({ panelId, home, error, busy, bar, lifeos = null, onRetry, onOpen }: { panelId: string; home: FilesHome | null; error: string | null; busy: Busy; bar: ReactNode; /** the host's own LifeOS (`useHostLive`), whose rows Waiting on you holds; null for a job with none */ lifeos?: HostLive | null; onRetry(): void; onOpen(entry: FileEntry): void }) {
   // While the host's LifeOS is down or on its way, Waiting on you leaves its rows out: one line says why, and
   // "Nothing here yet" is not claimed. On its way with nothing else to show, Home is still loading.
@@ -105,22 +108,14 @@ export function HomePage({ panelId, home, error, busy, bar, lifeos = null, onRet
         </div>
       ) : null}
       <div className="@container/files-home flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-        {loading ? (
-          error ? null : (
-            <div role="status" aria-label="Loading" aria-busy className="mx-auto flex w-full max-w-3xl flex-col gap-1 p-4">
-              {["w-[42%]", "w-[58%]", "w-[36%]", "w-[50%]"].map((w, i) => (
-                <div key={i} className="flex h-9 items-center gap-2 px-2">
-                  <Skeleton className="size-4 shrink-0 rounded-sm" />
-                  <Skeleton className={`h-3 ${w}`} />
-                </div>
-              ))}
-            </div>
-          )
-        ) : nothing && !says ? (
-          <EmptyState title="Nothing here yet" line="Files you open and star show here." />
-        ) : (
-          <HomeLists home={home!} busy={busy} held={says} onOpen={onOpen} />
-        )}
+        {/* Its own lists from the sample while Home is read: a failed read is its line above, and nothing here. */}
+        <Region loading={loading && !error} label="Loading Home" bones={() => <HomeLists home={SAMPLE_HOME} busy={null} held={false} onOpen={STILL} />}>
+          {loading ? null : nothing && !says ? (
+            <EmptyState title="Nothing here yet" line="Files you open and star show here." />
+          ) : (
+            <HomeLists home={home!} busy={busy} held={says} onOpen={onOpen} />
+          )}
+        </Region>
       </div>
     </div>
   );

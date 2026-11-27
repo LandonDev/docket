@@ -40,6 +40,8 @@ const world = vi.hoisted(() => ({
   extra: {} as Record<string, Partial<OutboxItem>>,
   // a thread's open requests, by host
   requests: new Map<string, unknown[]>(),
+  // the list's read waits on this while it is set: the first read still out
+  listHeld: null as Promise<void> | null,
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -56,6 +58,7 @@ vi.mock("../../lib/connection", async (original) => {
       const now = Date.now();
       switch (method) {
         case "work.outbox.list": {
+          if (world.listHeld) await world.listHeld;
           if (world.listDown.has(env)) throw new Error("socket closed");
           const waiting = items.filter((i) => ["held", "live", "failed", "sending", "scheduled"].includes(i.state) || (i.state === "stale" && !i.dismissedAt));
           const done = items.filter((i) => i.state === "sent" || i.state === "discarded" || (i.state === "stale" && i.dismissedAt));
@@ -246,6 +249,7 @@ beforeEach(() => {
   world.refuse = {};
   world.extra = {};
   world.requests = new Map();
+  world.listHeld = null;
   workSwitch.reset();
   setWorkOn("box", true);
   setWorkOn("mac", true);
@@ -392,6 +396,23 @@ describe("a mail or calendar act LifeOS holds after his press", () => {
 });
 
 describe("the Outbox", () => {
+  it("draws the list's rows and the detail from the samples while the first read is out, then the rows land over them", async () => {
+    let answer!: () => void;
+    world.listHeld = new Promise<void>((resolve) => (answer = resolve));
+    render(<OutboxView besideRail onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    const list = document.querySelector("[data-outbox-list] [data-region][data-bones]")!;
+    // The tabs are known at once: only the rows wait, drawn by the list itself from the samples, inert.
+    expect(list.querySelector("[skullet-loading]")!.getAttribute("aria-hidden")).toBe("true");
+    expect(list.querySelectorAll("[data-outbox-waiting] [data-outbox-row]")).toHaveLength(7);
+    expect(document.querySelector("[data-outbox-detail] [data-region][data-bones] h1")).toBeTruthy();
+    expect(screen.queryByText("Nothing held")).toBeNull();
+    await act(async () => answer());
+    await waitFor(() => expect(screen.getAllByText("Send to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
+    await waitFor(() => expect(document.querySelector("[skullet-loading]")).toBeNull());
+    expect(document.querySelector("[data-outbox-list] [data-bones]")).toBeNull();
+  });
+
   it("lists every host's held acts under their workspace, and shows exactly what goes", async () => {
     await open();
     expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"))).toEqual(["Outbox", "A Work workspace", "A Work workspace"]);

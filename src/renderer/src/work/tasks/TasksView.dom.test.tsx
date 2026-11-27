@@ -6,7 +6,7 @@ import { IDLE_STATUS, type EnvironmentStatus } from "../../lib/connection/types"
  * answered from memory: the lead and the groups, Start thread with the task
  * as a chip, and Done through the client.
  */
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workTestClock } from "../testClock";
 import { fakeTasksClient, type Task } from "work-kit/views";
@@ -61,7 +61,8 @@ vi.mock("convex/react", async (original) => ({
 const mirrors = vi.hoisted(() => ({ open: vi.fn(async (_w: unknown, id: string) => ({ id: `mirror-${id}` })) }));
 vi.mock("../shell/actions", async (original) => ({ ...(await original<object>()), openLifeosProject: mirrors.open }));
 
-const { Tasks, dueMidLine } = await import("./TasksView");
+const { Tasks, dueMidLine, SAMPLE_TASKS } = await import("./TasksView");
+const { SAMPLE_TASK_TITLE } = await import("./TaskSheet");
 const { formatDue } = await import("work-kit/views/lib/format");
 const { newestOpenThread } = await import("./links");
 const { workOpenPort } = await import("../../lib/workSwitch");
@@ -115,11 +116,15 @@ describe("the Tasks view", () => {
     expect(document.activeElement).toBe(start);
   });
 
-  it("holds the primary press's place with a bone of its shape while the link read is out, on the lead and in the sheet", async () => {
+  it("holds the primary press's place with the press itself in bones while the link read is out, on the lead and in the sheet", async () => {
     render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} useThread={() => undefined} />);
     const presses = document.querySelector<HTMLElement>("[data-lead-presses]")!;
     const bone = presses.querySelector<HTMLElement>("[data-press-bone]")!;
-    expect(bone.className).toContain("h-7 w-[92px] rounded-md");
+    // The real small button, drawn at rest inside its region's bones, so Done and Snooze keep their place.
+    expect(bone.closest("[skullet-loading]")).not.toBeNull();
+    expect(bone.closest("[data-region]")!.hasAttribute("data-bones")).toBe(true);
+    expect(bone.className).toContain("h-7");
+    expect(bone.textContent).toBe("Start thread");
     expect(within(presses).queryByRole("button", { name: "Start thread" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Open Send Dana the budget" }));
     const sheet = await screen.findByRole("dialog");
@@ -490,8 +495,44 @@ describe("the Tasks view", () => {
   it("loads in the list's own shape: the lead's presses, a heading on the title edge, then rows", () => {
     const { container } = render(<Tasks client={{ ...fakeTasksClient(rows), useOpenTasks: () => undefined }} startThread={() => {}} />);
     const bones = container.querySelector("[data-tasks-bones]")!;
+    expect(bones.closest("[skullet-loading]")).not.toBeNull();
+    expect(container.querySelector("[data-region][data-bones]")).not.toBeNull();
     expect(bones.querySelector("[data-bones-presses]")).not.toBeNull();
     expect(bones.querySelector("[data-bones-heading]")!.className).toContain("ps-9");
+    expect(bones.querySelectorAll(`[class~="min-h-8"]`)).toHaveLength(SAMPLE_TASKS.rows.length);
+    // Nothing of the drawing is a control or a row to the keyboard or a screen reader.
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+  });
+
+  it("brings the rows in over the bones once the open tasks are read", async () => {
+    let open: Task[] | undefined;
+    const client = () => ({ ...fakeTasksClient(rows), useOpenTasks: () => open });
+    const view = render(<Tasks client={client()} startThread={() => {}} />);
+    expect(view.container.querySelector("[skullet-loading]")).not.toBeNull();
+    open = rows;
+    view.rerender(<Tasks client={client()} startThread={() => {}} />);
+    // The content is in the commit its read is; the leaving bones go a tick later.
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Book the ballroom");
+    await waitFor(() => expect(view.container.querySelector("[skullet-loading]")).toBeNull());
+    expect(view.container.querySelector("[data-region][data-bones]")).toBeNull();
+  });
+
+  it("draws the sheet of a task asked for by id from the sample until LifeOS reads it, the dialog named by its title alone", async () => {
+    const notes = code.detail;
+    code.detail = undefined;
+    try {
+      const view = render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} openTask={{ id: "done-1" }} />);
+      const sheet = await screen.findByRole("dialog");
+      expect(sheet.querySelector("[skullet-loading]")?.textContent).toContain(SAMPLE_TASK_TITLE);
+      expect(within(sheet).queryByRole("heading")).toBeNull();
+      code.detail = { task: { _id: "done-1", title: "Print the brackets", sector: "purdue", status: "done", description: "Forty copies" } } as never;
+      view.rerender(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} openTask={{ id: "done-1" }} />);
+      expect(within(sheet).getByRole("heading", { name: "Print the brackets" })).toBeTruthy();
+      await waitFor(() => expect(sheet.querySelector("[skullet-loading]")).toBeNull());
+    } finally {
+      code.detail = notes;
+    }
   });
 
   it("says when nothing is open", () => {

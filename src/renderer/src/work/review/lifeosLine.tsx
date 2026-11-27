@@ -3,13 +3,14 @@ import type { LifeosStateName } from "@shared/contract-work-lifeos";
 import { LEFT, type MergedReview } from "@shared/work/review";
 import { PageError } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { cn } from "../../lib/cn";
 import { lifeosHostName } from "../shell/lifeos";
 import { downIsSilence, downWords, useDownPress, type LifeosDown } from "../shell/lifeosDown";
 import { useDownAction } from "../shell/DownSignIn";
 import { connectingWords } from "../shell/lifeosWords";
 import { useLiveDown, type SavedDown } from "../shell/lifeosLive";
+import { SAMPLE_LIFEOS_LINE } from "./samples";
 
 /** A state's words with what the page does without it, on the last line of its kind. */
 const reviewWordsOf = (why: string, kept: boolean, tail: boolean): string => (tail ? `${why}, so ${kept ? "what it said when last read is shown" : "the calendar, tasks and mail are not counted"}.` : `${why}.`);
@@ -71,7 +72,7 @@ export function LifeosDownLine({ line, onRetry }: { line: LifeosLine; /** asks t
   ask.current = onRetry;
   // The host's live status says it now: a sign-in begun elsewhere is Show the code, LifeOS on its way a wait; a status
   // heard since the week was read that says connected asks the week again, with no press.
-  // While that ask is out (`again`) the line is a bone, never the old state.
+  // While that ask is out (`again`) the line is bones, never the old state.
   const live = useLiveDown(savedOfLine(line.state), environmentId, () => Promise.resolve(ask.current(environmentId)));
   const down = live.down;
   const { press, elsewhere } = useDownPress(down, environmentId);
@@ -92,24 +93,33 @@ export function LifeosDownLine({ line, onRetry }: { line: LifeosLine; /** asks t
       </Button>
     </span>
   ) : null;
-  if (live.again) return <Skeleton data-review-lifeos="again" className="my-0.5 h-3 w-56" />;
   return (
     <>
-      {down && downIsSilence(down) ? (
-        <div data-review-lifeos={down} className="flex items-start gap-3">
-          <PageError className={cn("min-w-0 flex-1 py-0", button && "py-1.5")}>{words}</PageError>
-          {button}
-        </div>
-      ) : (
-        <div data-review-lifeos={down ?? "connecting"} className="flex items-start gap-3">
-          <p className={cn("min-w-0 flex-1 text-xs text-pretty text-muted-foreground", button && "py-1.5")}>
-            {words}
-            {/* Who can, where this window may not: its own line under the state. */}
-            {elsewhere ? <span className="block">{elsewhere}</span> : null}
+      <Region
+        loading={!!live.again}
+        label=""
+        bones={
+          <p data-review-lifeos="again" className="text-xs text-muted-foreground">
+            {SAMPLE_LIFEOS_LINE}
           </p>
-          {button}
-        </div>
-      )}
+        }
+      >
+        {down && downIsSilence(down) ? (
+          <div data-review-lifeos={down} className="flex items-start gap-3">
+            <PageError className={cn("min-w-0 flex-1 py-0", button && "py-1.5")}>{words}</PageError>
+            {button}
+          </div>
+        ) : (
+          <div data-review-lifeos={down ?? "connecting"} className="flex items-start gap-3">
+            <p className={cn("min-w-0 flex-1 text-xs text-pretty text-muted-foreground", button && "py-1.5")}>
+              {words}
+              {/* Who can, where this window may not: its own line under the state. */}
+              {elsewhere ? <span className="block">{elsewhere}</span> : null}
+            </p>
+            {button}
+          </div>
+        )}
+      </Region>
       {dialog}
     </>
   );

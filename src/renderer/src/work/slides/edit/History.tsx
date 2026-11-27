@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import type { DeckVersion } from "@shared/contract-work-slides";
 import { DialogFooter } from "../../../chrome/ConfirmDialog";
 import { Modal, ModalBody } from "../../../chrome/Modal";
+import { Bone, Region } from "../../../components/bones";
 import { Tip } from "../../../components/tip";
 import { Button } from "../../../components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { ROW_PRESS } from "../../../components/ui/press";
-import { Skeleton } from "../../../components/ui/skeleton";
 import { dayTime } from "../../../lib/duration";
 import { History } from "../../icons";
 import type { PdfDoc, PdfEngine } from "../../pdf/engine";
@@ -115,55 +115,75 @@ export function VersionLook({ version, host, engine, restoring, onRestore, onClo
   return (
     <Modal onClose={onClose} title={dayTime(version.at)} {...(version.first ? { description: FIRST_WORDS } : {})} size="md" busy={restoring} data-slides-version={version.id}>
       <ModalBody className="max-h-[min(560px,60vh)] gap-3 overflow-x-hidden overflow-y-auto overscroll-contain">
-        {error ? (
-          <div className="flex min-h-7 items-center justify-between gap-2 text-[13px] leading-5 text-muted-foreground">
-            <span className="min-w-0">{error}</span>
-            <Button variant="ghost" size="xs" className="shrink-0 text-foreground" onClick={() => setTries((n) => n + 1)}>
-              Retry
-            </Button>
-          </div>
-        ) : !doc ? (
-          <div data-slides-version-loading aria-busy="true" aria-label="Loading" className="flex flex-col gap-3">
-            {[0, 1].map((i) => (
-              <Skeleton key={i} className="aspect-video w-full rounded-md" />
-            ))}
-          </div>
-        ) : (
-          Array.from({ length: doc.pages }, (_, i) => (
-            <div key={i} data-version-slide={i + 1} className="overflow-hidden rounded-md outline-1 -outline-offset-1 outline-(--image-outline)">
-              <Picture doc={doc} page={i + 1} width={536} title={`Slide ${i + 1}`} thumb first />
+        {/* One read, the copy's picture: two slides' frames while it opens (pictures: no words to draw from). */}
+        <Region loading={!doc && !error} label="Loading" bones={VersionBones}>
+          {error ? (
+            <div className="flex min-h-7 items-center justify-between gap-2 text-[13px] leading-5 text-muted-foreground">
+              <span className="min-w-0">{error}</span>
+              <Button variant="ghost" size="xs" className="shrink-0 text-foreground" onClick={() => setTries((n) => n + 1)}>
+                Retry
+              </Button>
             </div>
-          ))
-        )}
+          ) : doc ? (
+            <div className="flex flex-col gap-3">
+              {Array.from({ length: doc.pages }, (_, i) => (
+                <div key={i} data-version-slide={i + 1} className="overflow-hidden rounded-md outline-1 -outline-offset-1 outline-(--image-outline)">
+                  <Picture doc={doc} page={i + 1} width={536} title={`Slide ${i + 1}`} thumb first />
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </Region>
       </ModalBody>
       <DialogFooter onCancel={onClose} confirmLabel="Restore" busyLabel="Restoring" pending={restoring} disabled={!doc} onConfirm={onRestore} />
     </Modal>
   );
 }
 
+function VersionBones() {
+  return (
+    <div data-slides-version-loading className="flex flex-col gap-3">
+      <Bone className="aspect-video w-full rounded-md" />
+      <Bone className="aspect-video w-full rounded-md" />
+    </div>
+  );
+}
+
+/** History's rows while the copies are read: three kept copies at fixed times, none the first. */
+export const SAMPLE_VERSIONS: readonly DeckVersion[] = [
+  { id: "sample:version-3", at: 1_795_000_000_000, size: 1, first: false },
+  { id: "sample:version-2", at: 1_794_900_000_000, size: 1, first: false },
+  { id: "sample:version-1", at: 1_794_800_000_000, size: 1, first: false },
+];
+
+const LOOK_NOWHERE = (): void => undefined;
+
 /** What History holds: the kept copies, each opening its look, its loading rows, its empty line, or why it could not be read. */
 export function VersionList({ kept, onRetry, onLook }: { kept: Kept; onRetry(): void; onLook(version: DeckVersion): void }) {
-  return kept.error ? (
-    <div className="flex min-h-7 items-center justify-between gap-2 py-1 ps-2 text-[13px] leading-5 text-muted-foreground">
-      <span className="min-w-0">{kept.error}</span>
-      <Button variant="ghost" size="xs" className="shrink-0 text-foreground" onClick={onRetry}>
-        Retry
-      </Button>
-    </div>
-  ) : !kept.list ? (
-    <div data-slides-history-loading aria-busy="true" aria-label="Loading" className="flex flex-col">
-      {[34, 44, 28].map((w) => (
-        <div key={w} className="flex h-9 items-center px-2">
-          <Skeleton className="h-3" style={{ width: `${w}%` }} />
+  return (
+    <Region loading={!kept.list && !kept.error} label="Loading" bones={() => <VersionRows list={SAMPLE_VERSIONS} onLook={LOOK_NOWHERE} drawn />}>
+      {kept.error ? (
+        <div className="flex min-h-7 items-center justify-between gap-2 py-1 ps-2 text-[13px] leading-5 text-muted-foreground">
+          <span className="min-w-0">{kept.error}</span>
+          <Button variant="ghost" size="xs" className="shrink-0 text-foreground" onClick={onRetry}>
+            Retry
+          </Button>
         </div>
-      ))}
-    </div>
-  ) : kept.list.length === 0 ? (
-    <div className="flex min-h-7 items-center px-2 text-[13px] leading-5 text-muted-foreground">No versions yet</div>
-  ) : (
-    <div role="list" className="flex max-h-[284px] flex-col overflow-x-hidden overflow-y-auto">
-      {kept.list.map((v) => (
-        <div key={v.id} role="listitem" data-version={v.id}>
+      ) : kept.list?.length === 0 ? (
+        <div className="flex min-h-7 items-center px-2 text-[13px] leading-5 text-muted-foreground">No versions yet</div>
+      ) : kept.list ? (
+        <VersionRows list={kept.list} onLook={onLook} />
+      ) : null}
+    </Region>
+  );
+}
+
+/** The kept copies, newest first, each a press that opens its look. `drawn`: the sample's rows, as bones. */
+function VersionRows({ list, onLook, drawn = false }: { list: readonly DeckVersion[]; onLook(version: DeckVersion): void; drawn?: boolean }) {
+  return (
+    <div role="list" data-slides-history-loading={drawn ? "" : undefined} className="flex max-h-[284px] flex-col overflow-x-hidden overflow-y-auto">
+      {list.map((v) => (
+        <div key={v.id} role="listitem" data-version={drawn ? undefined : v.id}>
           <button
             type="button"
             aria-label={`Look at the ${dayTime(v.at)} version`}

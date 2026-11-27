@@ -1,7 +1,7 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import type { ActKind } from "@shared/work";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Region } from "../../components/bones";
 import { Globe, Outbox, Plug, SquareMousePointer } from "../../chrome/icons";
 import { cn } from "../../lib/cn";
 import { registerToastAnchor } from "../../lib/toastAnchor";
@@ -12,7 +12,7 @@ import { fetchDetail, loadHost, type HostItem } from "./store";
 
 /**
  * The Outbox's small shared parts (docs/DESIGN.md "The Outbox"): the words a
- * row says, the kind's glyph, the verb bar, the bones, a host's Retry and a
+ * row says, the kind's glyph, the verb bar, a host's Retry and a
  * computer act's kept picture. Today's held rows and Away's list draw a held
  * item with these too.
  */
@@ -129,43 +129,6 @@ export function DetailColumn({ children, className }: { children: ReactNode; cla
   );
 }
 
-/** While the Outbox first loads: the detail's facts, title, sentence and the thing's block, in its column. */
-export function DetailSkeleton() {
-  return (
-    <div role="status" aria-label="Loading the item" aria-busy className="mx-auto flex w-full max-w-[688px] flex-col px-8 pt-6">
-      <span className="flex h-7 items-center">
-        <Skeleton className="h-3 w-40" />
-      </span>
-      <span className="mt-1 flex h-6 items-center">
-        <Skeleton className="h-4 w-64 max-w-full" />
-      </span>
-      <span className="mt-2 flex h-[22px] items-center">
-        <Skeleton className="h-3.5 w-[60%]" />
-      </span>
-      {/* The thing's own shape: its fields on the 72px label column, the hairline, its body's lines. */}
-      <div className="mt-5 grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5">
-        {[40, 56, 48].map((w) => (
-          <div key={w} className="contents">
-            <span className="flex h-5 items-center">
-              <Skeleton className="h-3 w-12" />
-            </span>
-            <span className="flex h-5 items-center">
-              <Skeleton className="h-3" style={{ width: `${w}%` }} />
-            </span>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 flex flex-col border-t border-border pt-4">
-        {[90, 76, 84, 40].map((w) => (
-          <span key={w} className="flex h-[22px] items-center">
-            <Skeleton className="h-3.5" style={{ width: `${w}%` }} />
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /** A host's error row's Retry: that host alone asked again, busy and off while it reads; the row goes once it answers. */
 export function HostRetry({ environmentId }: { environmentId: string }) {
   const [busy, setBusy] = useState(false);
@@ -226,7 +189,6 @@ export function KeptPicture({ item, picture }: { item: HostItem; picture: Pictur
   const { kept, src } = picture;
   if (!kept || src === null) return null;
   const shape = kept.width && kept.height ? `${kept.width} / ${kept.height}` : "16 / 10";
-  if (src === undefined) return <Skeleton className="w-full rounded-lg" style={{ aspectRatio: shape }} />;
   if (src === "failed")
     return (
       <p className="flex items-baseline gap-2 text-[13px] leading-5">
@@ -236,5 +198,10 @@ export function KeptPicture({ item, picture }: { item: HostItem; picture: Pictur
         </Button>
       </p>
     );
-  return <img src={src} onLoad={picture.onLoad} onError={picture.onError} alt={`The window as it was read, ${item.summary}`} draggable={false} className="h-auto w-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline" style={{ aspectRatio: shape }} />;
+  // The picture has no words to measure: one bone in its own box while its bytes are read.
+  return (
+    <Region loading={src === undefined} label="Loading the picture" bones={<Bone className="w-full rounded-lg" style={{ aspectRatio: shape }} />}>
+      {src ? <img src={src} onLoad={picture.onLoad} onError={picture.onError} alt={`The window as it was read, ${item.summary}`} draggable={false} className="h-auto w-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline" style={{ aspectRatio: shape }} /> : null}
+    </Region>
+  );
 }

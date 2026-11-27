@@ -4,12 +4,13 @@ import type { FileEntry, FileSort, FolderRef } from "@shared/work/files";
 import { ChevronRight } from "../../chrome/icons";
 import { VirtualRows } from "../../chrome/railVirtualRows";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { Spinner } from "../../components/ui/spinner";
 import { dayTime } from "../../lib/duration";
 import { chordKey, modOrCtrl } from "../../lib/keys";
 import { KindGlyph } from "./KindGlyph";
-import { factOf, gridStep, samePage, shownName, tilesAcross, type Picked, type PickHow, type TileSize } from "./model";
+import { factOf, gridStep, NOTHING_PICKED, samePage, shownName, tilesAcross, type Picked, type PickHow, type TileSize } from "./model";
+import { SAMPLE_COLUMN, SAMPLE_ENTRIES } from "./samples";
 import { busyOf, type Busy } from "./busy";
 import { dragProps, heldRow, howOf, NameField, onNameOf, stepHow, type RowDrag, type ShapeProps } from "./rowParts";
 import { DetailsPane, Thumb } from "./Looks";
@@ -297,17 +298,8 @@ function Column({
   };
   let body: ReactNode;
   // A read with no rows is the bones, but his Retry keeps "did not load" with that Retry spinning.
-  if (!listing.loaded || (!listing.entries.length && listing.loading && !listing.retrying))
-    body = (
-      <div role="status" aria-label="Loading" aria-busy className="px-2 pt-1">
-        {["w-[60%]", "w-[44%]", "w-[52%]"].map((w, i) => (
-          <div key={i} className="flex items-center gap-2 px-2" style={{ height: COLUMN_ROW_PX }}>
-            <Skeleton className="size-4 shrink-0 rounded-sm" />
-            <Skeleton className={`h-3 ${w}`} />
-          </div>
-        ))}
-      </div>
-    );
+  const waiting = !listing.loaded || (!listing.entries.length && listing.loading && !listing.retrying);
+  if (waiting) body = null;
   else if (listing.error && !listing.entries.length)
     body = (
       <div className="flex flex-col items-start gap-2 p-3 text-xs text-muted-foreground">
@@ -326,9 +318,28 @@ function Column({
     );
   return (
     <div ref={setScroller} role="listbox" aria-label={name} data-files-column={name} className="h-full shrink-0 overflow-x-hidden overflow-y-auto border-e border-border px-1 pt-1 pb-2" style={{ width: COLUMN_PX }}>
-      {body}
+      <Region loading={waiting} label="" bones={ColumnBones}>
+        {body}
+      </Region>
     </div>
   );
+}
+
+/** A column's rows while its folder is read: a column's row written out from the sample (the row itself reads the column's listing). */
+function ColumnBones() {
+  return SAMPLE_COLUMN.map((entry) => (
+    <div key={entry.key} style={{ height: COLUMN_ROW_PX }} className="flex items-center gap-2 rounded-md px-2 text-[13px]">
+      <KindGlyph kind={entry.kind} />
+      <span className="min-w-0 flex-1 truncate text-foreground">{shownName(entry.name)}</span>
+    </div>
+  ));
+}
+
+const STILL = (): void => undefined;
+
+/** A grid's bones: the grid itself given the sample, at rest, each tile's glyph where its picture or glyph lands. */
+export function GridBones({ size }: { size: TileSize }) {
+  return <FileGrid entries={SAMPLE_ENTRIES} picked={NOTHING_PICKED} size={size} from={null} busy={null} more={false} loadingMore={false} renaming={null} onPick={STILL} onOpen={STILL} onMore={STILL} onRenamed={STILL} />;
 }
 
 export function FileColumns({

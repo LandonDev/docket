@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
+import { Region } from "../../components/bones";
 import { Button } from "../../components/ui/button";
 import { StatusMark } from "../../components/ui/status";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
@@ -21,10 +22,10 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { EmptyState, PAGE_LIST_WIDTH } from "../../surfaces/SurfaceSkeleton";
 import { DoneDetail } from "./DoneDetail";
 import { GrantsSheet } from "./GrantsSheet";
-import { HeldDetail, type DetailCommands } from "./HeldDetail";
-import { DoneList, ListSkeleton, ROW_ATTR, WaitingList } from "./Lists";
+import { DetailBones, HeldDetail, type DetailCommands } from "./HeldDetail";
+import { DoneList, ListBones, ROW_ATTR, WaitingList } from "./Lists";
 import { WORK_CHATS_KEY } from "./model";
-import { DetailSkeleton, HostRetry } from "./parts";
+import { HostRetry } from "./parts";
 import { offerFrom, useOutbox, useOutboxPage, useWantedOutboxItem, wantOutboxItem, type HostItem } from "./store";
 import { pressMany, TickedDetail, type Batch } from "./Ticked";
 import { RequestCard } from "./RequestCard";
@@ -315,6 +316,8 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
   const down = outbox.errors.length;
   // What the tab lists: Waiting's open requests count with its items.
   const shownCount = tab === "waiting" ? outbox.waiting.length + requests.length : outbox.done.length;
+  // Only the first read draws bones: a later one keeps the rows it has.
+  const firstRead = !outbox.loaded && shownCount === 0;
   const emptyWords = !outbox.complete ? (
     <EmptyState title="Not known yet" line={down === 1 ? "Shown once it answers." : down > 1 ? "Shown once they answer." : "Shown once every host answers."} />
   ) : tab === "waiting" ? (
@@ -388,38 +391,40 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
             className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
             onFocus={(e) => setFocused((e.target as HTMLElement).getAttribute(ROW_ATTR))}
           >
-            {!outbox.loaded && shownCount === 0 ? (
-              <ListSkeleton />
-            ) : shownCount === 0 ? (
-              // Narrow, the list is the pane on screen: an empty list says so here (the detail's copy is hidden then).
-              <div data-outbox-empty="list" className="hidden h-full @max-[40rem]/outbox:flex">
-                {emptyWords}
-              </div>
-            ) : tab === "waiting" ? (
-              <WaitingList
-                sections={sections}
-                requests={requests}
-                onPickRequest={(request) => {
-                  setSelected(requestKey(request));
-                  setOpened(true);
-                  clearTicks();
-                }}
-                current={ticking ? null : selected}
-                stop={stop}
-                ticked={ticked}
-                expanded={expanded}
-                now={now}
-                onPick={onPick}
-                onTick={onTick}
-                onSelectGroup={(items) => {
-                  setBatch(null);
-                  setTicked((prev) => new Set([...prev, ...items.map(itemKey)]));
-                }}
-                onExpand={(key) => setExpanded((prev) => new Set(prev).add(key))}
-              />
-            ) : (
-              <DoneList days={days} current={selected} stop={stop} now={now} onPick={onPick} />
-            )}
+            {/* The tab's own rows from the samples while the first read is out; at least the pane's height, so the narrow
+                empty list below fills it. */}
+            <Region id={`outbox:${tab}`} loading={firstRead} label="Loading the Outbox" className="min-h-full" bones={() => <ListBones tab={tab} />}>
+              {firstRead ? null : shownCount === 0 ? (
+                // Narrow, the list is the pane on screen: an empty list says so here (the detail's copy is hidden then).
+                <div data-outbox-empty="list" className="hidden min-h-0 flex-1 @max-[40rem]/outbox:flex">
+                  {emptyWords}
+                </div>
+              ) : tab === "waiting" ? (
+                <WaitingList
+                  sections={sections}
+                  requests={requests}
+                  onPickRequest={(request) => {
+                    setSelected(requestKey(request));
+                    setOpened(true);
+                    clearTicks();
+                  }}
+                  current={ticking ? null : selected}
+                  stop={stop}
+                  ticked={ticked}
+                  expanded={expanded}
+                  now={now}
+                  onPick={onPick}
+                  onTick={onTick}
+                  onSelectGroup={(items) => {
+                    setBatch(null);
+                    setTicked((prev) => new Set([...prev, ...items.map(itemKey)]));
+                  }}
+                  onExpand={(key) => setExpanded((prev) => new Set(prev).add(key))}
+                />
+              ) : (
+                <DoneList days={days} current={selected} stop={stop} now={now} onPick={onPick} />
+              )}
+            </Region>
           </div>
           <div
             {...sashKeys}
@@ -469,37 +474,40 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
               onOpenSession={onOpenSession}
               commands={commands}
             />
-          ) : !outbox.loaded && shownCount === 0 ? (
-            <DetailSkeleton />
-          ) : !current ? (
-            shownCount > 0 ? (
-              <EmptyState title="No longer waiting" line="Another press or device decided it." />
-            ) : (
-              <div data-outbox-empty="detail" className="flex h-full">
-                {emptyWords}
-              </div>
-            )
-          ) : tab === "waiting" ? (
-            <HeldDetail
-              key={itemKey(current)}
-              item={current}
-              workspace={places.jobOf(current.environmentId, current.workspaceId)}
-              host={hostName(current.environmentId)}
-              onOpenSession={onOpenSession}
-              onPressed={afterPress}
-              onReview={review}
-              commands={commands}
-              linkLineInPage
-            />
           ) : (
-            <DoneDetail
-              key={itemKey(current)}
-              item={current}
-              offer={offerFrom(outbox.offers, current)}
-              workspace={places.jobOf(current.environmentId, current.workspaceId)}
-              grantLabel={outbox.grants.find((g) => current.decidedBy === `grant:${g.id}`)?.label ?? null}
-              onOpenSession={onOpenSession}
-            />
+            // The detail drawn from the sample while the first read is out (the list's region says the wait).
+            <Region loading={firstRead} label="" fill bones={DetailBones}>
+              {firstRead ? null : !current ? (
+                shownCount > 0 ? (
+                  <EmptyState title="No longer waiting" line="Another press or device decided it." />
+                ) : (
+                  <div data-outbox-empty="detail" className="flex min-h-0 flex-1">
+                    {emptyWords}
+                  </div>
+                )
+              ) : tab === "waiting" ? (
+                <HeldDetail
+                  key={itemKey(current)}
+                  item={current}
+                  workspace={places.jobOf(current.environmentId, current.workspaceId)}
+                  host={hostName(current.environmentId)}
+                  onOpenSession={onOpenSession}
+                  onPressed={afterPress}
+                  onReview={review}
+                  commands={commands}
+                  linkLineInPage
+                />
+              ) : (
+                <DoneDetail
+                  key={itemKey(current)}
+                  item={current}
+                  offer={offerFrom(outbox.offers, current)}
+                  workspace={places.jobOf(current.environmentId, current.workspaceId)}
+                  grantLabel={outbox.grants.find((g) => current.decidedBy === `grant:${g.id}`)?.label ?? null}
+                  onOpenSession={onOpenSession}
+                />
+              )}
+            </Region>
           )}
         </div>
       </div>

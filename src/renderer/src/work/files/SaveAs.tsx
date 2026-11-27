@@ -11,7 +11,7 @@ import { Tip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { GroupInput, InputGroup } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Bones } from "../../components/bones";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
@@ -272,7 +272,10 @@ function FirstPage({ workspace, source, format }: { workspace: WorkspaceMeta; so
         ) : page.is === "page" ? (
           <img alt="" src={page.url} className="w-[168px] bg-(--paper) outline-1 outline-(--image-outline)" />
         ) : page.is === "loading" ? (
-          <Skeleton className="aspect-[8.5/11] w-[168px] rounded-none bg-skeleton-stage" />
+          // The page has no words to measure: one bone on the stage in its shape while the host draws it.
+          <Bones label="" on="stage">
+            <Bone className="aspect-[8.5/11] w-[168px] rounded-none" />
+          </Bones>
         ) : (
           // A page that could not be drawn is the format's glyph: the picture is a glance, not a state to read.
           <KindGlyph kind={format === "pdf" ? "pdf" : "document"} className="size-8 shrink-0" />

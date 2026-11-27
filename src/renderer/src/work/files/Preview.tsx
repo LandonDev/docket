@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { FileBytes } from "@shared/contract-work-files";
+import type { FileArchive, FileBytes } from "@shared/contract-work-files";
 import { ENTRY_KIND_WORDS, extOf, type FileEntry } from "@shared/work/files";
 import { TruncateTip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Bones, Region } from "../../components/bones";
 import { formatBytes } from "../../lib/attachmentUpload";
 import { dayTime } from "../../lib/duration";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -66,7 +66,13 @@ function Page({ from, entry, page, width, picture, onPages }: { from: PictureFro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pages]);
   if (view.is === "none") return page === 1 ? <Plain entry={entry} why={view.why} /> : null;
-  if (view.is === "loading") return <Skeleton aria-label="Loading" className={picture ? "aspect-[4/3] w-full max-w-xl rounded-md" : "aspect-[17/22] w-full max-w-xl rounded-sm"} />;
+  // The page has no words to measure: one bone in its shape while it is drawn, and the picture comes in over it.
+  if (view.is === "loading")
+    return (
+      <Bones label="Loading the page" className="w-full max-w-xl">
+        <Bone className={picture ? "aspect-[4/3] w-full rounded-md" : "aspect-[17/22] w-full rounded-sm"} />
+      </Bones>
+    );
   return (
     <img
       src={view.url}
@@ -130,7 +136,9 @@ function TextPage({ from, entry }: { from: PictureFrom; entry: FileEntry }) {
   return (
     <div data-files-preview-text className="flex min-h-0 flex-1 flex-col items-center overflow-x-hidden overflow-y-auto p-4">
       {head.is === "loading" ? (
-        <Skeleton aria-label="Loading" className="aspect-[17/22] w-full max-w-3xl shrink-0 rounded-sm" />
+        <Bones label="Loading the file" className="w-full max-w-3xl shrink-0">
+          <Bone className="aspect-[17/22] w-full rounded-sm" />
+        </Bones>
       ) : (
         <pre className="w-full max-w-3xl shrink-0 rounded-sm bg-background p-6 font-mono text-xs leading-5 break-words whitespace-pre-wrap text-foreground outline-1 -outline-offset-1 outline-(--image-outline)">{head.text}</pre>
       )}
@@ -140,23 +148,25 @@ function TextPage({ from, entry }: { from: PictureFrom; entry: FileEntry }) {
 
 /** A zip's listing: each thing by its path inside it, with its size. Nothing is extracted. */
 export function ArchiveList({ view }: { view: ArchiveView }) {
-  if (view.is === "loading")
-    return (
-      <div role="status" aria-label="Loading" aria-busy className="flex w-full max-w-2xl flex-col p-4">
-        {["w-[46%]", "w-[62%]", "w-[38%]", "w-[54%]"].map((w, i) => (
-          <div key={i} className="flex h-7 items-center gap-2 px-2">
-            <Skeleton className="size-4 shrink-0 rounded-sm" />
-            <Skeleton className={`h-3 ${w}`} />
-          </div>
-        ))}
-      </div>
-    );
-  if (view.is === "failed") return <p className="p-6 text-center text-[13px] text-muted-foreground">{view.why}</p>;
-  if (!view.entries.length) return <p className="p-6 text-center text-[13px] text-muted-foreground">Nothing is listed in it.</p>;
   return (
-    <div data-files-archive role="list" aria-label="In this archive" className="flex w-full max-w-2xl flex-col p-2">
+    <Region loading={view.is === "loading"} label="Loading the archive" className="w-full max-w-2xl" bones={() => <ArchiveRows entries={SAMPLE_ARCHIVE} more={false} />}>
+      {view.is === "failed" ? (
+        <p className="p-6 text-center text-[13px] text-muted-foreground">{view.why}</p>
+      ) : view.is === "list" && !view.entries.length ? (
+        <p className="p-6 text-center text-[13px] text-muted-foreground">Nothing is listed in it.</p>
+      ) : view.is === "list" ? (
+        <ArchiveRows entries={view.entries} more={view.more} />
+      ) : null}
+    </Region>
+  );
+}
+
+/** What a zip lists, a row a thing. */
+function ArchiveRows({ entries, more }: { entries: FileArchive["entries"]; more: boolean }) {
+  return (
+    <div data-files-archive role="list" aria-label="In this archive" className="flex w-full flex-col p-2">
       {/* Each entry by its last name, 16px a level under its folder (the sidebar's step). */}
-      {archiveRows(view.entries).map((row) => (
+      {archiveRows(entries).map((row) => (
         <div key={row.key} role="listitem" className="flex h-7 shrink-0 items-center gap-2 pe-2 text-[13px]" style={{ paddingInlineStart: 8 + row.depth * 16 }}>
           <KindGlyph kind={row.kind} />
           <TruncateTip text={row.name}>
@@ -165,10 +175,18 @@ export function ArchiveList({ view }: { view: ArchiveView }) {
           {row.dir ? null : <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(row.size)}</span>}
         </div>
       ))}
-      {view.more ? <p className="px-2 pt-2 text-xs text-muted-foreground">It holds more than are listed here.</p> : null}
+      {more ? <p className="px-2 pt-2 text-xs text-muted-foreground">It holds more than are listed here.</p> : null}
     </div>
   );
 }
+
+/** A zip's first lines while its listing is read. */
+const SAMPLE_ARCHIVE: FileArchive["entries"] = [
+  { name: "Fall league/", dir: true, size: 0 },
+  { name: "Fall league/Budget Q3 final.xlsx", dir: false, size: 48_200 },
+  { name: "Fall league/Ballroom floor plan.pdf", dir: false, size: 1_204_000 },
+  { name: "Roster notes.docx", dir: false, size: 22_900 },
+];
 
 /** A file's bytes read whole into the window, a part at a time, by the version the first part named. */
 export async function readWhole(from: PictureFrom, entry: FileEntry, signal: { stopped: boolean }, onPart?: (read: number) => void, itemId?: string): Promise<Blob | null> {

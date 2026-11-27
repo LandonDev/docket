@@ -16,7 +16,8 @@ import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../../components/u
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../components/ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { reveal, yields } from "../../components/ui/reveal";
-import { Skeleton } from "../../components/ui/skeleton";
+import { CHECKBOX_BOX, CHECKBOX_SHAPES } from "../../components/ui/checkbox-box";
+import { Bones, Region } from "../../components/bones";
 import { cn } from "../../lib/cn";
 import { moveBetweenRows } from "../rowKeys";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
@@ -99,8 +100,14 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
     openWorkView({ workspaceId: workspace.id, view: "tasks" });
   }, [asked, workspace.id]);
   const taken = useMemo(() => () => setOpenTask(undefined), []);
-  // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it.
-  if (!lifeos.client) return sessionWaits(lifeos) ? <TasksSkeleton /> : null;
+  // Bones only while the session is on its way; a failed one is the frame's line, with nothing pulsing under it. The
+  // list's own region follows them once the session is in, so they do not hold again.
+  if (!lifeos.client)
+    return sessionWaits(lifeos) ? (
+      <Bones label="Loading tasks">
+        <TasksBones />
+      </Bones>
+    ) : null;
   return (
     <ConvexProvider client={lifeos.client}>
       <Tasks client={clients.tasks} sector={sector} startThread={startThread} useThread={useLinkedThread} openTask={openTask} onOpenTaken={taken} workspaceId={workspace.id} place={workspace} />
@@ -226,67 +233,74 @@ export function Tasks({
   }, [missing]);
   const [coding, setCoding] = useState<Task | null>(null);
   const code = useMemo(() => (task: Task) => setCoding(task), []);
-  const groups = useMemo(() => (tasks ? groupTasks(tasks, now, zone) : null), [tasks, now]);
-  if (!groups) return <TasksSkeleton />;
-  // The open task as the list has it now, its own row; a task asked for by id that the list does not hold is read by id.
-  const row = opened ? (tasks?.find((t) => t._id === opened.id) ?? null) : null;
-  const sheetOf = opened && (row || !opened.listed) ? { id: opened.id, row } : null;
-  const lead = groups.today[0] ?? null;
-  const rest = TASK_GROUPS.map((g) => ({ g, rows: g === "today" ? groups.today.slice(1) : groups[g] })).filter((x) => x.rows.length);
-  const projectOf = (task: Task | null | undefined): string | undefined => (task ? projects?.get(task.projectId ?? "")?.name : undefined);
-  const sheet = (
-    <>
-      <TaskSheet heldWords={heldWords} open={sheetOf} projectOf={projectOf} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} onCode={code} useThread={useThread} />
-      {coding ? <CodeThreadDialog task={coding} sector={sector} onStart={startCode} onClose={() => setCoding(null)} /> : null}
-    </>
-  );
-  if (!lead && !rest.length)
-    return (
+  const groupsRead = useMemo(() => (tasks ? groupTasks(tasks, now, zone) : null), [tasks, now]);
+  /** The list once the open tasks are read: the lead and its groups, or "Nothing open". */
+  const listOf = (groups: NonNullable<typeof groupsRead>): ReactNode => {
+    // The open task as the list has it now, its own row; a task asked for by id that the list does not hold is read by id.
+    const row = opened ? (tasks?.find((t) => t._id === opened.id) ?? null) : null;
+    const sheetOf = opened && (row || !opened.listed) ? { id: opened.id, row } : null;
+    const lead = groups.today[0] ?? null;
+    const rest = TASK_GROUPS.map((g) => ({ g, rows: g === "today" ? groups.today.slice(1) : groups[g] })).filter((x) => x.rows.length);
+    const projectOf = (task: Task | null | undefined): string | undefined => (task ? projects?.get(task.projectId ?? "")?.name : undefined);
+    const sheet = (
       <>
-        <EmptyState title="Nothing open" />
-        {sheet}
+        <TaskSheet heldWords={heldWords} open={sheetOf} projectOf={projectOf} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} onCode={code} useThread={useThread} />
+        {coding ? <CodeThreadDialog task={coding} sector={sector} onStart={startCode} onClose={() => setCoding(null)} /> : null}
       </>
     );
-  const meta = (task: Task, inWaiting = false) => metaOf(task, projectOf(task), inWaiting);
+    if (!lead && !rest.length)
+      return (
+        <>
+          <EmptyState title="Nothing open" />
+          {sheet}
+        </>
+      );
+    const meta = (task: Task, inWaiting = false) => metaOf(task, projectOf(task), inWaiting);
+    return (
+      // ↑ and ↓ move between the rows, as in People and on a meeting's page; Tab still walks each row's tick and Start.
+      <div onKeyDown={rowKeys} className={LIST}>
+        {lead ? <Lead heldWords={heldWords} task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} onCode={code} useThread={useThread} /> : null}
+        {rest.map(({ g, rows }, i) => (
+          <section key={g} aria-label={TASK_GROUP_LABELS[g]} className={cn("flex flex-col", lead || i ? "mt-6" : "")}>
+            {/* The heading starts on its rows' title edge: past the row's inset, the tick and its gap. */}
+            <h2 className={GROUP_HEADING}>{TASK_GROUP_LABELS[g]}</h2>
+            {/* Past 80 rows only those near the screen are mounted, each with its place in the group (work/windowed.tsx). */}
+            <WindowedRows
+              count={rows.length}
+              rowHeight={32}
+              getKey={(index) => rows[index]!._id}
+              sizeKey="work-tasks-list"
+              render={(index, place) => {
+                const task = rows[index]!;
+                return (
+                  <TaskRow
+                  doneHeld={doneHeld}
+                  heldWords={heldWords}
+                    key={task._id}
+                    task={task}
+                    meta={meta(task, g === "waiting")}
+                    due={task.dueAt === undefined ? undefined : formatDue(task.dueAt, now)}
+                    overdue={task.dueAt !== undefined && task.dueAt < now}
+                    actions={actions}
+                    onStart={start}
+                    onOpen={open}
+                    onCode={code}
+                    useThread={useThread}
+                    place={place}
+                  />
+                );
+              }}
+            />
+          </section>
+        ))}
+        {sheet}
+      </div>
+    );
+  };
   return (
-    // ↑ and ↓ move between the rows, as in People and on a meeting's page; Tab still walks each row's tick and Start.
-    <div onKeyDown={rowKeys} className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
-      {lead ? <Lead heldWords={heldWords} task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} onCode={code} useThread={useThread} /> : null}
-      {rest.map(({ g, rows }, i) => (
-        <section key={g} aria-label={TASK_GROUP_LABELS[g]} className={cn("flex flex-col", lead || i ? "mt-6" : "")}>
-          {/* The heading starts on its rows' title edge: past the row's inset, the tick and its gap. */}
-          <h2 className="mb-1 ps-9 pe-3 text-xs font-medium text-muted-foreground">{TASK_GROUP_LABELS[g]}</h2>
-          {/* Past 80 rows only those near the screen are mounted, each with its place in the group (work/windowed.tsx). */}
-          <WindowedRows
-            count={rows.length}
-            rowHeight={32}
-            getKey={(index) => rows[index]!._id}
-            sizeKey="work-tasks-list"
-            render={(index, place) => {
-              const task = rows[index]!;
-              return (
-                <TaskRow
-                doneHeld={doneHeld}
-                heldWords={heldWords}
-                  key={task._id}
-                  task={task}
-                  meta={meta(task, g === "waiting")}
-                  due={task.dueAt === undefined ? undefined : formatDue(task.dueAt, now)}
-                  overdue={task.dueAt !== undefined && task.dueAt < now}
-                  actions={actions}
-                  onStart={start}
-                  onOpen={open}
-                  onCode={code}
-                  useThread={useThread}
-                  place={place}
-                />
-              );
-            }}
-          />
-        </section>
-      ))}
-      {sheet}
-    </div>
+    <Region loading={!groupsRead} label="Loading tasks" bones={TasksBones}>
+      {groupsRead ? listOf(groupsRead) : null}
+    </Region>
   );
 }
 
@@ -336,35 +350,35 @@ function Lead({
   const lead = thread ? taskThreadMark(thread) : null;
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div className="flex flex-col gap-1 px-3" />}>
+      <ContextMenuTrigger render={<div className={LEAD} />}>
         {/* No mark beside the title (the owner's rule): the thread's state leads Open thread, as canvas.html's peek leads its line. */}
-        <h1 className="min-w-0 text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">{task.title}</h1>
+        <h1 className={LEAD_TITLE}>{task.title}</h1>
         {meta || task.dueAt !== undefined ? (
-          <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
+          <p className={LEAD_LINE}>
             {meta ? <span className="min-w-0 truncate">{meta}</span> : null}
             {task.dueAt !== undefined ? <span className={cn("shrink-0 tabular-nums", overdue ? "text-destructive" : "text-foreground")}>{meta ? ", " : ""}Due {dueMidLine(task.dueAt, now)}</span> : null}
           </p>
         ) : null}
         {/* The presses keep to the column the rows end on: under 22rem Open gives way first, since the task's menu holds it. */}
-        <div data-lead-presses className="@container/leadpresses mt-3 flex items-center gap-2">
+        <div data-lead-presses className={LEAD_PRESSES}>
           {lead ? (
             // Beside the button, not on its fill: the mark's tone must read on the page.
             <span data-lead-thread={lead.key} className="flex size-4 shrink-0 items-center justify-center">
               {lead.mark}
             </span>
           ) : null}
-          {thread === undefined ? (
-            // The link read is out: a bone in the press's own shape holds its place, so Done and Snooze do not move when it comes.
-            <Skeleton aria-hidden data-press-bone className="h-7 w-[92px] rounded-md" />
-          ) : thread ? (
-            <Button size="sm" onClick={() => openThread(thread, () => onStart(task))}>
-              Open thread
-            </Button>
-          ) : (
-            <Button size="sm" onClick={() => onStart(task)}>
-              Start thread
-            </Button>
-          )}
+          {/* The link read is out: the press itself drawn as bones holds its place, so Done and Snooze do not move when it comes. */}
+          <Region loading={thread === undefined} label="" className="shrink-0" bones={PressBones}>
+            {thread ? (
+              <Button size="sm" onClick={() => openThread(thread, () => onStart(task))}>
+                Open thread
+              </Button>
+            ) : (
+              <Button size="sm" onClick={() => onStart(task)}>
+                Start thread
+              </Button>
+            )}
+          </Region>
           <Tip label={heldWords} disabled={!heldWords}>
             <Button size="sm" variant="secondary" disabled={doneHeld} focusableWhenDisabled className="aria-disabled:opacity-50" onClick={() => actions.complete(task)}>
               Done
@@ -486,7 +500,7 @@ const TaskRow = memo(function TaskRow({
   }, [ticked, doneHeld]);
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div role="listitem" {...place} className={cn("group/row flex min-h-8 items-start gap-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
+      <ContextMenuTrigger render={<div role="listitem" {...place} className={cn("group/row", ROW, ROW_HOLDS)} />}>
         {/* The open control lies over the whole row, so keyboard focus rings the row; the tick and Start sit above it. */}
         {/* A title or line the column cuts is said whole on the row's hover and focus, only while one is cut (Agenda's rule). */}
         <Tooltip disabled={!cut}>
@@ -501,9 +515,9 @@ const TaskRow = memo(function TaskRow({
         <HeldTip held={heldWords} className={ROW_CONTROLS}>
           <Checkbox shape="round" className={cn("mt-0.5 after:-inset-x-2", ROW_CONTROLS)} checked={ticked} disabled={doneHeld} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
         </HeldTip>
-        <span ref={cutRef} className={cn("flex min-w-0 flex-1 flex-col", ROW_SHOWS)}>
-          <span className={cn("max-w-full truncate text-[13px] leading-5 text-foreground transition-colors duration-(--dur-fast)", ticked && "text-muted-foreground line-through")}>{task.title}</span>
-          {meta ? <span className="max-w-full truncate text-xs text-muted-foreground">{meta}</span> : null}
+        <span ref={cutRef} className={cn(ROW_WORDS, ROW_SHOWS)}>
+          <span className={cn(ROW_TITLE, "transition-colors duration-(--dur-fast)", ticked && "text-muted-foreground line-through")}>{task.title}</span>
+          {meta ? <span className={ROW_META}>{meta}</span> : null}
         </span>
         {lead ? (
           <span data-task-thread={lead.key} className={cn("flex h-5 shrink-0 items-center", ROW_SHOWS, yields("row"))}>
@@ -529,38 +543,81 @@ const TaskRow = memo(function TaskRow({
   );
 });
 
-/** The list's shape while it loads, on the insets of what replaces it: the lead (title, due line, presses), then a group's heading and its rows. */
-function TasksSkeleton() {
+/*
+ * The list's boxes and type, shared by the rows and the bones that stand for them, so a drawn row is the row that lands.
+ */
+const LIST = "mx-auto flex w-full max-w-[720px] flex-col px-6 py-6";
+const LEAD = "flex flex-col gap-1 px-3";
+const LEAD_TITLE = "min-w-0 text-base leading-6 font-semibold tracking-[-0.01em] text-foreground";
+const LEAD_LINE = "flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground";
+const LEAD_PRESSES = "@container/leadpresses mt-3 flex items-center gap-2";
+const GROUP_HEADING = "mb-1 ps-9 pe-3 text-xs font-medium text-muted-foreground";
+const ROW = "flex min-h-8 items-start gap-2 rounded-md px-3 py-1.5";
+const ROW_WORDS = "flex min-w-0 flex-1 flex-col";
+const ROW_TITLE = "max-w-full truncate text-[13px] leading-5 text-foreground";
+const ROW_META = "max-w-full truncate text-xs text-muted-foreground";
+
+/** What the list is drawn from while it loads: a lead and one group of four rows, each with its line (Waiting's, a project). */
+export const SAMPLE_TASKS = {
+  lead: { title: "Send the spring budget to the committee", meta: "Spring LAN", due: "Due Fri" },
+  group: "This week",
+  rows: [
+    { id: "sample:task-1", title: "Book the bus for the regional", meta: "Waiting on Dana Lee" },
+    { id: "sample:task-2", title: "Approve the scrim schedule", meta: "Spring LAN" },
+    { id: "sample:task-3", title: "Order the prize headsets for the finals", meta: "Equipment" },
+    { id: "sample:task-4", title: "Ask about the east hall", meta: "Facilities" },
+  ],
+} as const;
+
+/** The primary press on its way: the button itself, at rest. */
+function PressBones() {
   return (
-    <div aria-hidden data-tasks-bones className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
-      <div className="flex flex-col gap-1 px-3">
-        <div className="flex h-6 items-center">
-          <Skeleton className="h-4 w-1/2" />
-        </div>
-        <div className="flex h-4 items-center">
-          <Skeleton className="h-3 w-1/4" />
-        </div>
-        {/* The presses' own height and shape (`sm`: 28px, 6px corners), so the lead does not move when they land. */}
-        <div data-bones-presses className="mt-3 flex h-7 items-center gap-2">
-          <Skeleton className="h-7 w-[92px] rounded-md" />
-          <Skeleton className="h-7 w-14 rounded-md" />
+    <Button data-press-bone size="sm">
+      Start thread
+    </Button>
+  );
+}
+
+/**
+ * The list at rest, drawn from the sample in the lead's and the rows' own boxes and type. Written out, not the rows
+ * themselves: a row asks the hosts for its thread, subscribes to the window's threads and takes the list's keys.
+ */
+function TasksBones() {
+  const { lead, group, rows } = SAMPLE_TASKS;
+  return (
+    <div data-tasks-bones className={LIST}>
+      <div className={LEAD}>
+        <h1 className={LEAD_TITLE}>{lead.title}</h1>
+        <p className={LEAD_LINE}>
+          <span className="min-w-0 truncate">{lead.meta}</span>
+          <span className="shrink-0 tabular-nums">, {lead.due}</span>
+        </p>
+        <div data-bones-presses className={LEAD_PRESSES}>
+          <PressBones />
+          <Button size="sm" variant="secondary">
+            Done
+          </Button>
+          <Button size="sm" variant="ghost">
+            Snooze
+            <ChevronDown />
+          </Button>
+          <Button size="sm" variant="ghost" className="@max-[22rem]/leadpresses:hidden">
+            Open
+          </Button>
         </div>
       </div>
       <div className="mt-6 flex flex-col">
-        <div data-bones-heading className="mb-1 flex h-4 items-center ps-9 pe-3">
-          <Skeleton className="h-3 w-12" />
-        </div>
-        {["w-2/3", "w-1/2", "w-3/5", "w-2/5"].map((w) => (
-          <div key={w} className="flex min-h-8 items-start gap-2 px-3 py-1.5">
-            <Skeleton className="mt-0.5 size-4 rounded-full" />
-            <div className="flex flex-1 flex-col">
-              <div className="flex h-5 items-center">
-                <Skeleton className={cn("h-3.5", w)} />
-              </div>
-              <div className="flex h-4 items-center">
-                <Skeleton className="h-3 w-1/5" />
-              </div>
-            </div>
+        <h2 data-bones-heading className={GROUP_HEADING}>
+          {group}
+        </h2>
+        {rows.map((row) => (
+          <div key={row.id} className={ROW}>
+            {/* The tick's own box; empty, it is drawn as one block. */}
+            <span skullet-block="" className={cn(CHECKBOX_BOX, CHECKBOX_SHAPES.round, "mt-0.5")} />
+            <span className={ROW_WORDS}>
+              <span className={ROW_TITLE}>{row.title}</span>
+              <span className={ROW_META}>{row.meta}</span>
+            </span>
           </div>
         ))}
       </div>

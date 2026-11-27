@@ -7,12 +7,13 @@ import { Modal } from "../../chrome/Modal";
 import { Tip } from "../../components/tip";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../../components/ui/breadcrumb";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { Spinner } from "../../components/ui/spinner";
 import { Folder, Users } from "../../chrome/icons";
 import { Cloud } from "../icons";
 import { makeIn } from "./acts";
 import { KindGlyph } from "./KindGlyph";
+import { SAMPLE_COLUMN } from "./samples";
 import { carryRefusal, placePage, readCopy, samePage, type PlaceCopy, type PlaceRow, type Sidebar } from "./model";
 import { NameField } from "./rowParts";
 import { pressFor, useListing, type ListFrom } from "./store";
@@ -212,30 +213,31 @@ export function Places({ places, recent = [], off = [], waiting, onInto }: { pla
       ) : (
         <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">Places</p>
       )}
-      {waiting && !places.length ? <RowBones /> : null}
-      {places.map((item) =>
-        "team" in item ? (
-          // A team is no folder: its name over its channels, which stand one level in.
-          <div key={`team:${item.team}`} role="presentation" className={`${ROW} text-muted-foreground`}>
-            <Users aria-hidden className="size-4 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{item.team}</span>
-          </div>
-        ) : (
-          <Button
-            key={`${item.target.copy.link}:${item.target.copy.place.id}`}
-            variant="ghost"
-            role="option"
-            aria-selected={false}
-            // One level in under its team: the button's own icon padding (`has-[>svg:first-child]:ps-2`) would win over a bare `ps-6`.
-            className={`${ROW} justify-start font-normal ${item.inTeam ? "ps-6 has-[>svg:first-child]:ps-6" : ""} [&>svg:first-child]:text-muted-foreground`}
-            onClick={() => onInto(item.target)}
-          >
-            {item.icon}
-            <span className="min-w-0 flex-1 truncate">{item.inTeam ?? item.target.name}</span>
-            <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-          </Button>
-        ),
-      )}
+      <Region loading={waiting && !places.length} label="Loading the places" bones={RowBones}>
+        {places.map((item) =>
+          "team" in item ? (
+            // A team is no folder: its name over its channels, which stand one level in.
+            <div key={`team:${item.team}`} role="presentation" className={`${ROW} text-muted-foreground`}>
+              <Users aria-hidden className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{item.team}</span>
+            </div>
+          ) : (
+            <Button
+              key={`${item.target.copy.link}:${item.target.copy.place.id}`}
+              variant="ghost"
+              role="option"
+              aria-selected={false}
+              // One level in under its team: the button's own icon padding (`has-[>svg:first-child]:ps-2`) would win over a bare `ps-6`.
+              className={`${ROW} justify-start font-normal ${item.inTeam ? "ps-6 has-[>svg:first-child]:ps-6" : ""} [&>svg:first-child]:text-muted-foreground`}
+              onClick={() => onInto(item.target)}
+            >
+              {item.icon}
+              <span className="min-w-0 flex-1 truncate">{item.inTeam ?? item.target.name}</span>
+              <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+            </Button>
+          ),
+        )}
+      </Region>
       {/* A place the verb cannot reach yet, there and off, with its sentence on hover. */}
       {off.map((place) => (
         <Tip key={place.name} label={place.why} side="right">
@@ -302,35 +304,35 @@ export function Folders({ workspaceId, target, entries, onInto, onPlaces, end, f
       <div ref={setScroller} role="listbox" aria-label={`Folders in ${target.name}`} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
         {first}
         {/* A read with no rows is the bones, but his Retry keeps "did not load" with that Retry spinning. */}
-        {!listing.loaded || (!folders.length && listing.loading && !listing.retrying) ? (
-          <RowBones />
-        ) : listing.error && !folders.length ? (
-          <div className="flex flex-col items-start gap-2 p-2 text-xs text-muted-foreground">
-            <span>This folder did not load.</span>
-            <Button variant="ghost" size="xs" disabled={!!listing.retrying} onClick={() => void listing.retry()}>
-              <BusyLabel busy={!!listing.retrying} label="Retry" />
-            </Button>
-          </div>
-        ) : !folders.length ? (
-          first ? null : <p className="p-2 text-xs text-muted-foreground">No folders in here.</p>
-        ) : (
-          folders.map((folder) => (
-            <Button
-              key={folder.key}
-              variant="ghost"
-              role="option"
-              aria-selected={false}
-              // A folder being moved is no place to put it.
-              disabled={moving.has(folder.key)}
-              className={`${ROW} justify-start font-normal`}
-              onClick={() => onInto({ copy: target.copy, at: folder.folder!, name: folder.name })}
-            >
-              <KindGlyph kind="folder" />
-              <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-              <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-            </Button>
-          ))
-        )}
+        <Region loading={!listing.loaded || (!folders.length && listing.loading && !listing.retrying)} label="Loading the folders" bones={RowBones}>
+          {!listing.loaded || (!folders.length && listing.loading && !listing.retrying) ? null : listing.error && !folders.length ? (
+            <div className="flex flex-col items-start gap-2 p-2 text-xs text-muted-foreground">
+              <span>This folder did not load.</span>
+              <Button variant="ghost" size="xs" disabled={!!listing.retrying} onClick={() => void listing.retry()}>
+                <BusyLabel busy={!!listing.retrying} label="Retry" />
+              </Button>
+            </div>
+          ) : !folders.length ? (
+            first ? null : <p className="p-2 text-xs text-muted-foreground">No folders in here.</p>
+          ) : (
+            folders.map((folder) => (
+              <Button
+                key={folder.key}
+                variant="ghost"
+                role="option"
+                aria-selected={false}
+                // A folder being moved is no place to put it.
+                disabled={moving.has(folder.key)}
+                className={`${ROW} justify-start font-normal`}
+                onClick={() => onInto({ copy: target.copy, at: folder.folder!, name: folder.name })}
+              >
+                <KindGlyph kind="folder" />
+                <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+                <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+              </Button>
+            ))
+          )}
+        </Region>
         {listing.loading && listing.more && folders.length && !listing.retrying ? (
           <div aria-busy className="flex h-8 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground">
             <Spinner className="size-3" />
@@ -349,16 +351,13 @@ export function Folders({ workspaceId, target, entries, onInto, onPlaces, end, f
   );
 }
 
-/** Rows still being read: three bones in the rows' own shape. */
-export function RowBones() {
-  return (
-    <div role="status" aria-label="Loading" aria-busy className="flex flex-col">
-      {["w-[46%]", "w-[60%]", "w-[38%]"].map((w, i) => (
-        <div key={i} className="flex h-8 items-center gap-2 px-2">
-          <Skeleton className="size-4 shrink-0 rounded-sm" />
-          <Skeleton className={`h-3 ${w}`} />
-        </div>
-      ))}
-    </div>
-  );
+/** Rows still being read: three folder rows from the sample, in the rows' own shape. */
+function RowBones() {
+  return SAMPLE_COLUMN.map((entry) => (
+    <Button key={entry.key} variant="ghost" tabIndex={-1} className={`${ROW} justify-start font-normal`}>
+      <KindGlyph kind="folder" />
+      <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+      <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+    </Button>
+  ));
 }

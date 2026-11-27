@@ -131,7 +131,8 @@ function standIn(tab: FileTab, o: { lists?: (() => FilesListing | Promise<FilesL
 const calls = (host: Host, method: string) => host.calls.filter((c) => c.method === method);
 const page = (): HTMLElement => document.querySelector<HTMLElement>("[role=tabpanel]")!;
 const note = (): HTMLElement | null => document.querySelector<HTMLElement>("[data-files-note]");
-const bones = (): HTMLElement | null => within(page()).queryByRole("status", { name: "Loading" });
+/** The page's wait: a region drawing its bones (docs/agents/loading-bones.md "Tests"). */
+const bones = (): HTMLElement | null => page().querySelector<HTMLElement>("[data-region][data-bones]");
 
 beforeEach(() => {
   localStorage.clear();
@@ -158,8 +159,9 @@ describe("a search of every place, through the real Search tab", () => {
     act(() => setLifeosStatus("box", st("connecting")));
     expect(note()!.querySelector("[data-lifeos-waits]")!.textContent).toBe("LifeOS is still connecting on the box");
     expect(within(note()!).queryByRole("button")).toBeNull();
-    expect(screen.queryByText("Nothing found")).toBeNull();
     expect(bones()).not.toBeNull();
+    // The answer it showed leaves under the bones, and is gone once they stand.
+    await waitFor(() => expect(screen.queryByText("Nothing found")).toBeNull());
     const asked = calls(host, "work.files.search").length;
     act(() => setLifeosStatus("box", st("connected")));
     await waitFor(() => expect(calls(host, "work.files.search").length).toBeGreaterThan(asked));
@@ -264,6 +266,6 @@ describe("the LifeOS place, back since its read failed", () => {
     expect(within(page()).queryByRole("button", { name: "New" })).toBeNull();
     await act(async () => answer.settle({ entries: [{ ...row("Brief"), key: "lifeos:docs:1" }], trail: [] }));
     await waitFor(() => expect(document.querySelector("[data-files-row]")?.textContent).toContain("Brief"));
-    expect(bones()).toBeNull();
+    await waitFor(() => expect(bones()).toBeNull());
   });
 });

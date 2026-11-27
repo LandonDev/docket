@@ -316,15 +316,30 @@ describe("the presenter's view", () => {
     expect(root.querySelector<HTMLElement>("[data-show-now] [data-show-picture]")!.style.width).toBe("368px");
   });
 
+  it("draws the deck over its bones once it is read, with no bone left", async () => {
+    const shown = (loading: boolean, state: ShowState) => (
+      <Presenter state={state} dispatch={() => undefined} doc={loading ? null : pages(12)} loading={loading} timer={startTimer(NOW - 247_000)} target={20} onTimer={() => undefined} onTarget={() => undefined} notesSize={NOTES_DEFAULT} onNotesSize={() => undefined} now={() => NOW} room={{ width: 864, height: 540 }} />
+    );
+    const view = render(shown(true, startShowState([], "start")));
+    expect(document.querySelectorAll("[data-region][data-bones]").length).toBe(4);
+    view.rerender(shown(false, startShowState(deck(3, { 1: { notes: "Open with the turnout." } }), "start")));
+    expect(document.querySelector("[data-show-now]")).not.toBeNull();
+    expect(screen.getByText("Open with the turnout.")).toBeTruthy();
+    await waitFor(() => expect(document.querySelector("[skullet-loading]")).toBeNull());
+    expect(document.querySelector("[data-show-strip-bone]")).toBeNull();
+  });
+
   it("shows bones while the deck is read, and the line the slideshow's display left", () => {
     const { root } = mount(startShowState([], "start"), { doc: null, loading: true, notice: "The slideshow's display was disconnected" });
-    // Now, Next, the notes' two lines, and the strip's six thumbs (council R2-D3).
-    expect(root.querySelectorAll('[data-slot="skeleton"]').length).toBe(10);
-    expect(root.querySelectorAll('[data-show-strip] [data-show-strip-bone]').length).toBe(6);
-    // The notes are unknown, not empty: two bones, never "None", until the deck answers.
-    expect(root.querySelectorAll('[data-show-notes-bones] [data-slot="skeleton"]').length).toBe(2);
+    // Skullet's bones: Now and Next as the slides' frames, the notes' two lines, and the strip's six thumbs (council R2-D3).
+    expect(root.querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(root.querySelectorAll("[data-region][data-bones]").length).toBe(4);
+    expect(root.querySelectorAll("[skullet-loading] [data-bone]").length).toBe(2 + 6);
+    expect(root.querySelectorAll("[data-show-strip] [data-show-strip-bone]").length).toBe(6);
+    // The notes are unknown, not empty: two lines from a sample, never "None", until the deck answers.
+    expect(root.querySelectorAll("[data-show-notes-bones] p").length).toBe(2);
     expect(within(root).queryByText("None")).toBeNull();
-    expect(within(root).getByRole("status").textContent).toBe("The slideshow's display was disconnected");
+    expect(root.querySelector("[data-show-notice]")!.textContent).toBe("The slideshow's display was disconnected");
     // Nothing to step or blank yet; End show stays (council R3-D1).
     for (const name of ["Next", "Blank"]) expect((within(root).getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
     expect(within(root).getByRole("button", { name: "Previous" }).getAttribute("aria-disabled")).toBe("true");

@@ -16,6 +16,8 @@ const world = vi.hoisted(() => ({
   // the answer decide gives, made from the request it is asked about
   answer: null as ((r: OutboxRequest, receipts: string[]) => OutboxRequest) | null,
   hold: null as Promise<void> | null,
+  // the request's read waits on this while it is set
+  reading: null as Promise<void> | null,
   // what the host's Outbox lists as waiting (a failed row retried from the card must still be there, as drawn)
   waiting: [] as OutboxItem[],
 }));
@@ -31,6 +33,7 @@ vi.mock("../../lib/connection", async (original) => {
       world.calls.push({ method, params });
       switch (method) {
         case "work.outbox.request.get":
+          if (world.reading) await world.reading;
           return world.request;
         case "work.outbox.requests":
           return { requests: [] };
@@ -128,6 +131,7 @@ beforeEach(() => {
   world.request = request();
   world.answer = null;
   world.hold = null;
+  world.reading = null;
   world.waiting = [];
   workSwitch.reset();
   setWorkOn("box", true);
@@ -144,6 +148,21 @@ const card = () => document.querySelector("[data-outbox-request]") as HTMLElemen
 const sendButton = () => within(card()).getAllByRole("button").find((b) => /^(Send|Approve|Discard|Schedule) \d/.test(b.textContent ?? "")) as HTMLButtonElement;
 
 describe("the request card", () => {
+  it("while its request is read, is the card itself drawn from a sample, its presses held; then the request lands", async () => {
+    let answer!: () => void;
+    world.reading = new Promise<void>((r) => (answer = r));
+    render(<OutboxRequestRow block={asked} />);
+    const wait = document.querySelector("[data-region][data-bones] [skullet-loading]")!;
+    expect(wait.getAttribute("aria-hidden")).toBe("true");
+    expect(wait.querySelector("section h3")).toBeTruthy();
+    expect(wait.querySelectorAll("[data-summary-row]")).toHaveLength(2);
+    expect([...wait.querySelectorAll("button")].filter((b) => /^(Not now|Send 2)$/.test(b.textContent ?? "")).every((b) => b.hasAttribute("disabled"))).toBe(true);
+    expect(card()).toBeNull();
+    await act(async () => answer());
+    await waitFor(() => expect(card()).toBeTruthy());
+    await waitFor(() => expect(document.querySelector("[skullet-loading]")).toBeNull());
+  });
+
   it("waits: his words quoted, the rows he may press ticked, a changed one unticked with its word, and Send N", async () => {
     const el = await drawn();
     expect(el.textContent).toContain("You asked: “send the roster mails, all three”");

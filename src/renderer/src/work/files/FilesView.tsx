@@ -1,11 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import type { FilePage, FileTab, SavedFileSearch } from "@shared/contract-work-files";
 import { canvasSourcePath, filesPaneOf, type CanvasItem, type CanvasSource } from "@shared/work";
 import { canDo, chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, type FileEntry, type FilePlace, type FolderRef } from "@shared/work/files";
 import { ChevronRight, Clock, Folder, Search, Star, Trash2, Users } from "../../chrome/icons";
 import { confirmAction, confirmChoice } from "../../chrome/ConfirmDialog";
 import { Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
@@ -45,7 +45,7 @@ import { closeOf, filesKeys, landFocus } from "./chords";
 import { historyBeside } from "./SideFile";
 import { marked, type Busy, type MarkBusy } from "./busy";
 import { fetchHere, fileOf, openEntry, openInApp, opensInApp } from "./open";
-import { BarBones, ListBones, PageBar, PageView, type NoteFixes, type PageActs, type PageCommands, type PageFind } from "./Page";
+import { PageBar, PageBones, PageView, type NoteFixes, type PageActs, type PageCommands, type PageFind } from "./Page";
 import { formFolderOf, formKindsFor, twinOf } from "../msforms/newForm";
 import { useFormMaking } from "../msforms/useFormMaking";
 import { useSideOpen, hasClosed, openAtSide, closeSide, openFileTab, rememberClosed, takeClosed, dropSearch, saveSearch, useHome, useSavedSearches, useSearchFilter, closeTab, firstPage, goTo, historyOf, keepBothCopy, loadTabs, moveTabs, openPageTab, reloadCopy, selectTab, sendCopyBack, tabsNow, teamRows, useDock, useListing, usePageLook, reachAnswered, useReach, searchReplaces, useSidebarFolded, useTabs, type DeskSearch, type ListFrom, type Reach } from "./store";
@@ -186,14 +186,39 @@ function SideFolders({ from, at, depth, current, tree, drop, onGo, onNewTab }: {
   const listing = useListing(from, at, DEFAULT_SORT);
   const folders = listing.entries.filter((entry) => entry.folder);
   const inset = { paddingInlineStart: 8 + depth * 16 };
-  // His Retry is a read under way too: the bone again, in the failure's place.
-  if (!listing.loaded || listing.retrying)
-    return (
-      <div role="status" aria-label="Loading" aria-busy data-files-side-state="loading" className="flex h-7 items-center gap-2 pe-2" style={inset}>
-        <Skeleton className="size-4 shrink-0 rounded-sm" />
-        <Skeleton className="h-3 w-[55%]" />
-      </div>
-    );
+  // His Retry is a read under way too: the bones again, in the failure's place.
+  const waiting = !listing.loaded || !!listing.retrying;
+  return (
+    <Region
+      loading={waiting}
+      label=""
+      bones={() => (
+        // One folder's row at their depth, never an empty gap.
+        <div data-files-side-state="loading">
+          <SideRow icon={<Folder className="size-4" />} name="Fall league" depth={depth} on={false} onClick={STILL} />
+        </div>
+      )}
+    >
+      {waiting ? null : <SideFoldersRead listing={listing} folders={folders} from={from} depth={depth} current={current} tree={tree} drop={drop} inset={inset} onGo={onGo} onNewTab={onNewTab} />}
+    </Region>
+  );
+}
+
+const STILL = (): void => undefined;
+
+/** A folder's folders once read: "Did not load" with Retry, "No folders", or a row each. */
+function SideFoldersRead({ listing, folders, from, depth, current, tree, drop, inset, onGo, onNewTab }: {
+  listing: ReturnType<typeof useListing>;
+  folders: readonly FileEntry[];
+  from: ListFrom;
+  depth: number;
+  current: FolderRef | null;
+  tree: SideTree;
+  drop?: SideDrop;
+  inset: CSSProperties;
+  onGo(page: FilePage): void;
+  onNewTab(page: FilePage): void;
+}) {
   if (listing.error && !folders.length)
     return (
       <div data-files-side-state="failed" className="flex h-7 min-w-0 items-center gap-1 pe-1 text-xs" style={inset}>
@@ -396,8 +421,7 @@ function Frame() {
       <div className="hidden w-[200px] shrink-0 border-r border-border bg-sidebar @[640px]/files:block" />
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="h-9 shrink-0 border-b border-border bg-sidebar" />
-        <BarBones />
-        <ListBones />
+        <PageBones />
       </div>
     </div>
   );
@@ -731,13 +755,8 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
 
   let body: ReactNode;
   // Until the tabs come the page is its bones, the bar's with the list's, so nothing moves when the page lands.
-  if (!view.loaded || !tab)
-    body = (
-      <>
-        <BarBones />
-        <ListBones />
-      </>
-    );
+  const tabsWait = !view.loaded || !tab;
+  if (tabsWait) body = null;
   else if (tab.kind === "file")
     body = (
       <OpenFile
@@ -803,7 +822,9 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
           onNew={() => newTab()}
         />
         {reach.behind.length ? <Behind hosts={reach.behind} tabs={reach.tabs} /> : null}
-        {body}
+        <Region loading={tabsWait} fill label="Loading the folder" bones={PageBones}>
+          {body}
+        </Region>
       </div>
       <DragLabelLayer />
       {/* Upload files…: the system's picker, behind New. */}

@@ -1,13 +1,14 @@
 import { useState } from "react";
+import { Region } from "../../components/bones";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
-import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { useLinksMay } from "../../lib/linkMay";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { byWorkspace, grantLine } from "./model";
 import { removeGrant, type HostGrant } from "./store";
 import { pressFailWords } from "./failWords";
+import { SAMPLE_GRANTS } from "./samples";
 
 /**
  * The standing grants, by workspace (docs/DESIGN.md "Settings for Work", a
@@ -54,60 +55,67 @@ export function GrantsSheet({
           <SheetTitle>Grants</SheetTitle>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-5 pb-5">
-          {groups.length === 0 && !read ? (
-            <GrantBones />
-          ) : groups.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground">No grants. Everything waits for your press.</p>
-          ) : (
-            groups.map((group) => {
-              const name = nameOf(group.items[0]!.environmentId, group.workspaceId);
-              return (
-                <section key={group.key} aria-label={name} className="flex flex-col">
-                  {/* The dot hangs in the sheet's inset, so the name starts on its rows' edge. */}
-                  <div className="flex h-7 items-center gap-1 text-xs font-medium text-muted-foreground">
-                    {mixed ? <SectorDot sector={group.sector} className="-ms-5 size-4" /> : null}
-                    <span className="min-w-0 truncate">{name}</span>
-                  </div>
-                  <ul className="flex flex-col">
-                    {group.items.map((grant) => (
-                      <li key={grant.id} className="flex min-h-12 items-center gap-3 border-t border-border py-2 first:border-t-0">
-                        <span className="flex min-w-0 flex-1 flex-col">
-                          {/* The grant's name is what it lets go unasked: read whole, never cut. */}
-                          <span className="break-words text-[13px] leading-5">{grant.label}</span>
-                          {/* The record wraps, never cut: a narrow sheet reads its whole line. */}
-                          <span className="break-words text-xs leading-4 text-muted-foreground">{grantLine(grant.kind, grant.createdAt)}</span>
-                        </span>
-                        {may(grant.environmentId, "work.outbox.ungrant") ? (
-                          <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" disabled={busy !== null} onClick={() => void remove(grant)}>
-                            <BusyLabel busy={busy === grant.id} label="Remove" />
-                          </Button>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              );
-            })
-          )}
+          {/* Bones only while every host's grants are out: an empty list before then is not known to be none. */}
+          <Region loading={groups.length === 0 && !read} label="Loading the grants" bones={GrantBones}>
+            {groups.length === 0 ? (
+              <p className="text-[13px] text-muted-foreground">No grants. Everything waits for your press.</p>
+            ) : (
+              <GrantGroups groups={groups} mixed={mixed} nameOf={nameOf} removable={(g) => may(g.environmentId, "work.outbox.ungrant")} busy={busy} onRemove={(g) => void remove(g)} />
+            )}
+          </Region>
         </div>
       </SheetContent>
     </Sheet>
   );
 }
 
-/** While the grants are read: a heading's and two rows' bones, each as tall as what takes its place. */
-function GrantBones() {
+type Group = ReturnType<typeof byWorkspace<HostGrant & { sector: string | null }>>[number];
+
+/** The grants by workspace: a heading, then each grant's name and record, with Remove where this key may forget it. */
+function GrantGroups({ groups, mixed, nameOf, removable, busy, onRemove }: {
+  groups: Group[];
+  mixed: boolean;
+  nameOf: (environmentId: string, workspaceId: string | null) => string;
+  removable: (grant: HostGrant) => boolean;
+  busy: string | null;
+  onRemove: (grant: HostGrant) => void;
+}) {
   return (
-    <div role="status" aria-label="Loading the grants" aria-busy className="flex select-none flex-col">
-      <span className="flex h-7 items-center">
-        <Skeleton className="h-2.5 w-24" />
-      </span>
-      {[64, 48].map((w, i) => (
-        <span key={w} className={`flex min-h-12 flex-col justify-center gap-1.5 py-2 ${i ? "border-t border-border" : ""}`}>
-          <Skeleton className="h-3" style={{ width: `${w}%` }} />
-          <Skeleton className="h-2.5 w-32" />
-        </span>
-      ))}
+    <div className="flex flex-col gap-4">
+      {groups.map((group) => {
+        const name = nameOf(group.items[0]!.environmentId, group.workspaceId);
+        return (
+          <section key={group.key} aria-label={name} className="flex flex-col">
+            {/* The dot hangs in the sheet's inset, so the name starts on its rows' edge. */}
+            <div className="flex h-7 items-center gap-1 text-xs font-medium text-muted-foreground">
+              {mixed ? <SectorDot sector={group.sector} className="-ms-5 size-4" /> : null}
+              <span className="min-w-0 truncate">{name}</span>
+            </div>
+            <ul className="flex flex-col">
+              {group.items.map((grant) => (
+                <li key={grant.id} className="flex min-h-12 items-center gap-3 border-t border-border py-2 first:border-t-0">
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    {/* The grant's name is what it lets go unasked: read whole, never cut. */}
+                    <span className="break-words text-[13px] leading-5">{grant.label}</span>
+                    {/* The record wraps, never cut: a narrow sheet reads its whole line. */}
+                    <span className="break-words text-xs leading-4 text-muted-foreground">{grantLine(grant.kind, grant.createdAt)}</span>
+                  </span>
+                  {removable(grant) ? (
+                    <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" disabled={busy !== null} onClick={() => onRemove(grant)}>
+                      <BusyLabel busy={busy === grant.id} label="Remove" />
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
+}
+
+/** While the grants are read: one job's two grants from the sample, with no Remove (the sample has no rights). */
+function GrantBones() {
+  return <GrantGroups groups={byWorkspace(SAMPLE_GRANTS.map((g) => ({ ...g, sector: null })))} mixed={false} nameOf={() => "Purdue Esports"} removable={() => false} busy={null} onRemove={() => undefined} />;
 }

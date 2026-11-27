@@ -3,7 +3,7 @@ import type { DocOpen } from "@shared/contract-work-docs";
 import type { CanvasSource } from "@shared/work";
 import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvider } from "work-kit/editor";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { useDocument, useOpened } from "../docs/DocumentCanvas";
 import type { DocHost } from "../docs/host";
@@ -24,39 +24,52 @@ export function Description({ env, docId, readOnly, lead }: { env: string; docId
   const [press, setPress] = useState<{ error: string; seen: boolean } | null>(null);
   if (press && !press.seen && got === null) setPress({ ...press, seen: true });
   else if (press?.seen && got !== null) setPress(null);
-  if (got && "open" in got) return <Editor key={got.open.doc} host={got.host} open={got.open} readOnly={readOnly} />;
-  const error = got && "error" in got ? got.error : (press?.error ?? null);
-  if (error !== null)
-    return (
-      <div data-description-lead className="flex flex-col gap-1">
-        {lead ? <p className="text-[13px] leading-5 whitespace-pre-wrap text-foreground">{lead}</p> : null}
-        <p className="flex items-baseline gap-2 text-xs text-muted-foreground">
-          <span className="min-w-0">{error}</span>
-          <Button
-            type="button"
-            variant="link"
-            size="xs"
-            className="h-auto shrink-0 px-0 text-xs"
-            disabled={press !== null}
-            onClick={() => {
-              setPress({ error, seen: false });
-              setAttempt((n) => n + 1);
-            }}
-          >
-            <BusyLabel busy={press !== null} label="Retry" />
-          </Button>
+  const opened = got && "open" in got ? got : null;
+  const error = opened ? null : got && "error" in got ? got.error : (press?.error ?? null);
+  const waiting = !opened && error === null;
+  // One read, the document's. The lead holds the text's place until it answers; with none yet, two lines from a sample.
+  return (
+    <Region loading={waiting && !lead} label="Loading the description" bones={DescriptionBones}>
+      {opened ? (
+        <Editor key={opened.open.doc} host={opened.host} open={opened.open} readOnly={readOnly} />
+      ) : error !== null ? (
+        <div data-description-lead className="flex flex-col gap-1">
+          {lead ? <p className="text-[13px] leading-5 whitespace-pre-wrap text-foreground">{lead}</p> : null}
+          <p className="flex items-baseline gap-2 text-xs text-muted-foreground">
+            <span className="min-w-0">{error}</span>
+            <Button
+              type="button"
+              variant="link"
+              size="xs"
+              className="h-auto shrink-0 px-0 text-xs"
+              disabled={press !== null}
+              onClick={() => {
+                setPress({ error, seen: false });
+                setAttempt((n) => n + 1);
+              }}
+            >
+              <BusyLabel busy={press !== null} label="Retry" />
+            </Button>
+          </p>
+        </div>
+      ) : (
+        <p aria-busy className="text-[13px] leading-5 whitespace-pre-wrap text-foreground">
+          {lead}
         </p>
-      </div>
-    );
-  // The lead holds the text's place until the document answers; with none yet, two lines of bones.
-  return lead ? (
-    <p aria-busy className="text-[13px] leading-5 whitespace-pre-wrap text-foreground">
-      {lead}
-    </p>
-  ) : (
-    <div aria-busy className="flex flex-col gap-2 py-1">
-      <Skeleton className="h-3 w-2/3" />
-      <Skeleton className="h-3 w-1/2" />
+      )}
+    </Region>
+  );
+}
+
+/** A description's first lines while it opens, in the lead's type. */
+const SAMPLE_DESCRIPTION = ["Two days of open play and the bracket finals in the arena,", "with the varsity team running the stage."] as const;
+
+function DescriptionBones() {
+  return (
+    <div className="flex flex-col text-[13px] leading-5">
+      {SAMPLE_DESCRIPTION.map((line) => (
+        <p key={line}>{line}</p>
+      ))}
     </div>
   );
 }

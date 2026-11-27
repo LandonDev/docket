@@ -7,7 +7,7 @@ import { PageSection } from "../../components/page";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "../../components/ui/collapsible";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { cn } from "../../lib/cn";
 import { Heading, LeftLines } from "./Shipped";
 import { Facts } from "../../surfaces/settings/hosts/Facts";
@@ -35,6 +35,9 @@ const KEY = "h-2 w-3 shrink-0 rounded-sm @max-[30rem]/page:hidden";
 const WHOLE = { calendar: true, calendarCounted: true, desk: true };
 /** "Nothing seen", in the bar's and the total's place; a narrow page has no bar column, so it keeps to the total's. */
 const NOTHING = "col-span-2 text-end text-[13px] leading-5 text-muted-foreground @max-[30rem]/page:col-span-1";
+
+/** A job's "nothing" while a host is still answering: as long as "Nothing seen". */
+const SAMPLE_NOTHING = "Nothing seen";
 
 /** What a job's ledger took in and paid out in the week, in cents (Money's own sums). */
 type JobMoney = { in: number; out: number };
@@ -95,8 +98,12 @@ export function Hours({
 function HoursRow({ job, hours, compare, money, scale, known, pending, startOpen = false }: { job: MergedJob; hours: JobHours | null; compare: string | null; money: JobMoney | null; scale: number; known: { calendar: boolean; calendarCounted: boolean; desk: boolean }; pending: boolean; startOpen?: boolean }) {
   const [open, setOpen] = useState(startOpen);
   const total = hours ? totalWords(hours) : null;
-  // While a host is still answering, what desk time stands on is not all in and nothing has failed: the words wait as a bone.
-  const nothing = pending && !known.desk ? <Skeleton aria-hidden data-review-pending className="ms-auto h-3.5 w-16" /> : nothingWords(known);
+  // While a host is still answering, what desk time stands on is not all in and nothing has failed: the words wait as bones.
+  const nothing = (
+    <Region inline loading={pending && !known.desk} label="" bones={<span data-review-pending>{SAMPLE_NOTHING}</span>}>
+      {nothingWords(known)}
+    </Region>
+  );
   const facts = hours ? factsOf(hours) : null;
   // The comparison is its own line under the row, from the name's edge across the bar's width: it is a sentence,
   // and the name's column is too narrow for one.
@@ -192,30 +199,5 @@ function Bar({ calendarMs, deskMs, scale }: { calendarMs: number; deskMs: number
       {calendarMs > 0 ? <span data-part="calendar" className="min-w-3 rounded-sm bg-muted-foreground" style={{ width: share(calendarMs) }} /> : null}
       {deskMs > 0 ? <span data-part="desk" className="min-w-3 rounded-sm border border-muted-foreground" style={{ width: share(toQuarter(deskMs)) }} /> : null}
     </span>
-  );
-}
-
-/** The section while the first host answers: rows in the shape of what is coming. */
-export function HoursSkeleton({ rows = 6 }: { rows?: number }) {
-  return (
-    <PageSection title="Hours" aria-hidden>
-      {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className={cn(ROW, "h-8")}>
-          <Skeleton className="mx-1 size-2 rounded-full" />
-          <Skeleton className="h-3.5 w-20" />
-          <Skeleton className="h-2 rounded-sm @max-[30rem]/page:hidden" style={{ width: `${[72, 38, 64, 30, 12, 22][i % 6]}%` }} />
-          <Skeleton className="ms-auto h-3.5 w-16" />
-        </div>
-      ))}
-      {/* The closing line's place, so nothing under the section moves when the week lands: one line, two on a narrow page. */}
-      <div className="flex flex-col pt-2">
-        <span className="flex h-4 items-center">
-          <Skeleton className="h-3 w-96 max-w-full" />
-        </span>
-        <span className="hidden h-4 items-center @max-[30rem]/page:flex">
-          <Skeleton className="h-3 w-48" />
-        </span>
-      </div>
-    </PageSection>
   );
 }

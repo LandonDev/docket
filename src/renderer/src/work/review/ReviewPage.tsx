@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { LEFT, madeWords, SETTLED_WORDS, type MergedJob, type Placed, type SettleHow, type SlippedRow } from "@shared/work/review";
+import { LEFT, madeWords, SETTLED_WORDS, type MergedJob, type MergedReview, type Placed, type SettleHow, type SlippedRow } from "@shared/work/review";
 import { PageError } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
@@ -13,8 +13,9 @@ import { takeWorkPlaceAt, useWorkPlaceAt } from "../../lib/workPlaceAt";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkPlaceProps } from "../places/registry";
 import { canOpen, followUp, openTarget, openThread, type Target } from "./go";
-import { Hours, HoursSkeleton } from "./Hours";
-import { RowsSkeleton, Shipped } from "./Shipped";
+import { Hours } from "./Hours";
+import { SAMPLE_MADE, sampleReview } from "./samples";
+import { Shipped } from "./Shipped";
 import { showWeekNamed, shownWeek, useShownFrom, useWeekTurn } from "./shown";
 import { Slipped } from "./Slipped";
 import { LifeosDownLine, lifeosLinesOf } from "./lifeosLine";
@@ -234,16 +235,15 @@ export function ReviewPageView({
               <Spinner aria-hidden className="size-3" />
               Making…
             </p>
-          ) : review ? (
-            <p data-review-made className="text-xs text-muted-foreground">
-              {madeWords(review, view.tz, now)}
-            </p>
-          ) : view.settled ? null : (
-            // The one thing a screen reader hears of the wait: the bones under it are for the eye.
-            <div role="status" className="flex h-4 items-center">
-              <span className="sr-only">Loading the review</span>
-              <Skeleton className="h-3 w-40" />
-            </div>
+          ) : (
+            // The sections' region below says the wait to a screen reader; this one is for the eye.
+            <Region loading={!review && !view.settled} label="" bones={<p className="text-xs text-muted-foreground">{SAMPLE_MADE}</p>}>
+              {review ? (
+                <p data-review-made className="text-xs text-muted-foreground">
+                  {madeWords(review, view.tz, now)}
+                </p>
+              ) : null}
+            </Region>
           )}
           {/* A host that is off is a fact, not a failure: one muted line, and the page stands. */}
           {view.off.map((line) => (
@@ -275,23 +275,35 @@ export function ReviewPageView({
           ) : null}
           {!review && view.settled && view.errors.length === 0 && view.off.length === 0 ? <p className="text-xs text-muted-foreground">No host with Work on is linked to this window</p> : null}
         </div>
-        <div className="@container/page mt-6 flex flex-col gap-6">
-          {review ? (
-            <>
-              <Hours jobs={review.jobs} hours={review.hours} compare={review.compare} money={view.money} known={review.known} pending={pending} left={hours} retry={over.length === 0 ? retry : undefined} opened={peek?.job} />
-              <Shipped review={review} pending={pending} canOpen={opens} onOpen={onOpen} />
-              <Slipped review={review} pending={pending} gone={gone} canOpen={opens} onOpen={onOpen} onPress={onPress} peek={peek} />
-            </>
-          ) : view.settled ? null : (
-            <>
-              <HoursSkeleton rows={view.jobs || undefined} />
-              {/* Never more jobs' bones than the window knows of, so a one-job week does not drop Slipped when it lands. */}
-              <RowsSkeleton title="Shipped" groups={Math.min(2, view.jobs ?? 0) || undefined} />
-              <RowsSkeleton title="Slipped" groups={Math.min(2, view.jobs ?? 0) || undefined} tall />
-            </>
-          )}
+        {/* One read, the week: the three sections wait on it together, drawn from the sample with a row of Hours a job
+            the window knows of and never more jobs' groups, so a one-job week does not drop Slipped when it lands. */}
+        <div className="@container/page mt-6">
+          <Region loading={!review && !view.settled} label="Loading the review" bones={() => <Sections review={sampleReview(view.jobs)} />}>
+            {review ? (
+              <div className="flex flex-col gap-6">
+                <Hours jobs={review.jobs} hours={review.hours} compare={review.compare} money={view.money} known={review.known} pending={pending} left={hours} retry={over.length === 0 ? retry : undefined} opened={peek?.job} />
+                <Shipped review={review} pending={pending} canOpen={opens} onOpen={onOpen} />
+                <Slipped review={review} pending={pending} gone={gone} canOpen={opens} onOpen={onOpen} onPress={onPress} peek={peek} />
+              </div>
+            ) : null}
+          </Region>
         </div>
       </div>
+    </div>
+  );
+}
+
+const SAMPLE_GONE: ReadonlySet<string> = new Set();
+const still = (): void => {};
+const shut = (): boolean => false;
+
+/** The three sections at rest, drawn from a sample week: nothing opens, nothing is pressed. */
+function Sections({ review }: { review: MergedReview }) {
+  return (
+    <div className="flex flex-col gap-6">
+      <Hours jobs={review.jobs} hours={review.hours} compare={review.compare} known={review.known} />
+      <Shipped review={review} canOpen={shut} onOpen={still} />
+      <Slipped review={review} gone={SAMPLE_GONE} canOpen={shut} onOpen={still} onPress={still} />
     </div>
   );
 }

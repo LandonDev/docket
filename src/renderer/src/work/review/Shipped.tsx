@@ -5,7 +5,7 @@ import { PageEmpty, PageError, PageSection } from "../../components/page";
 import { Button } from "../../components/ui/button";
 import { Item, ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region, useInBones } from "../../components/bones";
 import { cn } from "../../lib/cn";
 import type { Target } from "./go";
 
@@ -15,9 +15,6 @@ import type { Target } from "./go";
  * end. Five rows a job, then "Show all 23". A job with nothing is not listed
  * here: Hours already says so.
  */
-
-/** The gutter holds a job's dot and nothing else: a heading's name and its rows' words share one edge. */
-export const GUTTER = "ps-6";
 
 export function JobHeading({ job }: { job: MergedJob }) {
   return (
@@ -41,20 +38,23 @@ export function emptyWords(review: Pick<MergedReview, "lifeosFrom">, known: bool
 
 /**
  * An empty section's line. While a host is still answering, "nothing" is not known yet and nothing has failed: the
- * line waits as a bone of its own size (`PageEmpty`'s 40px), so the words land in place.
+ * line waits as bones of its own words, so the words land in place.
  */
 export function EmptyLine({ review, known, nothing, pending }: { review: Pick<MergedReview, "lifeosFrom">; known: boolean; nothing: string; pending: boolean }) {
-  if (pending && !known)
-    return (
-      <div aria-hidden data-review-pending className="flex h-10 items-center">
-        <Skeleton className="h-3 w-28" />
-      </div>
-    );
-  return <PageEmpty>{emptyWords(review, known, nothing)}</PageEmpty>;
+  return (
+    <Region loading={pending && !known} label="" bones={<PageEmpty data-review-pending>{nothing}</PageEmpty>}>
+      <PageEmpty>{emptyWords(review, known, nothing)}</PageEmpty>
+    </Region>
+  );
 }
 
-/** A section's name as its heading holds it: a place the keyboard can be put (a row left, a retry cleared), with the app's own ring. */
+/**
+ * A section's name as its heading holds it: a place the keyboard can be put (a row left, a retry cleared), with the
+ * app's own ring. Known before any host answers, so in the page's bones it is drawn as it is, and is no such place.
+ */
 export function Heading({ children }: { children: string }) {
+  const inBones = useInBones();
+  if (inBones) return <span skullet-own="">{children}</span>;
   return (
     <span data-review-heading tabIndex={-1} className="focus-ring rounded-sm">
       {children}
@@ -134,32 +134,5 @@ function ShippedGroup({ job, rows, review, canOpen, onOpen }: { job: MergedJob; 
         </Button>
       ) : null}
     </div>
-  );
-}
-
-/** A section of grouped rows while the first host answers. `tall`: Slipped's rows, 32px with nothing at their end. */
-export function RowsSkeleton({ title, groups = 2, rows = 3, tall = false }: { title: string; groups?: number; rows?: number; tall?: boolean }) {
-  return (
-    <PageSection title={title} aria-hidden>
-      <div className="flex flex-col gap-4">
-        {Array.from({ length: groups }, (_, g) => (
-          <div key={g}>
-            <div className="flex h-5 items-center gap-2">
-              <Skeleton className="mx-1 size-2 rounded-full" />
-              <Skeleton className="h-3 w-16" />
-            </div>
-            <div className="mt-1 flex flex-col">
-              {Array.from({ length: rows }, (_, r) => (
-                // A narrow page sets a slipped title over its detail: 48px, two bones.
-                <div key={r} className={cn("flex items-center gap-2", GUTTER, tall ? "h-8 @max-[30rem]/page:h-12 @max-[30rem]/page:flex-col @max-[30rem]/page:items-start @max-[30rem]/page:justify-center @max-[30rem]/page:gap-1.5" : "h-7")}>
-                  <Skeleton className="h-3.5" style={{ width: `${[58, 44, 66, 36][(g + r) % 4]}%` }} />
-                  {tall ? <Skeleton className="hidden h-3 w-24 @max-[30rem]/page:block" /> : <Skeleton className="ms-auto h-3 w-8" />}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </PageSection>
   );
 }

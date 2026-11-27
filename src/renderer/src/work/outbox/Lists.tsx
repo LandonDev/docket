@@ -3,7 +3,6 @@ import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { ItemButton } from "../../components/ui/item";
 import { reveal, yields } from "../../components/ui/reveal";
-import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
 import { ChevronDown, Outbox } from "../../chrome/icons";
 import { storeTitleOf } from "../../lib/threadMentions";
@@ -15,6 +14,7 @@ import { clockTime } from "../../lib/duration";
 import { lifeosWords } from "./model";
 import { KindGlyph, rowWords } from "./parts";
 import type { HostItem } from "./store";
+import { SAMPLE_DAYS, SAMPLE_NOW, SAMPLE_SECTIONS } from "./samples";
 import { doneLine, decidedAt, FOLD_AT, FOLD_SHOWS, itemKey, rowSide, tickable, type Section } from "./waiting";
 
 /**
@@ -88,20 +88,15 @@ function Row({
   );
 }
 
-/** While the Outbox first loads: the one-line rows' bones, each as tall as the row that takes its place. */
-export function ListSkeleton() {
-  return (
-    <div role="status" aria-label="Loading the Outbox" aria-busy className="flex select-none flex-col p-1">
-      <span className="flex h-7 items-center px-2">
-        <Skeleton className="h-2.5 w-24" />
-      </span>
-      {[62, 48, 70, 54, 40, 66, 50].map((w) => (
-        <span key={w} className="flex h-8 items-center gap-2 px-2">
-          <Skeleton className="size-3.5 shrink-0 rounded-sm" />
-          <Skeleton className="h-3" style={{ width: `${w}%` }} />
-        </span>
-      ))}
-    </div>
+const STILL = (): void => undefined;
+const NONE: ReadonlySet<string> = new Set();
+
+/** While the Outbox first loads: the tab's own list drawn from the samples, at rest, so each row's bones are the row. */
+export function ListBones({ tab }: { tab: "waiting" | "done" }) {
+  return tab === "waiting" ? (
+    <WaitingList sections={SAMPLE_SECTIONS} current={null} stop={null} ticked={NONE} expanded={NONE} now={SAMPLE_NOW} onPick={STILL} onTick={STILL} onSelectGroup={STILL} onExpand={STILL} />
+  ) : (
+    <DoneList days={SAMPLE_DAYS} current={null} stop={null} now={SAMPLE_NOW} onPick={STILL} />
   );
 }
 

@@ -1145,8 +1145,9 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     whose words moved since, or that may have gone, opens in its own detail
     ("Open in the Outbox"), never a retry on the old result. M5's
     request card draws the same `SummaryList`; while its request is read it
-    is the card's own frame with the head, the ask, two rows and the
-    presses' place in bones, so nothing moves when it lands.
+    is the card itself drawn from a sample (its head, the ask, the
+    `SummaryList` with two rows, Not now and Send held), in Skullet's bones,
+    so nothing moves when it lands.
   - **Done** (`DoneList`, `DoneDetail.tsx`): what went, what he discarded
     and what went out of date that he put away (`list({show: 'done'})`), by
     day, newest first; a row's trailing slot says "Discarded", "Out of
@@ -1175,14 +1176,17 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     The held item's "from" thread press takes 24px over its 16px line (an
     `::after`), as does the request card's (`threadLink.dom.test.tsx`).
     Nothing moves on a key.
-  - **States**: the list's one-line bones and the detail's; "Nothing held"
+  - **States**: while the first read is out, the list is the tab's own
+    `WaitingList` or `DoneList` and the detail its own head and a mail's
+    fields, each drawn from `outbox/samples.ts` in Skullet's bones
+    (docs/agents/loading-bones.md); the rows land over them. "Nothing held"
     (no second line); "Not known yet" while a host did not answer, its row
     over the list with Retry; "No longer waiting" when another press
     decided the picked item; under 640px of page the list and the detail
     take turns, the detail's top row going back. Grants is a sheet, as
     before; a grant's name and its "Made …" line wrap whole, never cut. Until every
     host's grants have answered (the store's `grantsRead`; a read of what waits says
-    none of them) an empty sheet draws bones, never "No grants". A failure inside an answer is worded by `failWords.ts`.
+    none of them) an empty sheet draws its own grant rows from the sample as bones, never "No grants". A failure inside an answer is worded by `failWords.ts`.
 - **Results** (`ResultsSection.tsx`) is a right-panel section of a Work
   root thread (`results` in lib/rightPanel.ts, the outbox glyph), listed
   only while it has a row: "Can undo" and "Can't undo", each row with its

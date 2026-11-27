@@ -21,7 +21,7 @@ import { projectsKitFor, setProjectsHost, withHostDone } from "./kit";
 import { LinkPicker, type LinkKind } from "./LinkPicker";
 import { setProjectsBack, setProjectsHere } from "./here";
 import { ProjectsBones } from "./bones";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Arrive, Region } from "../../components/bones";
 import { openDoc, placeOf, setPlace, useOpenedDoc, usePlace, type OpenedDoc } from "./place";
 
 const ProjectSettingsDialog = dialogsChunk.surface("ProjectSettingsDialog");
@@ -141,7 +141,8 @@ export function View(props: WorkViewProps) {
     <ConvexProvider client={convex}>
       <ProjectsKitProvider kit={kit}>
         <ProjectsClientProvider client={client}>
-          <div className="tc-projects h-full min-h-0">{doc ? <DocInPlace env={env} workspaceId={workspace.id} doc={doc} /> : <Projects sector={sector as KitSector} place={place} onPlace={onPlace} />}</div>
+          {/* Where the session's bones stood a moment ago, the screens come in over them. */}
+          <Arrive className="tc-projects h-full min-h-0">{doc ? <DocInPlace env={env} workspaceId={workspace.id} doc={doc} /> : <Projects sector={sector as KitSector} place={place} onPlace={onPlace} />}</Arrive>
           {coding ? <CodeThreadDialog task={{ _id: coding.id, title: coding.title }} sector={sector} onStart={startThread} onClose={() => setCoding(null)} /> : null}
           {linking ? <LinkPicker env={env} workspaceId={workspace.id} project={linking.project} kind={linking.kind} onClose={() => setLinking(null)} /> : null}
           {sharing ? (
@@ -166,21 +167,38 @@ function DocInPlace({ env, workspaceId, doc }: { env: string; workspaceId: strin
       <Bar back={{ label: doc.project.name, run: back }}>{null}</Bar>
       <div className="min-h-0 flex-1 pt-4">
         <Scroller scrollTop={scrollTop} onScroll={setScrollTop}>
-          {(width) =>
-            got && "open" in got ? (
-              <Opened key={got.open.doc} got={got} margin={width >= MARGIN_FROM} />
-            ) : got && "error" in got ? (
-              <EmptyState title="It did not open" line={got.error} action={{ label: "Retry", onClick: () => setAttempt((n) => n + 1) }} />
-            ) : (
-              <div aria-busy className="mx-auto flex max-w-[724px] flex-col gap-2.5 pl-[52px]">
-                <Skeleton className="h-3 w-1/3" />
-                <Skeleton className="mt-4 h-3 w-[92%]" />
-                <Skeleton className="h-3 w-[78%]" />
-              </div>
-            )
-          }
+          {(width) => (
+            // One read, the document's: its title and first lines from a sample while it opens; a failure is content.
+            <Region loading={!got} label="Loading the document" bones={DocBones}>
+              {got && "open" in got ? (
+                <Opened key={got.open.doc} got={got} margin={width >= MARGIN_FROM} />
+              ) : got && "error" in got ? (
+                <EmptyState title="It did not open" line={got.error} action={{ label: "Retry", onClick: () => setAttempt((n) => n + 1) }} />
+              ) : null}
+            </Region>
+          )}
         </Scroller>
       </div>
+    </div>
+  );
+}
+
+/** A project's document while it opens: its title and first lines in the document ladder's type (18/26 at 600, 15/24),
+ *  at DocumentFrame's measure and gutter. */
+const SAMPLE_PROJECT_DOC = {
+  title: "Spring invitational run of show",
+  lines: ["Doors open at nine; the bracket starts at ten with the varsity team on the stage.", "Facilities hold the floor until six, and the stream runs from the booth."],
+} as const;
+
+function DocBones() {
+  return (
+    <div className="mx-auto flex max-w-[724px] flex-col pl-[52px]">
+      <p className="mb-4 text-lg leading-[26px] font-semibold">{SAMPLE_PROJECT_DOC.title}</p>
+      {SAMPLE_PROJECT_DOC.lines.map((line) => (
+        <p key={line} className="text-[15px] leading-6">
+          {line}
+        </p>
+      ))}
     </div>
   );
 }

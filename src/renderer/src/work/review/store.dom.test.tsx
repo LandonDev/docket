@@ -223,9 +223,9 @@ describe("the week across hosts", () => {
     if (fromReveal) beginRevealNavigation(target, "test")();
     act(() => openWorkPlaceAt("review", WEEK.from));
     const page = render(createElement(View, {} as never));
-    // The bones, not this week's rows.
-    expect(page.container.querySelector("[data-review-job]")).toBeNull();
-    expect(page.container.querySelector('[role="status"]')).not.toBeNull();
+    // The bones, not this week's rows: every job row is the sample's, in the drawing.
+    expect([...page.container.querySelectorAll("[data-review-job]")].filter((row) => !row.closest("[skullet-loading]"))).toEqual([]);
+    expect(page.container.querySelector("[data-region][data-bones]")).not.toBeNull();
     await act(async () => {
       for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
     });

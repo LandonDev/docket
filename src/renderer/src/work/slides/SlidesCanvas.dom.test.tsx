@@ -950,8 +950,13 @@ describe("the slides kind", () => {
   it("holds the bar's bone and the deck's shape while it loads, the strip under the stage in a narrow canvas", async () => {
     open(deckView(), () => new Promise<DeckView>(() => undefined));
     const bar = await found("[data-canvas-bar]");
-    expect(bar.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+    // Skullet's bones, drawn from samples: the bar's Zoom and Present, the strip's numbers, the stage's slide on its own ground.
+    expect(bar.querySelector("[data-region][data-bones]")).not.toBeNull();
+    expect(bar.querySelector("[skullet-loading]")?.textContent).toContain("Present");
     const bones = await found("[data-slides-skeleton]");
+    expect(bones.querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(bones.querySelectorAll("[data-region][data-bones]")).toHaveLength(4);
+    expect(bones.querySelector('[data-slides-skeleton-stage] [data-region][data-bones-on="stage"] [data-bone]')).not.toBeNull();
     expect(bones.className).toContain("@container");
     expect(bones.lastElementChild!.className).toContain("@max-[400px]:flex-col-reverse");
     // A file he can most often edit by hand holds the format row's place too, so nothing drops when it lands.
@@ -960,6 +965,17 @@ describe("the slides kind", () => {
     const stage = bones.querySelector("[data-slides-skeleton-stage]")!;
     expect(stage.className).toContain("bg-(--slide-stage)");
     expect(stage.className).toContain("pb-(--slide-stage-inset)");
+  });
+
+  it("draws the deck over its bones when it lands, and leaves no bone", async () => {
+    let land: (() => void) | null = null;
+    open(deckView(), () => new Promise<DeckView>((yes) => (land = () => yes(deckHost.view))));
+    await found("[data-slides-skeleton] [skullet-loading]");
+    await waitFor(() => expect(land).not.toBeNull());
+    await act(async () => land!());
+    expect(await found("[data-slides-stage]")).toBeTruthy();
+    expect(document.querySelector("[data-slides-skeleton]")).toBeNull();
+    await waitFor(() => expect(document.querySelector("[skullet-loading]")).toBeNull());
   });
 
   it("draws a deck the host could not open as the centred failure with its reason and Retry, with no bones and no state line", async () => {
@@ -971,7 +987,7 @@ describe("the slides kind", () => {
     expect(failed.textContent).toContain("The deck could not be read.");
     expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
     expect(document.querySelector("[data-slides-skeleton]")).toBeNull();
-    expect(document.querySelector('[data-canvas-bar] [data-slot="skeleton"]')).toBeNull();
+    expect(document.querySelector("[data-canvas-bar] [data-region][data-bones]")).toBeNull();
     fail = false;
     fireEvent.click(within(failed).getByRole("button", { name: "Retry" }));
     // Council round 12 (the walk): Retry spins in place, the failure kept, until the deck answers; never bones first.

@@ -191,6 +191,10 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Copied", "local"],
     ["Copied", "local"],
   ],
+  // A column's name over the tracker's rows as their bones draw it (Done, beside Next and Waiting on): no state.
+  [`${R}/projects/bones.tsx`]: [
+    ["Done", "local"],
+  ],
   [`${R}/routines/model.ts`]: [
     ["Done", "read"],
   ],
@@ -220,9 +224,11 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["`Done ${when}`", "read"],
     ["Done", "local"],
   ],
+  // The third Done is the lead's press as its bones draw it, from a sample (docs/agents/loading-bones.md).
   [`${R}/tasks/TasksView.tsx`]: [
     ["Done", "local"],
     ["Done", "read"],
+    ["Done", "local"],
   ],
   [`${R}/templates/SaveDialog.tsx`]: [
     ["Saved to Templates", "answer"],

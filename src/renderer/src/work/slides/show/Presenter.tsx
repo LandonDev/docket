@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Bone, Bones, Region } from "../../../components/bones";
 import { Button } from "../../../components/ui/button";
 import { MENU_ROW } from "../../../components/ui/menu-row";
-import { Skeleton } from "../../../components/ui/skeleton";
 import { Toggle } from "../../../components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { Check, ChevronLeft, ChevronRight, Minus, Pause, Play, Plus, RefreshCw } from "../../../chrome/icons";
@@ -28,8 +28,10 @@ export const COLUMN = 288;
 /** Under this the column stacks under the slide and the clock and the timer's buttons go. */
 export const PRESENTER_NARROW = 640;
 const STRIP_THUMB = 64;
-/** The thumbs drawn as bones while the deck is read. */
-const STRIP_BONES = 6;
+/** The thumbs drawn as bones while the deck is read: their numbers, one a thumb. */
+const STRIP_BONES = ["1", "2", "3", "4", "5", "6"] as const;
+/** A slide's notes while the deck is read: unknown, not empty, so two lines of words stand in their place. */
+const SAMPLE_SHOW_NOTES = ["Thank the hosts, then the season so far in one line.", "Pause for the two numbers."] as const;
 const NEXT_NARROW = 176;
 
 export interface PresenterProps {
@@ -170,33 +172,35 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
       <div data-show-body className={`flex min-h-0 flex-1 gap-4 p-4 ${narrow ? "flex-col overflow-x-hidden overflow-y-auto overscroll-contain" : ""}`}>
         <div className="flex min-w-0 shrink-0 flex-col gap-2" style={narrow ? undefined : { width: Math.max(0, room.width - COLUMN - 48) }}>
           <div className={LABEL}>Now</div>
-          {error ? (
-            <p data-show-error className="max-w-[60ch] text-[13px] leading-5 text-pretty text-muted-foreground">
-              {error}
-            </p>
-          ) : loading && !doc ? (
-            <Skeleton className="rounded-sm" style={now_} />
-          ) : state.ended ? (
-            <Ended size={now_} words="End of show" label="End of show, a press closes it" onPress={() => dispatch({ t: "next" })} />
-          ) : slide ? (
-            <button type="button" data-show-now aria-label={`Current slide ${slide.number}${slide.title ? `, ${slide.title}` : ""}`} onClick={() => dispatch({ t: "next" })} className="block w-fit rounded-sm text-start">
-              <SlidePicture
-                doc={here.doc}
-                page={here.page}
-                waiting={here.waiting}
-                width={now_.width}
-                ratio={ratio}
-                title={slide.title}
-                className={`${PICTURE} ${state.blank ? "opacity-45" : ""}`}
-                motion={stage?.motion ?? null}
-                motionKey={stage?.motionKey}
-                onShown={shown}
-                onFailed={failed}
-              >
-                <SlideMedia slide={slide} step={state.step} surface="presenter" width={now_.width} height={now_.height} />
-              </SlidePicture>
-            </button>
-          ) : null}
+          {/* The deck's read: Now, Next, the notes and the strip each hold their place in bones until it answers. No label:
+              a region's status would stand beside the notice, the one line this view speaks. */}
+          <Region loading={!error && loading && !doc} label="" bones={<Bone className="rounded-sm" style={now_} />}>
+            {error ? (
+              <p data-show-error className="max-w-[60ch] text-[13px] leading-5 text-pretty text-muted-foreground">
+                {error}
+              </p>
+            ) : state.ended ? (
+              <Ended size={now_} words="End of show" label="End of show, a press closes it" onPress={() => dispatch({ t: "next" })} />
+            ) : slide ? (
+              <button type="button" data-show-now aria-label={`Current slide ${slide.number}${slide.title ? `, ${slide.title}` : ""}`} onClick={() => dispatch({ t: "next" })} className="block w-fit rounded-sm text-start">
+                <SlidePicture
+                  doc={here.doc}
+                  page={here.page}
+                  waiting={here.waiting}
+                  width={now_.width}
+                  ratio={ratio}
+                  title={slide.title}
+                  className={`${PICTURE} ${state.blank ? "opacity-45" : ""}`}
+                  motion={stage?.motion ?? null}
+                  motionKey={stage?.motionKey}
+                  onShown={shown}
+                  onFailed={failed}
+                >
+                  <SlideMedia slide={slide} step={state.step} surface="presenter" width={now_.width} height={now_.height} />
+                </SlidePicture>
+              </button>
+            ) : null}
+          </Region>
           {slide && !state.ended && !error ? <MediaTransport slide={slide} step={state.step} /> : null}
         </div>
         <div className="flex min-h-0 min-w-0 flex-col gap-4" style={{ width: columnWidth }}>
@@ -209,17 +213,17 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
                 </span>
               ) : null}
             </div>
-            {loading && !doc ? (
-              <Skeleton className="aspect-video rounded-sm" style={{ width: nextWidth }} />
-            ) : next.kind === "close" ? (
-              <Ended size={{ width: nextWidth, height: Math.round(nextWidth / aspect) }} words="A press closes the show" label="Next: close the show" onPress={() => dispatch({ t: "next" })} quiet />
-            ) : next.kind === "end" ? (
-              <Ended size={{ width: nextWidth, height: Math.round(nextWidth / aspect) }} words="End of show" label="Next: end of show" onPress={() => dispatch({ t: "next" })} />
-            ) : nextSlide ? (
-              <button type="button" data-show-next aria-label={next.kind === "build" ? `Next: build ${next.step} of ${next.of}` : `Next slide ${nextSlide.number}${nextSlide.title ? `, ${nextSlide.title}` : ""}`} onClick={() => dispatch({ t: "next" })} className="block w-fit rounded-sm text-start">
-                <SlidePicture doc={coming?.doc ?? doc} page={coming?.page ?? nextSlide.page} waiting={coming?.waiting} width={nextWidth} ratio={ratio} title={nextSlide.title} className={PICTURE} />
-              </button>
-            ) : null}
+            <Region loading={loading && !doc} label="" bones={<Bone className="aspect-video rounded-sm" style={{ width: nextWidth }} />}>
+              {next.kind === "close" ? (
+                <Ended size={{ width: nextWidth, height: Math.round(nextWidth / aspect) }} words="A press closes the show" label="Next: close the show" onPress={() => dispatch({ t: "next" })} quiet />
+              ) : next.kind === "end" ? (
+                <Ended size={{ width: nextWidth, height: Math.round(nextWidth / aspect) }} words="End of show" label="Next: end of show" onPress={() => dispatch({ t: "next" })} />
+              ) : nextSlide ? (
+                <button type="button" data-show-next aria-label={next.kind === "build" ? `Next: build ${next.step} of ${next.of}` : `Next slide ${nextSlide.number}${nextSlide.title ? `, ${nextSlide.title}` : ""}`} onClick={() => dispatch({ t: "next" })} className="block w-fit rounded-sm text-start">
+                  <SlidePicture doc={coming?.doc ?? doc} page={coming?.page ?? nextSlide.page} waiting={coming?.waiting} width={nextWidth} ratio={ratio} title={nextSlide.title} className={PICTURE} />
+                </button>
+              ) : null}
+            </Region>
           </div>
           <div className={`flex min-h-0 flex-col ${narrow ? "max-h-[220px]" : "flex-1"}`}>
             <div className="flex h-6 shrink-0 items-center">
@@ -234,21 +238,29 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
                 <Plus />
               </Button>
             </div>
-            {loading && !doc ? (
-              // Unknown is not empty: bones until the deck answers, "None" only for a slide with no notes.
-              <div data-show-notes-bones aria-hidden className="mt-2 flex flex-col gap-2">
-                <Skeleton className="h-3 w-[86%]" />
-                <Skeleton className="h-3 w-[64%]" />
-              </div>
-            ) : slide && !state.ended && slide.notes.trim() ? (
-              <p data-show-notes tabIndex={0} className="focus-ring mt-2 min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain text-pretty whitespace-pre-wrap select-text" style={{ fontSize: size, lineHeight: `${line}px` }}>
-                {notesShown(slide.notes)}
-              </p>
-            ) : (
-              <p data-show-notes className="mt-2 text-[13px] leading-5 text-muted-foreground">
-                None
-              </p>
-            )}
+            {/* Unknown is not empty: the sample's lines until the deck answers, "None" only for a slide with no notes. */}
+            <Region
+              loading={loading && !doc}
+              label=""
+              fill
+              bones={
+                <div data-show-notes-bones className="mt-2 flex flex-col" style={{ fontSize: size, lineHeight: `${line}px` }}>
+                  {SAMPLE_SHOW_NOTES.map((words) => (
+                    <p key={words}>{words}</p>
+                  ))}
+                </div>
+              }
+            >
+              {slide && !state.ended && slide.notes.trim() ? (
+                <p data-show-notes tabIndex={0} className="focus-ring mt-2 min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain text-pretty whitespace-pre-wrap select-text" style={{ fontSize: size, lineHeight: `${line}px` }}>
+                  {notesShown(slide.notes)}
+                </p>
+              ) : (
+                <p data-show-notes className="mt-2 text-[13px] leading-5 text-muted-foreground">
+                  None
+                </p>
+              )}
+            </Region>
           </div>
         </div>
       </div>
@@ -371,14 +383,18 @@ function Strip({ state, doc, loading, ratio, dispatch, surface }: { state: ShowS
       className="flex h-[60px] shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-contain border-t border-border bg-sidebar px-3"
     >
       {/* While the deck is read and no slide is known, the strip holds thumbs' bones in their place, as Now and Next do. */}
-      {loading && state.slides.length === 0
-        ? Array.from({ length: STRIP_BONES }, (_, index) => (
-            <span key={index} data-show-strip-bone aria-hidden className="flex shrink-0 items-start gap-1">
-              <span className="min-w-4 shrink-0" />
-              <Skeleton className="m-[3px] aspect-video rounded-[3px]" style={{ width: STRIP_THUMB - 6 }} />
-            </span>
-          ))
-        : null}
+      {loading && state.slides.length === 0 ? (
+        <Bones label="" className="shrink-0">
+          <span className="flex gap-1">
+            {STRIP_BONES.map((number) => (
+              <span key={number} data-show-strip-bone className="flex shrink-0 items-start gap-1">
+                <span className="min-w-4 shrink-0 pt-1 text-end text-xs leading-4 tabular-nums">{number}</span>
+                <Bone className="m-[3px] aspect-video rounded-[3px]" style={{ width: STRIP_THUMB - 6 }} />
+              </span>
+            ))}
+          </span>
+        </Bones>
+      ) : null}
       {state.slides.map((slide, index) => {
         const on = index === state.at && !state.ended;
         return (

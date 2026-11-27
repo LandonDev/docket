@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { makeFunctionReference } from "convex/server";
 import { Button } from "../../components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { openUrl } from "../../lib/native";
 import { formatDue } from "work-kit/views/lib/format";
 import type { Task } from "./client";
@@ -73,7 +73,17 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, heldWords = null, 
   useEffect(() => {
     if (gone) onClose();
   }, [gone, onClose]);
-  if (!full) return <SheetBones />;
+  return (
+    <Region loading={!full} fill label="Loading the task" bones={SheetBones}>
+      {full ? <TaskBody full={full} detail={detail} threadId={threadId} projectOf={projectOf} onClose={onClose} onStart={onStart} onDone={onDone} heldWords={heldWords} onCode={onCode} /> : null}
+    </Region>
+  );
+}
+
+type Full = NonNullable<Detail>["task"];
+
+/** The sheet once the task is known: its facts, the words it came from, its notes, and its presses or its state. */
+function TaskBody({ full, detail, threadId, projectOf, onClose, onStart, onDone, heldWords, onCode }: Omit<Props, "useThread"> & { full: Full; detail: Detail | undefined; threadId: string | null | undefined; heldWords: string | null }) {
   const closed = closedWords(full.status, detail?.task.completedAt);
   const project = projectOf(full);
   const source = detail?.task.source;
@@ -88,20 +98,11 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, heldWords = null, 
         <SheetTitle>{full.title}</SheetTitle>
       </SheetHeader>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-5 pb-5">
-        {detail === undefined ? (
-          <div aria-hidden className="flex flex-col gap-2">
-            <Skeleton className="h-3.5 w-1/3" />
-            <Skeleton className="h-3.5 w-1/2" />
-          </div>
-        ) : rows.length ? (
-          <dl className="grid grid-cols-[80px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
-            {rows.map((row) => (
-              <div key={row.label} className="contents">
-                <dt className="text-muted-foreground">{row.label}</dt>
-                <dd className="min-w-0 break-words text-foreground">{row.value}</dd>
-              </div>
-            ))}
-          </dl>
+        {/* LifeOS's read is out: its facts drawn from the sample; how many it holds is not known, so they land at their height. */}
+        {detail === undefined || rows.length ? (
+          <Region loading={detail === undefined} label="" snap bones={<Facts rows={SAMPLE_TASK_FACTS} />}>
+            <Facts rows={rows} />
+          </Region>
         ) : null}
         {/* The words it was filed from, muted: their tone sets them apart, with no rule down their side. */}
         {source?.quote ? <p className="text-sm leading-[22px] whitespace-pre-wrap text-muted-foreground">{source.quote}</p> : null}
@@ -122,18 +123,18 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, heldWords = null, 
       ) : (
       // A narrow sheet wraps its presses to a second row rather than run one off its edge.
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-5 py-3">
-        {threadId === undefined ? (
-          // The link read is out: a bone in the press's own shape holds its place, so Done does not move when it comes.
-          <Skeleton aria-hidden data-press-bone className="h-7 w-[92px] rounded-md" />
-        ) : threadId ? (
-          <Button size="sm" onClick={() => (onClose(), void openTaskThread(threadId, () => onStart(full)))}>
-            Open thread
-          </Button>
-        ) : (
-          <Button size="sm" onClick={() => (onClose(), onStart(full))}>
-            Start thread
-          </Button>
-        )}
+        {/* The link read is out: the press itself drawn as bones holds its place, so Done does not move when it comes. */}
+        <Region loading={threadId === undefined} label="" className="shrink-0" bones={StartPressBones}>
+          {threadId ? (
+            <Button size="sm" onClick={() => (onClose(), void openTaskThread(threadId, () => onStart(full)))}>
+              Open thread
+            </Button>
+          ) : (
+            <Button size="sm" onClick={() => (onClose(), onStart(full))}>
+              Start thread
+            </Button>
+          )}
+        </Region>
         {/* Held, it stays a Tab stop (`focusableWhenDisabled`), so the keyboard reaches the reason in its tip as the pointer does:
             the sheet covers the frame's line that says it. */}
         <Tip label={heldWords} disabled={!heldWords}>
@@ -150,18 +151,51 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, heldWords = null, 
   );
 }
 
-/** A task asked for by id while LifeOS reads it: the title's bone and two lines, no presses until its state is known. */
+type Fact = { label: string; value: string };
+
+/** The task's facts: a muted name over its value, a row each. */
+function Facts({ rows }: { rows: readonly Fact[] }) {
+  return (
+    <dl className="grid grid-cols-[80px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
+      {rows.map((row) => (
+        <div key={row.label} className="contents">
+          <dt className="text-muted-foreground">{row.label}</dt>
+          <dd className="min-w-0 break-words text-foreground">{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** What a task's facts are drawn from while LifeOS reads them: when it is due and its project. */
+export const SAMPLE_TASK_FACTS: readonly Fact[] = [
+  { label: "Due", value: "Fri" },
+  { label: "Project", value: "Spring LAN" },
+];
+/** What a sheet asked for by id is drawn from while LifeOS reads it. */
+export const SAMPLE_TASK_TITLE = "Print the brackets for the fall cup";
+
+/** The primary press on its way, the lead's and the sheet's: the button itself, at rest. */
+export function StartPressBones() {
+  return (
+    <Button data-press-bone size="sm">
+      Start thread
+    </Button>
+  );
+}
+
+/**
+ * A task asked for by id while LifeOS reads it: its title and its facts, no presses until its state is known. The
+ * title is written out in `SheetTitle`'s type, not the sheet's own title, which would name the dialog with the sample.
+ */
 function SheetBones() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <SheetHeader>
-        <SheetTitle>
-          <Skeleton className="h-4 w-1/2" />
-        </SheetTitle>
+        <h2 className="text-base leading-6 font-semibold tracking-[-0.01em] text-balance text-foreground">{SAMPLE_TASK_TITLE}</h2>
       </SheetHeader>
-      <div aria-hidden className="flex flex-col gap-2 px-5">
-        <Skeleton className="h-3.5 w-1/3" />
-        <Skeleton className="h-3.5 w-1/2" />
+      <div className="px-5">
+        <Facts rows={SAMPLE_TASK_FACTS} />
       </div>
     </div>
   );

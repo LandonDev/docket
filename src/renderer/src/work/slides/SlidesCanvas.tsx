@@ -7,7 +7,7 @@ import { formatKeyOf } from "work-kit/format/keys";
 import { ChevronDown } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Bones } from "../../components/bones";
 import { Spinner } from "../../components/ui/spinner";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { dayTime } from "../../lib/duration";
@@ -1325,40 +1325,70 @@ function Diff({ before, after }: { before: string; after: string }) {
   );
 }
 
+/** A deck while it opens: the format row's first controls, the slides' numbers, and the first slide's notes. */
+const SAMPLE_DECK = {
+  row: ["Aptos", "18"],
+  slides: ["1", "2", "3", "4", "5", "6", "7"],
+  notes: ["Open with the season so far, then the two numbers the board asked about.", "Leave the schedule for questions."],
+} as const;
+
 /**
  * Loading, in the body's shape: the strip beside the stage, or under it in a canvas under 400px (`NARROW`), as the
  * body lays it out; for a file, which he can most often edit, the format row's 36px over them, so nothing drops when
- * the deck lands.
+ * the deck lands. The frames (the row's hairline, the strip's band, the stage band) are known at once and stand as
+ * they are; Skullet draws what is in them from `SAMPLE_DECK`, the stage's slide on the stage's own ground.
  */
 function DeckSkeleton({ row }: { row: boolean }) {
   return (
-    <div data-slides-skeleton aria-busy="true" aria-label="Loading" className="@container flex min-h-0 flex-1 flex-col">
+    <div data-slides-skeleton role="status" aria-busy="true" aria-label="Loading" className="@container flex min-h-0 flex-1 flex-col">
       {row ? (
-        <div data-slides-skeleton-row className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3">
-          <Skeleton className="h-3 w-10" />
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-3 w-16" />
+        <div data-slides-skeleton-row className="flex h-9 shrink-0 items-center border-b border-border px-3">
+          <Bones label="">
+            <div className="flex items-center gap-2 text-xs">
+              {SAMPLE_DECK.row.map((control) => (
+                <span key={control} className="px-1.5">
+                  {control}
+                </span>
+              ))}
+              <Bone className="size-4 rounded-sm" />
+              <Bone className="size-4 rounded-sm" />
+            </div>
+          </Bones>
         </div>
       ) : null}
       <div className="flex min-h-0 min-w-0 flex-1 @max-[400px]:flex-col-reverse">
-        <div className="flex w-[140px] shrink-0 flex-col overflow-hidden border-e border-border bg-sidebar pt-2 pr-2 pl-1 @max-[400px]:w-auto @max-[400px]:flex-row @max-[400px]:gap-1 @max-[400px]:border-e-0 @max-[400px]:border-t @max-[400px]:p-2">
-          {Array.from({ length: 7 }, (_, i) => (
-            <div key={i} className="flex shrink-0 gap-1 py-[3px] @max-[400px]:py-0">
-              <span className="w-5 @max-[400px]:hidden" />
-              <Skeleton className="m-[3px] aspect-video w-24" />
+        <div className="flex w-[140px] shrink-0 flex-col overflow-hidden border-e border-border bg-sidebar pt-2 pr-2 pl-1 @max-[400px]:w-auto @max-[400px]:border-e-0 @max-[400px]:border-t @max-[400px]:p-2">
+          <Bones label="">
+            <div className="flex flex-col @max-[400px]:flex-row @max-[400px]:gap-1">
+              {SAMPLE_DECK.slides.map((number) => (
+                <div key={number} className="flex shrink-0 items-start gap-1 py-[3px] @max-[400px]:py-0">
+                  <span className="w-5 shrink-0 pt-1 text-end text-xs leading-4 tabular-nums @max-[400px]:hidden">{number}</span>
+                  <Bone className="m-[3px] aspect-video w-24 rounded-md" />
+                </div>
+              ))}
             </div>
-          ))}
+          </Bones>
         </div>
         <div className="flex min-w-0 flex-1 flex-col [container-type:size]">
           {/* On the stage band at the size Fit gives the loaded slide (`stageWidth`: the room, short enough for the notes), so nothing moves when the deck lands. */}
           <div data-slides-skeleton-stage className="flex justify-center bg-(--slide-stage) px-4 pt-4 pb-(--slide-stage-inset)">
-            <Skeleton className="aspect-video w-[min(calc(100cqw-32px),max(200px,calc((100cqh-150px)*16/9)))] bg-skeleton-stage" />
+            <Bones label="" on="stage">
+              <Bone className="aspect-video w-[min(calc(100cqw-32px),max(200px,calc((100cqh-150px)*16/9)))] rounded-md" />
+            </Bones>
           </div>
-          <div className="flex flex-col gap-2 px-5 pt-4">
-            <Skeleton className="h-2.5 w-12" />
-            <Skeleton className="h-3 w-[86%]" />
-            <Skeleton className="h-3 w-[62%]" />
-          </div>
+          {/* The notes block as the loaded slide draws it: its heading, known at once, over the sample's lines. */}
+          <Bones label="">
+            <div className="flex flex-col px-5 pt-4">
+              <div skullet-own="" className="text-xs font-medium text-muted-foreground">
+                Notes
+              </div>
+              <div className="mt-1 max-w-[70ch] text-sm leading-[22px]">
+                {SAMPLE_DECK.notes.map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </div>
+            </div>
+          </Bones>
         </div>
       </div>
     </div>
@@ -1402,11 +1432,23 @@ export function TabEnd({ item, source, env }: CanvasBodyProps<SlidesState>) {
  * real PowerPoint the stepper is not there: how many changes wait here, and
  * the way back to them.
  */
+/** The bar's end while the deck loads, drawn as the stage's Zoom and Present: 24px controls, so the bar keeps its height. */
+function BarBones() {
+  return (
+    <Bones label="" className="ms-auto shrink-0">
+      <span className="flex h-6 items-center gap-1 text-xs">
+        <span className="px-2">Fit</span>
+        <span className="px-2">Present</span>
+      </span>
+    </Bones>
+  );
+}
+
 export function Bar({ item, env, source, host: given, engine }: CanvasBodyProps<SlidesState> & SlidesDeps) {
   const store = deckStoreOf(item.id);
   const { view, error, side, look, zoom, previewing } = useDeck(store);
   const inPowerPoint = useInPowerPoint(view, source, env);
-  if (!view) return error ? null : <Skeleton className="h-3 w-30" />;
+  if (!view) return error ? null : <BarBones />;
   // A deck he can only read has its one row in its line (Present, and the zoom, at its end): the bar draws nothing.
   if (view.readOnly) return null;
   const pending = view.changes.length;

@@ -183,8 +183,9 @@ the first paint.
   `searchGap`; his Retry keeps what the page said, a failure and its words or
   a search's gap, with that Retry spinning until the answer replaces it
   (`retrying`; `retry()` settles when the answer lands), while any other read
-  of a page with no rows draws the list's bones, never "This folder is
-  empty"; `foldersOnly` asks for folders alone, as Move to… does), and keeps
+  of a page with no rows draws the list's bones (its column heads and rows,
+  or the grid's tiles, from `files/samples.ts`; docs/agents/loading-bones.md),
+  never "This folder is empty"; `foldersOnly` asks for folders alone, as Move to… does), and keeps
   what only this window knows in `localStorage` `work.files.view.v1`, under
   a window id kept in `sessionStorage`: the tab shown, the sidebar's fold,
   each page's order and row size. A window with nothing kept starts from
