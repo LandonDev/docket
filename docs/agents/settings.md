@@ -234,8 +234,10 @@ through `useSaved`.
   size's row says so, also on a page opened again later. Under Screen size, one line with Retry says what is left: an
   end this window cannot confirm (Retry reads the machine again), or a size the computer would not put back (Retry
   writes it again). Screen size takes no pick while the upgrade is unresolved (running, unconfirmed, or the old size
-  not back), so its rollback never writes over a newer pick; a read's reply that lands after the watch settled is
-  ignored. Its sign-ins and its
+  not back), and from the Fits my window confirm through its save before the watch begins (`holdForUpgrade`), so its
+  rollback never writes over a newer pick; a read's reply that lands after the watch settled is ignored. When a display
+  read again fails over values shown, they say "As last read" and both selects are held until a fresh read answers,
+  so no upgrade starts from a size that may not stand. Its sign-ins and its
   edition's end are Connections' rows alone. The Work page no longer has it.
 
 The preview (`SettingsPages.preview.tsx`) answers per computer: `<environment id>:<method>` answers first, a fixture
@@ -278,8 +280,12 @@ the set the computer last confirmed on a refusal.
   the failure with Retry (fixtures `defaults-stale`, `workspace-stale`). Such a set takes no change until a fresh read
   answers: its controls, Docket's defaults and Use New threads are held (Change… on a job's or workspace's page still
   opens the dialog to look and retry). A change then sends only the fields chosen, laid on the newest set held
-  (`onLatest`), so an old Access is never written over a newer one. "Different in N places" and its list name such a
-  place "(as last read)", with its failure and Retry, and hold its Use New threads. In a dialog
+  (`onLatest`), so an old Access is never written over a newer one. Saves to one set are queued (`queueDefaults`):
+  each starts once the one before it settles and is laid on the set that save confirmed, so a second edit made
+  before the first answers never carries the Access the first replaced. `useDraft` keeps the second pick on screen
+  meanwhile. "Different in N places" counts confirmed answers alone ("Different in 1 confirmed place" once any place is
+  as last read, "at least" only for places never heard from) and names last-read places once ("As last read: …");
+  the dialog's list marks each "(as last read)", with its failure and Retry, and holds its Use New threads. In a dialog
   narrower than 22rem, a place's row puts Use New threads under its name and set. A key that
   may only read sees each value in words (`ValueWords`, the size and tone Away and Digest use) and one `ManagedLine`
   first, above the first section, as on Reviews and Subagents. "Different in N places" holds its shape while places are read and, when a computer did not answer, says

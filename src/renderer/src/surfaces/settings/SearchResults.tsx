@@ -49,7 +49,7 @@ export function useSearchResults(): SearchResult[] {
   const jobsOn = [...new Set(useWorkspaces().filter((workspace) => workspace.kind === "work" && workHosts.has(workspace.environmentId)).map((workspace) => workspace.environmentId))];
   // Found only where the list offers it (the press is mounted).
   const { addComputer } = useSettingsKnown();
-  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills, ...(window.work ? SIGN_IN_NAMES : []), ...(addComputer ? [ADD_COMPUTER_RESULT] : [])], { web: window.web, mac: window.platform === "darwin", work: window.work, workHere, jobsOn });
+  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills, ...(window.work ? SIGN_IN_NAMES : []), ...(addComputer ? [ADD_COMPUTER_RESULT] : [])], { web: window.web, mac: window.platform === "darwin", work: window.work, workHere, jobsOn, workCount: workHosts.size });
 }
 
 /**

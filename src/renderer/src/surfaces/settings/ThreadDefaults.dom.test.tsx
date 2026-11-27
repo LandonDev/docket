@@ -27,6 +27,7 @@ const state = vi.hoisted(() => ({
   absent: false,
   stale: false,
   stalePlaces: [] as string[],
+  placePermission: "edits" as "safe" | "edits" | "auto",
   links: null as { id: string; name: string }[] | null,
   inheritedReads: 0,
   plansFailed: false,
@@ -109,7 +110,7 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
     saveDefaults: (...args: unknown[]) => state.save(...args),
     loadDefaults: (...args: unknown[]) => state.load(...args),
     defaultsAt: (_env: string, id: string | null) => ({
-      defaults: id === null ? { ...defaultsOf(), permission: state.globalPermission } : { ...defaultsOf(), permission: "edits" },
+      defaults: id === null ? { ...defaultsOf(), permission: state.globalPermission } : { ...defaultsOf(), permission: state.placePermission },
       overridden: id === null ? state.overridden : state.overriding.has(id),
     }),
   },
@@ -160,6 +161,7 @@ beforeEach(() => {
   state.absent = false;
   state.stale = false;
   state.stalePlaces = [];
+  state.placePermission = "edits";
   state.links = null;
   state.load.mockReset();
   state.load.mockImplementation(async () => {});
@@ -705,7 +707,7 @@ describe("A set shown as last read takes no change until a fresh read answers", 
 });
 
 describe("Different in N places, when a place's refresh failed", () => {
-  it("names that place as last read in the count's line and the list, and says the failure with Retry", async () => {
+  it("counts only confirmed places, names the last-read ones once in the row, marks each in the list, with Retry", async () => {
     state.workspaces = [
       { id: "w1", name: "Purdue Esports", environmentId: "local" },
       { id: "w2", name: "CosmicPrisons", environmentId: "local" },
@@ -714,11 +716,12 @@ describe("Different in N places, when a place's refresh failed", () => {
     state.stalePlaces = ["w2"];
     render(<ThreadDefaultsPage />);
     const row = document.querySelector("[data-setting='defaults.different']") as HTMLElement;
-    expect(row.textContent).toContain("Different in 2 places");
-    expect(row.textContent).toContain("CosmicPrisons (as last read), Purdue Esports");
+    expect(row.textContent).toContain("Different in 1 confirmed place");
+    expect(row.textContent).toContain("Purdue Esports. As last read: CosmicPrisons");
+    expect(row.textContent).not.toContain("(as last read)");
     expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
     await act(async () => {
-      fireEvent.click(within(row).getByRole("button", { name: "Different in 2 places" }));
+      fireEvent.click(within(row).getByRole("button", { name: "Different in 1 confirmed place" }));
     });
     const dialog = await screen.findByRole("dialog");
     await act(async () => {});
@@ -737,5 +740,84 @@ describe("onLatest", () => {
     const latest = { provider: "claude", model: "", reasoning: "medium", permission: "safe" } as never;
     expect(onLatest(chosen, shown, latest)).toEqual({ provider: "claude", model: "", reasoning: "high", permission: "safe" });
     expect(onLatest(chosen, shown, undefined)).toBe(chosen);
+  });
+});
+
+describe("Two edits to one set before the first answers", () => {
+  /** The first save waits for `answer()`; the store then holds what it sent, as `saveDefaults` does. */
+  function holdFirstSave(confirm: (sent: { permission: "safe" | "edits" | "auto" }) => void) {
+    let answer!: () => void;
+    let calls = 0;
+    state.save.mockImplementation(async (...args: unknown[]) => {
+      calls += 1;
+      const sent = args[2] as { permission: "safe" | "edits" | "auto" };
+      if (calls === 1) await new Promise<void>((resolve) => (answer = resolve));
+      confirm(sent);
+    });
+    return () => act(async () => answer());
+  }
+
+  it("on New threads, applies the second to the set the first confirmed, never carrying the old Access", async () => {
+    state.permission = "auto";
+    state.globalPermission = "auto";
+    const answer = holdFirstSave((sent) => (state.globalPermission = sent.permission));
+    render(<ThreadDefaultsPage />);
+    await pick("Access", "Auto-accept edits");
+    await pick("Effort", "High");
+    // The second waits for the first.
+    expect(state.save).toHaveBeenCalledTimes(1);
+    await answer();
+    await flush();
+    expect(state.save).toHaveBeenCalledTimes(2);
+    expect(state.save.mock.calls[1]![2]).toEqual(expect.objectContaining({ permission: "edits", reasoning: "high" }));
+  });
+
+  it("in a place's dialog (Change… from a job's or a workspace's page), the same", async () => {
+    state.permission = "auto";
+    state.placePermission = "auto";
+    const answer = holdFirstSave((sent) => (state.placePermission = sent.permission));
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    await screen.findByRole("dialog");
+    await act(async () => {});
+    await pick("Access", "Auto-accept edits");
+    await pick("Effort", "High");
+    expect(state.save).toHaveBeenCalledTimes(1);
+    await answer();
+    await flush();
+    expect(state.save.mock.calls[1]![1]).toBe("w1");
+    expect(state.save.mock.calls[1]![2]).toEqual(expect.objectContaining({ permission: "edits", reasoning: "high" }));
+  });
+});
+
+describe("Different in N places, with the section's own set and every place as last read", () => {
+  it("says the last read count, never 0 confirmed, and names the places once with no mark after each name", () => {
+    state.stale = true;
+    state.workspaces = [
+      { id: "w1", name: "Purdue Esports", environmentId: "local" },
+      { id: "w2", name: "temp-code", environmentId: "local" },
+    ];
+    state.overriding = new Set(["w1", "w2"]);
+    state.stalePlaces = ["w1", "w2"];
+    render(<ThreadDefaultsPage />);
+    const row = document.querySelector("[data-setting='defaults.different']") as HTMLElement;
+    expect(row.textContent).toContain("Different in 2 places");
+    expect(row.textContent).not.toContain("0 confirmed");
+    expect(row.textContent).toContain("As last read: Purdue Esports, temp-code");
+    expect(row.textContent).not.toContain("(as last read)");
+  });
+
+  it("keeps a floor only for places never heard from, never from last-read answers", () => {
+    state.workspaces = [
+      { id: "w1", name: "Purdue Esports", environmentId: "local" },
+      { id: "w2", name: "CosmicPrisons", environmentId: "local" },
+      { id: "w3", name: "temp-code", environmentId: "local" },
+    ];
+    state.overriding = new Set(["w1", "w2"]);
+    state.stalePlaces = ["w2"];
+    state.unheard = ["w3"];
+    render(<ThreadDefaultsPage />);
+    const row = document.querySelector("[data-setting='defaults.different']") as HTMLElement;
+    expect(row.textContent).toContain("Different in at least 1 confirmed place");
+    expect(row.textContent).toContain("Purdue Esports. As last read: CosmicPrisons. Not heard from temp-code");
   });
 });

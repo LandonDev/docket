@@ -16,7 +16,7 @@ const [MAC_COMMAND] = keyCaps("mod", true);
  */
 
 /** The page a row is on: a fixed page, any other computer's page, any job's or any code workspace's. */
-export type SettingNeed = "desktop" | "mac" | "work" | "workHere";
+export type SettingNeed = "desktop" | "mac" | "work" | "workHere" | "workMany";
 
 export type SettingPage = StaticSettingsSectionId | "computer:*" | "job" | "workspace";
 
@@ -298,7 +298,8 @@ const NEEDS: Record<string, readonly SettingNeed[]> = {
   "editor.openIn": ["desktop"],
   "keys.capture": ["desktop", "workHere"],
   "keys.appshot": ["desktop", "mac"],
-  "work.home": ["desktop"],
+  // Setup asks where new jobs are made only when two computers have Work on.
+  "work.home": ["desktop", "workMany"],
   "files.word": ["desktop"],
   "accounts.connections": ["work"],
   // A computer's jobs are drawn only where Work is on.
@@ -332,8 +333,8 @@ export type SettingVars = { mac?: string; computer?: string; n?: number | string
  *  name mid-line, a first letter raised when the name starts with one of them, the word after `{n}` singular for one.
  *  A placeholder with no value stays out. */
 export function settingWords(text: string, vars: SettingVars = {}): string {
-  // One of a thing is said in the singular: "Different in 1 project".
-  const counted = /(^|\s)1$/.test(String(vars.n)) ? text.replace(/\{n\} (\w+?)s\b/g, "{n} $1") : text;
+  // One of a thing is said in the singular: "Different in 1 project", "Different in 1 confirmed place".
+  const counted = /(^|\s)1( [a-z]+)?$/.test(String(vars.n)) ? text.replace(/\{n\} (\w+?)s\b/g, "{n} $1") : text;
   const filled = counted
     .replaceAll("{mac}", vars.mac ?? "this Mac")
     .replaceAll("{computer}", vars.computer ?? "a computer")

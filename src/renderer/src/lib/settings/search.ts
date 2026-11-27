@@ -79,11 +79,20 @@ const computersOf = (groups: readonly ListGroup[]): ListRow[] => listPages(group
 /** What this window is, for rows a page draws only in some windows (`SettingEntry.needs`). */
 /** `workHere`: Work is on for this window's own computer (the capture key is that computer's). */
 /** `jobsOn`: the computers (environment ids) with Work on that hold a job, whose pages list their jobs. */
-export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean; workHere?: boolean; jobsOn?: readonly string[] };
+/** `workCount`: how many computers have Work on. */
+export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean; workHere?: boolean; jobsOn?: readonly string[]; workCount?: number };
 
 const drawn = (entry: SettingEntry, window: SearchWindow): boolean =>
   !entry.needs || entry.needs.every((need) =>
-    need === "desktop" ? !window.web : need === "mac" ? window.mac !== false : need === "workHere" ? (window.workHere ?? window.work) !== false : window.work !== false,
+    need === "desktop"
+      ? !window.web
+      : need === "mac"
+        ? window.mac !== false
+        : need === "workHere"
+          ? (window.workHere ?? window.work) !== false
+          : need === "workMany"
+            ? (window.workCount ?? 2) > 1
+            : window.work !== false,
   );
 
 function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly SearchExtra[], window: SearchWindow): Indexed[] {
@@ -111,8 +120,16 @@ function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly
   return out;
 }
 
+/** A row whose name holds a count the index cannot know, named for search as its page or dialog names it. */
+const UNCOUNTED: Record<string, string> = {
+  "defaults.different": "Different from New threads",
+  "reviews.different": "Projects that differ from Reviews",
+  "here.install": "Agent apps you can install",
+  "pc.install": "Agent apps you can install",
+};
+
 function rowResult(entry: SettingEntry, row: ListRow, place: string | undefined, vars: SettingVars): Indexed {
-  const title = settingWords(entry.title, vars);
+  const title = vars.n === undefined && UNCOUNTED[entry.id] ? UNCOUNTED[entry.id] : settingWords(entry.title, vars);
   const section = entry.section ? settingWords(entry.section, vars) : undefined;
   return {
     key: `${row.id}:${entry.id}:${vars.computer ?? ""}`,

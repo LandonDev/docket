@@ -22,6 +22,8 @@ export type Upgrade =
   | { phase: "unrestored"; reason: string; failed: string };
 
 const upgrades = new Map<string, Upgrade>();
+/** The computers whose upgrade `runUpgrade` is watching (from its first write to its end). */
+const watching = new Set<string>();
 /** What Retry does for a computer's upgrade line: read the machine again, or write the old size back again. */
 const retries = new Map<string, () => Promise<void>>();
 const listeners = new Set<() => void>();
@@ -49,8 +51,18 @@ export const retryUpgrade = (environmentId: string): Promise<void> => retries.ge
 /** Test seam. */
 export function resetUpgradesForTests(): void {
   upgrades.clear();
+  watching.clear();
   retries.clear();
   for (const listener of listeners) listener();
+}
+
+/** Fits my window is on its way from his pick: Screen size is held from the confirm, through the save, until the watch
+ *  takes over (`runUpgrade`) or `releaseHold` lets it go. */
+export const holdForUpgrade = (environmentId: string): void => put(environmentId, { phase: "running" });
+
+/** The hold ends with no watch behind it (his Cancel, or a save refused before the upgrade began). */
+export function releaseHold(environmentId: string): void {
+  if (!watching.has(environmentId) && upgrades.get(environmentId)?.phase === "running") put(environmentId, null);
 }
 
 /** His next change of the screen size: what an old upgrade left to say has been said. */
@@ -91,6 +103,7 @@ export function runUpgrade(environmentId: string, before: WinvmScreen | null): P
   const words = (err: unknown, act = "did not fit the Windows VM to your window"): string => hostFailure(environmentId, err, act, true);
   const unsure = (err: unknown): Upgrade => ({ phase: "unconfirmed", reason: words(err, "has not said yet whether the Windows VM fits your window") });
   put(environmentId, { phase: "running" });
+  watching.add(environmentId);
   let seen = false;
   // Once the watch has its end, a reply still on its way (a read after a socket opened) changes nothing.
   let settled = false;
@@ -149,7 +162,9 @@ export function runUpgrade(environmentId: string, before: WinvmScreen | null): P
     } else put(environmentId, { phase: "failed", reason });
     throw new Error(reason);
   };
-  return link.request("work.winvm.display.upgrade", {}).then(
+  return link
+    .request("work.winvm.display.upgrade", {})
+    .then(
     async () => {
       const end = await ended;
       if (!upgradeWorked(end)) {
@@ -165,5 +180,6 @@ export function runUpgrade(environmentId: string, before: WinvmScreen | null): P
       retries.delete(environmentId);
       await fail(words(err));
     },
-  );
+    )
+    .finally(() => watching.delete(environmentId));
 }

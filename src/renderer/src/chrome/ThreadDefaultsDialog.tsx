@@ -62,6 +62,28 @@ export function onLatest(chosen: ThreadDefaults, shown: ThreadDefaults | undefin
   return next as ThreadDefaults;
 }
 
+/** Each set's saves in flight, by scope: the next waits for the one before it. */
+const saving = new Map<string, Promise<void>>();
+
+/**
+ * Saves to one set, one at a time, in the order made: each starts once the one before it has settled, so it is laid
+ * on the set that save confirmed (or the one before, when it was refused). Every editor of a set (New threads, a
+ * place's dialog, Use New threads) saves through here.
+ */
+export function queueDefaults<T>(environmentId: string, workspaceId: string | null, save: () => Promise<T>): Promise<T> {
+  const key = scopeKey(environmentId, workspaceId);
+  const run = (saving.get(key) ?? Promise.resolve()).then(save);
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  saving.set(key, settled);
+  void settled.then(() => {
+    if (saving.get(key) === settled) saving.delete(key);
+  });
+  return run;
+}
+
 /** One scope's set as an editor holds it: what the computer confirmed, what is shown, each row's save. */
 function useDefaultsSet(environmentId: string, workspaceId: string | null) {
   const scope = useThreadDefaults(environmentId, workspaceId, true);
@@ -79,13 +101,16 @@ function useDefaultsSet(environmentId: string, workspaceId: string | null) {
   const write = (row: Row, next: ThreadDefaults) => {
     const shown = draft.value;
     const chosen = normalizeDefaults(next, environmentId);
-    // Only the change goes out, onto the newest set the store holds as the write leaves.
+    // Only the change goes out, queued behind any save still out, onto the set the store holds when its turn comes:
+    // the one the save before it confirmed, so a second edit never carries an Access the first replaced.
     return draft.change(saved[row], chosen, () =>
-      workspaceStore.saveDefaults(environmentId, workspaceId, normalizeDefaults(onLatest(chosen, shown, workspaceStore.defaultsAt(environmentId, workspaceId)?.defaults), environmentId)),
+      queueDefaults(environmentId, workspaceId, () =>
+        workspaceStore.saveDefaults(environmentId, workspaceId, normalizeDefaults(onLatest(chosen, shown, workspaceStore.defaultsAt(environmentId, workspaceId)?.defaults), environmentId)),
+      ),
     );
   };
   /** Drops the scope's own set: a workspace follows New threads again, New threads takes Docket's. */
-  const clear = () => cleared.run(() => workspaceStore.saveDefaults(environmentId, workspaceId, null));
+  const clear = () => cleared.run(() => queueDefaults(environmentId, workspaceId, () => workspaceStore.saveDefaults(environmentId, workspaceId, null)));
   return { scope, failure, stale, value: draft.value, saved, write, blocked, clear, cleared, may };
 }
 type DefaultsSet = ReturnType<typeof useDefaultsSet>;
@@ -326,8 +351,8 @@ function DifferentPlaces() {
   const { workspaces, defaults, defaultsErrors, defaultsStale } = useWorkspaceCatalog();
   const [open, setOpen] = useState(false);
   const keyOf = (w: WorkspaceMeta) => scopeKey(w.environmentId, w.id);
-  // A place whose refresh failed is held as last read: named with that mark in the count's line and the list, its
-  // failure said with Retry, its Use New threads held.
+  // A place whose refresh failed is held as last read: never counted, named once after "As last read:" in the row
+  // (the dialog's list marks each), its failure said with Retry, its Use New threads held.
   const stale = workspaces.filter((w) => defaults.has(keyOf(w)) && defaultsStale.has(keyOf(w)));
   const held = (w: WorkspaceMeta) => defaults.get(keyOf(w))?.overridden === true;
   const own = workspaces.filter((w) => held(w)).sort((a, b) => a.name.localeCompare(b.name));
@@ -345,9 +370,21 @@ function DifferentPlaces() {
       void workspaceStore.loadDefaults(w.environmentId, w.id);
     }
   });
-  const n = failed.length ? `at least ${own.length}` : own.length;
-  const nameOf = (w: WorkspaceMeta) => (defaultsStale.has(keyOf(w)) ? `${w.name} (${AS_LAST_READ.toLowerCase()})` : w.name);
-  const line = [own.length ? own.map(nameOf).join(", ") : null, failed.length ? `Not heard from ${failed.map((w) => w.name).join(", ")}` : null].filter(Boolean).join(". ");
+  // The count is of confirmed answers alone: "confirmed" once any place is as last read, a floor only for places never
+  // heard from.
+  const lastRead = own.filter((w) => defaultsStale.has(keyOf(w)));
+  const confirmed = own.filter((w) => !defaultsStale.has(keyOf(w)));
+  // With none confirmed, the count is the last read's, and the line under it says so: never "0 confirmed places".
+  const n = !confirmed.length && lastRead.length
+    ? `${failed.length ? "at least " : ""}${lastRead.length}`
+    : `${failed.length ? "at least " : ""}${confirmed.length}${stale.length ? " confirmed" : ""}`;
+  const line = [
+    confirmed.length ? confirmed.map((w) => w.name).join(", ") : null,
+    lastRead.length ? `${AS_LAST_READ}: ${lastRead.map((w) => w.name).join(", ")}` : null,
+    failed.length ? `Not heard from ${failed.map((w) => w.name).join(", ")}` : null,
+  ]
+    .filter(Boolean)
+    .join(". ");
   return (
     <>
       {waiting ? (
@@ -509,7 +546,7 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
       });
       if (!ok) return false;
     }
-    return saved.run(() => workspaceStore.saveDefaults(place.environmentId, place.id, null));
+    return saved.run(() => queueDefaults(place.environmentId, place.id, () => workspaceStore.saveDefaults(place.environmentId, place.id, null)));
   };
   return {
     may,

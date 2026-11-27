@@ -209,3 +209,13 @@ describe("a computer's rows by an old name", () => {
     expect(jobs(["env_box"])).toEqual(["computer:env_box"]);
   });
 });
+
+describe("rows search names as their page does", () => {
+  it("names a counted row without a blank count, and offers where new jobs are made only with two computers on Work", () => {
+    const titles = (query: string, window = {}) => searchSettings(query, settingsList(MAC), { mac: "this Mac" }, [], window).map((result) => result.title);
+    expect(titles("different")).toContain("Different from New threads");
+    expect(titles("different").some((title) => /Different in\s+places/.test(title))).toBe(false);
+    expect(titles("new jobs are made", { work: true, workCount: 1 })).not.toContain("New jobs are made on");
+    expect(titles("new jobs are made", { work: true, workCount: 2 })).toContain("New jobs are made on");
+  });
+});

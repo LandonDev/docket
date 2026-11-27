@@ -13,7 +13,7 @@ import { confirmAction } from "../../../chrome/ConfirmDialog";
 vi.mock("../../../lib/linkMay", async (original) => (await import("../../../lib/linkMay.testkit")).linkMayMock(await original()));
 
 
-const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, pointsHold: null as Promise<unknown> | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true, settingsRead: "answers" as "answers" | "pending" | "refused", settingsWriteFail: null as string | null, opens: [] as (() => void)[] }));
+const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, pointsHold: null as Promise<unknown> | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true, settingsRead: "answers" as "answers" | "pending" | "refused", settingsWriteFail: null as string | null, settingsWriteHold: null as Promise<unknown> | null, opens: [] as (() => void)[] }));
 vi.mock("../../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../../chrome/ConfirmDialog")>()), confirmAction: vi.fn(async () => h.confirm) }));
 
 const at = (s: Partial<WinvmState>): WinvmState => ({ state: "asleep", step: null, error: null, cannot: null, sleepAfter: "30m", since: 1, ...s });
@@ -32,6 +32,7 @@ beforeEach(() => {
   h.office = null;
   h.settingsRead = "answers";
   h.settingsWriteFail = null;
+  h.settingsWriteHold = null;
   h.opens = [];
   vi.spyOn(registry, "linkOf").mockImplementation(
     () =>
@@ -46,6 +47,7 @@ beforeEach(() => {
           if (method === "work.office.filesLibraries") return { host: "box", libraries: [{ vm: true, kind: "channels" }], roots: [], off: [] };
           if (method === "work.winvm.settings" && Object.keys(params as object).length === 0 && h.settingsRead === "pending") return new Promise(() => {});
           if (method === "work.winvm.settings" && Object.keys(params as object).length === 0 && h.settingsRead === "refused") throw new Error(NO_ANSWER);
+          if (method === "work.winvm.settings" && Object.keys(params as object).length > 0 && h.settingsWriteHold) return h.settingsWriteHold;
           if (method === "work.winvm.settings" && Object.keys(params as object).length > 0 && h.settingsWriteFail) throw new Error(h.settingsWriteFail);
           if (method === "work.winvm.settings") {
             const next = (params as { screen?: string }).screen;
@@ -616,6 +618,7 @@ describe("Screen size and picture quality", () => {
     // The box still holds Fits my window: the select says so, not the size that was not put back.
     expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("Fits my window");
     h.settingsWriteFail = null;
+  h.settingsWriteHold = null;
     await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
     await flush();
     expect(document.querySelector("[data-upgrade-note]")).toBeNull();
@@ -648,10 +651,53 @@ describe("Screen size and picture quality", () => {
     expect(held()).toBe(true);
     // The old size goes back: Screen size takes picks again.
     h.settingsWriteFail = null;
+  h.settingsWriteHold = null;
     const line = document.querySelector("[data-upgrade-note]")!.closest("[data-slot=page-error-line]") as HTMLElement;
     await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
     await flush();
     expect(held()).toBe(false);
+  });
+
+  it("holds Screen size from the Fits my window confirm, before the watch starts, while its save is out", async () => {
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmHost env="box" />);
+    await flush();
+    // The fit's save hangs: the watch has not started yet.
+    h.settingsWriteHold = new Promise(() => {});
+    await pick("Screen size", "Fits my window");
+    await flush();
+    const select = screen.getByRole("combobox", { name: "Screen size" }) as HTMLButtonElement;
+    expect(select.disabled || select.hasAttribute("data-disabled")).toBe(true);
+    // A pick now is refused: no second write leaves.
+    const writes = h.calls.filter((c) => c.method === "work.winvm.settings" && (c.params as { screen?: string }).screen).length;
+    await act(async () => fireEvent.click(select));
+    expect(screen.queryByRole("option", { name: "2560 × 1600" })).toBeNull();
+    expect(h.calls.filter((c) => c.method === "work.winvm.settings" && (c.params as { screen?: string }).screen)).toHaveLength(writes);
+  });
+
+  it("marks the display values last read after a failed read again, and holds them until a fresh read", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmHost env="box" />);
+    await flush();
+    h.settingsRead = "refused";
+    await act(async () => h.opens.forEach((fn) => fn()));
+    await flush();
+    const select = screen.getByRole("combobox", { name: "Screen size" }) as HTMLButtonElement;
+    expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).toContain("As last read");
+    expect(select.disabled || select.hasAttribute("data-disabled")).toBe(true);
+    // No upgrade can start from the size last read.
+    await act(async () => fireEvent.click(select));
+    expect(screen.queryByRole("option", { name: "Fits my window" })).toBeNull();
+    expect(pressed()).toEqual([]);
+    // A fresh read frees it.
+    h.settingsRead = "answers";
+    const line = document.querySelector("[data-display-failure]")!.closest("[data-slot=page-error-line]") as HTMLElement;
+    await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
+    await flush();
+    const fresh = screen.getByRole("combobox", { name: "Screen size" }) as HTMLButtonElement;
+    expect(fresh.disabled || fresh.hasAttribute("data-disabled")).toBe(false);
+    expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).not.toContain("As last read");
   });
 
   it("ignores a reconnect's reply that lands after the watch settled", async () => {

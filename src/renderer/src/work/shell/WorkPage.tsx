@@ -3,7 +3,7 @@ import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ThreadDefaultsDialog } from "../../chrome/ThreadDefaultsDialog";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageError, PageRow } from "../../components/page";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { awayStore, startAway, useAway } from "../../lib/away";
 import { useStore } from "zustand";
@@ -85,6 +85,8 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
     .sort((a, b) => a.name.localeCompare(b.name));
   const { defaults, defaultsErrors, defaultsStale } = useWorkspaceCatalog();
   const [open, setOpen] = useState<WorkspaceMeta | null>(null);
+  // The filtered list's own Retry while it runs: the jobs it asks and the words it said, kept until every read settles.
+  const [retrying, setRetrying] = useState<{ keys: readonly string[]; words: string } | null>(null);
   const may = useLinksMay();
   const names = useComputerNames();
   const key = jobs.map((j) => `${j.environmentId}:${j.id}`).join(",");
@@ -104,29 +106,40 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
   const heldOf = (job: WorkspaceMeta) => !!levelOf(job) && defaultsStale.has(scopeKey(job.environmentId, job.id));
   const levels = jobs.map(levelOf).filter((level): level is PermissionPolicy => !!level);
   const common = mostOf(jobs.filter((job) => !heldOf(job)).map(levelOf).filter((level): level is PermissionPolicy => !!level));
+  const keyOf = (job: WorkspaceMeta) => scopeKey(job.environmentId, job.id);
+  const matches = (job: WorkspaceMeta) => filter.shown.includes(job);
+  // The jobs that answered, or are still out: a job whose read failed draws no row, the page's line stands for it; nor
+  // one the filtered list is asking again.
+  const shown = jobs.filter((job) => !failed.includes(job) && !retrying?.keys.includes(keyOf(job)));
+  // The rows the query leaves. A query that matches only jobs whose read failed says those failures at the list, with
+  // one Retry, and the page's head leaves them out.
+  const rows = shown.filter(matches);
+  const missed = rows.length === 0 ? jobs.filter((job) => matches(job) && (failed.includes(job) || !!retrying?.keys.includes(keyOf(job)))) : [];
   // One line a computer whose jobs did not answer (the page says a silence once: `ReadFailure`), its Retry asking them again.
-  const failedOn = [...new Set(erred.map((job) => job.environmentId))];
-  const failures = failedOn.map((environmentId) => {
-    const ones = erred.filter((job) => job.environmentId === environmentId);
-    return (
-      <ReadFailure
-        key={environmentId}
-        computer={environmentId}
-        error={errorOf(ones[0]!) ?? ""}
-        retry={() => Promise.all(ones.map((job) => workspaceStore.loadDefaults(job.environmentId, job.id)))}
-      />
-    );
-  });
-  // Every job's read failed: the line alone, with no heading and no rows standing on nothing.
-  if (failed.length === jobs.length) return <>{failures}</>;
-  // The jobs that answered, or are still out: a job whose read failed draws no row, the page's line stands for it.
-  const shown = jobs.filter((job) => !failed.includes(job));
+  const failuresOf = (said: readonly WorkspaceMeta[]) =>
+    [...new Set(said.map((job) => job.environmentId))].map((environmentId) => {
+      const ones = said.filter((job) => job.environmentId === environmentId);
+      return (
+        <ReadFailure
+          key={environmentId}
+          computer={environmentId}
+          error={errorOf(ones[0]!) ?? ""}
+          retry={() => Promise.all(ones.map((job) => workspaceStore.loadDefaults(job.environmentId, job.id)))}
+        />
+      );
+    });
+  // Every job's read failed: the line alone, with no heading, no list and no rows standing on nothing.
+  if (failed.length === jobs.length) return <>{failuresOf(erred)}</>;
+  // Under a list, the failures the filtered list says itself are left out of the page's head.
+  const failures = failuresOf(erred.filter((job) => !missed.includes(job)));
   const settled = levels.length === shown.length;
   // Jobs on more than one computer: each row says its own.
   const several = new Set(jobs.map((job) => job.environmentId)).size > 1;
-  // The rows the query leaves; a query that matches only jobs whose read failed says so here, with Retry.
-  const rows = shown.filter((job) => filter.shown.includes(job));
-  const missed = rows.length === 0 ? failed.filter((job) => filter.shown.includes(job)) : [];
+  const missedWords = retrying?.words ?? missed.map((job) => `${job.name}: ${readFailWords(errorOf(job) ?? "", names(job.environmentId))}`).join(" ");
+  const retryMissed = (): void => {
+    setRetrying({ keys: missed.map(keyOf), words: missedWords });
+    void Promise.allSettled(missed.map((job) => workspaceStore.loadDefaults(job.environmentId, job.id))).then(() => setRetrying(null));
+  };
   return (
     <>
       {/* While any set is out the line under the heading waits as one bone and no row says a line, as most will not. */}
@@ -137,12 +150,12 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
           <PageError
             data-missed=""
             action={
-              <Button variant="ghost" size="sm" onClick={() => void Promise.all(missed.map((job) => workspaceStore.loadDefaults(job.environmentId, job.id)))}>
-                Retry
+              <Button variant="ghost" size="sm" disabled={retrying !== null} onClick={retryMissed}>
+                <BusyLabel busy={retrying !== null} label="Retry" />
               </Button>
             }
           >
-            {missed.map((job) => `${job.name}: ${readFailWords(errorOf(job) ?? "", names(job.environmentId))}`).join(" ")}
+            {missedWords}
           </PageError>
         ) : null}
         {rows.map((job) => {

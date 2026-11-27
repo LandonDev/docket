@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const store = vi.hoisted(() => ({
@@ -7,6 +7,8 @@ const store = vi.hoisted(() => ({
   errors: new Map<string, string>(),
   stale: new Map<string, string>(),
   loads: [] as string[],
+  /** A read held open until the test lets it go. */
+  gate: null as null | Promise<void>,
   /** The jobs listed, when a test lists other than JOBS. */
   jobs: null as null | { id: string; name: string; kind: string; sector: string; environmentId: string }[],
 }));
@@ -22,7 +24,10 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => {
     scopeKey: (env: string, id: string) => `${env}:${id}`,
     useWorkspaces: () => store.jobs ?? JOBS,
     useWorkspaceCatalog: () => ({ defaults: store.defaults, defaultsErrors: store.errors, defaultsStale: store.stale }),
-    workspaceStore: Object.assign(Object.create(real.workspaceStore), { loadDefaults: async (env: string, id: string) => void store.loads.push(`${env}:${id}`) }),
+    workspaceStore: Object.assign(Object.create(real.workspaceStore), { loadDefaults: async (env: string, id: string) => {
+      store.loads.push(`${env}:${id}`);
+      await store.gate;
+    } }),
   };
 });
 vi.mock("../../lib/linkMay", async (original) => ({ ...(await original<object>()), useLinksMay: () => () => true }));
@@ -41,6 +46,7 @@ afterEach(() => {
   store.errors.clear();
   store.stale.clear();
   store.jobs = null;
+  store.gate = null;
 });
 
 describe("Access for each job's new threads", () => {
@@ -124,18 +130,33 @@ describe("Access for each job's new threads", () => {
     expect(screen.queryByRole("searchbox")).toBeNull();
   });
 
-  it("says why Find a job leaves no row when it matches only a job whose read failed, with Retry for it", () => {
+  it("says a filtered list's only, failed match once, at the list, with one Retry that stays busy until its read settles", async () => {
     store.jobs = Array.from({ length: 10 }, (_, i) => ({ id: `k${i}`, name: i === 4 ? "Purdue Esports" : `Job ${i}`, kind: "work", sector: "life", environmentId: "env_box" }));
     for (const job of store.jobs) if (job.id !== "k4") store.defaults.set(`env_box:${job.id}`, { defaults: { permission: "edits" } });
     store.errors.set("env_box:k4", NO_ANSWER);
     render(<JobsAccess />);
     fireEvent.change(screen.getByRole("searchbox", { name: "Find a job" }), { target: { value: "purdue" } });
     expect(document.querySelectorAll("[data-job]")).toHaveLength(0);
-    const missed = document.querySelector<HTMLElement>("[data-missed]")!;
-    expect(missed.textContent).toContain("Purdue Esports: The box did not answer.");
+    // One failure on the page, the list's own: the page's head does not say it again.
+    expect(screen.getAllByRole("alert").map((line) => line.textContent)).toEqual(["Purdue Esports: The box did not answer."]);
+    const line = () => document.querySelector<HTMLElement>("[data-missed]")!.closest<HTMLElement>("[data-slot=page-error-line]")!;
+    expect(within(line()).getAllByRole("button")).toHaveLength(1);
+    let let_go!: () => void;
+    store.gate = new Promise<void>((done) => (let_go = done));
     store.loads.length = 0;
-    fireEvent.click(within(missed.closest<HTMLElement>("[data-slot=page-error-line]")!).getByRole("button", { name: "Retry" }));
+    // The retry clears the store's error at once (loadDefaults); the line and its busy Retry stay until it settles.
+    store.errors.delete("env_box:k4");
+    await act(async () => fireEvent.click(within(line()).getByRole("button", { name: "Retry" })));
     expect(store.loads).toEqual(["env_box:k4"]);
+    expect(line().textContent).toContain("Purdue Esports: The box did not answer.");
+    expect((within(line()).getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+    store.defaults.set("env_box:k4", { defaults: { permission: "edits" } });
+    await act(async () => {
+      let_go();
+      await store.gate;
+    });
+    expect(document.querySelector("[data-missed]")).toBeNull();
+    expect([...document.querySelectorAll("[data-job]")].map((row) => row.getAttribute("data-job"))).toEqual(["k4"]);
   });
 
   it("marks a level held over a failed refresh as last read, and counts only current levels toward the heading", () => {

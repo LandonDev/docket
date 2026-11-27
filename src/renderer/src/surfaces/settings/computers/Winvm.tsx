@@ -19,7 +19,7 @@ import { useSettingsKnown, tellSettingsList } from "../../../lib/settings/useLis
 import { useWorkHosts } from "../../../lib/workSwitch";
 import { SettingRow } from "../parts/SettingRow";
 import { useSaved, type Saved } from "../parts/useSaved";
-import { forgetUpgrade, retryUpgrade, runUpgrade, upgradeHolds, useUpgrade, type Upgrade } from "./winvmUpgrade";
+import { forgetUpgrade, holdForUpgrade, releaseHold, retryUpgrade, runUpgrade, upgradeHolds, useUpgrade, type Upgrade } from "./winvmUpgrade";
 
 /**
  * Settings › Windows VM, "A Windows computer inside the box, for Office and Teams." (docs/agents/settings.md "The
@@ -315,15 +315,23 @@ export function WinvmHost({ env }: { env: string }) {
    *  for the restart only once the save landed. A refused restart puts the size that stands back: without live resize
    *  Fits my window would not hold. */
   const pickScreen = async (screen: WinvmScreen): Promise<void> => {
-    // Held while an upgrade is unresolved: its rollback could write the size that stood over this pick.
-    if (upgradeHolds(upgrade)) return;
+    // Held while an upgrade is unresolved (its rollback could write the size that stood over this pick), and while the
+    // values shown are only as last read (an upgrade's rollback needs the size that stands, freshly read).
+    if (upgradeHolds(upgrade) || settingsError) return;
     const live = state.display?.device === "virtio";
     if (screen === "fit" && state.display && !live) {
-      if (!(await confirmAction(TURN_ON))) return;
       forgetUpgrade(env);
+      // Held from here: through the confirm and the save, until the watch takes over or nothing follows.
+      holdForUpgrade(env);
+      if (!(await confirmAction(TURN_ON))) {
+        releaseHold(env);
+        return;
+      }
       // The size stays saving until the upgrade's end says it went through; a refusal or any other end puts the size
       // that stood back (runUpgrade), and the page reads it again.
-      if (!(await save("screen", screen, () => runUpgrade(env, settings?.screen ?? null)))) void loadSettings();
+      const saved = await save("screen", screen, () => runUpgrade(env, settings?.screen ?? null));
+      releaseHold(env);
+      if (!saved) void loadSettings();
       return;
     }
     forgetUpgrade(env);
@@ -347,7 +355,7 @@ export function WinvmHost({ env }: { env: string }) {
         onPress={() => void press()}
         onSleepAfter={(v) => void save("sleepAfter", v)}
         onScreen={(v) => void pickScreen(v)}
-        onQuality={(v) => void save("detail", v)}
+        onQuality={(v) => void (settingsError ? undefined : save("detail", v))}
         onPoints={() => setShowPoints(true)}
         may={{ admin, operate }}
       />
@@ -409,6 +417,8 @@ export function WinvmView({
   may = { admin: true, operate: true },
 }: WinvmViewProps) {
   const row = winvmRow(state);
+  // The display's newest read failed over values shown: they stand as last read, held until a fresh read answers.
+  const lastRead = !!settingsError && !!settings;
   // a computer before live resize says no display: the size is a new Set up's
   const live = state.display?.device === "virtio";
   const turning = resizing(state);
@@ -437,10 +447,19 @@ export function WinvmView({
               {/* on the old display Windows keeps the size it was set up at through every sleep (guestScreen.ts): a size is a new Set up's */}
               <SettingRow
                 id="winvm.screen"
-                description={turning ? (state.step ?? undefined) : live || settings.screen === "fit" ? undefined : "Used when the VM is set up again"}
+                description={
+                  turning ? (state.step ?? undefined) : lastRead ? LAST_READ : live || settings.screen === "fit" ? undefined : "Used when the VM is set up again"
+                }
                 saved={saved.screen}
               >
-                <ChoiceSelect size="sm" label="Screen size" value={settings.screen} options={SCREENS} disabled={turning || state.state === "setting-up" || screenHeld} onChange={(v) => onScreen(v as WinvmScreen)} />
+                <ChoiceSelect
+                  size="sm"
+                  label="Screen size"
+                  value={settings.screen}
+                  options={SCREENS}
+                  disabled={turning || state.state === "setting-up" || screenHeld || lastRead}
+                  onChange={(v) => onScreen(v as WinvmScreen)}
+                />
               </SettingRow>
               {upgradeNote ? (
                 <PageError data-upgrade-note="" action={<RetryButton retry={upgradeNote.retry} />}>
@@ -448,8 +467,8 @@ export function WinvmView({
                 </PageError>
               ) : null}
               {live && settings.detail ? (
-                <SettingRow id="winvm.quality" saved={saved.detail}>
-                  <ChoiceSelect size="sm" label="Picture quality" value={settings.detail} options={QUALITIES} onChange={(v) => onQuality(v as WinvmDetail)} />
+                <SettingRow id="winvm.quality" description={lastRead ? LAST_READ : undefined} saved={saved.detail}>
+                  <ChoiceSelect size="sm" label="Picture quality" value={settings.detail} options={QUALITIES} disabled={lastRead} onChange={(v) => onQuality(v as WinvmDetail)} />
                 </SettingRow>
               ) : null}
             </>
@@ -505,6 +524,9 @@ export function WinvmView({
     </PageSection>
   );
 }
+
+/** A display value whose newest read failed. */
+const LAST_READ = "As last read";
 
 /** A small select's bone (`ChoiceSelect size="sm"`, 28px), at a row's end while its value is read. */
 const SelectBone = () => <Skeleton data-skeleton-control aria-label="Loading" className="h-7 w-36 shrink-0 rounded-lg" />;
