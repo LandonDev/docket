@@ -341,7 +341,7 @@ public enum FilesRules {
         case .noOnedrive: return "OneDrive is not set up"
         case .noLibraries: return "No libraries"
         case .notSetUp: return "Not set up"
-        case .notAllowed: return "This workspace may not use \(machine)"
+        case .notAllowed: return "This job may not use \(machine)"
         case .unreachable: return "\(machine) is out of reach"
         case .error: return state.detail ?? "It answered a fault"
         case .unknown(let raw): return state.detail ?? raw

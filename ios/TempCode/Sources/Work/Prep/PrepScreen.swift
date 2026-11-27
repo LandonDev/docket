@@ -90,7 +90,7 @@ private struct PrepPageView: View {
             .scrollDismissesKeyboard(.interactively)
         } else if let readError {
             ContentUnavailableView {
-                Label("This Page Did Not Load", systemImage: "calendar")
+                Label("Can’t Read This Meeting", systemImage: "calendar")
             } description: {
                 Text(readError)
             } actions: {
@@ -236,7 +236,7 @@ private struct PrepPageView: View {
                     let count = ticks.toFile(tasks).count
                     HStack(spacing: Layout.rowGap) {
                         if !ticks.failed.isEmpty {
-                            Text(PrepRules.failedWords(ticks.failed, tasks: tasks)).foregroundStyle(Tint.destructiveText)
+                            // Each refused row says which and why in red; the foot keeps only the press.
                             PillButton("Try Again") { Task { await file(ticks.retrying) } }
                         } else {
                             PillButton("Tick All") { ticks.tickAll(tasks) }.disabled(ticks.filing)

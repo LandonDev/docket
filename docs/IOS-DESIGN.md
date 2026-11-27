@@ -3375,7 +3375,8 @@ no event.
   app goes to the background). Another window's newer words are never written over unseen: his stay, a line says
   so, and Keep Mine saves them.
 - **To Do**: suggested tasks start unticked. Tick All, and "Add 3 Tasks" while any is ticked, sit at the section's
-  foot. A task LifeOS did not take keeps why on its own row; Try Again files those again.
+  foot. A task LifeOS did not take keeps why on its own row, said there alone; Try Again, in Tick All's place, files
+  those again. A first read that fails: "Can’t Read This Meeting" with the host's words and Try Again.
 
 ### A clash
 

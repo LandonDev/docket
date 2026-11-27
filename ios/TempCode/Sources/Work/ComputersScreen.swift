@@ -90,7 +90,7 @@ struct ComputersScreen: View {
                     ContentUnavailableView("Not Connected to \(WorkSearch.nameInLine(ComputersState.names(names)))", systemImage: ComputersGlyph.row)
                 case .idle(let away):
                     ContentUnavailableView("No Computer in Use", systemImage: ComputersGlyph.row,
-                                           description: Text(away.isEmpty ? "A browser or an app an agent is using shows here, live." : "Not connected to \(WorkSearch.nameInLine(ComputersState.names(away)))."))
+                                           description: away.isEmpty ? nil : Text("Not connected to \(WorkSearch.nameInLine(ComputersState.names(away)))."))
                 }
             }
         }
