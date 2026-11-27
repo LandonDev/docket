@@ -102,16 +102,16 @@ private struct ClashPage: View {
                 }
             }
             .listStyle(.insetGrouped)
-        } else if let readError {
+        } else if let failure = readError {
             // The first read failed: nothing is known of the clash, so it is never said to be gone.
             ContentUnavailableView {
                 Label("Can’t Read This Clash", systemImage: "calendar.badge.exclamationmark")
             } description: {
-                Text(readError)
+                Text(failure)
             } actions: {
                 // The spinner in the failure's place while it reads, then the clash or the new reason.
                 Button("Try Again") {
-                    readError = nil
+                    self.readError = nil
                     read = false
                     Task { await load() }
                 }
