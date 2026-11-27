@@ -5,7 +5,7 @@ import { RowsMenu } from "../../chrome/menuRows";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones } from "../../components/bones";
 import { Spinner } from "../../components/ui/spinner";
 import { Tip, TruncateTip } from "../../components/tip";
 import { ItemButton } from "../../components/ui/item";
@@ -287,38 +287,59 @@ export function Progress({ meeting }: { meeting: Meeting }) {
         <Spinner className="size-3.5" />
         <span>{progressLine(meeting)}</span>
       </div>
-      {[
-        [30, 84, 62],
-        [24, 70],
-      ].map((widths, i) => (
-        <div key={i} aria-hidden className="flex flex-col gap-2 px-3 py-2">
-          {widths.map((w, j) => (
-            <Skeleton key={j} className="h-3" style={{ width: `${w}%` }} />
+      {/* The turns still to come, drawn from sample words: the working line above says the wait. */}
+      <Bones label="">
+        <div className="flex flex-col gap-0.5">
+          {SAMPLE_TO_COME.segments.map((seg) => (
+            <Turn key={seg.id} seg={seg} meeting={SAMPLE_TO_COME} current={false} hits={[]} hit={null} onSeek={STILL} nameNode={<PlainName speakers={SAMPLE_TO_COME.speakers} speaker={SAMPLE_TO_COME.speakers.find((s) => s.id === seg.speaker) ?? null} />} hint={null} />
           ))}
         </div>
-      ))}
+      </Bones>
     </div>
   );
 }
 
-/** A meeting still loading, in the transcript's shape. */
-export function TurnsSkeleton() {
+/** A meeting still loading: the transcript itself, drawn from three sample turns. */
+export function TurnsBones() {
   return (
-    <div data-meeting-skeleton aria-busy="true" aria-label="Loading" className="mx-auto flex max-w-[704px] flex-col px-2 pt-2">
-      {[
-        [18, 92, 70],
-        [22, 80],
-        [16, 88, 54],
-      ].map((widths, i) => (
-        <div key={i} className="flex flex-col gap-2 px-3 py-2">
-          {widths.map((w, j) => (
-            <Skeleton key={j} className={j === 0 ? "h-3" : "h-3.5"} style={{ width: `${w}%` }} />
-          ))}
-        </div>
-      ))}
-    </div>
+    <Bones label="Loading">
+      <SampleTurns meeting={SAMPLE_TURNS} />
+    </Bones>
   );
 }
+
+/** `Turns` at rest, for bones: nothing playing, picked or found, and no press that does anything. */
+function SampleTurns({ meeting }: { meeting: Meeting }) {
+  return <Turns meeting={meeting} current={null} hits={[]} hit={null} selected={[]} tasks={NO_TASKS} currentTask={null} onSeek={STILL} onTask={STILL} name={(speaker) => <PlainName speakers={meeting.speakers} speaker={speaker} />} />;
+}
+
+const STILL = (): void => {};
+const NO_TASKS: ReadonlyMap<string, MeetingAction[]> = new Map();
+const sampleMeetingOf = (segments: [number, string, string][]): Meeting => ({
+  itemId: "sample:meeting",
+  sessionId: "sample:thread",
+  title: "",
+  status: "ready",
+  rev: 0,
+  from: "recording",
+  durationSec: 1_800,
+  peaks: [],
+  speakers: [
+    { id: "S1", label: "Speaker 1", name: "Dana Lee" },
+    { id: "S2", label: "Speaker 2", name: "Sam Ortiz" },
+  ],
+  segments: segments.map(([start, speaker, text], i) => ({ id: `sample:s${i}`, speaker, start, end: start + 20, text })),
+  notes: null,
+});
+const SAMPLE_TURNS = sampleMeetingOf([
+  [52, "S1", "On nationals: I need the final number by Friday, or it misses this quarter's request."],
+  [80, "S2", "I'll send it Friday. Flights and hotel are in."],
+  [108, "S1", "Then keep contingency at eight percent and we're fine on the budget for the spring."],
+]);
+const SAMPLE_TO_COME = sampleMeetingOf([
+  [870, "S2", "Next is the spring LAN. Events booking held the ballroom for April."],
+  [892, "S1", "Do we know the power?"],
+]);
 
 // ── the notes ────────────────────────────────────────────────────────
 

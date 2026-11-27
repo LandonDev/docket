@@ -213,9 +213,10 @@ The pillar has no view of its own and no row in the column.
   under him; what it says with Work off is the dialog's. It remounts in that place: a step
   in progress starts again.
 - `ClashDialog.tsx`: the two events and the drive, the ways out each allows,
-  each way's one step. While it reads a clash it was not handed, a 12px bone
-  holds the day line under the title and each event's bones end in a row of
-  two 28px button bones, so the dialog does not grow when the clash lands. Decline, a proposed time and a move go through
+  each way's one step. While it reads a clash it was not handed, a sample day's words
+  hold the day line under the title and the two events are drawn from sample
+  words, each ending in its row of two ways out (`Bones`; docs/agents/loading-bones.md),
+  so the dialog does not grow when the clash lands. Decline, a proposed time and a move go through
   `work.clashes.answer`; "This is fine" through `work.clashes.waive`, with
   Undo on its toast. While the LifeOS session is down Running late is not
   offered: its place holds the session's line (`DownLine`, its press by the

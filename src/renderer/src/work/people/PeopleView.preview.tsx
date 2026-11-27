@@ -5,7 +5,7 @@ import { Users } from "../../chrome/icons";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { boxSilent, JOB, standUpView, Unsettled, ViewAt } from "../kit.preview";
 import { WORK_VIEWS } from "../views/registry";
-import { PageVerbs, PeopleList, PersonPageBody, setPlace } from "./PeopleView";
+import { PageVerbs, PeopleList, PersonPageBody, setPlace, View } from "./PeopleView";
 import type { DirectoryPerson, PersonPage } from "./model";
 
 /**
@@ -14,7 +14,8 @@ import type { DirectoryPerson, PersonPage } from "./model";
  * `list` (the sector's people, newest contact first), `page` (one person with
  * something of every kind), `quiet` (a person with nothing live) and
  * `page-silent` (a person's page kept from a visit before, the box silent on its
- * LifeOS status: the frame's one line, nothing under it). Rendered by nothing in
+ * LifeOS status: the frame's one line, nothing under it), and `loading` and
+ * `page-loading` (the list and a page while LifeOS connects: their bones). Rendered by nothing in
  * the app.
  */
 
@@ -102,6 +103,14 @@ export function PeoplePreview({ state = "list" }: { state?: string }) {
     return (
       <Frame title={<BackTitle back="People" name={page.person.name} onBack={none} />} head={<PageVerbs canWrite={page.person.emails.length > 0} onWrite={none} onThread={none} />}>
         <PersonPageBody workspace={workspace} startThread={none} faces={NO_FACES} page={page} links={state === "page" ? LINKS : []} now={NOW} />
+      </Frame>
+    );
+  }
+  if (state === "loading" || state === "page-loading") {
+    setPlace(workspace.id, { person: state === "page-loading" ? "p1" : null, query: "" });
+    return (
+      <Frame title={<span className="font-medium text-foreground">People</span>}>
+        <View env="box" workspace={workspace} sector="purdue" lifeos={{ environmentId: "box", sector: "purdue", client: null, state: "connecting" }} startThread={none} />
       </Frame>
     );
   }

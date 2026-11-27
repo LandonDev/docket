@@ -90,8 +90,8 @@ describe("Money shown again", () => {
     expect(moneyKeptCount()).toBe(0);
     setWorkOn("box", true);
     render(<Framed />);
-    expect(document.querySelector("[data-money-figures]")).toBeNull();
-    expect(screen.getByLabelText("Loading money")).toBeTruthy();
+    expect([...document.querySelectorAll("[data-money-figures]")].filter((figures) => !figures.closest("[skullet-loading]"))).toHaveLength(0);
+    expect(document.querySelector("[data-region][data-bones]")).toBeTruthy();
   });
 
   it(`keeps the last ${MONEY_KEPT} periods read, the least recently used dropped`, async () => {

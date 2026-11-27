@@ -13,7 +13,7 @@ import type { WorkViewProps } from "../views/registry";
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
 const NOW = new Date(2026, 10, 23, 12).getTime();
-const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: Record<string, unknown> }[], page: null as unknown, directoryFails: false, pageFails: false, pageError: "LifeOS refused the page", once: [] as { args: unknown; answer(): void; fail(e: Error): void }[] }));
+const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: Record<string, unknown> }[], page: null as unknown, directoryFails: false, directoryLoading: false, pageFails: false, pageLoading: false, pageError: "LifeOS refused the page", once: [] as { args: unknown; answer(): void; fail(e: Error): void }[] }));
 const directory = [
   { _id: "p_maya", name: "Maya Chen", emails: ["maya@school.edu"], lastAt: NOW - 3_600_000 },
   { _id: "p_tom", name: "Tom Beck", emails: ["tom@school.edu"] },
@@ -26,6 +26,8 @@ vi.mock("../shell/lifeos", async (original) => ({
   refreshLifeos: async (env: string) => void link.refreshed.push(env),
   useLifeosQuery: (_session: unknown, name: string, args: Record<string, unknown>) => {
     lifeos.asked.push({ name, args });
+    if (name === "people:directory" && lifeos.directoryLoading) return { status: "loading" };
+    if (name === "people:page" && lifeos.pageLoading) return { status: "loading" };
     if (name === "people:directory") return lifeos.directoryFails ? { status: "failed", error: "LifeOS refused" } : { status: "ready", value: directory };
     if (name === "mail:faces") return { status: "ready", value: [] };
     if (name === "people:page") return lifeos.pageFails ? { status: "failed", error: lifeos.pageError } : { status: "ready", value: lifeos.page };
@@ -83,6 +85,8 @@ beforeEach(() => {
   lifeos.asked = [];
   lifeos.page = mayaPage;
   lifeos.directoryFails = false;
+  lifeos.directoryLoading = false;
+  lifeos.pageLoading = false;
   host.links = [];
   mail.drafts = [];
   forms.asked = [];
@@ -94,6 +98,29 @@ afterEach(() => {
   vi.useRealTimers();
   cleanup();
   openWorkView(null);
+});
+
+describe("while People reads", () => {
+  const drawing = () => document.querySelector<HTMLElement>("[data-region][data-bones] [skullet-loading]")!;
+
+  it("draws the list's own rows from sample people, unseen and inert", () => {
+    lifeos.directoryLoading = true;
+    mount();
+    expect(drawing().getAttribute("aria-hidden")).toBe("true");
+    expect(drawing().querySelectorAll("[data-person-row]")).toHaveLength(5);
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(document.querySelector("[data-slot=skeleton]")).toBeNull();
+  });
+
+  it("draws a person's page from a sample page until it is read", async () => {
+    lifeos.pageLoading = true;
+    setPlace("ws", { person: "p_maya" });
+    mount();
+    await act(async () => {});
+    expect(drawing().querySelector("h1")!.textContent).toBe("Maya Chen");
+    expect(drawing().querySelectorAll("[data-page-row]")).toHaveLength(2);
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+  });
 });
 
 describe("the list", () => {
@@ -167,6 +194,8 @@ describe("the list", () => {
     mount();
     expect(screen.getByText("People did not load")).toBeTruthy();
     lifeos.directoryFails = false;
+  lifeos.directoryLoading = false;
+  lifeos.pageLoading = false;
   });
 
   /** Council round 12 (the walk): People did not load had no Retry. */
@@ -186,11 +215,15 @@ describe("the list", () => {
       expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
       lifeos.directoryFails = false;
+  lifeos.directoryLoading = false;
+  lifeos.pageLoading = false;
       await act(async () => lifeos.once[1].answer());
       expect(screen.queryByText("People did not load")).toBeNull();
       expect(screen.getAllByRole("listitem")).toHaveLength(2);
     } finally {
       lifeos.directoryFails = false;
+  lifeos.directoryLoading = false;
+  lifeos.pageLoading = false;
     }
   });
 });

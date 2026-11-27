@@ -64,6 +64,18 @@ async function open(kind: "invoice" | "request" = "invoice") {
 }
 
 describe("an invoice", () => {
+  it("while its number is asked draws its own form from a sample, unseen and inert", async () => {
+    host.answer = (method) => (method === "work.money.invoiceNext" ? new Promise(() => {}) : null);
+    const { dialog } = await open();
+    const drawing = dialog.querySelector("[data-region][data-bones] [skullet-loading]")!;
+    expect(drawing.getAttribute("aria-hidden")).toBe("true");
+    expect((drawing.querySelector("[data-invoice-line] input") as HTMLInputElement).value).toBe("Varsity games");
+    // No field of the sample's takes the caret, and none is his to type in.
+    expect(drawing.contains(document.activeElement)).toBe(false);
+    expect(within(dialog).queryByRole("textbox")).toBeNull();
+    expect(dialog.querySelector("[data-slot=skeleton]")).toBeNull();
+  });
+
   it("is no longer marked loading once the number lookup failed: it says why", async () => {
     host.answer = (method) => {
       if (method === "work.money.invoiceNext") throw new Error("The ledger's columns changed.");

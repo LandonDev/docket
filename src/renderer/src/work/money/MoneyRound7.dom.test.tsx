@@ -187,11 +187,12 @@ describe("the loading bones", () => {
     host.read = () => new Promise<MoneyRead>((r) => (land = r));
     mount();
     await settle();
-    const bones = screen.getByLabelText("Loading money");
+    // Entries itself, drawn from a sample month's six rows.
+    const bones = document.querySelector("[data-region][data-bones] [skullet-loading]")!;
     const heads = (root: ParentNode) => Array.from(root.querySelectorAll("th")).map((th) => th.className);
     const boneHeads = heads(bones);
-    expect(bones.querySelectorAll("tr[data-money-bone]")).toHaveLength(6);
-    expect(bones.querySelector("tr[data-money-bone] td")!.querySelector("[data-slot=skeleton]")).toBeTruthy();
+    expect(bones.querySelectorAll("tr[data-money-row]")).toHaveLength(6);
+    expect(bones.querySelector("[data-slot=skeleton]")).toBeNull();
     // A month with no row both ways: Amount keeps the bones' width.
     await act(async () => land(readOf({ from: "2026-11-01", to: "2026-12-01" }, ALL_ROWS.filter((r) => !(r.in && r.out)))));
     await settle();
@@ -294,6 +295,6 @@ describe("a ledger that leads outside the job", () => {
     expect(line.textContent).toContain("Money did not load");
     expect(line.textContent).toContain(words);
     expect(screen.queryByText("No money yet")).toBeNull();
-    expect(screen.queryByLabelText("Loading money")).toBeNull();
+    expect(document.querySelector("[data-region][data-bones]")).toBeNull();
   });
 });

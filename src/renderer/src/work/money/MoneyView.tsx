@@ -9,7 +9,7 @@ import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { ChoiceToggle } from "../../components/choice-toggle";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { ItemButton } from "../../components/ui/item";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Region, useInBones } from "../../components/bones";
 import { StatusMark } from "../../components/ui/status";
 import { Tip, TruncateTip, useTruncated } from "../../components/tip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
@@ -33,6 +33,7 @@ import { ReceiptPicture, ToConfirmSection } from "./ToConfirm";
 import { TripDialog } from "./TripDialog";
 import { periodLabel, periodNow, periodOf, rowMoney, signedMoney, sinceWords, stepPeriod, type PeriodState, type Span } from "./model";
 import { byMonthBars, MONTH_BARS_HEIGHT, monthBarsChunk } from "./monthBarData";
+import { SAMPLE_MONEY } from "./samples";
 
 /**
  * A Work workspace's Money (docs/agents/work-money.md, docs/DESIGN.md "The
@@ -277,7 +278,7 @@ export function View({ env, workspace }: WorkViewProps) {
 
   const toConfirm = read ? <ToConfirmSection env={env} workspaceId={workspace.id} read={read} reload={reload} onReview={(id) => set({ dialog: { kind: "confirm", id } })} onReviewOffer={(offer) => set({ dialog: { kind: "trip", offer } })} /> : null;
   let body: ReactNode;
-  if (!read) body = load.error || linkDown ? null : <MoneySkeleton />;
+  if (!read) body = null;
   else if (columns) body = waits(read) ? <Column>{toConfirm}</Column> : null;
   else if (bare && (load.error || linkDown)) body = null;
   else if (bare) body = <EmptyState title="No money yet" line="Drop a receipt here." action={{ label: "Add entry", onClick: () => set({ dialog: { kind: "entry" } }) }} />;
@@ -317,7 +318,15 @@ export function View({ env, workspace }: WorkViewProps) {
         )
       ) : null}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        {body}
+        {/* The ledger itself drawn from a sample month, so each bone stands where its figure, heading or row lands. */}
+        <Region
+          fill
+          loading={!read && !load.error && !linkDown}
+          label="Loading money"
+          bones={() => <Ledger env={env} workspaceId={workspace.id} read={SAMPLE_MONEY} label="" year={period.span === "year"} reload={STILL_RELOAD} toConfirm={null} />}
+        >
+          {body}
+        </Region>
         {over ? (
           <div data-money-wash className="absolute inset-0 z-20 grid place-items-center bg-background/80">
             <span className="rounded-lg bg-background px-3 py-1.5 text-[13px] text-foreground">File as receipt</span>
@@ -440,6 +449,9 @@ const waits = (read: MoneyRead): boolean => read.toConfirm.length > 0 || read.ca
 /** "No money yet": the job has never had money (`any`: a row or a trip in any period), and nothing waits either (the first drop on a new job is seen). */
 export const isEmpty = (read: MoneyRead): boolean => !waits(read) && !read.any;
 
+/** The bones' reload: the sample is drawn at rest, and nothing in it asks the host. */
+const STILL_RELOAD = (): Promise<void> => Promise.resolve();
+
 /** The view's one column, scrolling. */
 function Column({ children }: { children: ReactNode }) {
   return (
@@ -520,7 +532,10 @@ function Section({ title, action, children }: { title: string; action?: ReactNod
   return (
     <section aria-label={title} className="flex flex-col gap-2">
       <div className="flex min-h-6 items-center justify-between gap-2">
-        <h2 className="text-[13px] font-semibold text-foreground">{title}</h2>
+        {/* Known before the read: in the bones it is drawn as it is. */}
+        <h2 skullet-own="" className="text-[13px] font-semibold text-foreground">
+          {title}
+        </h2>
         {action}
       </div>
       {children}
@@ -550,7 +565,9 @@ function Figures({ read }: { read: MoneyRead }) {
 function Figure({ label, cents }: { label: string; cents: number }) {
   return (
     <div className="flex flex-col">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span skullet-own="" className="text-xs text-muted-foreground">
+        {label}
+      </span>
       <span className="text-base leading-6 font-semibold tracking-[-0.01em] tabular-nums">{formatMoney(cents)}</span>
     </div>
   );
@@ -569,6 +586,8 @@ const MonthBars = monthBarsChunk.surface(
 );
 
 function ByMonth({ read }: { read: MoneyRead }) {
+  // In bones the chart is one block at its own height: it has no words to measure, and its chunk is no wait of the read's.
+  const inBones = useInBones();
   const data = byMonthBars(read.byMonth);
   return (
     <Section title="In and out by month">
@@ -579,7 +598,7 @@ function ByMonth({ read }: { read: MoneyRead }) {
             { label: "Out", color: "var(--chart-2)" },
           ]}
         />
-        <MonthBars data={data} />
+        {inBones ? <Bone className="w-full" height={MONTH_BARS_HEIGHT} /> : <MonthBars data={data} />}
       </div>
     </Section>
   );
@@ -685,7 +704,7 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
 // ── entries ──────────────────────────────────────────────────────────
 
 /**
- * Entries' table and its columns, which the loading bones share so nothing slides when the read lands: a fixed layout, so the
+ * Entries' table and its columns, drawn by the loading bones too so nothing slides when the read lands: a fixed layout, so the
  * columns stand where the header puts them whatever the rows hold. Amount is 112px always: a rare row with money both ways
  * breaks its two figures onto two lines in its own cell, so it grows taller and no row's Who is cut to a letter.
  */
@@ -694,7 +713,7 @@ const ENTRIES_TABLE = "-mx-2 w-[calc(100%+1rem)] table-fixed";
 function EntriesHead() {
   return (
     <TableHeader>
-      <TableRow>
+      <TableRow skullet-own="">
         {/* Under 640px the date's 64px still holds "Nov 21" and gives Who 32px more. */}
         <TableHead className="w-24 first:pl-2 @max-[640px]/money:w-16">Date</TableHead>
         <TableHead>Who</TableHead>
@@ -809,50 +828,6 @@ function ProblemLine({ word, detail, action, onPress }: { word: string; detail: 
       >
         <BusyLabel busy={running} label={action} />
       </Button>
-    </div>
-  );
-}
-
-/** The figures' labels over bones, then Entries' heading and own table with a bone in each cell (only what the read fills is a bone): the amount ends on money's one edge (layout.ts), and nothing moves as the read lands. */
-function MoneySkeleton() {
-  return (
-    <div aria-busy="true" aria-label="Loading money" className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-4 py-4">
-      {/* The figures' own row (it wraps as theirs does), each bone a figure's width ("$445.00"), so none runs past the edge. */}
-      <div className="flex flex-wrap items-start gap-x-8 gap-y-3 border-b border-border pb-4">
-        {["In", "Out", "Net"].map((label) => (
-          <div key={label} className="flex flex-col">
-            <span className="text-xs text-muted-foreground">{label}</span>
-            <Skeleton className="my-0.5 h-5 w-18" />
-          </div>
-        ))}
-      </div>
-      <section className="flex flex-col gap-2">
-        <div className="flex min-h-6 items-center">
-          <h2 className="text-[13px] font-semibold text-foreground">Entries</h2>
-        </div>
-        <Table className={ENTRIES_TABLE}>
-          <EntriesHead />
-          <TableBody>
-            {[72, 56, 64, 48, 60, 52].map((w, i) => (
-              <TableRow key={i} data-money-bone>
-                <TableCell className="first:pl-2">
-                  <Skeleton className="h-3 w-12" />
-                </TableCell>
-                <TableCell className="max-w-0">
-                  <Skeleton className="h-3" style={{ width: `${w}%` }} />
-                </TableCell>
-                <TableCell className={cn("max-w-0", WIDE_ONLY)}>
-                  <Skeleton className="h-3" style={{ width: `${w - 12}%` }} />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="ms-auto h-3 w-16" />
-                </TableCell>
-                <TableCell className="last:pr-2" />
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </section>
     </div>
   );
 }

@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 describe("the list", () => {
-  it("shows a skeleton in the rows' shape until the hosts have answered, then sections by day with each row's job, words and time", async () => {
+  it("shows its sections drawn from a sample day until the hosts have answered, then sections by day with each row's job, words and time", async () => {
     w().days.set("box", [{ day: "2026-11-24", madeAt: at(24, 8), seenAt: null, count: 2 }, { day: "2026-11-23", madeAt: at(23, 8), seenAt: 5, count: 1 }]);
     w().rows.set("box", [
       tell({ title: "Receipts to confirm", detail: "3 from Friday", sector: "ref", at: at(24, 9, 15) }),
@@ -50,11 +50,15 @@ describe("the list", () => {
     ]);
     // Before any host has answered: rows in their shape, no words.
     const waiting = render(<DigestSheet open onOpenChange={() => {}} view={{ days: [], rows: [], settings: null, loaded: false, errors: [] }} now={NOW} onOpenRow={() => {}} />);
-    expect(screen.getByLabelText("Loading")).toBeTruthy();
+    const drawing = document.querySelector("[data-region][data-bones] [skullet-loading]")!;
+    expect(drawing.getAttribute("aria-hidden")).toBe("true");
+    expect(drawing.querySelectorAll("h3")).toHaveLength(1);
+    expect(drawing.querySelectorAll("li")).toHaveLength(4);
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
     expect(screen.queryByText(/^Nothing since/)).toBeNull();
     waiting.unmount();
     render(<Sheet />);
-    await waitFor(() => expect(screen.queryByLabelText("Loading")).toBeNull());
+    await waitFor(() => expect(document.querySelector("[data-region][data-bones]")).toBeNull());
     expect(await screen.findByRole("heading", { name: "Digest" })).toBeTruthy();
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Since the digest", "Today, 8:00 AM", "Yesterday"]);
     // Each heading starts on its rows' title edge, past the dot's 16px box and its 8px gap.

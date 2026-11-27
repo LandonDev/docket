@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** The Clash dialog: the two events and the drive, only the ways out each allows, each way's one step, Send, a refusal in words, and "This is fine". */
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Clash, ClashSide } from "@shared/work/clashes";
 import { addDays, startOfDay } from "work-kit/views/lib/agenda";
@@ -1089,12 +1089,16 @@ describe("the Clash dialog", () => {
     show(null);
     await settle();
     const reading = screen.getByRole("dialog", { name: "Clash" });
-    expect(reading.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    // The two events drawn from sample words, unseen and inert; no bone drawn by hand.
+    const drawing = reading.querySelector("[data-region]:not([data-inline])[data-bones] [skullet-loading]")!;
+    expect(drawing.getAttribute("aria-hidden")).toBe("true");
+    expect(drawing.textContent).toContain("Budget review");
+    expect(reading.querySelector("[data-slot=skeleton]")).toBeNull();
     // The day line and each event's ways out hold their places, so the dialog does not grow when the clash lands.
-    expect(reading.querySelector("[data-day-bone]")).not.toBeNull();
-    expect(reading.querySelectorAll("[data-ways-bone]")).toHaveLength(2);
-    // The bones are for the eye; a screen reader hears the wait in words.
-    expect(screen.getByRole("status").textContent).toBe("Reading the clash…");
+    expect(reading.querySelector("[data-region][data-inline] [skullet-loading]")!.textContent).toBe("Thursday, November 26");
+    expect(drawing.querySelectorAll("[data-ways-bone]")).toHaveLength(2);
+    // The bones are for the eye; a screen reader hears the wait in words, once they show.
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Reading the clash…"));
     cleanup();
     show(null, marksOf({ clashes: [overlap()], leaves: [] }));
     await settle();
@@ -1134,7 +1138,7 @@ describe("the Clash dialog", () => {
     await settle();
     const dialog = screen.getByRole("dialog", { name: "Clash" });
     expect(within(dialog).getByRole("alert").textContent).toBe("LifeOS did not answer");
-    expect(dialog.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(dialog.querySelector("[data-region][data-bones]")).toBeNull();
   });
 
   it("says a read the session's drop failed as the session's line, the computer named, with its press (council round 9's walk)", async () => {

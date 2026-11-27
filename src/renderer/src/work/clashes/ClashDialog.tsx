@@ -10,7 +10,7 @@ import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { DateField } from "../../components/ui/date-field";
 import { TimeField } from "../../components/ui/time-field";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones } from "../../components/bones";
 import { Textarea } from "../../components/ui/textarea";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
@@ -109,21 +109,33 @@ export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => vo
   );
 }
 
-/** The day line's place under the title while the clash is read. */
-const DAY_BONE = <span aria-hidden data-day-bone className="inline-block h-3 w-28 rounded-md bg-skeleton align-middle" />;
+/** The day line's place under the title while the clash is read: a day's words, drawn as their bone. */
+export const DAY_BONE = (
+  <Bones inline label="">
+    Thursday, November 26
+  </Bones>
+);
 
-/** One event's bones: its title, its two lines, then the row its ways out stand in, 8px under. */
-function EventBones() {
+/** One event as the bones draw it: EventBlock's lines from sample words, then the row its ways out stand in, 8px under. */
+function SampleEvent({ title, time, job, place }: { title: string; time: string; job: string; place: string }) {
   return (
-    <div className="flex flex-col">
-      <div className="flex flex-col gap-2 py-1">
-        <Skeleton className="h-3.5 w-2/5" />
-        <Skeleton className="h-3 w-3/5" />
-        <Skeleton className="h-3 w-1/2" />
-      </div>
-      <div data-ways-bone className="mt-2 flex gap-2">
-        <Skeleton className="h-7 w-20 rounded-md" />
-        <Skeleton className="h-7 w-24 rounded-md" />
+    <div className="flex min-w-0 flex-col">
+      <span className="break-words font-medium text-foreground">{title}</span>
+      <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs leading-5 text-muted-foreground">
+        <span className="shrink-0 tabular-nums">{time}</span>
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <SectorDot sector={null} className="size-2" />
+          <span className="truncate">{job}</span>
+        </span>
+      </span>
+      <span className="break-words text-xs leading-5 text-muted-foreground">{place}</span>
+      <div data-ways-bone className="mt-2 flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm">
+          {WAY_LABEL.decline}
+        </Button>
+        <Button variant="outline" size="sm">
+          {WAY_LABEL.move}
+        </Button>
       </div>
     </div>
   );
@@ -131,24 +143,22 @@ function EventBones() {
 
 /**
  * The dialog with no clash to show: the two events' bones with the hairline
- * between them while it is read; why, in words, when the read failed; and
- * nothing under the title once the two no longer clash, since the title says so.
+ * between them while it is read (`Bones`, which says the wait to a screen
+ * reader); why, in words, when the read failed; and nothing under the title
+ * once the two no longer clash, since the title says so.
  */
 export function Empty({ state, error, down = null, onClose }: { state: "loading" | "failed" | "gone"; error?: string | undefined; /** the session is down: its line in the error's place */ down?: LifeosSession | null; onClose: () => void }) {
   return (
     <>
       {state === "loading" ? (
-        <ModalBody className="gap-3">
-          {/* The bones are for the eye; the wait is said once, in words, for a screen reader. */}
-          <span role="status" className="sr-only">
-            Reading the clash…
-          </span>
-          <div aria-hidden className="flex flex-col gap-3">
-            <EventBones />
-            <span className="h-px bg-border" />
-            <EventBones />
-          </div>
-        </ModalBody>
+        // The two events drawn from sample words, the hairline between them kept as it is.
+        <Bones label="Reading the clash…">
+          <ModalBody className="gap-3">
+            <SampleEvent title="Varsity basketball at Harrison" time="4:00 to 6:00 PM" job="Refereeing" place="Harrison High School, Lafayette" />
+            <span skullet-own="" className="h-px bg-border" />
+            <SampleEvent title="Budget review" time="5:30 to 6:30 PM" job="Purdue" place="Cedar Hall, Room 204" />
+          </ModalBody>
+        </Bones>
       ) : null}
       {state === "failed" ? (
         <ModalBody>

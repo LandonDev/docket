@@ -40,6 +40,7 @@ vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original
 const { Head, View, setMoneyPeriod } = await import("./MoneyView");
 const { SUGGESTED_WORDS } = await import("./api");
 const { ALL_ROWS, BOTH_WAYS, readOf } = await import("./money.fixtures");
+const { MONTH_BARS_HEIGHT } = await import("./monthBarData");
 const { openMoneyDialog } = await import("./MoneyView");
 const { filedWords, SKIPPED_WORDS } = await import("./TripDialog");
 
@@ -84,7 +85,7 @@ describe("Entries' Amount column", () => {
     host.read = () => new Promise<MoneyRead>((r) => (land = r));
     mount();
     await settle();
-    expect(amountHead(screen.getByLabelText("Loading money"))).toContain("w-28");
+    expect(amountHead(document.querySelector("[data-region][data-bones] [skullet-loading]")!)).toContain("w-28");
     await act(async () => land(readOf({ from: "2026-11-01", to: "2026-12-01" })));
     await settle();
     const entries = screen.getByRole("region", { name: "Entries" });
@@ -245,9 +246,23 @@ describe("loading", () => {
     host.read = () => new Promise<MoneyRead>(() => {});
     mount();
     await settle();
-    const bones = within(screen.getByLabelText("Loading money"));
-    expect(bones.getByRole("heading", { name: "Entries" })).toBeTruthy();
-    for (const label of ["In", "Out", "Net"]) expect(bones.getByText(label)).toBeTruthy();
+    // The ledger itself from a sample month: its known words are drawn as they are (`skullet-own`), the rest as bones.
+    const bones = within(document.querySelector<HTMLElement>("[data-region][data-bones] [skullet-loading]")!);
+    expect(bones.getByRole("heading", { name: "Entries", hidden: true }).hasAttribute("skullet-own")).toBe(true);
+    for (const label of ["In", "Out", "Net"]) expect(bones.getByText(label).hasAttribute("skullet-own")).toBe(true);
+    expect(bones.getAllByRole("row", { hidden: true })[0]!.hasAttribute("skullet-own")).toBe(true);
+    expect(document.querySelector("[data-slot=skeleton]")).toBeNull();
+  });
+
+  it("holds a year's chart as one bone at the chart's height", async () => {
+    setMoneyPeriod({ span: "year", year: 2026, month: 11 });
+    host.read = () => new Promise<MoneyRead>(() => {});
+    mount();
+    await settle();
+    const bones = document.querySelector("[data-region][data-bones] [skullet-loading]")!;
+    const chart = within(bones as HTMLElement).getByRole("region", { name: "In and out by month", hidden: true });
+    expect(chart.querySelector<HTMLElement>("[data-bone]")!.style.height).toBe(`${MONTH_BARS_HEIGHT}px`);
+    expect(chart.querySelector("[data-chart]")).toBeNull();
   });
 });
 

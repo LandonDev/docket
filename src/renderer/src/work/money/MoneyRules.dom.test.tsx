@@ -149,8 +149,9 @@ describe("a read belongs to its period", () => {
     host.read = (p) => new Promise((done) => (land = () => done(readOf(p))));
     fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
     await settle();
-    expect(document.querySelector("[data-money-figures]")).toBeNull();
-    expect(screen.getByLabelText("Loading money")).toBeTruthy();
+    // The bones' own sample figures stand in the drawing; none of the old month's outside it.
+    expect(document.querySelector("[data-region][data-bones]")).toBeTruthy();
+    expect([...document.querySelectorAll("[data-money-figures]")].filter((figures) => !figures.closest("[skullet-loading]"))).toHaveLength(0);
     await act(async () => land(readOf({ from: "2026-10-01", to: "2026-11-01" })));
     await settle();
     expect(document.querySelector("[data-money-figures]")).toBeTruthy();
@@ -166,7 +167,7 @@ describe("a read belongs to its period", () => {
     await settle();
     expect(screen.getByText("Money did not load")).toBeTruthy();
     expect(document.querySelector("[data-money-figures]")).toBeNull();
-    expect(screen.queryByLabelText("Loading money")).toBeNull();
+    expect(document.querySelector("[data-region][data-bones]")).toBeNull();
   });
 });
 

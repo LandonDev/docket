@@ -5,7 +5,7 @@ import type { CanvasSource } from "@shared/work";
 import { ChevronLeft, ChevronRight, Copy, Search, X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { GroupInput, InputGroup } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones } from "../../components/bones";
 import { Tip } from "../../components/tip";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { uploadAttachment } from "../../lib/attachmentUpload";
@@ -15,7 +15,7 @@ import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, ReviewAdapter } from "../canvas/kind";
 import { Download, Export } from "../icons";
 import { decideTasks, loadMeeting, startMeeting, startOnce, undoNotes, useMeeting } from "./data";
-import { Failed, NotesDoc, NothingYet, PlainName, PlayerRow, Progress, Turns, TurnsSkeleton } from "./MeetingView";
+import { Failed, NotesDoc, NothingYet, PlainName, PlayerRow, Progress, Turns, TurnsBones } from "./MeetingView";
 import { findHits, proposedTasks, segmentAt, stretchLabel, stretchOf, tasksByTurn, transcriptText } from "./model";
 import { downloadRecording, saveBlob, usePlayer } from "./player";
 import { HostLine } from "../shell/DownLine";
@@ -275,7 +275,7 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
   }
   // A read that failed is the centred failure with Retry: nothing under it pretends to load.
   if (error && !meeting) return <OpenFailed kind="meeting" why={error} onRetry={retry} />;
-  if (!loaded || (needsFile && hasFile(source))) return <TurnsSkeleton />;
+  if (!loaded || (needsFile && hasFile(source))) return <TurnsBones />;
   if (!meeting || meeting.status === "empty") {
     return (
       <div
@@ -339,6 +339,15 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<Meetin
  * Find, which gives way to the review stepper while tasks wait (meeting.html).
  * While the meeting loads the bar holds one bone where the mode will be.
  */
+/** The bar while the meeting is read: its Find press where it lands, drawn as its bone. */
+const BAR_BONES = (
+  <Bones inline label="" className="ms-auto">
+    <Button data-meeting-bar-bone variant="ghost" size="icon-xs" aria-label="Find" className="text-muted-foreground">
+      <Search />
+    </Button>
+  </Bones>
+);
+
 export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState>) {
   const view = state ?? FIRST;
   const { meeting, loaded, error } = useMeeting(env, item.id);
@@ -358,7 +367,7 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MeetingState
     refocus.current = true;
     setState({ ...view, find: null });
   };
-  if (!meeting && !loaded) return <Skeleton data-meeting-bar-bone className="h-3 w-24" />;
+  if (!meeting && !loaded) return BAR_BONES;
   if (!meeting || meeting.status === "empty" || (error && !meeting)) return null;
   const notes = meeting.status === "ready" && meeting.notes !== null;
   const stepping = meeting.status === "ready" && proposedTasks(meeting).length > 0;

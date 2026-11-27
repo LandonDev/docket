@@ -5,7 +5,7 @@ import { X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { EventRow } from "../agenda/AgendaView";
 import type { AgendaEvent } from "../tasks/client";
-import { Empty, Events, StepForm } from "./ClashDialog";
+import { DAY_BONE, Empty, Events, StepForm } from "./ClashDialog";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { answerAs } from "../kit.preview";
 import { DownLine, HostLine } from "../shell/DownLine";
@@ -91,7 +91,7 @@ export function ClashDialogPreview({ state = "overlap" }: { state?: string }) {
   const day = "Thursday, November 26";
   if (state === "loading" || state === "gone") {
     return (
-      <Box title={state === "gone" ? "No longer a clash" : "Clash"} day={state === "gone" ? undefined : <span aria-hidden data-day-bone className="inline-block h-3 w-28 rounded-md bg-skeleton align-middle" />}>
+      <Box title={state === "gone" ? "No longer a clash" : "Clash"} day={state === "gone" ? undefined : DAY_BONE}>
         <Empty state={state === "gone" ? "gone" : "loading"} onClose={noop} />
       </Box>
     );

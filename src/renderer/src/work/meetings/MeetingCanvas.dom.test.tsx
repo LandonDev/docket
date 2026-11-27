@@ -86,7 +86,7 @@ async function seat(meeting: Meeting | null, item: CanvasItem = ITEM) {
     </CanvasSeat>,
   );
   await waitFor(() => expect(canvasOf("t1").loaded).toBe(true));
-  await waitFor(() => expect(view.container.querySelector("[data-meeting], [data-meeting-empty], [data-meeting-skeleton], [data-meeting-failed], [data-canvas-failed], [data-canvas-state]")).toBeTruthy());
+  await waitFor(() => expect(view.container.querySelector("[data-meeting], [data-meeting-empty], [data-region][data-bones], [data-meeting-failed], [data-canvas-failed], [data-canvas-state]")).toBeTruthy());
   await act(async () => {});
   return view;
 }
@@ -326,11 +326,17 @@ describe("the meeting canvas", () => {
     const busy = sampleMeeting({ status: "transcribing", rev: 2, segments: sampleMeeting().segments.slice(0, 4), progress: { phase: "words", done: 840, total: 2530 } });
     const { container } = await seat(busy);
     await waitFor(() => expect(container.querySelector("[data-meeting=transcribing]")).toBeTruthy());
-    expect(container.querySelectorAll("[data-turn]")).toHaveLength(4);
-    expect(container.querySelector("[data-meeting-progress]")!.textContent).toBe("Transcribing, 14 of 42 minutes");
+    // The turns heard, then the turns still to come drawn from sample words as bones, unseen and inert.
+    const heard = () => [...container.querySelectorAll("[data-turn]")].filter((turn) => !turn.closest("[skullet-loading]"));
+    expect(heard()).toHaveLength(4);
+    expect(container.querySelector("[data-meeting-progress] [role=status]")!.textContent).toBe("Transcribing, 14 of 42 minutes");
+    const toCome = container.querySelector("[data-meeting-progress] [data-region][data-bones] [skullet-loading]")!;
+    expect(toCome.getAttribute("aria-hidden")).toBe("true");
+    expect(toCome.querySelectorAll("[data-turn]")).toHaveLength(2);
+    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
     await act(async () => push(sampleMeeting({ rev: 3 })));
     await waitFor(() => expect(container.querySelector("[data-meeting=ready]")).toBeTruthy());
-    expect(container.querySelectorAll("[data-turn]")).toHaveLength(14);
+    expect(heard()).toHaveLength(14);
   });
 
   it("an item opened on a file starts it once; could not transcribe says why, keeps the player and tries again", async () => {
@@ -507,8 +513,8 @@ describe("the meeting canvas", () => {
     await waitFor(() => expect(container.querySelector("[data-canvas-failed]")?.textContent).toContain("Couldn't open this meeting"));
     expect(container.querySelector("[data-canvas-state=failed]")).toBeNull();
     expect(container.querySelector("[data-meeting-empty]")).toBeNull();
-    // Said once: no skeleton pulses under it, and the bar holds no bone.
-    expect(container.querySelector("[data-meeting-skeleton]")).toBeNull();
+    // Said once: no bones sweep under it, and the bar holds no bone.
+    expect(container.querySelector("[data-region][data-bones]")).toBeNull();
     expect(container.querySelector("[data-meeting-bar-bone]")).toBeNull();
     host.down = false;
     // Council round 12 (the walk): Retry handed back nothing, so it never spun. The failure stays, Retry spinning, until the answer.
@@ -547,7 +553,8 @@ describe("the meeting canvas", () => {
     let release!: () => void;
     host.hold = new Promise<void>((r) => (release = r));
     const { container } = await seat(sampleMeeting());
-    expect(container.querySelector("[data-meeting-skeleton]")).toBeTruthy();
+    // The transcript itself drawn from sample turns, unseen and inert.
+    expect(container.querySelector("[data-region][data-bones] [skullet-loading] [data-meeting-turns]")).toBeTruthy();
     await waitFor(() => expect(container.querySelector("[data-canvas-bar] [data-meeting-bar-bone]")).toBeTruthy());
     await act(async () => release());
     await waitFor(() => expect(container.querySelector("[data-meeting=ready]")).toBeTruthy());

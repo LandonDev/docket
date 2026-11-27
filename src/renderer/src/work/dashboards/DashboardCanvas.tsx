@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import type { DashBlock, DashboardView, DashFigure, DashFormat, DashFrom, DashProposal, DashSheet } from "@shared/contract-work-dashboards";
 import { ExternalLink, RefreshCw } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Bones, Region, useInBones } from "../../components/bones";
 import { Table as DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { TooltipProvider } from "../../components/ui/tooltip";
 import { Tip, TruncateTip } from "../../components/tip";
@@ -162,33 +162,45 @@ export function Body(props: Props) {
   const line = linkDown ? { tone: "quiet" as const, word: linkDown, wrap: true, action: { label: "Retry", run: () => retryLink(props.env) } } : lifeosLineOf(lifeos, props.env, action, elsewhere);
   useFeeds(shell, host, store, view, current, setCurrent, line, !!lifeos.again);
 
-  if (error) return <OpenFailed kind="dashboard" why={error} onRetry={retryOpen} />;
-  if (!view) return <DashSkeleton />;
+  let content: ReactNode = null;
+  if (error) content = <OpenFailed kind="dashboard" why={error} onRetry={retryOpen} />;
+  else if (!view) content = null;
   // A read that failed with nothing to show is the failure, in the body: never "No numbers yet" under a red line.
-  if (!view.blocks.length)
-    return view.failed ? (
+  else if (!view.blocks.length)
+    content = view.failed ? (
       <OpenFailed kind="dashboard" why={view.failed} onRetry={() => host.refresh().then((v) => store.set({ view: v }), (e: unknown) => sayError(e, "Couldn't read the figures", props.env))} />
     ) : (
       <EmptyState title="No numbers yet" line="Ask for one in the thread." />
     );
-  const proposed = view.blocks.filter((b) => b.proposed);
-  const currentId = proposed[Math.min(current, proposed.length - 1)]?.id;
-  const stale = view.stale || missed;
+  else {
+    const proposed = view.blocks.filter((b) => b.proposed);
+    const currentId = proposed[Math.min(current, proposed.length - 1)]?.id;
+    const stale = view.stale || missed;
+    content = (
+      <>
+        {dialog}
+        <Page blocks={view.blocks} stale={stale} current={currentId} open={(f) => void host.openSheet(f.sheet, f.sheetTitle).catch((e: unknown) => sayError(e, "Couldn't open the sheet", props.env))} />
+      </>
+    );
+  }
   return (
-    <>
-    {dialog}
-    <div data-dashboard data-stale={stale || undefined} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+    <Region fill loading={!error && !view} label="Loading" bones={DASH_BONES}>
+      {content}
+    </Region>
+  );
+}
+
+/** The page's blocks in its one scroller: the loaded page's, and its bones' from a sample. */
+function Page({ blocks, stale, current, open }: { blocks: Block[]; stale: boolean; current?: string; open(from: DashFrom): void }) {
+  const inBones = useInBones();
+  return (
+    <div data-dashboard={inBones ? undefined : ""} data-dashboard-loading={inBones ? "" : undefined} data-stale={stale || undefined} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
       <div className="@container mx-auto max-w-[672px] px-6 pt-6 pb-12">
-        {groups(view.blocks).map((g) =>
-          g.kind === "figures" ? (
-            <Figures key={g.blocks[0].id} blocks={g.blocks} stale={stale} current={currentId} open={(f) => void host.openSheet(f.sheet, f.sheetTitle).catch((e: unknown) => sayError(e, "Couldn't open the sheet", props.env))} />
-          ) : (
-            <Section key={g.block.id} block={g.block} stale={stale} current={g.block.id === currentId} />
-          ),
+        {groups(blocks).map((g) =>
+          g.kind === "figures" ? <Figures key={g.blocks[0].id} blocks={g.blocks} stale={stale} current={current} open={open} /> : <Section key={g.block.id} block={g.block} stale={stale} current={g.block.id === current} />,
         )}
       </div>
     </div>
-    </>
   );
 }
 
@@ -329,7 +341,7 @@ export function Bar(props: Props) {
   // While the host's LifeOS session is down the line has the one press: Refresh, which needs the session, is not offered.
   // The read again on its return is the Body's (`refreshing`).
   const lifeos = useDashLifeos(view, props.env);
-  if (!view) return error ? null : <Skeleton data-dash-bar-bone className="h-3 w-30" />;
+  if (!view) return error ? null : BAR_BONES;
   // No "As of" over nothing: with no block drawn (a first read that failed, a page with none yet) the bar says no time.
   if (!view.asOf || !view.blocks.length || view.blocks.some((b) => b.proposed)) return null;
   const reading = refreshing || lifeos.again;
@@ -464,6 +476,8 @@ function Source({ f, open }: { f: DashFigure; open(from: DashFrom): void }) {
 }
 
 function Section({ block, stale, current }: { block: Block; stale: boolean; current: boolean }) {
+  // In bones a chart is one block at its own height: it has no words to measure.
+  const inBones = useInBones();
   const tint = `${block.proposed ? `${PROPOSED} pt-3 pb-4` : ""} ${current ? CURRENT : ""}`;
   if (block.kind === "heading")
     return (
@@ -481,7 +495,7 @@ function Section({ block, stale, current }: { block: Block; stale: boolean; curr
   return (
     <section data-block={block.id} className={`mt-8 first:mt-0 [h2+&]:mt-4 ${tint}`}>
       <h3 className="text-[13px] leading-5 font-semibold">{block.title}</h3>
-      <div className="mt-3">{block.kind === "chart" ? <Chart bars={block.bars} format={block.format} stale={stale} title={block.title} /> : <FlatTable block={block} />}</div>
+      <div className="mt-3">{block.kind === "chart" && inBones ? <Bone className="h-[168px] w-full" /> : block.kind === "chart" ? <Chart bars={block.bars} format={block.format} stale={stale} title={block.title} /> : <FlatTable block={block} />}</div>
     </section>
   );
 }
@@ -657,24 +671,19 @@ function FlatTable({ block }: { block: Extract<Block, { kind: "table" }> }) {
 
 // ── loading ──────────────────────────────────────────────────────────
 
-export function DashSkeleton() {
-  return (
-    <div data-dashboard-loading aria-busy="true" className="mx-auto w-full max-w-[672px] px-6 pt-6">
-      <div className="grid grid-cols-3 gap-x-6 border-b border-border pb-4">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="flex flex-col gap-2">
-            <Skeleton className="h-3 w-[60%]" />
-            <Skeleton className="h-5 w-[48%]" />
-            <Skeleton className="h-3 w-[40%]" />
-          </div>
-        ))}
-      </div>
-      <Skeleton className="mt-8 h-3.5 w-[22%]" />
-      <div className="mt-3 flex h-[140px] items-end justify-around border-b border-border">
-        {[60, 75, 52, 88, 66, 80].map((p) => (
-          <Skeleton key={p} className="w-[min(32px,10%)] rounded-t-[3px] rounded-b-none" style={{ height: `${p}%` }} />
-        ))}
-      </div>
-    </div>
-  );
-}
+/** What the page's bones are drawn from: a row of three figures and a chart, the shape most dashboards open with. */
+const sampleFigure = (n: number, label: string, value: string, sub: string): DashFigure => ({ id: `sample:f${n}`, label, value, sub, format: "money", from: { service: "sample", counts: "" } });
+const SAMPLE_BLOCKS: Block[] = [
+  { id: "sample:figures", kind: "figures", figures: [sampleFigure(1, "Billed this month", "$12,480", "9 invoices"), sampleFigure(2, "Paid", "$9,215", "7 invoices"), sampleFigure(3, "Outstanding", "$3,265", "2 invoices")] },
+  { id: "sample:chart", kind: "chart", title: "Billed by month", from: { sheet: { at: "lifeos", table: "sheets", id: "sample:sheet" }, sheetTitle: "", range: "", counts: "", labels: "" }, format: "money", bars: [] },
+];
+const DASH_BONES = <Page blocks={SAMPLE_BLOCKS} stale={false} open={() => {}} />;
+
+/** The bar's "As of" on its way: its words, drawn as their bone, where the time will land. */
+const BAR_BONES = (
+  <Bones inline label="" className="ms-auto">
+    <span data-dash-bar-bone className="tabular-nums">
+      As of Nov 20, 3:40 PM
+    </span>
+  </Bones>
+);

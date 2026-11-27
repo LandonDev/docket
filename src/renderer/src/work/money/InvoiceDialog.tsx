@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import type { MoneyInvoiceNext, MoneyInvoicePage, MoneyKept } from "@shared/contract-work-money";
 import { addDays, formatMoney, invoiceTotal, lineTotal, today, type Invoice, type InvoiceFrom, type InvoiceLine } from "@shared/work/money";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -8,7 +8,7 @@ import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { Button } from "../../components/ui/button";
 import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Loaded, useInBones } from "../../components/bones";
 import { Textarea } from "../../components/ui/textarea";
 import { cn } from "../../lib/cn";
 import { request } from "./api";
@@ -182,128 +182,179 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
         submit();
       }}
     >
-      {!form ? (
-        // Busy only while it loads: a lookup that failed says so, and is no longer loading.
-        <ModalBody aria-busy={error ? undefined : "true"} aria-label={error ? undefined : "Loading"}>
-          {error ? (
-            <ErrorLine error={error} />
-          ) : (
-            <>
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-20 w-full" />
-            </>
-          )}
-        </ModalBody>
-      ) : (
-        // Its own container: under 30rem (the browser /ui on a phone) Number, Date and Due each take a row, and What its own.
-        <ModalBody className="@container/invoice">
-          <Field label={kind === "invoice" ? "To" : "Vendor"}>
-            <Input autoFocus value={form.to} autoComplete="off" onChange={(e) => patch({ to: e.target.value })} />
-          </Field>
-          <div className="grid grid-cols-3 gap-3 @max-[30rem]/invoice:grid-cols-1">
-            <Field label="Number">
-              <Input value={form.number} autoComplete="off" className="tabular-nums" onChange={(e) => patch({ number: e.target.value })} />
-            </Field>
-            <Field label="Date">
-              <DateField
-                required
-                value={form.date}
-                onChange={(date) => {
-                  // The due date keeps its distance from the date until he sets it himself.
-                  patch(dueTouched || !next || !date ? { date } : { date, due: addDays(date, next.dueDays) });
-                }}
-              />
-            </Field>
-            <Field label={kind === "invoice" ? "Due" : "Needed by"}>
-              <DateField
-                value={form.due}
-                onChange={(due) => {
-                  setDueTouched(true);
-                  patch({ due });
-                }}
-              />
-            </Field>
-          </div>
-          {kind === "request" ? (
-            <Field label="Reason">
-              <Textarea value={form.reason} rows={2} onChange={(e) => patch({ reason: e.target.value })} />
-            </Field>
-          ) : null}
-          <div ref={linesRef} role="group" aria-label="Lines" className="flex flex-col gap-1 @max-[30rem]/invoice:gap-3">
-            <div className={cn(LINE_GRID, "text-xs font-medium text-muted-foreground @max-[30rem]/invoice:hidden")}>
-              <span>What</span>
-              <span>Quantity</span>
-              <span>Rate</span>
-              <span className="text-end">Amount</span>
-              <span />
-            </div>
-            {form.lines.map((l, i) => {
-              const counted = lineOf(l);
-              return (
-                <div key={i} data-invoice-line={i} className={cn(LINE_GRID, "items-center @max-[30rem]/invoice:items-end")}>
-                  <Input aria-label={`What, line ${i + 1}`} placeholder="What" className={cn(WHAT_CELL, "placeholder:text-transparent @max-[30rem]/invoice:placeholder:text-muted-foreground")} value={l.what} autoComplete="off" onKeyDown={onLineKey(i)} onChange={(e) => setLine(i, { what: e.target.value })} />
-                  <span className="flex min-w-0 flex-col gap-1">
-                    {i === 0 ? <span aria-hidden className={NARROW_LABEL}>Quantity</span> : null}
-                    <Input aria-label={`Quantity, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.quantity} inputMode="decimal" autoComplete="off" className="tabular-nums" onChange={(e) => setLine(i, { quantity: e.target.value })} />
-                  </span>
-                  <span className="flex min-w-0 flex-col gap-1">
-                    {i === 0 ? <span aria-hidden className={NARROW_LABEL}>Rate</span> : null}
-                    <AmountInput aria-label={`Rate, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.rate} placeholder="0.00" onChange={(e) => setLine(i, { rate: e.target.value })} />
-                  </span>
-                  <span className="flex min-w-0 flex-col gap-1 text-end">
-                    {i === 0 ? <span aria-hidden className={NARROW_LABEL}>Amount</span> : null}
-                    <span className="text-[13px] tabular-nums @max-[30rem]/invoice:min-h-8 @max-[30rem]/invoice:leading-8">{counted ? formatMoney(lineTotal(counted)) : ""}</span>
-                  </span>
-                  {i > 0 ? (
-                    <Button variant="ghost" size="icon-sm" aria-label={`Remove line ${i + 1}`} className="text-muted-foreground" onClick={() => patch({ lines: form.lines.filter((_, j) => j !== i) })}>
-                      <X />
-                    </Button>
-                  ) : (
-                    <span />
-                  )}
-                </div>
-              );
-            })}
-            <div className="flex items-center justify-between pe-9 pt-1">
-              <Button variant="ghost" size="xs" className="-ms-2 text-muted-foreground" onClick={() => patch({ lines: [...form.lines, { ...BLANK_LINE }] })}>
-                <Plus />
-                Add line
-              </Button>
-              <span className="flex items-baseline gap-2">
-                <span className="text-xs text-muted-foreground">Total</span>
-                <span data-invoice-total className="text-[13px] font-semibold tabular-nums">
-                  {formatMoney(total)}
-                </span>
-              </span>
-            </div>
-          </div>
-          {askFrom ? (
-            <div role="group" aria-label="From" className="flex flex-col gap-4">
-              <Field label={kind === "invoice" ? "Business name" : "From"}>
-                <Input value={form.from.name} autoComplete="organization" onChange={(e) => patch({ from: { ...form.from, name: e.target.value } })} />
-              </Field>
-              <Field label="Address">
-                <Textarea value={form.from.address} rows={2} onChange={(e) => patch({ from: { ...form.from, address: e.target.value } })} />
-              </Field>
-              {kind === "invoice" ? (
-                <Field label="How to pay">
-                  <Textarea value={form.from.pay} rows={2} onChange={(e) => patch({ from: { ...form.from, pay: e.target.value } })} />
-                </Field>
-              ) : null}
-            </div>
-          ) : (
-            <div className="flex min-h-7 items-center gap-2 text-[13px]">
-              <span className="min-w-0 truncate text-muted-foreground">From {form.from.name}</span>
-              <Button variant="ghost" size="xs" onClick={() => setEditingFrom(true)}>
-                Edit
-              </Button>
-            </div>
-          )}
-          <ErrorLine error={error} />
-        </ModalBody>
-      )}
+      {/* While the next number is asked, the form itself drawn from a sample; a lookup that failed says so in its place. */}
+      <Loaded
+        data={form}
+        sample={SAMPLE_INVOICE_FORM}
+        label="Loading"
+        failed={
+          !form && error ? (
+            <ModalBody>
+              <ErrorLine error={error} />
+            </ModalBody>
+          ) : null
+        }
+      >
+        {(f) => (
+          <InvoiceFields
+            kind={kind}
+            form={f}
+            askFrom={f === form && askFrom}
+            total={f === form ? total : 0}
+            error={f === form ? error : null}
+            linesRef={f === form ? linesRef : undefined}
+            patch={patch}
+            setLine={setLine}
+            onLineKey={onLineKey}
+            onDue={(due) => {
+              setDueTouched(true);
+              patch({ due });
+            }}
+            onDate={(date) => {
+              // The due date keeps its distance from the date until he sets it himself.
+              patch(dueTouched || !next || !date ? { date } : { date, due: addDays(date, next.dueDays) });
+            }}
+            onEditFrom={() => setEditingFrom(true)}
+          />
+        )}
+      </Loaded>
       <DialogFooter onCancel={onClose} confirmLabel="Create" pending={pending} disabled={!invoice} />
     </form>
   );
 }
+
+/** The invoice's fields, from To down to From and the error line: the loaded form, and its bones given a sample. */
+function InvoiceFields({
+  kind,
+  form,
+  askFrom,
+  total,
+  error,
+  linesRef,
+  patch,
+  setLine,
+  onLineKey,
+  onDate,
+  onDue,
+  onEditFrom,
+}: {
+  kind: InvoiceKind;
+  form: InvoiceForm;
+  askFrom: boolean;
+  total: number;
+  error: string | null;
+  linesRef?: RefObject<HTMLDivElement | null>;
+  patch: (p: Partial<InvoiceForm>) => void;
+  setLine: (i: number, p: Partial<LineForm>) => void;
+  onLineKey: (i: number) => (e: KeyboardEvent<HTMLInputElement>) => void;
+  onDate: (date: string) => void;
+  onDue: (due: string) => void;
+  onEditFrom: () => void;
+}) {
+  const inBones = useInBones();
+  return (
+    <ModalBody className="@container/invoice">
+      <Field label={kind === "invoice" ? "To" : "Vendor"}>
+        <Input autoFocus={!inBones} value={form.to} autoComplete="off" onChange={(e) => patch({ to: e.target.value })} />
+      </Field>
+      <div className="grid grid-cols-3 gap-3 @max-[30rem]/invoice:grid-cols-1">
+        <Field label="Number">
+          <Input value={form.number} autoComplete="off" className="tabular-nums" onChange={(e) => patch({ number: e.target.value })} />
+        </Field>
+        <Field label="Date">
+          <DateField required value={form.date} onChange={onDate} />
+        </Field>
+        <Field label={kind === "invoice" ? "Due" : "Needed by"}>
+          <DateField value={form.due} onChange={onDue} />
+        </Field>
+      </div>
+      {kind === "request" ? (
+        <Field label="Reason">
+          <Textarea value={form.reason} rows={2} onChange={(e) => patch({ reason: e.target.value })} />
+        </Field>
+      ) : null}
+      <div ref={linesRef} role="group" aria-label="Lines" className="flex flex-col gap-1 @max-[30rem]/invoice:gap-3">
+        <div className={cn(LINE_GRID, "text-xs font-medium text-muted-foreground @max-[30rem]/invoice:hidden")}>
+          <span>What</span>
+          <span>Quantity</span>
+          <span>Rate</span>
+          <span className="text-end">Amount</span>
+          <span />
+        </div>
+        {form.lines.map((l, i) => {
+          const counted = lineOf(l);
+          return (
+            <div key={i} data-invoice-line={i} className={cn(LINE_GRID, "items-center @max-[30rem]/invoice:items-end")}>
+              <Input aria-label={`What, line ${i + 1}`} placeholder="What" className={cn(WHAT_CELL, "placeholder:text-transparent @max-[30rem]/invoice:placeholder:text-muted-foreground")} value={l.what} autoComplete="off" onKeyDown={onLineKey(i)} onChange={(e) => setLine(i, { what: e.target.value })} />
+              <span className="flex min-w-0 flex-col gap-1">
+                {i === 0 ? <span aria-hidden className={NARROW_LABEL}>Quantity</span> : null}
+                <Input aria-label={`Quantity, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.quantity} inputMode="decimal" autoComplete="off" className="tabular-nums" onChange={(e) => setLine(i, { quantity: e.target.value })} />
+              </span>
+              <span className="flex min-w-0 flex-col gap-1">
+                {i === 0 ? <span aria-hidden className={NARROW_LABEL}>Rate</span> : null}
+                <AmountInput aria-label={`Rate, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.rate} placeholder="0.00" onChange={(e) => setLine(i, { rate: e.target.value })} />
+              </span>
+              <span className="flex min-w-0 flex-col gap-1 text-end">
+                {i === 0 ? <span aria-hidden className={NARROW_LABEL}>Amount</span> : null}
+                <span className="text-[13px] tabular-nums @max-[30rem]/invoice:min-h-8 @max-[30rem]/invoice:leading-8">{counted ? formatMoney(lineTotal(counted)) : ""}</span>
+              </span>
+              {i > 0 ? (
+                <Button variant="ghost" size="icon-sm" aria-label={`Remove line ${i + 1}`} className="text-muted-foreground" onClick={() => patch({ lines: form.lines.filter((_, j) => j !== i) })}>
+                  <X />
+                </Button>
+              ) : (
+                <span />
+              )}
+            </div>
+          );
+        })}
+        <div className="flex items-center justify-between pe-9 pt-1">
+          <Button variant="ghost" size="xs" className="-ms-2 text-muted-foreground" onClick={() => patch({ lines: [...form.lines, { ...BLANK_LINE }] })}>
+            <Plus />
+            Add line
+          </Button>
+          <span className="flex items-baseline gap-2">
+            <span className="text-xs text-muted-foreground">Total</span>
+            <span data-invoice-total className="text-[13px] font-semibold tabular-nums">
+              {formatMoney(total)}
+            </span>
+          </span>
+        </div>
+      </div>
+      {askFrom ? (
+        <div role="group" aria-label="From" className="flex flex-col gap-4">
+          <Field label={kind === "invoice" ? "Business name" : "From"}>
+            <Input value={form.from.name} autoComplete="organization" onChange={(e) => patch({ from: { ...form.from, name: e.target.value } })} />
+          </Field>
+          <Field label="Address">
+            <Textarea value={form.from.address} rows={2} onChange={(e) => patch({ from: { ...form.from, address: e.target.value } })} />
+          </Field>
+          {kind === "invoice" ? (
+            <Field label="How to pay">
+              <Textarea value={form.from.pay} rows={2} onChange={(e) => patch({ from: { ...form.from, pay: e.target.value } })} />
+            </Field>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex min-h-7 items-center gap-2 text-[13px]">
+          <span className="min-w-0 truncate text-muted-foreground">From {form.from.name}</span>
+          <Button variant="ghost" size="xs" onClick={onEditFrom}>
+            Edit
+          </Button>
+        </div>
+      )}
+      <ErrorLine error={error} />
+    </ModalBody>
+  );
+}
+
+/** The form the bones are drawn from: a filled line and his details already kept, as most invoices open. */
+const SAMPLE_INVOICE_FORM: InvoiceForm = {
+  to: "Rivera Dental",
+  number: "1042",
+  date: "2026-11-20",
+  due: "2026-12-20",
+  lines: [{ what: "Varsity games", quantity: "3", rate: "75.00" }],
+  reason: "",
+  from: { name: "Harlan Valley Officiating", address: "", pay: "" },
+};

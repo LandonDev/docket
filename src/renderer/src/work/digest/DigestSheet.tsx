@@ -6,12 +6,12 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "
 import { Item, ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { useEnvironmentStatuses, useEnvironments } from "../../lib/connection";
 import { IDLE_STATUS, type EnvironmentStatus } from "../../lib/connection/types";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { cn } from "../../lib/cn";
-import { asSentence, asSentences, emptyLine, listSections, rowWhen, tellDetail, unansweredLine } from "./notice";
+import { asSentence, asSentences, emptyLine, listSections, rowWhen, tellDetail, unansweredLine, type ListSection } from "./notice";
 import { linkDownWords, linkIsDown } from "../shell/hostLinkDown";
 import { retryLink } from "../shell/linkRetry";
 import { useJobName } from "../jobName";
@@ -30,7 +30,11 @@ const ROW = "-mx-2 w-[calc(100%+1rem)] flex-nowrap items-start gap-2 rounded-md 
 function RowBody({ row, now, day }: { row: TellRow; now: number; day: string }) {
   const jobName = useJobName();
   // A clash's jobs by their workspaces' names, whatever word the host wrote.
-  const detail = tellDetail(row, useWorkspaces());
+  return <RowLine row={row} now={now} day={day} job={row.sector ? jobName(row.sector) : null} detail={tellDetail(row, useWorkspaces())} />;
+}
+
+/** A row's words: its job's dot, its title and detail, its time. */
+function RowLine({ row, now, day, job, detail }: { row: TellRow; now: number; day: string; job: string | null; detail: string | undefined }) {
   return (
     <>
       {/* On the title's line: a 16px box on a 20px line. */}
@@ -39,7 +43,7 @@ function RowBody({ row, now, day }: { row: TellRow; now: number; day: string }) 
       <span className="flex min-w-0 flex-1 flex-col wrap-anywhere">
         <span className="text-[13px] font-medium leading-5 text-foreground">
           {/* The dot is the job to the eye alone: a screen reader hears its name. */}
-          {row.sector ? <span className="sr-only">{jobName(row.sector)}: </span> : null}
+          {job ? <span className="sr-only">{job}: </span> : null}
           {row.title}
         </span>
         {detail ? <span className="text-xs leading-4 text-muted-foreground">{detail}</span> : null}
@@ -49,39 +53,63 @@ function RowBody({ row, now, day }: { row: TellRow; now: number; day: string }) 
   );
 }
 
-function ListSkeleton() {
-  return (
-    <div aria-busy="true" aria-label="Loading" className="flex flex-col">
-      {/* On the titles' edge, where the day's heading lands. */}
-      <div className="flex h-7 items-center ps-6">
-        <Skeleton className="h-3 w-24" />
-      </div>
-      {[52, 44, 60, 40].map((width, i) => (
-        <div key={i} className="flex items-start gap-2 py-1.5">
-          <span className="mt-0.5 grid size-4 shrink-0 place-items-center">
-            <Skeleton className="size-2 rounded-full" />
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="flex h-5 items-center">
-              <Skeleton className="h-3.5" style={{ width: `${width}%` }} />
-            </span>
-            {i % 2 === 0 ? (
-              <span className="flex h-4 items-center">
-                <Skeleton className="h-3 w-28" />
-              </span>
-            ) : null}
-          </span>
-          <span className="flex h-5 shrink-0 items-center ps-2">
-            <Skeleton className="h-3 w-12" />
-          </span>
-        </div>
-      ))}
-    </div>
-  );
+/** The bones' row: its words as the sample holds them, read from no store. */
+const SampleRowBody = ({ row, now, day }: { row: TellRow; now: number; day: string }) => <RowLine row={row} now={now} day={day} job={null} detail={row.detail} />;
+
+/** What the list's bones are drawn from: one day of four rows, every other one with a detail line. */
+const SAMPLE_NOW = Date.UTC(2026, 10, 24, 15);
+const sampleRow = (n: number, title: string, detail?: string): TellRow => ({
+  id: `sample:${n}`,
+  host: "sample:host",
+  kind: "sample",
+  workspaceId: null,
+  group: "results",
+  sector: "cosmic",
+  title,
+  ...(detail ? { detail } : {}),
+  at: SAMPLE_NOW - n * 1_800_000,
+  how: "digest",
+  day: "2026-11-24",
+  toldAt: null,
+});
+const SAMPLE_SECTIONS: ListSection[] = [
+  {
+    id: "sample:today",
+    title: "Today, 8:00 AM",
+    day: "2026-11-24",
+    rows: [sampleRow(1, "Receipts to confirm", "3 from Friday"), sampleRow(2, "Morning summary of the build"), sampleRow(3, "Held: Invite Dana Reyes to review", "Waits for your press"), sampleRow(4, "Sign-in to Frame.io ends soon")],
+  },
+];
+
+/** The day sections, the list's and its bones'. */
+function Sections({ sections, now, onOpenRow, Body }: { sections: readonly ListSection[]; now: number; onOpenRow: (row: TellRow) => void; Body: typeof RowBody }) {
+  return sections.map((section) => (
+    <section key={section.id} aria-label={section.title} className="flex flex-col">
+      {/* On its rows' title edge, past the dot's box. */}
+      <h3 className="flex h-7 items-center ps-6 text-xs font-medium text-muted-foreground">{section.title}</h3>
+      <ul className="flex flex-col">
+        {section.rows.map((row) => (
+          <li key={`${row.host}:${row.id}`}>
+            {routeOf(row).to === "none" ? (
+              <Item className={ROW}>
+                <Body row={row} now={now} day={section.day} />
+              </Item>
+            ) : (
+              <ItemButton className={cn(ROW, ROW_PRESS)} onClick={() => onOpenRow(row)}>
+                <Body row={row} now={now} day={section.day} />
+              </ItemButton>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  ));
 }
 
+const STILL = (): void => {};
+
 /**
- * The list itself, as the sheet's body draws it: a skeleton until every
+ * The list itself, as the sheet's body draws it: its bones until every
  * host has answered, one empty state, else the sections; a host that did
  * not answer is one muted line at the foot.
  */
@@ -105,7 +133,33 @@ export function DigestList({
     setRetrying(true);
     void onRetry().finally(() => setRetrying(false));
   };
-  if (!view.loaded) return <ListSkeleton />;
+  return (
+    // Until every host has answered, the sections themselves drawn from a sample day. It grows to the body's room, so an empty state centres in it.
+    <Region className="flex-1" loading={!view.loaded} label="Loading" bones={() => <Sections sections={SAMPLE_SECTIONS} now={SAMPLE_NOW} onOpenRow={STILL} Body={SampleRowBody} />}>
+      {view.loaded ? (
+        <div className="flex flex-1 flex-col gap-4">
+          <ListBody view={view} now={now} unanswered={unanswered} onOpenRow={onOpenRow} retrying={retrying} retry={retry} />
+        </div>
+      ) : null}
+    </Region>
+  );
+}
+
+function ListBody({
+  view,
+  now,
+  unanswered,
+  onOpenRow,
+  retrying,
+  retry,
+}: {
+  view: Pick<DigestView, "days" | "rows" | "answered">;
+  now: number;
+  unanswered: string;
+  onOpenRow: (row: TellRow) => void;
+  retrying: boolean;
+  retry: () => void;
+}) {
   const sections = listSections(view, now);
   if (sections.length === 0) {
     // With a host unheard, nothing here is not known to be nothing; what the others said is.
@@ -132,27 +186,7 @@ export function DigestList({
   }
   return (
     <>
-      {sections.map((section) => (
-        <section key={section.id} aria-label={section.title} className="flex flex-col">
-          {/* On its rows' title edge, past the dot's box. */}
-          <h3 className="flex h-7 items-center ps-6 text-xs font-medium text-muted-foreground">{section.title}</h3>
-          <ul className="flex flex-col">
-            {section.rows.map((row) => (
-              <li key={`${row.host}:${row.id}`}>
-                {routeOf(row).to === "none" ? (
-                  <Item className={ROW}>
-                    <RowBody row={row} now={now} day={section.day} />
-                  </Item>
-                ) : (
-                  <ItemButton className={cn(ROW, ROW_PRESS)} onClick={() => onOpenRow(row)}>
-                    <RowBody row={row} now={now} day={section.day} />
-                  </ItemButton>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      <Sections sections={sections} now={now} onOpenRow={onOpenRow} Body={RowBody} />
       {unanswered ? (
         // On the titles' edge, past the dot's box, as the headings are.
         <div data-digest-foot className="flex items-center gap-2 ps-6">

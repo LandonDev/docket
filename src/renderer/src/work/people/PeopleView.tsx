@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/too
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones, Region } from "../../components/bones";
 import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
 import { nameInLine } from "../../lib/hostWords";
@@ -253,25 +253,29 @@ function PeopleBody({ again, ...props }: WorkViewProps & { again(): void }) {
   // person's page included: the person stays chosen, and their page comes back once Retry brings the session.
   if (!props.lifeos.client && !sessionWaits(props.lifeos)) return null;
   if (person) return <PersonPageView {...props} person={person} faces={faces} />;
-  if (!props.lifeos.client) return <ListSkeleton />;
-  if (directory.status === "failed") return <ReadFailed title="People did not load" error={directory.error} env={props.env} session={props.lifeos} name="people:directory" args={{ sector: props.sector }} onBack={again} />;
-  if (!rows) return <ListSkeleton />;
-  return <PeopleList workspaceId={workspaceId} rows={rows} faces={faces} />;
-}
-
-function ListSkeleton() {
+  const failed = props.lifeos.client && directory.status === "failed" ? directory.error : null;
   return (
-    // At the list's own insets and its 32px rows, so the names neither step sideways nor jump when the list lands.
-    <div aria-busy className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-5">
-      {[44, 32, 52, 38, 46].map((w, i) => (
-        <div key={i} className="flex h-8 items-center gap-2">
-          <Skeleton className="size-6 rounded-full" />
-          <Skeleton className="h-3" style={{ width: `${w}%` }} />
-        </div>
-      ))}
-    </div>
+    // The list's own rows drawn from sample people, so the names neither step sideways nor jump when the list lands.
+    <Region loading={failed === null && !(props.lifeos.client && rows)} label="Loading people" bones={() => <PeopleRows workspaceId={workspaceId} shown={SAMPLE_PEOPLE} faces={NO_FACES} at={SAMPLE_NOW} />}>
+      {failed !== null ? (
+        <ReadFailed title="People did not load" error={failed} env={props.env} session={props.lifeos} name="people:directory" args={{ sector: props.sector }} onBack={again} />
+      ) : rows ? (
+        <PeopleList workspaceId={workspaceId} rows={rows} faces={faces} />
+      ) : null}
+    </Region>
   );
 }
+
+/** What the list's bones are drawn from: five people, three of them heard from lately. */
+const SAMPLE_NOW = Date.UTC(2026, 10, 20, 15);
+const SAMPLE_PEOPLE: DirectoryPerson[] = [
+  { _id: "sample:1", name: "Maya Chen", emails: ["maya.chen@school.edu"], lastAt: SAMPLE_NOW - 3_600_000 },
+  { _id: "sample:2", name: "Tom Beck", emails: ["tbeck@ridgeline.org"], lastAt: SAMPLE_NOW - 86_400_000 },
+  { _id: "sample:3", name: "Priya Raman", emails: ["priya.raman@harlanvalley.org"] },
+  { _id: "sample:4", name: "Luis Ortega", emails: ["lortega@school.edu"], lastAt: SAMPLE_NOW - 5 * 86_400_000 },
+  { _id: "sample:5", name: "Dana Whitfield", emails: ["dana@whitfield.net"] },
+];
+const NO_FACES: ReadonlyMap<string, string> = new Map();
 
 /** Up and down between rows (`moveBetweenRows`, every Work list's); up from the first goes back to the search. */
 function rowKeys(e: KeyboardEvent<HTMLElement>): void {
@@ -288,6 +292,11 @@ export function PeopleList({ workspaceId, rows, faces, now }: { workspaceId: str
   const at = now ?? minute;
   if (!rows.length) return <EmptyState title="No people" />;
   if (!shown.length) return <EmptyState title="No matches" action={{ label: "Clear search", onClick: () => setPlace(workspaceId, { query: "" }) }} />;
+  return <PeopleRows workspaceId={workspaceId} shown={shown} faces={faces} at={at} />;
+}
+
+/** The rows themselves, the list's and its bones'. */
+function PeopleRows({ workspaceId, shown, faces, at }: { workspaceId: string; shown: readonly DirectoryPerson[]; faces: ReadonlyMap<string, string>; at: number }) {
   return (
     <div role="list" aria-label="People" data-people-list={workspaceId} onKeyDown={rowKeys} className="mx-auto w-full max-w-[720px] px-6 py-5">
       <WindowedRows
@@ -397,9 +406,10 @@ function useAnswered(env: string, workspaceId: string, emails: readonly string[]
   return got?.key === key ? got.rows : NO_ANSWERS;
 }
 
-function GoneToList({ workspaceId }: { workspaceId: string }) {
+function GoneToList({ workspace }: Pick<WorkViewProps, "workspace">) {
+  const workspaceId = workspace.id;
   useEffect(() => setPlace(workspaceId, { person: null }), [workspaceId]);
-  return <PageSkeleton />;
+  return <PageBones workspace={workspace} />;
 }
 
 function PersonPageView(props: WorkViewProps & { person: string; faces: ReadonlyMap<string, string> }) {
@@ -409,7 +419,7 @@ function PersonPageView(props: WorkViewProps & { person: string; faces: Readonly
   // The page is asked of LifeOS once, with the links in hand: asked before them, it was asked twice (no links, then the links).
   // Read anew (its live read too) once a Retry's own read has answered.
   const [round, setRound] = useState(0);
-  if (links === null) return <PageSkeleton />;
+  if (links === null) return <PageBones workspace={props.workspace} />;
   return <PersonPageRead key={round} {...props} directory={directory} name={name} links={links} again={() => setRound((n) => n + 1)} />;
 }
 
@@ -426,32 +436,34 @@ function PersonPageRead(
   if (page.status === "failed")
     return <ReadFailed title="This page did not load" error={page.error} env={props.env} session={props.lifeos} name="people:page" args={{ id: props.person, sector: props.sector, shared }} onBack={props.again} />;
   // Held until the links are read too, so the page lands once rather than growing a section.
-  if (page.status === "loading" || (directory.status === "loading" && !name)) return <PageSkeleton />;
+  if (page.status === "loading" || (directory.status === "loading" && !name)) return <PageBones workspace={props.workspace} />;
   // A page kept from a window before this one whose person is gone: the list, quietly.
-  if (!page.value && keptPerson.get(props.workspace.id) === props.person) return <GoneToList workspaceId={props.workspace.id} />;
+  if (!page.value && keptPerson.get(props.workspace.id) === props.person) return <GoneToList workspace={props.workspace} />;
   if (!page.value)
     return <EmptyState title="Not in People here" action={{ label: "Back to People", onClick: () => setPlace(props.workspace.id, { person: null }) }} />;
   return <PersonPageBody {...props} page={page.value} links={mine} answered={answered} />;
 }
 
-function PageSkeleton() {
+/** A person's page on its way: the page itself drawn from a sample, its head and one section of mail. */
+function PageBones({ workspace }: Pick<WorkViewProps, "workspace">) {
   return (
-    <div aria-busy className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
-      <div className="flex items-center gap-3">
-        <Skeleton className="size-10 rounded-full" />
-        <div className="flex flex-1 flex-col gap-2">
-          <Skeleton className="h-4 w-[28%]" />
-          <Skeleton className="h-3 w-[40%]" />
-        </div>
-      </div>
-      <div className="mt-8 flex flex-col gap-3">
-        <Skeleton className="h-3 w-[12%]" />
-        <Skeleton className="h-3 w-[64%]" />
-        <Skeleton className="h-3 w-[52%]" />
-      </div>
-    </div>
+    <Bones label="Loading this page">
+      <PersonPageBody workspace={workspace} faces={NO_FACES} page={SAMPLE_PAGE} links={[]} startThread={() => {}} now={SAMPLE_NOW} />
+    </Bones>
   );
 }
+
+const SAMPLE_PAGE: PersonPage = {
+  person: { _id: "sample:1", name: "Maya Chen", notes: "", sectors: [], emails: ["maya.chen@school.edu"], phones: [] },
+  mail: [
+    { _id: "sample:m1", subject: "Saturday's tournament schedule", snippet: "Here are the brackets for the morning games", lastMessageAt: SAMPLE_NOW - 3_600_000, unread: false },
+    { _id: "sample:m2", subject: "Travel forms", snippet: "Can you sign these before Friday", lastMessageAt: SAMPLE_NOW - 2 * 86_400_000, unread: false },
+  ],
+  coming: [],
+  recent: [],
+  tasks: [],
+  shared: [],
+};
 
 /** When an event is: its day and time, or its day alone for one that lasts the day. */
 const eventWhen = (e: PageEvent, now: number): string => (e.allDay ? formatDue(e.startsAt, now) : `${formatDue(e.startsAt, now)}, ${formatTime(e.startsAt)}`);

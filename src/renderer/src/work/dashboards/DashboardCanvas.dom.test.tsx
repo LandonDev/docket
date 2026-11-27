@@ -245,6 +245,19 @@ describe("the dashboard kind", () => {
     await waitFor(() => expect(document.querySelector("[data-dash-asof]")?.textContent).toMatch(/^As of /));
   });
 
+  it("while the page loads draws its own figures and a chart from a sample, the chart one bone at its height", async () => {
+    open(page());
+    dashHost.open.mockImplementationOnce(() => new Promise(() => {}));
+    const loading = await found("[data-dashboard-loading]");
+    const drawing = loading.closest("[skullet-loading]")!;
+    expect(drawing.getAttribute("aria-hidden")).toBe("true");
+    expect(loading.querySelectorAll("[data-figure]")).toHaveLength(3);
+    expect(loading.querySelector<HTMLElement>("section [data-bone]")!.className).toContain("h-[168px]");
+    expect(loading.querySelector("[data-chart]")).toBeNull();
+    expect(document.querySelector("[data-dashboard]")).toBeNull();
+    expect(document.querySelector("[data-slot=skeleton]")).toBeNull();
+  });
+
   it("holds a bone in the bar while the page loads, and says a failed open in the middle of the body with Retry", async () => {
     open(page());
     let fail: (e: Error) => void = () => undefined;
