@@ -441,6 +441,10 @@ public final class EnvironmentClient {
     /// The host has answered `computer.sessions`, or pushed its rows, on this run: before that an empty list is not yet
     /// "no computer in use" (`ComputersState`).
     public private(set) var computersRead = false
+    /// Why the last `computer.sessions` read failed (a wait that ran out, the host's error), until a read or a push lands:
+    /// Computers shows this host's failed read, never "no computer in use" (`ComputersState`). A key that may not read
+    /// them has none, not a failure.
+    public private(set) var computersFailure: String?
     /// The phone's push registrar, when the registry gave it one: told at every open (thread L6).
     public internal(set) var push: PushRegistrar?
     /// Called with every session meta the host sent (the Live Activity follows a thread's status through it).
@@ -1331,17 +1335,24 @@ public final class EnvironmentClient {
         case .computer(let value):
             computerRows = value.sessions // live video: who is driven on this host (Home's Computers row)
             computersRead = true
+            computersFailure = nil
         case .queue, .builds, .macBridgeHeld, .unknown:
             break
         }
     }
 
-    /// `computer.sessions` at open; a key that may not read them, or a host with no computer use, keeps none.
-    func readComputers() async {
-        // Read either way: a key or a host that answers none has none in use, never a read that never ends.
+    /// `computer.sessions` at open and on Computers' Try Again; a key that may not read them keeps none. Any other
+    /// failure is kept as `computersFailure`, the rows from the last read kept with it.
+    public func readComputers() async {
+        // Read either way: a first read that fails is a failed read on screen, never a read that never ends.
         defer { computersRead = true }
-        guard let answer = try? await request(Methods.ComputerSessions.self, .init()) else { return }
-        computerRows = answer.sessions
+        do {
+            computerRows = try await request(Methods.ComputerSessions.self, .init()).sessions
+            computersFailure = nil
+        } catch {
+            let failure = ActionError.wrap(error)
+            computersFailure = failure.isForbidden ? nil : failure.message
+        }
     }
 
     static let bootResumeKind = "boot-resume"

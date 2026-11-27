@@ -2958,11 +2958,14 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   acted last first: the live picture, then the thread's title (title step,
   medium; it opens the thread) over one meta line, what it is doing (or
   "You are driving") then where it runs at medium weight, never joined with a dot. No buttons on a tile: Take Over,
-  Hand Back and Stop are on its full screen. With nothing driven the list
-  tells three states apart (`ComputersState`): a spinner while a connected
-  host has not said; "Not Connected to the box" when no host is connected;
-  else "No Computer in Use", its line naming any host away ("Not connected
-  to Mac.").
+  Hand Back and Stop are on its full screen. A connected host whose read
+  failed heads the list with its failed-read row in the destructive ink
+  ("Computers on the box did not load: …", Try Again), over what it said
+  last, and the list never calls it idle; a key that may not read them has
+  none. With nothing driven the list tells three states apart
+  (`ComputersState`): a spinner while a connected host has not said; "Not
+  Connected to the box" when no host is connected; else "No Computer in
+  Use", its line naming any host away ("Not connected to Mac.").
 - **Ask** from an item is a form sheet: the selection as its chip, his
   words, Send; then Chat shows.
 - **The guest link sheet**: a form sheet at medium height, For, Can (View,
@@ -3290,7 +3293,8 @@ Teams) as LifeOS holds it, the desktop's Messages view on the phone (docs/agents
   iMessage, `person.3` Teams; no brand marks), the name (semibold while unread), the last words under it ("You:"
   for his own, a group's writer by first name) and the time as the stamp, in the tint while unread. No count, no
   badge: unread is the weight and the stamp's ink. A leading swipe marks it read or unread (LifeOS's own mark).
-  Empty: "No Messages". The reads are LifeKit's live `chats:list`, one a sector, on the whole LifeOS session
+  Empty: "No Messages". The foot reads the next page under a spinner; one that fails is "More conversations did not
+  load" with Try Again, which asks each failed page again. The reads are LifeKit's live `chats:list`, one a sector, on the whole LifeOS session
   (`LifeReach`), else the picked job's; held only while the list is on screen.
 - **A conversation** (`Route.chat`, Work/Messages/ChatScreen.swift) opens in the detail, over Messages' list (Back
   from a notice's conversation is the list). On the open Duo the list picks its first unread for an empty detail.
@@ -3336,7 +3340,8 @@ People is a place of the Work tab, after Agenda in the Work list (docs/agents/wo
   a meeting opens its page, a task its sheet, a form the job's forms. A shared item says what the link lets them
   do and until when; it opens nothing on the phone. Nothing open: one line. The page is asked at once, never
   waiting on the directory: LifeOS out of reach is "Can’t Reach LifeOS" with the host's words, a failed read
-  "Can’t Read This Person", each with Try Again, and a person LifeOS does not hold "Can’t Find This Person". A
+  "Can’t Read This Person", each with Try Again, and a person LifeOS does not hold "Can’t Find This Person", even
+  over a page on screen (merged or deleted: no Write or New Thread left in the bar). A
   read that fails over a page on screen keeps the page under "This person did not refresh" with Try Again, gone
   once a fresh read lands.
   At accessibility sizes a row's name wraps; an address keeps one line, never hyphenated inside it, shrinking to fit
@@ -3482,7 +3487,7 @@ card. Connections and Computers sit in the Work list's foot.
 - **Routines**: a tap unfolds the last five runs under the routine (the system's disclosure): a check, a spinner
   while it works, the destructive dot and the cause in its ink when it failed; the outcome and when it fired. A run
   that started a thread opens it; runs that did not load are the failed-read row with Try Again, which reads that
-  routine's runs again. Run Now is the leading swipe and the context menu; Pause and Resume stay trailing.
+  routine's runs again, above the runs it last read. Run Now is the leading swipe and the context menu; Pause and Resume stay trailing.
 - **Forms**: TempCode's forms, then Microsoft's, each section headed only when both are there ("TempCode",
   "Microsoft"). The stamp is how it stands ("Open", "Closed, 3 responses", "3 responses, 2 new"). Close is the
   trailing swipe on a form that takes answers; Reopen on a closed one, only for a key that may, after the owner's

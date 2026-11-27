@@ -45,8 +45,16 @@ struct ComputersScreen: View {
         let clients = model.registry.ordered
         let tiles = ComputerEntries.tiles(clients)
         let machines = clients.filter { $0.work.isOn && WinvmWords.shows($0.work.winvm) }
-        let hosts = clients.map { ComputersState.Host(name: $0.environment.name, linked: $0.work.linked, read: $0.computersRead) }
+        let hosts = clients.map { ComputersState.Host(name: $0.environment.name, linked: $0.work.linked, read: $0.computersRead, failure: $0.computersFailure) }
+        let failed = clients.filter { $0.work.linked && $0.computersFailure != nil }
         List {
+            // A connected host whose read failed: its words and Try Again, over whatever it said last.
+            ForEach(failed, id: \.environment.id) { client in
+                Section {
+                    FailedRead(words: "Computers on \(WorkSearch.nameInLine(client.environment.name)) did not load: \(client.computersFailure ?? "")",
+                               retry: { await client.readComputers() }, identifier: "computers-failed", tint: Tint.destructiveText)
+                }
+            }
             // The Windows VM a host keeps (M5b): how it stands, and Wake or Sleep for a key that may.
             ForEach(machines, id: \.environment.id) { client in
                 if let state = client.work.winvm {
@@ -60,7 +68,7 @@ struct ComputersScreen: View {
             }
             // Live tiles from one computer while another is away: the list says whose it is not, once, quietly.
             let away = ComputersState.away(hosts)
-            if !(tiles.isEmpty && machines.isEmpty), !away.isEmpty {
+            if !(tiles.isEmpty && machines.isEmpty && failed.isEmpty), !away.isEmpty {
                 Section {} footer: {
                     Text("Not connected to \(WorkSearch.nameInLine(ComputersState.names(away))).")
                         .textStep(.meta)
@@ -71,8 +79,11 @@ struct ComputersScreen: View {
         .listStyle(.insetGrouped)
         .overlay {
             if tiles.isEmpty, machines.isEmpty {
-                // A first read waits, hosts all away are named, and an idle list names the ones away (`ComputersState`).
+                // A failed read is its row above, a first read waits, hosts all away are named, and an idle list names
+                // the ones away (`ComputersState`).
                 switch ComputersState.of(hosts) {
+                case .failed:
+                    EmptyView()
                 case .reading:
                     ProgressView()
                 case .away(let names):

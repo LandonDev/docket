@@ -60,6 +60,18 @@ import TempCodeContract
         #expect(RoutineRuns.mark(try run("asked")) == .waiting)
     }
 
+    @Test func `runs that fail to read again keep the last runs under the failure`() throws {
+        let kept = [try run("quiet")]
+        let failed = RoutineRuns.fold(failed: "The box did not answer", kept: kept)
+        #expect(failed == .init(failed: "The box did not answer", runs: kept, noneYet: false, reading: false))
+        #expect(RoutineRuns.fold(failed: nil, kept: kept) == .init(failed: nil, runs: kept, noneYet: false, reading: false))
+        #expect(RoutineRuns.fold(failed: nil, kept: []).noneYet)
+        // A failure over a read that found none: the failure alone, never "None yet" under it.
+        #expect(!RoutineRuns.fold(failed: "The box did not answer", kept: []).noneYet)
+        #expect(RoutineRuns.fold(failed: nil, kept: nil).reading)
+        #expect(!RoutineRuns.fold(failed: "The box did not answer", kept: nil).reading)
+    }
+
     @Test func `Run Now is offered on a routine that has not ended and is not running`() throws {
         let row = { (running: Bool, ended: Bool) in
             try self.decode(RoutinePhoneRow.self, #"{"id":"r","workspaceId":"w","kind":"routine","name":"n","words":"w","ends":{"kind":"never"},"enabled":true,"proposed":false,"nextAt":null,"lastAt":null,"running":\#(running),"ended":\#(ended),"waiting":null}"#)

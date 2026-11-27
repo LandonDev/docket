@@ -105,4 +105,14 @@ private func link(_ id: String, name: String, item: String, created: Int, expire
         // No page: the page's own "Can’t Read This Person" says it.
         #expect(PeopleRules.refreshLine(kept: false, failing: true) == nil)
     }
+
+    @Test func `LifeOS's missing answer closes a kept page, and a pending ask keeps it`() {
+        let kept = PersonPage(person: .init(id: "p", name: "Dana Lee", emails: ["dana@c.example"]))
+        #expect(PeopleRules.shownPage(answer: .some(nil), kept: kept) == nil)
+        #expect(PeopleRules.shownPage(answer: nil, kept: kept) == kept)
+        #expect(PeopleRules.shownPage(answer: nil, kept: nil) == nil)
+        var fresh = kept
+        fresh.person.name = "Dana Lee-Park"
+        #expect(PeopleRules.shownPage(answer: .some(fresh), kept: kept) == fresh)
+    }
 }

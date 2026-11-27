@@ -103,6 +103,19 @@ public enum RoutineRuns {
         return date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
     }
 
+    /// What an unfolded routine shows: a read that failed is its failed-read row above the runs the last read gave,
+    /// which stay in sight; "None yet" only while no read has failed since one said so; a spinner only before either.
+    public struct Fold: Equatable, Sendable {
+        public var failed: String?
+        public var runs: [RoutineRunPhone]
+        public var noneYet: Bool
+        public var reading: Bool
+    }
+
+    public static func fold(failed: String?, kept: [RoutineRunPhone]?) -> Fold {
+        Fold(failed: failed, runs: kept ?? [], noneYet: failed == nil && kept?.isEmpty == true, reading: failed == nil && kept == nil)
+    }
+
     /// Whether Run Now is offered: a routine that has not ended and is not running now.
     public static func runsNow(_ row: RoutinePhoneRow) -> Bool { !row.ended && !row.running && !row.proposed }
 }

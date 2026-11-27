@@ -15,6 +15,15 @@ public enum MessagesRules {
         failed ? .failed : waiting ? .reading : nil
     }
 
+    /// The conversations list's foot as it pages on, a page a sector: a next page that failed says so with Try Again,
+    /// which asks each failed page again, since LifeKit asks no page past one that has no rows; else a spinner while
+    /// one reads; else nothing.
+    public static let moreFailed = "More conversations did not load"
+
+    public static func nextPages(_ pages: [(waiting: Bool, failed: Bool)]) -> OlderPage? {
+        olderPage(waiting: pages.contains { $0.waiting }, failed: pages.contains { $0.failed })
+    }
+
     /// A reply's outcome said off its conversation (the sticky toast when he has left it), named: "Not sent to Dana Lee:
     /// TempCode left the screen". Nil while the conversation is on screen: its own field and line say it there.
     /// What a reply read back late says off its conversation: nil when it went, or nothing is known yet.

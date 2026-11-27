@@ -132,6 +132,17 @@ public enum PeopleRules {
         kept && failing ? "This person did not refresh" : nil
     }
 
+    /// The page on screen, from `people:page`'s answer (nil while it is asked, `.some(nil)` when LifeOS holds no such
+    /// person: merged or deleted) and the page kept from the ask before. LifeOS's missing answer wins over a kept page,
+    /// so a removed person's page never stays open with Write and New Thread: "Can’t Find This Person" says it.
+    public static func shownPage(answer: PersonPage??, kept: PersonPage?) -> PersonPage? {
+        switch answer {
+        case .some(.some(let page)): page
+        case .some(.none): nil
+        case .none: kept
+        }
+    }
+
     /// The page's sections, in the desktop's order; a section with nothing is not drawn.
     public enum Section: String, Sendable, Hashable, CaseIterable {
         case mail, coming, asked, waiting, shared, recent, answered

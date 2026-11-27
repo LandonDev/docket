@@ -108,31 +108,32 @@ struct RoutinesScreen: View {
         }
     }
 
-    /// The last runs under an unfolded routine: a spinner while they are read, "None yet", the read's error, or a row
-    /// a run; a run that started a thread opens it.
+    /// The last runs under an unfolded routine (`RoutineRuns.fold`): a spinner while they are first read, a read that
+    /// failed above the runs the last one gave, "None yet", or a row a run; a run that started a thread opens it.
     @ViewBuilder private func runList(_ row: RoutinePhoneRow) -> some View {
-        if let failed = runFailed[row.id] {
+        let fold = RoutineRuns.fold(failed: runFailed[row.id], kept: runs[row.id])
+        if fold.reading {
+            ProgressView().frame(maxWidth: .infinity, alignment: .leading)
+        }
+        if let failed = fold.failed {
             // The failed-read row of every Work place: the words, and Try Again, which reads this routine's runs again.
             FailedRead(words: failed, retry: { await readRuns(row.id) }, identifier: "routine-runs-failed", insets: nil)
-        } else if let list = runs[row.id] {
-            if list.isEmpty {
-                Text("None yet").textStep(.meta).foregroundStyle(.secondary)
-            }
-            ForEach(list, id: \.id) { run in
-                if let sessionId = run.sessionId {
-                    Button {
-                        navigator.open(.thread(environmentId: client.environment.id, sessionId: sessionId, seq: nil))
-                    } label: {
-                        RunRowView(run: run)
-                    }
-                    .buttonStyle(.pressable)
-                    .accessibilityAddTraits(.isLink)
-                } else {
+        }
+        if fold.noneYet {
+            Text("None yet").textStep(.meta).foregroundStyle(.secondary)
+        }
+        ForEach(fold.runs, id: \.id) { run in
+            if let sessionId = run.sessionId {
+                Button {
+                    navigator.open(.thread(environmentId: client.environment.id, sessionId: sessionId, seq: nil))
+                } label: {
                     RunRowView(run: run)
                 }
+                .buttonStyle(.pressable)
+                .accessibilityAddTraits(.isLink)
+            } else {
+                RunRowView(run: run)
             }
-        } else {
-            ProgressView().frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

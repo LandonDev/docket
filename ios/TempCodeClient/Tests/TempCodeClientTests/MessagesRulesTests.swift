@@ -173,4 +173,11 @@ import TempCodeContract
         #expect(MessagesRules.olderPage(waiting: true, failed: false) == .reading)
         #expect(MessagesRules.olderPage(waiting: false, failed: false) == nil)
     }
+
+    @Test func `a next page of conversations that failed is the list's foot, over another sector still reading`() {
+        #expect(MessagesRules.nextPages([(waiting: true, failed: true), (waiting: true, failed: false)]) == .failed)
+        #expect(MessagesRules.nextPages([(waiting: false, failed: false), (waiting: true, failed: false)]) == .reading)
+        #expect(MessagesRules.nextPages([(waiting: false, failed: false)]) == nil)
+        #expect(MessagesRules.nextPages([]) == nil)
+    }
 }

@@ -93,8 +93,11 @@ public enum ComputerTiles {
 }
 
 /// What the Computers list says with no computer in use, by its hosts (docs/IOS-DESIGN.md "A job's small places"): a
-/// first read is a wait, hosts that are all away are named, and the rest is idle, naming the ones away.
+/// failed read is that host's failed-read row, a first read is a wait, hosts that are all away are named, and the rest
+/// is idle, naming the ones away.
 public enum ComputersState: Equatable, Sendable {
+    /// A connected host's read failed: its failed-read row says so, and the list claims no idle.
+    case failed
     /// A connected host has not said yet.
     case reading
     /// No Work host is connected: these, by name.
@@ -109,10 +112,13 @@ public enum ComputersState: Equatable, Sendable {
         public var linked: Bool
         /// it answered or pushed its computers this run
         public var read: Bool
-        public init(name: String, linked: Bool, read: Bool) {
+        /// why its last read failed, until one lands
+        public var failure: String?
+        public init(name: String, linked: Bool, read: Bool, failure: String? = nil) {
             self.name = name
             self.linked = linked
             self.read = read
+            self.failure = failure
         }
     }
 
@@ -120,6 +126,7 @@ public enum ComputersState: Equatable, Sendable {
         let away = hosts.filter { !$0.linked }.map(\.name)
         let linked = hosts.filter(\.linked)
         if linked.isEmpty, !away.isEmpty { return .away(away) }
+        if linked.contains(where: { $0.failure != nil }) { return .failed }
         if linked.contains(where: { !$0.read }) { return .reading }
         return .idle(away: away)
     }

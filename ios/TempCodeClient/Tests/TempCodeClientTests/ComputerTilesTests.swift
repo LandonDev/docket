@@ -95,6 +95,17 @@ import TempCodeContract
         #expect(ComputersState.names(["The box", "Mac", "PC"]) == "The box, Mac and PC")
     }
 
+    /// A connected host whose read failed is its own failed-read row: never idle, never a wait over that row.
+    @Test func aFailedReadIsNeverIdle() {
+        let failed = ComputersState.Host(name: "The box", linked: true, read: true, failure: "It did not answer in time")
+        #expect(ComputersState.of([failed]) == .failed)
+        #expect(ComputersState.of([failed, .init(name: "Mac", linked: true, read: false)]) == .failed)
+        #expect(ComputersState.of([failed, .init(name: "Mac", linked: false, read: false)]) == .failed)
+        // A host away is named as away, its last failure no longer the list's.
+        let gone = ComputersState.Host(name: "The box", linked: false, read: true, failure: "It did not answer in time")
+        #expect(ComputersState.of([gone]) == .away(["The box"]))
+    }
+
     /// Under live tiles the hosts away are still named: the list never reads as every computer's.
     @Test func theHostsAwayAreNamedUnderLiveTiles() {
         #expect(ComputersState.away([.init(name: "The box", linked: true, read: true), .init(name: "Mac", linked: false, read: true)]) == ["Mac"])

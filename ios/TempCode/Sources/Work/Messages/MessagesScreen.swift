@@ -125,6 +125,17 @@ private struct MessagesList: View {
                     }
                 }
             }
+            // The foot as it pages on: a next page that failed says so, and Try Again asks each failed page again; a
+            // spinner while one reads (`MessagesRules.nextPages`).
+            switch MessagesRules.nextPages(pages.map { (waiting: $0.isLoadingMore, failed: $0.more.last?.hasFailed == true) }) {
+            case .reading:
+                ProgressView().frame(maxWidth: .infinity).listRowSeparator(.hidden)
+            case .failed:
+                FailedRead(words: MessagesRules.moreFailed, retry: { retryMore(pages) }, identifier: "messages-more-failed", tint: Tint.destructiveText)
+                    .listRowSeparator(.hidden)
+            case nil:
+                EmptyView()
+            }
         }
         .holdingChats(store, keys: pages.map(\.query.key))
         .task(id: ObjectIdentifier(host)) { await host.prepare() } // a fresh session from a parent redraw is asked for too
@@ -149,6 +160,13 @@ private struct MessagesList: View {
     private func retry(_ pages: [PagedQuery<ChatRow>]) async {
         if host.store == nil { return await host.prepare() }
         pages.forEach { $0.retryNow() }
+    }
+
+    /// Each sector's next page that failed, asked again.
+    private func retryMore(_ pages: [PagedQuery<ChatRow>]) {
+        for page in pages {
+            if let next = page.more.last, next.hasFailed { next.retryNow() }
+        }
     }
 
     static func rows(_ pages: [PagedQuery<ChatRow>]) -> [ChatRow] {

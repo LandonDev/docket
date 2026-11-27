@@ -66,8 +66,11 @@ private struct PersonPageView: View {
         // Asked as soon as LifeOS is up, with the guest links known so far (none until the host lists them): the links
         // join the next ask, and the page shown stays meanwhile.
         let query = store.map { PeopleReads.page($0, personId: personId, sector: sector, shared: mine) }
-        let read = Self.page(query, personId: personId)
-        let page = read ?? shown
+        let answer = Self.answer(query, personId: personId)
+        let read = answer ?? nil
+        let missing = answer.map { $0 == nil } == true
+        // LifeOS saying it holds no such person (merged, deleted) closes the kept page: "Can’t Find This Person".
+        let page = PeopleRules.shownPage(answer: answer, kept: shown)
         let stale = PeopleRules.refreshLine(kept: page != nil, failing: Self.failing(query))
         content(page: page, waiting: Self.waiting(phase: host.phase, query: query), stale: stale, links: mine, retry: {
             if host.store == nil { Task { await host.prepare() } } else { query?.retryNow() }
@@ -88,7 +91,11 @@ private struct PersonPageView: View {
                 shown = now
                 knownName = now.person.name
             }
-            .navigationTitle(page?.person.name ?? name ?? WorkPlace.people.title)
+            // Gone from LifeOS: the next ask (new guest links) never brings the old page back while it is asked.
+            .onChange(of: missing) { _, missing in
+                if missing { shown = nil }
+            }
+            .navigationTitle(missing ? WorkPlace.people.title : page?.person.name ?? name ?? WorkPlace.people.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if let page {
@@ -268,11 +275,12 @@ private struct PersonPageView: View {
         return query?.failure != nil
     }
 
-    static func page(_ query: LiveQuery<PersonPage?>?, personId: String) -> PersonPage? {
+    /// LifeOS's answer: nil while it is asked, `.some(nil)` for a person it does not hold (`PeopleRules.shownPage`).
+    static func answer(_ query: LiveQuery<PersonPage?>?, personId: String) -> PersonPage?? {
         #if DEBUG
-        if PeopleFixtures.on { return PeopleFixtures.page(personId) }
+        if PeopleFixtures.on { return PeopleFixtures.page(personId).map(Optional.some) }
         #endif
-        return query?.value ?? nil
+        return query?.value
     }
 }
 
