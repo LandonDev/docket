@@ -18,6 +18,19 @@ public extension OutboxModel {
         hosts.compactMap { host in host.error.map { FailedRead(id: host.id, name: host.name, error: $0) } }
     }
 
+    /// The words a Work host's failed-read row says, or nil. A link down past its first try is "Not connected",
+    /// whether or not the host listed before the drop (the rows it gave stay below); else the list read's failure,
+    /// else the requests read's, since Waiting is both.
+    nonisolated static func readError(list: String?, requests: String?, open: Bool) -> String? {
+        open ? list ?? requests : TodaySources.notConnected
+    }
+
+    /// What a failed `work.outbox.requests` read leaves for that row: its words, or nil for a host from before
+    /// requests, which refuses the method as unknown and so has none to read.
+    @MainActor static func requestsError(_ error: any Error) -> String? {
+        HostCan.saysUnknown(error) ? nil : ActionError.wrap(error).message
+    }
+
     enum EmptyOutbox: Sendable, Hashable { case reading, nothingHeld }
 
     /// Nil while any row shows. With no rows: still reading whenever any host reads, even under another host's

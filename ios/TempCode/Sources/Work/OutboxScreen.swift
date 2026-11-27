@@ -76,11 +76,14 @@ struct OutboxScreen: View {
         let first = OutboxModel.pickOrder(now: entries.filter { OutboxModel.needsHim($0.item) }.map(\.id), seen: seen, shown: shown)
         let kept = OutboxEntries.kept(clients)
         let tickable = Set(entries.filter { mayTick($0) }.map(\.id))
-        // Each host whose read failed, named above the sections with its own Retry, whatever the others hold; the
-        // rows it read before stay below (`OutboxModel.failedReads`).
-        // A host that is not linked and never listed on this launch is named too, as Today names it: never a spinner
-        // for as long as it is down.
-        let failed = OutboxModel.failedReads(workHosts.map { (id: $0.environment.id, name: $0.environment.name, error: $0.work.listError ?? (!$0.work.listed && !TodayFeed.open($0) ? TodaySources.notConnected : nil)) })
+        // Each host whose list or requests read failed, named above the sections with its own Retry, whatever the
+        // others hold; the rows it read before stay below (`OutboxModel.failedReads`). A host whose link is down past
+        // its first try is named too, as Today names it, after a drop as before its first list: never a spinner, nor
+        // "Nothing Held", for as long as it is down (`OutboxModel.readError`).
+        let failed = OutboxModel.failedReads(workHosts.map { client in
+            let work = client.work
+            return (id: client.environment.id, name: client.environment.name, error: OutboxModel.readError(list: work.listError, requests: work.requestsError, open: TodayFeed.open(client)))
+        })
         List {
             if !failed.isEmpty {
                 Section {

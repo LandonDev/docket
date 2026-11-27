@@ -593,7 +593,8 @@ private struct CompareView: View {
     @State private var restoring = false
     @State private var capsule: (id: Int, line: String, undo: String?)?
     @State private var failure: String?
-    /// Reads the compare again after a restore.
+    /// Moves on each restore and each Undo: the loader is keyed to it, so each starts its own read of the state it
+    /// leaves, and a read still out from the one before is dropped with it.
     @State private var generation = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -601,7 +602,7 @@ private struct CompareView: View {
 
     var body: some View {
         // A restore's reread drops the compare from before it: the spinner, then the new compare or why not, with Try Again.
-        ItemLoad(dropsOnReload: true, read: { try await client.work.canvas.compare(source, from: versionId) }) { compare, reload in
+        ItemLoad(read: { try await client.work.canvas.compare(source, from: versionId) }) { compare, _ in
             let stats = compare.diff.stats
             List {
                 Section {
@@ -616,8 +617,8 @@ private struct CompareView: View {
             }
             .listStyle(.plain)
             .overlay { if compare.diff.rows.isEmpty { ContentUnavailableView("No Changes", systemImage: "equal") } }
-            .onChange(of: generation) { reload() }
         }
+        .id(generation)
         .toolbar {
             if mayRestore {
                 ToolbarItem(placement: .topBarTrailing) {

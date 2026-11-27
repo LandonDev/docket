@@ -564,6 +564,24 @@ import TempCodeContract
         #expect(OutboxModel.emptyState(bandsEmpty: false, anyReading: true, anyFailed: false) == nil)
     }
 
+    @Test func `a host row names its failed requests read and a dropped link, not an older host's unknown method`() {
+        // Waiting is both reads: an empty list over requests that did not answer is no "Nothing Held".
+        #expect(OutboxModel.readError(list: nil, requests: "The host did not answer", open: true) == "The host did not answer")
+        #expect(OutboxModel.readError(list: "List failed", requests: "Requests failed", open: true) == "List failed")
+        #expect(OutboxModel.readError(list: nil, requests: nil, open: true) == nil)
+        // A link down past its first try is named whether or not the host listed before the drop; the first
+        // connect's grace (`open`) names nothing.
+        #expect(OutboxModel.readError(list: nil, requests: nil, open: false) == TodaySources.notConnected)
+        #expect(OutboxModel.readError(list: "List failed", requests: nil, open: false) == TodaySources.notConnected)
+    }
+
+    @MainActor @Test func `a requests read an older host does not know is no failure`() {
+        #expect(OutboxModel.requestsError(TransportError.server(method: "work.outbox.requests", message: "bad request: No matching discriminator")) == nil)
+        #expect(OutboxModel.requestsError(TransportError.server(method: "work.outbox.requests", message: "unknown method work.outbox.requests")) == nil)
+        #expect(OutboxModel.requestsError(TransportError.server(method: "work.outbox.requests", message: "timed out")) == "timed out")
+        #expect(OutboxModel.requestsError(TransportError.notConnected) != nil)
+    }
+
     @Test func aRowsTitleIsTheActAndItsLineTheWordsAfterIt() {
         let post = OutboxModel.rowWords(item("p1", kind: .frameioPost, summary: "Comment on cut.mp4 at 0:12: Tighten the open", payload: .object(["account": .string("acc_1")])))
         #expect(post.title == "Comment on cut.mp4 at 0:12")

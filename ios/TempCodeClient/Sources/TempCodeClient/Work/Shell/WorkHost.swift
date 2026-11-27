@@ -43,6 +43,9 @@ public final class WorkHost: CaptureHost {
     /// A thread's requests for his press that are still open, oldest first (`work.outbox.requests`, the
     /// `work.outbox.request` push). Empty for a key without approve: the host shows them to approve alone.
     public private(set) var requests: [OutboxRequest] = []
+    /// The last `work.outbox.requests` read's failure (`OutboxModel.requestsError`), until one answers: Waiting names
+    /// it as it names a failed list, never "Nothing Held" over requests it could not read.
+    public private(set) var requestsError: String?
     /// `work.outbox.list` answered at least once on this socket.
     public private(set) var listed = false
     public private(set) var listError: String?
@@ -274,11 +277,21 @@ public final class WorkHost: CaptureHost {
     }
 
     /// The open requests, read only by a key the host lets list them (`KeyMethod.outboxRequests`: approve, the
-    /// person's own word). A host from before requests refuses the method: then there are none.
+    /// person's own word). A host from before requests refuses the method: then there are none, and no failure.
     public func refreshRequests() async {
-        guard may(.outboxRequests) else { return requests = [] }
-        if let answer = try? await socket.request(Methods.WorkOutboxRequests.self, .init()), !keyRevoked {
+        guard may(.outboxRequests) else {
+            requestsError = nil
+            return requests = []
+        }
+        let asked = cleared
+        do {
+            let answer = try await socket.request(Methods.WorkOutboxRequests.self, .init())
+            guard !keyRevoked, asked == cleared else { return }
             requests = answer.requests.filter { $0.state == .open }
+            requestsError = nil
+        } catch {
+            guard !keyRevoked, asked == cleared else { return }
+            requestsError = OutboxModel.requestsError(error)
         }
     }
 
@@ -461,6 +474,7 @@ public final class WorkHost: CaptureHost {
         unreviewed = 0
         listed = false
         listError = nil
+        requestsError = nil
         lifeos = nil
         digest.clear()
     }

@@ -2558,8 +2558,10 @@ milestone 46 built, where it lives now:
 - **The Outbox** is a place of the Work tab, a pushed list (the sidebar in
   the split poses) in Outbox 2's order (prototype A,
   `.temp-code/prototypes/work-outbox-2/phone.html`): first, each host whose
-  read failed as the failed-read row ("Box: Not connected"; Try Again reads
-  that host alone), its rows from before kept below; then
+  list or requests read failed, or whose link is down past its first try
+  (after a drop too), as the failed-read row ("Box: Not connected"; Try
+  Again reads that host alone; `OutboxModel.readError`), its rows from
+  before kept below; then
   **Asked in threads** (a thread's open request, one row each: a
   `checklist` glyph, its head "Send 10 mails to 10 people", the thread's
   title under it, the time; the row opens the request sheet), **Not sent**
@@ -3716,7 +3718,8 @@ computer." in its row.
 **Restore** (a version's compare): Restore is the bar's one trailing press on
 every version but the newest. On his own document the undo capsule says
 "Restored" with Undo, and the compare reads again from its spinner, "No Changes", or
-why not with Try Again, never the changes from before; on one others can
+why not with Try Again, never the changes from before; Undo reads it again the
+same way, even while the restore's read is out; on one others can
 open it says "Waiting in Review Changes" and has no Undo, since nothing was
 written.
 
