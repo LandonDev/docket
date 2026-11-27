@@ -10,6 +10,7 @@ import { HeldTip } from "../components/heldTip";
 import { hostsHeld } from "./hostOffline";
 import { TOAST_ACTION, TOAST_CANCEL } from "../components/ui/toaster";
 import { registry, useEnvironmentStatuses } from "../lib/connection";
+import { useGraceEnd } from "../lib/connection/degraded";
 import { approveElsewhere, linkMay } from "../lib/linkMayCore";
 import { sessionStore, usePendingApprovals } from "../lib/tcserver/store";
 
@@ -40,6 +41,8 @@ export function HiddenApprovalToasts(rest: Omit<Props, "notices">) {
   const pending = usePendingApprovals();
   // One subscription to every host's link: a toast whose thread's host is away holds its presses (D5, edges-04).
   const statuses = useEnvironmentStatuses();
+  // A drop holds the pair only past the link's grace, as the composer's line: the toasts read again when it ends.
+  const graceEnded = useGraceEnd([...pending.values()].map((notice) => sessionStore.environmentOf(notice.sessionId)));
   const notices = useMemo(
     () =>
       [...pending.values()]
@@ -49,8 +52,8 @@ export function HiddenApprovalToasts(rest: Omit<Props, "notices">) {
           const elsewhere = approvalElsewhere(environmentId);
           return { ...notice, elsewhere, held: elsewhere ? null : hostsHeld(environmentId ? [environmentId] : []) };
         }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- statuses is the cue to read the links again
-    [pending, onScreen, statuses],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- statuses and the grace's end are the cues to read the links again
+    [pending, onScreen, statuses, graceEnded],
   );
   return <ApprovalToasts notices={notices} {...rest} />;
 }

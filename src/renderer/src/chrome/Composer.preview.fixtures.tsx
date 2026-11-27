@@ -68,7 +68,7 @@ export const DockedComposerPreviewFixtures = [
     name: "Uploading, failed, image and pasted image",
     props: {
       id: "preview-upload", draft: "What changed in this export?", attachments: files,
-      composerProps: { initialAttachmentStatus: { uploads: { copy: { sent: 8_000, total: 20_000 }, failed: { sent: 0, total: 182_000, failed: true } }, note: "Could not copy the archive to this host" } },
+      composerProps: { initialAttachmentStatus: { uploads: { copy: { sent: 8_000, total: 20_000 }, failed: { sent: 0, total: 182_000, failed: true } }, note: "Couldn't attach the file" } },
     },
   },
   {

@@ -4840,7 +4840,8 @@ being produced shimmers (`WorkingText`); nothing else does.
 No control is offered that its host can only refuse. While a host's link is
 not open (past the 1.5 s grace, counted from the drop, not from a control's
 mount) the presses that go to it are held: disabled in place, their tooltip
-the link's words (`useHostHeld`, `HeldTip`; a menu row's `reason`), and no
+the link's words (`useHostHeld`; `hostsHeld` for a menu and an approval
+toast, which read again when the grace ends; `HeldTip`; a menu row's `reason`), and no
 new line where the line over the composer already says why (the Changes
 section adds no words). A key that may not use a press does not get it: the
 control is not drawn (`useLinkMay`, `THREAD_MENU_METHODS`), or, where the

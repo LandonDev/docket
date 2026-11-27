@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { registry, type Environment, type EnvironmentStatus, type Link } from "../lib/connection";
+import { DEGRADED_GRACE_MS, registry, type Environment, type EnvironmentStatus, type Link } from "../lib/connection";
 import { noteBootResume, resetBootResume } from "../lib/bootResume";
 import { sessionStore } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
@@ -190,15 +190,23 @@ describe("HostsRow", () => {
   });
 
   // rail-05: every verb in a host's submenu goes to that host, so a host away holds the submenu, its state the reason.
-  it("holds a host's submenu while the host is away, its state the reason", async () => {
-    hosts([LOCAL, BOX], { local: status("open", "darwin"), env_box: status("reconnecting", "linux") });
-    render(<HostsRow onAddWorkspace={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: /^Hosts:/ }));
-    await act(flush);
-    const [here, box] = [...document.querySelectorAll('[data-menu-row^="host:"]')];
-    expect(box.getAttribute("aria-disabled")).toBe("true");
-    expect(here.getAttribute("aria-disabled")).not.toBe("true");
-    expect(box.getAttribute("aria-description")).toBe("Reconnecting to box…");
+  it("holds a host's submenu while the host is away, its state the reason, once the link's grace from the drop ends", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      hosts([LOCAL, BOX], { local: status("open", "darwin"), env_box: status("reconnecting", "linux") });
+      render(<HostsRow onAddWorkspace={() => {}} />);
+      fireEvent.click(screen.getByRole("button", { name: /^Hosts:/ }));
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      const row = (n: number) => [...document.querySelectorAll('[data-menu-row^="host:"]')][n];
+      // A blip holds nothing (council 5 F10.1); the open menu reads again when the grace ends.
+      expect(row(1).getAttribute("aria-disabled")).not.toBe("true");
+      await act(() => vi.advanceTimersByTimeAsync(DEGRADED_GRACE_MS + 1));
+      expect(row(1).getAttribute("aria-disabled")).toBe("true");
+      expect(row(0).getAttribute("aria-disabled")).not.toBe("true");
+      expect(row(1).getAttribute("aria-description")).toBe("Reconnecting to box…");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // F1.1 (council 2): one name a state. The row's trailing fact is `linkWords` without the name the row shows.

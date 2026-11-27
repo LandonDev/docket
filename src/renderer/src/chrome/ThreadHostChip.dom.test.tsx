@@ -17,7 +17,7 @@ vi.mock("../lib/threadMove", async (importOriginal) => ({
 
 const scope = vi.hoisted(() => ({ work: false }));
 vi.mock("../lib/workRow", () => ({ useWorkSessionId: () => scope.work }));
-import { MoveThreadConfirm, MoveToasts } from "./ThreadHostChip";
+import { MoveThreadConfirm, MoveToasts, moveRows } from "./ThreadHostChip";
 
 afterEach(() => {
   cleanup();
@@ -31,12 +31,31 @@ describe("the move confirm", () => {
     const branch = await screen.findByText("Branch ios/home travels too");
     const line = branch.parentElement!;
     expect(Array.from(line.children, (c) => c.textContent)).toEqual(["Branch ios/home travels too", "3 uncommitted files travel too"]);
-    expect(screen.getByText("Its subagents and pages move with it; undo history stays on This Mac.")).toBeTruthy();
+    expect(screen.getByText("Its subagents and pages move with it; undo history stays on this Mac.")).toBeTruthy();
     expect(line.dataset.slot).toBe("facts");
     expect(document.querySelector("[data-confirm-note]")?.textContent).not.toContain("·");
   });
 });
 
+
+describe("a host's name mid-line", () => {
+  it("the confirm and the toast say the box and this Mac in lower case, as every other line does", async () => {
+    render(<MoveThreadConfirm sessionId="s1" to="env_box" toName="The box" fromName="This Mac" onClose={() => {}} />);
+    expect(await screen.findByText("Move this thread to the box?")).toBeTruthy();
+    expect(screen.getByText("Its subagents and pages move with it; undo history stays on this Mac.")).toBeTruthy();
+    cleanup();
+    moves.notices = [{ key: 3, sessionId: "s3", title: "Review", fromName: "This Mac", toName: "The box", result: null, error: null }];
+    render(<MoveToasts />);
+    await act(() => Promise.resolve());
+    expect(toast).toHaveBeenCalledWith(`Moved "Review" to the box`, expect.anything());
+  });
+
+  it("the thread menu's rows say Move to this Mac… and Moving to the box…", () => {
+    const labels = (rows: ReturnType<typeof moveRows>) => rows.map((r) => (r.kind === "item" ? r.label : ""));
+    expect(labels(moveRows([{ environmentId: "local", name: "This Mac", ok: true }, { environmentId: "pc", name: "MacBook", ok: false, reason: "MacBook is not connected" }], null))).toEqual(["Move to this Mac…", "Move to MacBook…"]);
+    expect(labels(moveRows([], "The box"))).toEqual(["Moving to the box…"]);
+  });
+});
 
 describe("the move confirm for a Work thread", () => {
   it("says nothing of a branch and asks the host for none", async () => {
@@ -44,7 +63,7 @@ describe("the move confirm for a Work thread", () => {
     const threadMove = await import("../lib/threadMove");
     const asked = vi.spyOn(threadMove, "previewMove");
     render(<MoveThreadConfirm sessionId="s1" to="env_box" toName="box" fromName="This Mac" onClose={() => {}} />);
-    expect(await screen.findByText("Its subagents and pages move with it; undo history stays on This Mac.")).toBeTruthy();
+    expect(await screen.findByText("Its subagents and pages move with it; undo history stays on this Mac.")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/branch|uncommitted/i);
     expect(asked).not.toHaveBeenCalled();
     scope.work = false;

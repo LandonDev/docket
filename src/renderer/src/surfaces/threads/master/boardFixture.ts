@@ -66,7 +66,7 @@ export const FIXTURE_ROWS: FixtureRow[] = [
     landed: false,
   },
   {
-    meta: base({ id: "inbox", title: "Inbox swipe", status: "error", failure: { kind: "quota", account: null, summary: "Usage cap until 14:00", cause: "" }, createdAt: 5 }),
+    meta: base({ id: "inbox", title: "Inbox swipe", status: "error", failure: { kind: "rate_limited", account: "Personal", summary: "Personal hit its 5-hour limit", cause: "" }, createdAt: 5 }),
     digest: {},
     agents: null,
     landed: false,

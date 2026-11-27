@@ -88,6 +88,13 @@ describe("MessageQueue", () => {
     expect(screen.getByRole("button", { name: "Model for this message" }).parentElement!.className).not.toContain("opacity-0");
   });
 
+  it("a tuned Claude message names its model as the picker does, the maker left to the mark", () => {
+    render(<MessageQueue sessionId="s1" items={[{ ...item("a", "first"), provider: "claude", model: "claude-opus-5-5", reasoning: "high" }]} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
+    const tune = screen.getByRole("button", { name: "Model for this message" });
+    expect(tune.textContent).not.toMatch(/Claude/);
+    expect(tune.textContent).toMatch(/^Opus/);
+  });
+
   it("counts once, 4px after Queued: a row's text starts with the message, no number before it", () => {
     render(<MessageQueue items={[item("a", "first"), item("b", "second")]} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
     expect(screen.getByText("Queued").querySelector("span")!.className.split(" ")).toContain("ms-1");

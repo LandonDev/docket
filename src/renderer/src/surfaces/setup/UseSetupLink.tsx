@@ -105,7 +105,7 @@ export function useSetupLink({ onClose, first = false, phase: initial }: UseSetu
     ) : ready ? (
       <Ready line={`${here} has everything ${phase.state.giver} gave it.`} onClose={onClose} />
     ) : (
-      <Steps state={phase.state} steps={steps} readFailed={phase.readFailed === true} onClose={onClose} onReread={reread} />
+      <Steps state={phase.state} steps={steps} readFailed={phase.readFailed === true} onReread={reread} />
     );
   return { title, pending, at: phase.at, body };
 }
@@ -228,13 +228,11 @@ function Steps({
   state,
   steps,
   readFailed,
-  onClose,
   onReread,
 }: {
   state: SetupState;
   steps: SetupStepRow[];
   readFailed: boolean;
-  onClose: () => void;
   onReread: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState<SetupStep | "read" | null>(null);
@@ -264,7 +262,8 @@ function Steps({
   };
   return (
     <>
-      <ModalBody className="gap-0 py-1">
+      {/* The header's × is its one close: the steps run on with the dialog shut, so no footer says Close twice. */}
+      <ModalBody className="gap-0 pt-1 pb-3">
         {/* The host's answer did not come: one red line over the steps there are, with the list's one button weight. */}
         {readFailed ? (
           <p role="alert" data-setup-read-failed className="flex items-center gap-2 py-2 text-xs text-destructive">
@@ -298,7 +297,6 @@ function Steps({
           </PageRow>
         ))}
       </ModalBody>
-      <DialogFooter confirmLabel="Close" closeOnConfirm onConfirm={onClose} />
     </>
   );
 }

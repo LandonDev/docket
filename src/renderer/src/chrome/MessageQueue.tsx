@@ -9,6 +9,7 @@ import { useSessionMeta } from '../lib/tcserver/store'
 import { effortWord, modelsFor, resolveModel } from '../lib/models'
 import { HARNESSES, HARNESS_TITLE, type HarnessId } from '../lib/session'
 import { HarnessIcon } from './HarnessIcon'
+import { triggerName } from './ModelPicker'
 import { Button } from '../components/ui/button'
 import { reveal } from '../components/ui/reveal'
 import { Textarea } from '../components/ui/textarea'
@@ -289,7 +290,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
           {overridden ? (
             <>
               <HarnessIcon harness={harness} className="size-3 shrink-0" />
-              <span className="max-w-28 truncate">{model.name}</span>
+              <span className="max-w-28 truncate">{triggerName(model)}</span>
               {item.reasoning ? <span className="ms-1">{effortWord(item.reasoning)}</span> : null}
             </>
           ) : (

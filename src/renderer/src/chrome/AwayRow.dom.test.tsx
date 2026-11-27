@@ -159,6 +159,8 @@ describe("AwayRow by kind, with Work on", () => {
     expect(theSwitch().textContent).toBe("Away for Work");
     // In a code place the switch is Code's: off, while the words say Work is away.
     expect(theSwitch().getAttribute("aria-checked")).toBe("false");
+    // Its name stays the switch's own (council 5 F1.1): the words say which kinds, not what the switch flips.
+    expect(theSwitch().getAttribute("aria-label")).toBe("Away from computer");
   });
 
   it("a press in a code place flips Code alone; in a Work place, Work alone", async () => {

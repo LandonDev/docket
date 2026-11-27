@@ -243,6 +243,9 @@ export function MasterRowView({
   const quiet = group === "done" || group === "queued";
   // Amber and red say their detail in the state's tone; every other detail is muted.
   const toned = state === "waiting" || state === "failed";
+  // Line two says nothing but the task in hand (the section says the word, the bar the tally): the bar takes that
+  // line under the glyph, and a folded list's task in hand rides after it, so the bar never moves under a press.
+  const seated = barShown && !ownWord && !tally && (!status.detail || status.detail === taskInHand(tasks));
   const type = typeWord(meta);
 
   // React bubbles a portal's events through the tree: a pick in the ⋯
@@ -317,9 +320,9 @@ export function MasterRowView({
       {/* Line two: the status glyph hangs under the type's, so the detail
           starts under the title; a settled row draws none ("Landed 12:08 PM"). */}
       <span className="flex h-4 items-center justify-center" data-row-glyph>
-        {marksAtRest(state) ? <StatusMark state={state} word={false} aria-hidden /> : null}
+        {marksAtRest(state) ? <StatusMark state={state} word={false} {...(seated ? { "aria-label": statusLabel } : { "aria-hidden": true })} /> : null}
       </span>
-      <span className="flex h-4 min-w-0 items-center gap-2" data-row-status>
+      {seated ? null : <span className="flex h-4 min-w-0 items-center gap-2" data-row-status>
         <StatusMark
           state={state}
           glyph={false}
@@ -333,14 +336,14 @@ export function MasterRowView({
             {tally}
           </span>
         ) : null}
-      </span>
+      </span>}
 
       {progress ? (
         <>
-          <span />
+          {seated ? null : <span />}
           <Collapsible open={barShown} className="min-w-0">
             <CollapsibleContent className="collapsible-auto">
-              <TaskBar bar={progress} working={state === "working"} todos={tasks} open={tasksOpen} auto={!hand} onOpenChange={onTasksOpenChange} />
+              <TaskBar bar={progress} working={state === "working"} todos={tasks} open={tasksOpen} auto={!hand} onOpenChange={onTasksOpenChange} aside={seated ? detail : undefined} />
             </CollapsibleContent>
           </Collapsible>
         </>
@@ -410,8 +413,11 @@ function TaskBar({
   open,
   auto,
   onOpenChange,
+  aside,
 }: {
   bar: { done: number; total: number };
+  /** On a row whose bar takes line two: the task in hand while the list is folded, after the chevron. */
+  aside?: string;
   working: boolean;
   todos: ReturnType<typeof taskList>;
   open: boolean;
@@ -421,18 +427,25 @@ function TaskBar({
 }) {
   return (
     <Collapsible open={open} onOpenChange={(next) => onOpenChange?.(next)} className="min-w-0" data-task-bar>
-      <CollapsibleTrigger
-        aria-label={`Tasks: ${String(bar.done)} of ${String(bar.total)} done`}
-        onClick={stop}
-        onKeyDown={stop}
-        className={cn("relative -mx-1 flex h-4 w-fit max-w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']", ROW_PRESS)}
-      >
-        <Progress value={bar.done} max={bar.total} fill={working ? "foreground" : "muted"} aria-hidden data-bar className={TASK_BAR_CLASS} />
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums" dir="ltr" data-bar-tally>
-          {bar.done}/{bar.total}
-        </span>
-        <ChevronRight aria-hidden className={cn("size-3 shrink-0 text-muted-foreground", DISCLOSURE_CHEVRON, open && "rotate-90")} />
-      </CollapsibleTrigger>
+      <div className="flex h-4 min-w-0 items-center">
+        <CollapsibleTrigger
+          aria-label={`Tasks: ${String(bar.done)} of ${String(bar.total)} done`}
+          onClick={stop}
+          onKeyDown={stop}
+          className={cn("relative -mx-1 flex h-4 w-fit max-w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']", ROW_PRESS)}
+        >
+          <Progress value={bar.done} max={bar.total} fill={working ? "foreground" : "muted"} aria-hidden data-bar className={TASK_BAR_CLASS} />
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums" dir="ltr" data-bar-tally>
+            {bar.done}/{bar.total}
+          </span>
+          <ChevronRight aria-hidden className={cn("size-3 shrink-0 text-muted-foreground", DISCLOSURE_CHEVRON, open && "rotate-90")} />
+        </CollapsibleTrigger>
+        {aside ? (
+          <span className="ms-1 min-w-0 shrink-[1000] truncate text-xs text-muted-foreground" data-bar-aside>
+            {aside}
+          </span>
+        ) : null}
+      </div>
       <CollapsibleContent data-task-fold data-auto={auto || undefined} className={auto ? "collapsible-auto" : undefined}>
         <TaskRows size="compact" tasks={tasksOf(todos, 0, working)} className={TASK_FOLD_CLASS} />
       </CollapsibleContent>

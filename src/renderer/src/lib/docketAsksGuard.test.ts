@@ -192,7 +192,7 @@ export const DOCKET_ASKS: readonly DocketAsk[] = [
     control: "the Hosts menu's fleet switches",
     file: "chrome/HostRows.tsx",
     readKey: ["lib/threadMenu.test.ts", "draws only this window's own rows for a read key"],
-    linkDown: ["chrome/HostRows.dom.test.tsx", "holds a host's submenu while the host is away, its state the reason"],
+    linkDown: ["chrome/HostRows.dom.test.tsx", "holds a host's submenu while the host is away, its state the reason, once the link's grace from the drop ends"],
   },
   {
     method: "session.pauseAllRunning",

@@ -8,7 +8,7 @@ import type { ProjectMeta, SessionMeta } from '../lib/tcserver/types'
 import { mountProbe } from '../test/renderProbe'
 import { threadRow, type ThreadRow } from '../lib/workspaceSessions'
 import { nextPage } from '../lib/sidebarRows'
-import { PlanReadyContext, ProjectCard, ProjectCardView, ThreadList } from './WorkspaceSessions'
+import { ArchivedProjects, PlanReadyContext, ProjectCard, ProjectCardView, ThreadList } from './WorkspaceSessions'
 import { screen, within } from '@testing-library/react'
 import { resetMenus } from './menuRows'
 import { subagentRowsStore } from '../stores/subagentRows'
@@ -927,6 +927,23 @@ describe('an inline rename ended from the keyboard', () => {
     await act(async () => {})
     expect(document.activeElement).toBe(outside)
     outside.remove()
+    probe.unmount()
+  })
+})
+
+describe('the Archived fold', () => {
+  // Council 5 F1.2: a count is not said over the rows it counts.
+  it('counts its projects while folded and drops the count once open', () => {
+    const groups = [{ project: { environmentId: 'local', id: 'a1', workspaceId: 'w1', name: 'Old site', mode: 'local', branch: 'main', cwd: '/wt/a1', archived: true, createdAt: 1 } as ProjectMeta, threads: [] }]
+    function Fold() {
+      const [state, setState] = useState({ open: false, shown: null as string | null })
+      return <ArchivedProjects groups={groups as never} rows={{} as never} state={state} setState={setState} pages={{}} onMore={() => {}} onRestore={() => {}} onDelete={() => {}} />
+    }
+    const probe = mountProbe(<Fold />)
+    expect(document.querySelector('[data-archived-count]')?.textContent).toBe('1')
+    act(() => fireEvent.click(screen.getByText('Archived')))
+    expect(screen.getByText('Old site')).toBeTruthy()
+    expect(document.querySelector('[data-archived-count]')).toBeNull()
     probe.unmount()
   })
 })

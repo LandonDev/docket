@@ -14,12 +14,14 @@ import {
   previewMove,
   useMoveNotices,
   useMoving,
+  type MoveTarget,
 } from "../lib/threadMove";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Facts } from "../surfaces/settings/hosts/Facts";
 import { retargetDraft, retargetLooseDraft } from "./DraftHostPicker";
 import { useToastSync } from "./toastSync";
 import { Server } from "./icons";
+import { nameInLine } from "../lib/hostWords";
 import type { MenuRow } from "./menuRows";
 import { useWorkSessionId } from "../lib/workRow";
 
@@ -73,16 +75,7 @@ export function useThreadHost(sessionId: string | null): {
     !!movingTo,
   );
   const movingName = movingTo ? (registry.environment(movingTo)?.name ?? movingTo) : null;
-  const moves: MenuRow[] = movingName
-    ? [{ kind: "item", id: "moving", label: `Moving to ${movingName}…`, icon: Server, disabled: true }]
-    : targets.map((t) => ({
-        kind: "item",
-        id: `move:${t.environmentId}`,
-        label: `Move to ${t.name}…`,
-        icon: Server,
-        disabled: !t.ok,
-        ...(t.ok ? {} : { reason: t.reason }),
-      }));
+  const moves = moveRows(targets, movingName);
   const pick = (id: string): boolean => {
     if (!id.startsWith("move:")) return false;
     const to = id.slice("move:".length);
@@ -100,6 +93,20 @@ export function useThreadHost(sessionId: string | null): {
     <MoveThreadConfirm sessionId={sessionId} to={confirm.to} toName={confirm.name} fromName={env.name} onClose={() => setConfirm(null)} />
   ) : null;
   return { host: { environmentId: env.id, name: env.name }, movingTo, moves, pick, dialog };
+}
+
+/** The thread menu's move rows: one "Move to the box…" a target, or the one held "Moving to the box…" while a move runs;
+ *  a host's name mid-line goes through `nameInLine`. */
+export function moveRows(targets: readonly MoveTarget[], movingName: string | null): MenuRow[] {
+  if (movingName) return [{ kind: "item", id: "moving", label: `Moving to ${nameInLine(movingName)}…`, icon: Server, disabled: true }];
+  return targets.map((t) => ({
+    kind: "item",
+    id: `move:${t.environmentId}`,
+    label: `Move to ${nameInLine(t.name)}…`,
+    icon: Server,
+    disabled: !t.ok,
+    ...(t.ok ? {} : { reason: t.reason }),
+  }));
 }
 
 /** The confirm before a thread with messages moves, saying what travels
@@ -134,8 +141,8 @@ export function MoveThreadConfirm({
   }, [sessionId, work]);
   return (
     <ConfirmDialog
-      title={`Move this thread to ${toName}?`}
-      body={`Its subagents and pages move with it; undo history stays on ${fromName}.`}
+      title={`Move this thread to ${nameInLine(toName)}?`}
+      body={`Its subagents and pages move with it; undo history stays on ${nameInLine(fromName)}.`}
       note={work ? undefined : <Facts parts={movePreviewParts(preview)} />}
       confirmLabel="Move thread"
       onCancel={onClose}
@@ -183,7 +190,7 @@ export function MoveToasts(): null {
     (toast, n, id) => {
       const done = () => dismissMoveNotice(n.key);
       const description = n.error ? n.error.split("\n")[0] : moveNoticeException(n);
-      const title = n.error ? `Couldn't move "${n.title}" to ${n.toName}` : `Moved "${n.title}" to ${n.toName}`;
+      const title = n.error ? `Couldn't move "${n.title}" to ${nameInLine(n.toName)}` : `Moved "${n.title}" to ${nameInLine(n.toName)}`;
       const show = n.error ? toast.error : toast;
       show(title, { id, description: description ?? undefined, duration: description ? Infinity : NOTICE_MS, closeButton: !!description, onDismiss: done, onAutoClose: done });
     },

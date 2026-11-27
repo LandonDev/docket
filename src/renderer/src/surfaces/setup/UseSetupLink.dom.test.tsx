@@ -56,6 +56,9 @@ describe("UseSetupLinkDialog", () => {
       await waitFor(() => expect(step("allow")).toBeTruthy());
       expect(link.calls.find((c) => c.method === "devices.setup.start")?.params).toEqual({ link: LINK });
       expect(step("lifeos")).toBeNull();
+      // One close (council 5 F10.2): the header's ×, no footer Close under the steps.
+      expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(1);
+      expect(document.querySelector("[data-slot=dialog-footer]")).toBeNull();
       // The words arrive with the claim, on the Allow step's push.
       await act(async () => link.push({ push: "device-setup", step: "allow", state: "waiting", words: ["maple", "river", "seven"] }));
       expect(step("allow").textContent).toContain("maple · river · seven");

@@ -82,7 +82,7 @@ export function AwayRowView({ kinds, checked, place, at, onToggle }: { kinds: Aw
     <RailRow
       icon={Moon}
       label={label}
-      ariaLabel={label === AWAY_SHORT ? AWAY_LABEL : undefined}
+      ariaLabel={AWAY_LABEL}
       checked={checked}
       glyphClassName={any ? "text-warning" : undefined}
       className={any ? "text-foreground" : undefined}

@@ -57,7 +57,7 @@ describe("MoveToasts", () => {
     await flush();
     const [title, opts] = vi.mocked(toast).mock.calls[0] as [string, Options];
     expect(title).toBe('Moved "Fix the build" to box');
-    expect(opts.description).toBe("Uncommitted changes stayed on This Mac");
+    expect(opts.description).toBe("Uncommitted changes stayed on this Mac");
     expect(opts.duration).toBe(Infinity);
     expect(opts).toMatchObject({ closeButton: true });
     act(() => opts.onDismiss());

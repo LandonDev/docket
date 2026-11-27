@@ -94,6 +94,47 @@ function watchDown(): void {
   noteDown();
 }
 
+/** `degradedFor` on this module's own clock, for a read outside React (a menu as it opens, a toast's presses):
+ *  a link that left open under 1.5 s ago is not held yet, as the composer's line is not. */
+export function degradedNow(id: string, status: EnvironmentStatus = registry.statusOf(id)): Degraded | null {
+  watchDown();
+  if (status.transport === "open") {
+    downSince.delete(id);
+    return null;
+  }
+  if (!downSince.has(id)) downSince.set(id, Date.now());
+  return degradedFor(status, Date.now() - downSince.get(id)!);
+}
+
+/** The ms until the first of these links still inside its grace leaves it, null when none is: a reader outside
+ *  React (`degradedNow`) reads again then. */
+export function graceLeft(ids: Iterable<string | undefined>): number | null {
+  let soonest: number | null = null;
+  for (const id of ids) {
+    if (!id) continue;
+    const { transport } = registry.statusOf(id);
+    const since = downSince.get(id);
+    if ((transport !== "connecting" && transport !== "reconnecting") || since === undefined) continue;
+    const left = DEGRADED_GRACE_MS - (Date.now() - since);
+    if (left > 0 && (soonest === null || left < soonest)) soonest = left;
+  }
+  return soonest;
+}
+
+/** A count that steps when the first of these links still inside its grace leaves it: a reader outside React
+ *  (`degradedNow`, `hostsHeld`) that keys on it reads again then. One timer, none while no link is in its grace. */
+export function useGraceEnd(ids: readonly (string | undefined)[]): number {
+  const [ended, setEnded] = useState(0);
+  const key = ids.join("\n");
+  useEffect(() => {
+    const left = graceLeft(key.split("\n"));
+    if (left === null) return;
+    const timer = window.setTimeout(() => setEnded((n) => n + 1), left + 1);
+    return () => window.clearTimeout(timer);
+  });
+  return ended;
+}
+
 export function useEnvironmentDegraded(id: string): Degraded | null {
   watchDown();
   const status = useEnvironmentStatus(id);

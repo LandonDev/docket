@@ -101,14 +101,14 @@ export function ContextBreakdown({
   );
 }
 
-type BreakdownListData = { title: string; rows: { key: string; label: string; tokens: number; tip?: string; sans?: boolean }[] };
+type BreakdownListData = { title: string; rows: { key: string; label: string; tokens: number; tip?: string }[] };
 
 /** The reading's two lists, by the names the harness gives their categories. */
 function breakdownLists(reading: ContextReading): BreakdownListData[] {
   const lists: BreakdownListData[] = [
     {
       title: "Memory files",
-      rows: (reading.memoryFiles ?? []).map((m) => ({ key: m.path, label: memoryLabel(m.path), tokens: m.tokens, tip: m.path, sans: true })),
+      rows: (reading.memoryFiles ?? []).map((m) => ({ key: m.path, label: memoryLabel(m.path), tokens: m.tokens, tip: m.path })),
     },
     {
       title: "MCP tools",
@@ -131,7 +131,8 @@ function ListRows({ list }: { list: BreakdownListData }) {
       {shown.map((r) => {
         const row = (
           <div key={r.key} className="flex h-6 items-center justify-between gap-3 text-xs">
-            <span className={cn("min-w-0 truncate text-muted-foreground", !r.sans && "font-mono")}>{r.label}</span>
+            {/* One face for both lists: a tool and a memory file are names here, not code. */}
+            <span className="min-w-0 truncate text-muted-foreground">{r.label}</span>
             <span className="shrink-0 tabular-nums text-muted-foreground">{formatTokens(r.tokens)}</span>
           </div>
         );

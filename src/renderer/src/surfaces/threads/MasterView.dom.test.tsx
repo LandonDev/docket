@@ -727,8 +727,8 @@ describe("the master view", () => {
     await flush();
     await flush();
     const impl = screen.getByRole("button", { name: /Home screen/ });
-    // The open list names the task in hand; line two does not say it again.
-    expect(impl.querySelector("[data-row-status]")?.textContent).toBe("");
+    // The open list names the task in hand; line two does not say it again, so the bar takes that line.
+    expect(impl.querySelector("[data-row-status]")).toBeNull();
     expect(within(impl).getAllByText("Write the view")).toHaveLength(1);
     expect(impl.querySelector("[data-tally]")).toBeNull();
     expect(impl.querySelector("[data-bar-tally]")?.textContent).toBe("1/3");
@@ -919,7 +919,7 @@ describe("the master view", () => {
     expect(within(impl()).getByText("1/2")).toBeTruthy();
     // The open list names the new task in hand; line two leaves it to the list.
     expect(within(impl()).getAllByText("Tests")).toHaveLength(1);
-    expect(impl().querySelector("[data-row-status]")?.textContent).toBe("");
+    expect(impl().querySelector("[data-row-status]")).toBeNull();
     // Only that row rendered again; another master's push changes nothing.
     expect(new Set(rowReads.filter(Boolean))).toEqual(new Set(["c-impl"]));
     act(() => link.push({ push: "board", masterId: "other", sessionId: "c-impl", digest: {} } as ServerPush));
@@ -1887,9 +1887,9 @@ describe("the board's static preview", () => {
     const lines = [...document.querySelectorAll("[data-row-status]")].map((l) => l.textContent);
     expect(lines).toEqual([
       "Approve WebFetch",
-      "FailedUsage cap until 14:00",
-      // The open task list names the task in hand; line two leaves it to the list.
-      "",
+      "FailedPersonal hit its 5-hour limit",
+      // The working implementation row draws no status line: the open list names the task in hand, so its bar
+      // takes that line under the spinner (council 5 F6.2).
       "Watchingsleep 45 seconds",
       "PausedRunning bun test",
       "Waiting for Home screen",

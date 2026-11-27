@@ -31,7 +31,7 @@ export function PickerGallery() {
     <div className="grid gap-4 md:grid-cols-2">
       <Frame label="Go to file"><FileList id="preview-files" files={files} active={1} query="" onActive={noop} onPick={noop} /></Frame>
       <Frame label="Go to symbol" query="route"><SymbolList id="preview-symbols" rows={symbols} active={0} onActive={noop} onPick={noop} /></Frame>
-      {["Indexing files…", "Searching symbols…", "No matching files", "Files could not load"].map((note) => (
+      {["Indexing files…", "Searching…", "No matching files", "Couldn't search symbols"].map((note) => (
         <Frame key={note} label="Search files"><PickerNote>{note}</PickerNote></Frame>
       ))}
     </div>

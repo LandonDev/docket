@@ -5,6 +5,7 @@ import {
   useSlowEnvironments,
   type Environment,
   type EnvironmentStatus,
+  useGraceEnd,
 } from "../lib/connection";
 import { bootResumeLine, dismissBootResume, useBootResumeNotices } from "../lib/bootResume";
 import { requestEnvironmentSwitch } from "../lib/environmentSwitch";
@@ -65,6 +66,8 @@ export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: s
   const statuses = useEnvironmentStatuses();
   const slow = useSlowEnvironments();
   const [open, setOpen] = useState(false);
+  // A host's submenu is held only past its link's grace (`hostsHeld`): an open menu reads again when it ends.
+  useGraceEnd(environments.map((e) => e.id));
   if (environments.length < 2) return null;
   const label = `Hosts: ${environments.map((e) => hostWord(e, statuses.get(e.id), slow.has(e.id))).join("; ")}`;
   return (

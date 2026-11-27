@@ -180,9 +180,11 @@ describe("ContextBreakdown", () => {
       "+2 more",
     ]);
     expect(rows("MCP tools")).toEqual(["linear/list_issues900", "linear/get_issue600"]);
-    // A memory file's name is words in the sans, never its path in mono.
-    const first = container.querySelector('[data-context-rows="Memory files"]')!.firstElementChild!.querySelector("span")!;
-    expect(first.className).not.toContain("font-mono");
+    // One face for both lists (council 5 F4.2): a memory file and a tool are names in the sans, never mono.
+    for (const title of ["Memory files", "MCP tools"]) {
+      const first = container.querySelector(`[data-context-rows="${title}"]`)!.firstElementChild!.querySelector("span")!;
+      expect(first.className, title).not.toContain("font-mono");
+    }
     expect(container.textContent).not.toContain("/repo/");
   });
 

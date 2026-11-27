@@ -102,7 +102,7 @@ describe("ThreadMenu", () => {
     menu({
       host: { environmentId: "env_box", name: "box" },
       rows: threadMenuRows(
-        facts({ moves: [{ kind: "item", id: "move:local", label: "Move to This Mac…", disabled: true, reason: "The thread is running" }] }),
+        facts({ moves: [{ kind: "item", id: "move:local", label: "Move to this Mac…", disabled: true, reason: "The thread is running" }] }),
       ),
     });
     const list = await openMenu();
@@ -116,8 +116,8 @@ describe("ThreadMenu", () => {
     const box = glyph.parentElement!;
     expect(box.getAttribute("aria-hidden")).toBe("true");
     expect(box.className.split(/\s+/)).toEqual(expect.arrayContaining(["grid", "size-3.5", "shrink-0", "place-items-center"]));
-    expect(within(list).getByText("Move to This Mac…")).toBeTruthy();
-    expect(within(list).getByRole("menuitem", { name: "Move to This Mac…" }).getAttribute("aria-description")).toBe("The thread is running");
+    expect(within(list).getByText("Move to this Mac…")).toBeTruthy();
+    expect(within(list).getByRole("menuitem", { name: "Move to this Mac…" }).getAttribute("aria-description")).toBe("The thread is running");
   });
 
   it("shows the cost only above zero", async () => {

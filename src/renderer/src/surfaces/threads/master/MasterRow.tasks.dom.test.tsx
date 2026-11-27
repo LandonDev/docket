@@ -43,14 +43,21 @@ describe("the task bar", () => {
     expect(container.querySelector("[data-bar-tally]")?.textContent).toBe("3/7");
     expect(container.querySelector("[data-tally]")).toBeNull();
     expect(row(container).textContent?.match(/3\/7/g)).toHaveLength(1);
-    // The open list names the task in hand: line two does not say it again.
-    expect(container.querySelector("[data-row-status]")?.textContent).toBe("");
+    // The open list names the task in hand and the section the word: line two would say nothing, so the bar takes
+    // it, under the spinner (council 5 F6.2), and the glyph carries the status for readers.
+    expect(container.querySelector("[data-row-status]")).toBeNull();
+    const glyph = container.querySelector("[data-row-glyph]")!;
+    expect(glyph.nextElementSibling?.querySelector("[data-task-bar]")).toBeTruthy();
+    expect(glyph.querySelector("[data-slot=status-mark]")?.getAttribute("aria-label")).toBe("Working");
     expect(row(container).textContent?.match(/Task 4/g)).toHaveLength(1);
   });
 
   it("says the task in hand on line two while the list is folded, and a detail that is not the task in hand while open", () => {
+    // Folded by hand, the bar keeps its line (it never moves under the press) and the task in hand rides after it.
     const folded = view(meta(), { todos: seven(3) }, { tasksChoice: false });
-    expect(folded.container.querySelector("[data-row-status]")?.textContent).toBe("Task 4");
+    expect(folded.container.querySelector("[data-row-status]")).toBeNull();
+    expect(folded.container.querySelector("[data-bar-aside]")?.textContent).toBe("Task 4");
+    expect(folded.container.querySelector("[data-row-glyph] [data-slot=status-mark]")?.getAttribute("aria-label")).toBe("Working: Task 4");
     folded.unmount();
     // An orchestration row's own detail is not the task in hand: it stays.
     const other = view(meta({ threadType: "orchestration", statusDetail: "Spawning agents" } as Partial<SessionMeta>), { todos: seven(3) });

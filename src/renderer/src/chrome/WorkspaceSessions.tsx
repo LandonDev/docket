@@ -1372,7 +1372,7 @@ export function SectionHeading({
 
 type ArchivedState = { open: boolean; shown: string | null };
 
-const ArchivedProjects = memo(function ArchivedProjects({
+export const ArchivedProjects = memo(function ArchivedProjects({
   groups,
   rows,
   state,
@@ -1400,7 +1400,8 @@ const ArchivedProjects = memo(function ArchivedProjects({
         label="Archived"
         open={open}
         onToggle={toggle}
-        trailing={<span className="pr-2 text-xs tabular-nums text-muted-foreground">{groups.length}</span>}
+        // The count while folded: open, the rows it counts stand under it.
+        trailing={open ? undefined : <span data-archived-count className="pr-2 text-xs tabular-nums text-muted-foreground">{groups.length}</span>}
       />
       <CollapsibleContent>
         {groups.map(({ project, threads }) => (

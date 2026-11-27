@@ -4,6 +4,7 @@ import type { SessionMovePreview, SessionMoveResult } from "@server/shared/contr
 import { LOCAL_ENVIRONMENT_ID, registry } from "./connection";
 import type { Environment, EnvironmentStatus } from "./connection/types";
 import { sessionStore } from "./tcserver/store";
+import { nameInLine } from "./hostWords";
 
 /**
  * Moving a thread between hosts from the desktop (docs/box.md "Moving a
@@ -153,7 +154,7 @@ export function moveNoticeException(n: Pick<MoveNotice, "result" | "fromName">):
   const b = r.branch;
   if (b?.landing.patch === "kept") return `The patch didn't apply; it's at ${b.landing.patchPath}`;
   if (b?.landing.note) return `${b.landing.note[0].toUpperCase()}${b.landing.note.slice(1)}`;
-  if (b?.patchSkipped || (!b && r.dirty.length + r.dirtyMore > 0)) return `Uncommitted changes stayed on ${n.fromName}`;
+  if (b?.patchSkipped || (!b && r.dirty.length + r.dirtyMore > 0)) return `Uncommitted changes stayed on ${nameInLine(n.fromName)}`;
   return null;
 }
 

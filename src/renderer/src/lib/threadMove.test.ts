@@ -116,7 +116,7 @@ describe("moveNoticeException", () => {
   });
 
   it("says the changes stayed when the patch was skipped or the folder is no checkout", () => {
-    expect(n(moved({ dirty: ["big.bin"], branch: landed({ dirty: ["big.bin"], patchSkipped: "over 64 MiB" }) }))).toBe("Uncommitted changes stayed on This Mac");
-    expect(n(moved({ dirty: ["a.ts"] }))).toBe("Uncommitted changes stayed on This Mac");
+    expect(n(moved({ dirty: ["big.bin"], branch: landed({ dirty: ["big.bin"], patchSkipped: "over 64 MiB" }) }))).toBe("Uncommitted changes stayed on this Mac");
+    expect(n(moved({ dirty: ["a.ts"] }))).toBe("Uncommitted changes stayed on this Mac");
   });
 });

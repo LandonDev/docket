@@ -12,6 +12,9 @@ import { loadToast } from "./toastSync";
 import { ApprovalToasts, HiddenApprovalToasts } from "./ApprovalToasts";
 import { ChatFooter } from "../surfaces/threads/chatSlots";
 import { refreshToastAnchor } from "../lib/toastAnchor";
+import { registry } from "../lib/connection";
+import { DEGRADED_GRACE_MS } from "../lib/connection/degraded";
+import { IDLE_STATUS } from "../lib/connection/types";
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { warning: vi.fn(), dismiss: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
@@ -91,6 +94,31 @@ describe("HiddenApprovalToasts", () => {
     await send(row("approval", 2, { type: "approval-resolved", requestId: 7, allow: true }));
     expect(toast.dismiss).toHaveBeenCalledExactlyOnceWith("approval:approval:7");
     expect(toast.warning).toHaveBeenCalledTimes(1);
+  });
+
+  // Council 5 F10.1: a blip holds nothing; the pair is held only past the link's grace, as the composer's line, and the toast reads again then.
+  it("holds Allow and Deny only once the link's 1.5 s grace from the drop ends", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const environment = vi.spyOn(registry, "environment").mockImplementation((id) => (id === "local" ? { id, name: "The box", routes: [], credentialRef: null } : undefined));
+    const status = vi.spyOn(registry, "statusOf").mockImplementation(() => ({ ...IDLE_STATUS, transport: "reconnecting" }));
+    try {
+      mount();
+      await send(request("approval"));
+      expect(toast.warning.mock.calls.at(-1)![1]).toMatchObject({ action: { label: "Allow" }, cancel: { label: "Deny" } });
+      await act(async () => {
+        vi.advanceTimersByTime(DEGRADED_GRACE_MS + 1);
+        flush();
+        await loadToast();
+      });
+      const held = toast.warning.mock.calls.at(-1)![1] as { action: ReactElement; cancel?: unknown };
+      expect("cancel" in held && held.cancel === undefined).toBe(true);
+      const view = render(<>{held.action}</>);
+      expect((view.getAllByRole("button") as HTMLButtonElement[]).every((b) => b.disabled)).toBe(true);
+    } finally {
+      environment.mockRestore();
+      status.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it("labels a computer step waiting for the Mac Run now and Skip", async () => {

@@ -15,7 +15,7 @@ const alerts = [
   ["info", "Read-only access", "You can read files on this computer."],
   ["success", "Workspace saved", "The workspace is ready to use."],
   ["warning", "Host is going offline", "Save your changes before it disconnects."],
-  ["error", "Files could not load", "Try again to read this folder."],
+  ["error", "Couldn't list this project's files", "Try again to read this folder."],
 ] as const;
 
 export function FeedbackGallery() {
