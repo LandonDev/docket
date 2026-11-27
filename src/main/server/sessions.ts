@@ -32,7 +32,7 @@ import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessi
 import { ThreadScheduler, type QueuedLine } from './scheduler'
 import type { Admission } from './admission'
 import type { AwayService } from './away'
-import { awayKindOf, awayVerdict, type AwayKind } from '@shared/away'
+import { askDeciderOf, awayKindOf, awayVerdict, decideAsk, type AskDecider, type AwayKind } from '@shared/away'
 import { AWAY_APPROVAL_REPLY, AWAY_MECHANICS, AWAY_QUESTION_REPLY, awayBlock } from './awayPrompts'
 import { approvalLine } from '@shared/approvalLine'
 import { CATALOG, clampReasoning, modelInfo, resolveModel, supportsContext1m, visibleModels, type ProviderId } from '@shared/catalog'
@@ -757,6 +757,8 @@ export class SessionRegistry {
   /** Requests the host answers for an away person, per thread: their rows,
    *  their `waiting` and their resolved rows are never written. */
   private readonly deciding = new Map<string, Set<string>>()
+  /** Threads with a card that still reaches him while others are decided (Full access: a question, a card Away denies): its `waiting` is written. */
+  private readonly askingThrough = new Set<string>()
   /** Boot-resume threads past the cap, queued with their nudge (the restart's time) until a slot frees. */
   private readonly queuedResumes = new Map<string, number>()
   /** Queued threads whose start is in flight: Start now and the scheduler never start one twice. */
@@ -3996,12 +3998,17 @@ export class SessionRegistry {
     // Nobody is there to answer: allowed at once (denied for a computer act
     // that spends money, and for what a Work thread may not do without the
     // owner: awayVerdict), one quiet row says what was decided. No card.
-    // Only this thread's own kind's switch counts (awayFor).
-    if (this.awayFor(sessionId)) {
-      const allow = !req.awayDenies && this.awayAllows(sessionId, req.toolName)
+    // Only this thread's own kind's switch counts (awayFor). Full access
+    // allows what Away allows, with no row: its tools run unasked anyway;
+    // what Away would deny still asks him as a card (askDecider, decideAsk).
+    const decider = this.askDecider(sessionId)
+    const decided = decideAsk(decider, !req.awayDenies && this.awayAllows(sessionId, req.toolName) ? 'allow' : 'deny')
+    if (decider === 'away') {
+      const allow = decided === 'allow'
       this.awayNotice(sessionId, allow ? 'allowed' : 'approval', approvalLine(req.toolName, req.input, req.title))
       return Promise.resolve(allow)
     }
+    if (decided === 'allow') return Promise.resolve(true)
     const requestId = req.requestId ?? `a-${nanoid(8)}`
     let pending = this.pendingApprovals.get(sessionId)
     if (!pending) {
@@ -5956,21 +5963,33 @@ export class SessionRegistry {
    * computer/run.ts raises, through requestApproval), one quiet away notice
    * per request, and the turn goes on. The request's own row, the `waiting`
    * the driver emits after it and its resolved row are dropped, so the
-   * thread never reads Needs you and the notifier never fires. Returns
-   * whether the event was taken here.
+   * thread never reads Needs you and the notifier never fires. A thread in
+   * Full access with Away off has its approvals that Away allows taken the
+   * same way, with no notice (its tools run unasked anyway); its questions
+   * and the cards Away denies still reach him. Returns whether the event
+   * was taken here.
    */
   private interceptAway(sessionId: string, event: AgentEvent): boolean {
     const deciding = this.deciding.get(sessionId)
     if (deciding?.size) {
-      if (event.type === 'status' && event.status === 'waiting') return true
+      if (event.type === 'status' && event.status === 'waiting') return !this.askingThrough.delete(sessionId)
       if ((event.type === 'question-resolved' || event.type === 'approval-resolved') && deciding.has(event.requestId)) {
         deciding.delete(event.requestId)
-        if (!deciding.size) this.deciding.delete(sessionId)
+        if (!deciding.size) {
+          this.deciding.delete(sessionId)
+          this.askingThrough.delete(sessionId)
+        }
         return true
       }
     }
-    if (!this.awayFor(sessionId)) return false
+    const decider = this.askDecider(sessionId)
+    if (!decider) return false
     if (event.type !== 'question-request' && event.type !== 'approval-request') return false
+    // Full access answers approvals alone, and only those Away allows: a question, or a card Away denies, still asks him.
+    if (decider === 'full' && (event.type === 'question-request' || !this.awayAllows(sessionId, event.toolName))) {
+      if (deciding?.size) this.askingThrough.add(sessionId)
+      return false
+    }
     const marks = this.deciding.get(sessionId) ?? new Set<string>()
     marks.add(event.requestId)
     this.deciding.set(sessionId, marks)
@@ -5978,6 +5997,8 @@ export class SessionRegistry {
       this.awayNotice(sessionId, 'question', questionLine(event.questions))
       const replies = event.questions.map(() => [AWAY_QUESTION_REPLY])
       this.decideAway(sessionId, event, (handle) => handle.answer?.(event.requestId, replies) ?? false)
+    } else if (decider === 'full') {
+      this.decideAway(sessionId, event, (handle) => handle.approve?.(event.requestId, true) ?? false)
     } else {
       const allow = this.awayAllows(sessionId, event.toolName)
       this.awayNotice(sessionId, allow ? 'allowed' : 'approval', approvalLine(event.toolName, event.input, event.title))
@@ -6010,7 +6031,10 @@ export class SessionRegistry {
     const unmark = (): void => {
       const marks = this.deciding.get(sessionId)
       marks?.delete(event.requestId)
-      if (marks && !marks.size) this.deciding.delete(sessionId)
+      if (marks && !marks.size) {
+        this.deciding.delete(sessionId)
+        this.askingThrough.delete(sessionId)
+      }
     }
     const tryOnce = (): boolean => {
       const handle = this.handles.get(sessionId)
@@ -6084,6 +6108,11 @@ export class SessionRegistry {
   /** A thread's kind for Away, from its row's scope; a thread this host does not hold has none. */
   private awayKind(sessionId: string): AwayKind {
     return awayKindOf(this.get(sessionId)?.scope)
+  }
+
+  /** Who answers this thread's approvals in his place: Away for its kind, else Full access, else nobody (@shared/away askDeciderOf). */
+  private askDecider(sessionId: string): AskDecider {
+    return askDeciderOf(this.awayFor(sessionId), this.get(sessionId)?.permission)
   }
 
   /**

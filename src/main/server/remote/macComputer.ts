@@ -34,7 +34,7 @@ import {
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import type { ComputerToolCall } from '@shared/computer/tools'
 import { needsApproval } from '@shared/computer/words'
-import { awayKindOf, awayVerdict, type AwayKind } from '@shared/away'
+import { askDeciderOf, awayKindOf, awayVerdict, decideAsk, type AwayKind } from '@shared/away'
 import { MAC_AWAY_REFUSAL } from '../awayPrompts'
 import type { ComputerToolOutcome } from '../computer/result'
 import { abortedLine, AWAY_PASSWORD, type ComputerToolContext } from '../computer/run'
@@ -544,6 +544,11 @@ export class MacComputer {
       }
       own.away = true
       line('card allowed (away)')
+      return true
+    }
+    // Full access on the box allows what Away allows, unasked and unmarked; a money act still asks him.
+    if (decideAsk(askDeciderOf(false, thread.permission), denies ? 'deny' : 'allow') === 'allow') {
+      line('card allowed (full access)')
       return true
     }
     const signal = req.signal ?? own.controller.signal

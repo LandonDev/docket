@@ -47,10 +47,29 @@ carries a fallback of its own. The table of every path and what it did before is
 
 Full access releases nothing Work holds (every outward act waits for his press in the Outbox; no
 grant is made), loosens no narrowed thread (`WorkModule.callRefusal`, `harnessDenied`,
-work/narrowing.ts), and changes no Mac bridge or computer-use gate (confirm cards, the session tier,
-`WINDOWS_ALWAYS_ASK`, credential paths that always ask). Away answers what it answered before. Every
+work/narrowing.ts). Away answers what it answered before. Every
 provider has a mode for each policy (Claude `bypassPermissions`, Codex `never` + `danger-full-access`,
 Cursor `force` with no sandbox, Muse `:unrestricted`); FX has no access picker.
+
+## Full access asks nothing Away would allow
+
+A thread or subagent at Full access raises no approval card: it allows exactly what Away allows, with
+Away off (`askDeciderOf` and `decideAsk` in src/shared/away.ts, over `awayVerdict`). That covers a
+harness's own prompts on every provider (Claude Code's safety checks call `canUseTool` even under
+`bypassPermissions`: `cd` into `.claude`, heredocs, `export`), the host's cards through
+`requestApproval` (computer confirm cards, the session tier's Run now, add-on and skill cards), the Mac
+bridge's reads, commands, jobs and writes (`threadRunsUnattended`) and a box thread's computer cards
+on the Mac (macComputer.ts `ask`). What Away denies or holds still asks him, as a card: a computer act
+flagged `pay` or `subscribe`; in a Work thread `addon_add`, `addon_remove`, text into a password field
+and the outward or flagged acts Away holds; the Work floor on the Mac (`workMustAsk`). Questions are
+not approvals and still ask. An allowed ask writes no notice and no tally: the tool's own row is the
+record. Who decides is read from the thread's access at the ask (sessions.ts `askDecider`), so a child
+decides by its own: a subagent, a batch child or a far host's child inherits its parent's access at
+start (orchestration.ts, apptools.ts, crossHostThreads.ts) and keeps it; a change on the parent
+reaches only children started after it. A change of access ends the turn; the next turn runs under the
+new one. Proofs: sessions-away.test.ts "Full access decides as Away does",
+crossHostThreads.fullAccess.test.ts (two hosts, both directions), macComputer.test.ts,
+macBridgeWrite.test.ts.
 
 ## In a Work thread
 

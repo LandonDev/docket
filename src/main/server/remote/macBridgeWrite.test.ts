@@ -349,6 +349,21 @@ describe('MacBridge mac.writeFile', () => {
     await expect(next).rejects.toThrow(/denied/)
   })
 
+  it('a full-access thread (permission auto) writes outside and on the deny list with no card, as Away would; a bridge that is off still refuses', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'read+run')
+    const thread = { id: 's9', title: 'auto thread', permission: 'auto' }
+    const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+    const put = (args: MacWriteFileWire) => b.mb.handle('mac.writeFile', { thread, args }, ctx) as Promise<MacWriteFileResult>
+    await expect(put(wire(join(elsewhere, 'full', 'a.txt'), 'x'))).resolves.toMatchObject({ created: true })
+    await expect(put(wire(join(home, '.full-access-rc'), 'y'))).resolves.toMatchObject({ created: true })
+    expect(b.requests()).toEqual([])
+    expect(b.lines.filter((l) => l.endsWith('→ written (full access)'))).toHaveLength(2)
+    b.mb.setPolicy('env_box', 'off')
+    await expect(put(wire(join(elsewhere, 'full', 'b.txt'), 'z'))).rejects.toThrow(/off for this host/)
+    expect(existsSync(join(elsewhere, 'full', 'b.txt'))).toBe(false)
+  })
+
   it('a folder remembered for reads never admits a write: the memories are apart', async () => {
     const b = bridge()
     b.mb.setPolicy('env_box', 'read+run')

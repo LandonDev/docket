@@ -588,3 +588,152 @@ describe('Away by kind', () => {
     expect(registry.awayFor('nobody')).toBe(true)
   })
 })
+
+describe('Full access decides as Away does, with Away off', () => {
+  async function startWith(permission: SessionMeta['permission'], extra: { parentId?: string; masterId?: string; provider?: 'claude' | 'codex' } = {}): Promise<string> {
+    const { provider = 'claude', ...links } = extra
+    const s = await registry.create({ projectId: 'p1', threadType: 'implementation', provider, permission, ...links })
+    expect(s.permission).toBe(permission)
+    await registry.send(s.id, 'build it')
+    await flush()
+    running(s.id)
+    return s.id
+  }
+  const cards = (id: string): number => rows(id).filter((e) => e.type === 'approval-request').length
+  /** The driver's approval, allowed unasked: no card, no notice, no tally, never waiting. */
+  async function expectAllowedUnasked(id: string, requestId = 'a1'): Promise<void> {
+    const seen = statuses()
+    ctx(id).emit(approval(requestId))
+    ctx(id).emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
+    await flush()
+    expect(approvals).toContainEqual({ sessionId: id, requestId, allow: true, reason: undefined })
+    ctx(id).emit({ type: 'approval-resolved', requestId, allow: true })
+    const written = rows(id)
+    expect(written.some((e) => e.type === 'approval-request' || e.type === 'approval-resolved' || e.type === 'notice')).toBe(false)
+    expect(seen.get(id) ?? []).not.toContain('waiting')
+    expect(store.getSession(id)!.status).toBe('running')
+    expect(away.count).not.toHaveBeenCalled()
+  }
+  async function expectAsked(id: string, requestId = 'a1'): Promise<void> {
+    ctx(id).emit(approval(requestId))
+    ctx(id).emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
+    await flush()
+    expect(approvals.some((a) => a.sessionId === id && a.requestId === requestId)).toBe(false)
+    expect(cards(id)).toBe(1)
+    expect(store.getSession(id)!.status).toBe('waiting')
+  }
+
+  for (const provider of ['claude', 'codex'] as const) {
+    it(`allows a ${provider} driver approval with no card, no notice and no tally`, async () => {
+      await expectAllowedUnasked(await startWith('auto', { provider }))
+    })
+  }
+
+  it('allows a requestApproval card at once (computer confirm, Run now, add-on, skill), quietly', async () => {
+    const id = await startWith('auto')
+    await expect(ctx(id).requestApproval({ toolName: 'mcp__app__computer_act', input: {}, title: 'Click Delete?' })).resolves.toBe(true)
+    await expect(ctx(id).requestApproval({ toolName: 'mcp__app__computer_act', input: {}, title: 'Use the pointer?', choices: 'run-skip' })).resolves.toBe(true)
+    await expect(ctx(id).requestApproval({ toolName: 'addon_add', input: {}, title: 'Add the add-on github' })).resolves.toBe(true)
+    await expect(ctx(id).requestApproval({ toolName: 'mcp__app__skill_write', input: {}, title: 'Write the skill x' })).resolves.toBe(true)
+    expect(rows(id).some((e) => e.type === 'approval-request' || e.type === 'notice')).toBe(false)
+    expect(away.count).not.toHaveBeenCalled()
+  })
+
+  it('still asks him a money act (awayDenies), as a card, never a silent deny', async () => {
+    const id = await startWith('auto')
+    const paid = ctx(id).requestApproval({ requestId: 'p1', toolName: 'mcp__app__computer_act', input: {}, title: 'Pay in Safari', awayDenies: true })
+    await flush()
+    expect(cards(id)).toBe(1)
+    expect(store.getSession(id)!.status).toBe('waiting')
+    await registry.approve(id, 'p1', true)
+    await expect(paid).resolves.toBe(true)
+    expect(rows(id).some((e) => e.type === 'notice')).toBe(false)
+  })
+
+  it('still asks a question: questions are not approvals', async () => {
+    const id = await startWith('auto')
+    ctx(id).emit(question('q1'))
+    ctx(id).emit({ type: 'status', status: 'waiting', detail: 'awaiting answer' })
+    await flush()
+    expect(answers).toEqual([])
+    expect(rows(id).some((e) => e.type === 'question-request')).toBe(true)
+    expect(store.getSession(id)!.status).toBe('waiting')
+  })
+
+  for (const permission of ['safe', 'edits'] as const) {
+    it(`leaves ${permission} as it was: the driver's approval and a host card both ask`, async () => {
+      const id = await startWith(permission)
+      await expectAsked(id)
+      const asked = ctx(id).requestApproval({ requestId: 'h1', toolName: 'mcp__linear__save', input: {} })
+      await flush()
+      expect(cards(id)).toBe(2)
+      await registry.approve(id, 'h1', false)
+      await expect(asked).resolves.toBe(false)
+    })
+  }
+
+  it("a subagent and a batch child that inherit Full access are allowed; one with lower access keeps its own and asks", async () => {
+    const parent = await startWith('auto')
+    const sub = await startWith('auto', { parentId: parent })
+    const batched = await startWith('auto', { masterId: parent })
+    const lower = await startWith('edits', { parentId: parent })
+    await expectAllowedUnasked(sub)
+    await expectAllowedUnasked(batched, 'a2')
+    await expectAsked(lower, 'a3')
+  })
+
+  it('reads access at each ask: raised to Full the next ask is allowed, lowered again the next one asks', async () => {
+    const id = await startWith('edits')
+    await expectAsked(id, 'a1')
+    // a change of access ends the turn, as it always has; the next turn spawns under the new access
+    await registry.setPermission(id, 'auto')
+    await registry.send(id, 'go on')
+    await flush()
+    running(id)
+    const before = cards(id)
+    ctx(id).emit(approval('a2'))
+    await flush()
+    expect(approvals).toContainEqual({ sessionId: id, requestId: 'a2', allow: true, reason: undefined })
+    expect(cards(id)).toBe(before)
+    await registry.setPermission(id, 'edits')
+    await registry.send(id, 'and again')
+    await flush()
+    running(id)
+    ctx(id).emit(approval('a3'))
+    await flush()
+    expect(approvals.some((a) => a.requestId === 'a3')).toBe(false)
+    expect(cards(id)).toBe(before + 1)
+  })
+
+  it('while Away is also on, Away decides and records, as before', async () => {
+    const id = await startWith('auto')
+    away.enabled = true
+    ctx(id).emit(approval('a1'))
+    await flush()
+    expect(rows(id).filter((e) => e.type === 'notice').map((e) => (e as { away?: { kind: string } }).away?.kind)).toEqual(['allowed'])
+    expect(away.count).toHaveBeenCalledWith(id)
+  })
+
+  it("a Work thread with Full access: its plain cards are allowed, addon_add and a password field still ask him", async () => {
+    store.setSetting(WORK_SETTING_KEY, JSON.stringify({ enabled: true }))
+    const path = join(root, 'Work', 'purdue')
+    await mkdir(path, { recursive: true })
+    const purdue = await registry.createWorkspace(path, 'purdue', { kind: 'work', sector: 'purdue' })
+    const s = await registry.create({ threadType: 'chat', workspaceId: purdue.id, provider: 'claude', permission: 'auto' })
+    expect(s.scope).toBe('work')
+    await registry.send(s.id, 'draft it')
+    await flush()
+    running(s.id)
+    await expect(ctx(s.id).requestApproval({ toolName: 'slack__post_message', input: {} })).resolves.toBe(true)
+    const add = ctx(s.id).requestApproval({ requestId: 'w1', toolName: 'addon_add', input: {}, title: 'Add the add-on exfil' })
+    const pw = ctx(s.id).requestApproval({ requestId: 'w2', toolName: 'mcp__app__computer_act', input: {}, title: 'Type into a password field', awayDenies: true })
+    ctx(s.id).emit({ type: 'approval-request', requestId: 'w3', toolName: 'mcp__app__addon_remove', input: {}, title: 'Remove the add-on lifeos' })
+    await flush()
+    expect(cards(s.id)).toBe(3)
+    expect(approvals.some((a) => a.requestId === 'w3')).toBe(false)
+    await registry.approve(s.id, 'w1', false)
+    await registry.approve(s.id, 'w2', false)
+    await expect(add).resolves.toBe(false)
+    await expect(pw).resolves.toBe(false)
+  })
+})

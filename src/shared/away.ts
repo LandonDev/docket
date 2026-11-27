@@ -167,3 +167,24 @@ export function awayVerdict(ask: AwayAsk, scope: 'code' | 'work' | null | undefi
   if (ask.password) return 'deny'
   return 'allow'
 }
+
+/**
+ * Who answers an approval in his place: Away, while the thread's kind is
+ * away; Full access (`auto`), on a thread that has it; else nobody, and
+ * the card asks him. Questions are not approvals: only Away answers those.
+ */
+export type AskDecider = 'away' | 'full' | null
+
+export const askDeciderOf = (away: boolean, permission: string | null | undefined): AskDecider =>
+  away ? 'away' : permission === 'auto' ? 'full' : null
+
+/**
+ * What becomes of an approval, from Away's verdict (`awayVerdict`) and who
+ * decides. Full access allows exactly what Away allows; what Away denies
+ * or holds still asks him under Full access, since he is there to answer.
+ */
+export function decideAsk(decider: AskDecider, verdict: AwayVerdict): 'allow' | 'deny' | 'ask' {
+  if (decider === null) return 'ask'
+  if (verdict === 'allow') return 'allow'
+  return decider === 'away' ? 'deny' : 'ask'
+}

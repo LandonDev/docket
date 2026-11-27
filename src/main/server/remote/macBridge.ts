@@ -107,7 +107,8 @@ import { MacComputer, type MacComputerHost, type ComputerRequestShape } from './
  *    four computer_* tools; each call runs here in a session keyed by the
  *    box thread, a live session holds a guard slot under the host's cap and
  *    its computer cap (`macBridge.maxComputer.<envId>`, default 2), and an
- *    acting call in safe and edits asks a card of kind computer.
+ *    acting call in safe and edits asks a card of kind computer; under full
+ *    access only a money act's card asks (macComputer.ts `ask`, `decideAsk`).
  *  - The load guard (macLoadGuard.ts) sits between the decision and the
  *    spawn of every command and job: at most `macBridge.maxRunning.<envId>`
  *    (default 4) of a host's run at once, and while the Mac's one-minute

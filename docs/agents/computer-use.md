@@ -166,10 +166,10 @@ The service uses physical pixels for window geometry and input at every Windows 
   opens); it asks a card in safe and edits and takes `confirm`.
 - **Confirmations** (§19, src/shared/computer/policy.ts). In safe and
   edits every act that sends input asks one card naming the app, the
-  window and each action; reads never ask. Full access asks only for an
-  act the model flagged (`confirm: { kind, what }`) and before text goes
-  into a password field. Away allows every card but a `pay` or
-  `subscribe` act's, which it denies. Every call's app is pinned to a pid
+  window and each action; reads never ask. Away allows every card but a
+  `pay` or `subscribe` act's (`confirm: { kind, what }`), which it denies;
+  Full access allows the same cards unasked and asks him the money act
+  (`decideAsk`, docs/agents/new-thread-access.md). Every call's app is pinned to a pid
   first (`TargetResolver`), and TempCode itself and the system's password
   and Touch ID prompts are refused (`refused_app`); for a Work thread, so
   is a screen of another machine or a phone (iPhone Mirroring, Simulator,

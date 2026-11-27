@@ -114,7 +114,8 @@ Read the file a task touches before changing that subject.
   [docs/agents/code-only-updates.md](docs/agents/code-only-updates.md)
 - **A new thread's access and model** — his New threads set on every start path, one rule a side:
   `newThreadPermission` (src/shared/defaults.ts), `newThreadAccess` and `withNewThreadModel`
-  (lib/session.ts); the guard lib/accessGuard.test.ts. [docs/agents/new-thread-access.md](docs/agents/new-thread-access.md)
+  (lib/session.ts); the guard lib/accessGuard.test.ts. Full access allows what Away allows
+  (`decideAsk`, shared/away.ts). [docs/agents/new-thread-access.md](docs/agents/new-thread-access.md)
 - **Project preambles** — the house rules as markdown on the project row
   (`projects.preamble`), added to a thread's first message on every start
   path by `decidePreamble` (src/main/server/projectPreamble.ts).

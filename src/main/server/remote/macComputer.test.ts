@@ -153,7 +153,8 @@ function setup(opts: { unavailable?: string | null; away?: { on: boolean; kinds?
     return mb.handle(
       'mac.computer',
       {
-        thread: { id: thread, title: `thread ${thread}`, ...(args.scope ? { scope: args.scope } : {}) },
+        // the box names its thread's permission on the thread and on the call (computer/bridge.ts)
+        thread: { id: thread, title: `thread ${thread}`, permission: args.permission ?? 'auto', ...(args.scope ? { scope: args.scope } : {}) },
         args: {
           call: { tool: args.tool ?? 'computer_observe', args: args.args ?? { app: 'TextEdit' }, threadId: thread, permission: args.permission ?? 'auto' },
           turn: args.turn ?? 'boot:1',
@@ -254,6 +255,30 @@ describe('MacComputer: the card', () => {
     const s = setup()
     expect((await s.call({ ...click, permission: 'auto' })).isError).toBe(false)
     expect(s.pushes.some((p) => p.push === 'macBridge.request' && p.request.status === 'pending')).toBe(false)
+  })
+
+  it('full access allows a flagged card unasked, as Away would, and still asks him a money act', async () => {
+    const s = setup()
+    const flagged = (kind: string) => ({ ...click, permission: 'auto' as const, args: { ...click.args, confirm: { kind, what: 'Delete the draft' } } })
+    const done = await s.call(flagged('delete'))
+    expect(done.isError).toBe(false)
+    expect(done.away).toBeUndefined()
+    expect(s.cards()).toHaveLength(0)
+    expect(s.lines.some((l) => l.includes('card allowed (full access)'))).toBe(true)
+    for (const kind of ['pay', 'subscribe']) {
+      const p = s.call(flagged(kind))
+      await until(() => s.cards().length === 1, `the ${kind} card`)
+      s.mb.decide(s.cards()[0].id, false, 'thread')
+      expect(await p).toMatchObject({ isError: true, body: 'denied: the person did not allow it' })
+    }
+  })
+
+  it("a lower access on the box keeps its card on the Mac", async () => {
+    const s = setup()
+    const p = s.call({ ...click, permission: 'edits' })
+    await until(() => s.cards().length === 1, 'the card')
+    s.mb.decide(s.cards()[0].id, true, 'thread')
+    expect((await p).isError).toBe(false)
   })
 
   it("safe asks a card of kind computer naming the approval's app, window and steps; its row carries asking; a denial answers denied", async () => {
