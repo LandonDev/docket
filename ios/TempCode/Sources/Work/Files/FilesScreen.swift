@@ -58,6 +58,10 @@ struct FilesPlaceScreen: View {
             refresh: { if searching { await search(shown) } else { await load(bands) } }
         ) {
             if searching {
+                // New stays in the bar while one job searches: its uploads stand over the results, in sight once it closes.
+                if shown.count == 1, let band = bands.first, !band.uploads.isEmpty {
+                    Section { UploadRows(band: band) }
+                }
                 FoundRows(found: found, saved: saved, multiJob: shown.count > 1) { saved = nil }
             } else {
                 ForEach(bands) { band in
@@ -192,8 +196,8 @@ private struct Shown: Identifiable {
     var band: FilesRoot.Band { FilesRoot.band(job, places: places ?? [], far: files.far[job.workspaceId]?.value ?? []) }
     /// The job's own folder, where New in this bar makes and uploads.
     var folder: FilePlace? { FilesRules.workspaceFolder(files.places[job.workspaceId]?.value ?? []) }
-    /// Uploads into the folder's top, each under way or failed with Dismiss: in sight over the places once New
-    /// closes, while he stays here.
+    /// Uploads into the folder's top, each under way or failed with Dismiss: in sight over the places, or over a
+    /// search's results, once New closes, while he stays here.
     var uploads: [FilesHost.Upload] { folder.map { files.uploads[FilesHost.slot(job.workspaceId, $0.root)] ?? [] } ?? [] }
     /// The rows' ids in the list's order, as `BandSection` draws them.
     var ids: [String] {
@@ -223,12 +227,7 @@ private struct BandSection: View {
     var body: some View {
         let shown = band.band
         Section {
-            if let folder = band.folder {
-                ForEach(band.uploads) { upload in
-                    UploadRow(upload: upload) { band.files.dismissUpload(band.job.workspaceId, folder.root, id: upload.id) }
-                        .listRowInsets(Layout.rowInsets)
-                }
-            }
+            UploadRows(band: band)
             ForEach(shown.lenses + shown.places, id: \.id) { place in
                 PlaceRow(band: band, place: place)
             }
@@ -245,6 +244,20 @@ private struct BandSection: View {
             }
         } header: {
             if named { JobHeader(job: band.job) }
+        }
+    }
+}
+
+/// The job folder's uploads, each under way or failed with Dismiss: over its places, or over a search's results.
+private struct UploadRows: View {
+    let band: Shown
+
+    var body: some View {
+        if let folder = band.folder {
+            ForEach(band.uploads) { upload in
+                UploadRow(upload: upload) { band.files.dismissUpload(band.job.workspaceId, folder.root, id: upload.id) }
+                    .listRowInsets(Layout.rowInsets)
+            }
         }
     }
 }
