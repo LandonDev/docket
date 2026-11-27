@@ -1,7 +1,8 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones } from "../../components/bones";
 import { CSS_PER_POINT, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
+import { SamplePage } from "../pdf/PaperBones";
 import { COLUMN_TOP, currentPage, layOut, NARROW, PAGE_GAP, scaleFor, scrollTarget, visibleRange, type PageSlot } from "../pdf/layout";
 import type { PreviewBytes } from "./preview";
 
@@ -122,13 +123,17 @@ export function PagedSkeleton({ head, side, wide, aspect, pages = 2, width }: { 
         {/* As wide as the paper will be at Fit width: the room it has, up to 125% of a page (1020px), so nothing moves when the pages land. */}
         <div className="flex max-w-[1020px] min-w-0 flex-1 flex-col gap-3">
           {head ? <div style={{ marginBottom: HEAD_GAP - PAGE_GAP }}>{head}</div> : null}
-          {Array.from({ length: pages }, (_, i) => (
-            // The paper's own shape where the kind knows it, so nothing moves when the pages land; Letter (or 16:9) where it does not.
-            <div key={i} className={`flex w-full flex-col gap-2.5 bg-card px-12 py-11 outline-1 outline-border ${aspect ? "" : wide ? "aspect-video" : "aspect-[440/569]"}`} style={aspect ? { aspectRatio: String(aspect) } : undefined}>
-              <Skeleton className="mb-2 h-3 w-[38%]" />
-              {(wide ? [70, 54, 62] : [92, 88, 96, 60, 0, 90, 94, 72, 0, 86, 90, 54]).map((w, n) => (w ? <Skeleton key={n} className="h-2" style={{ width: `${w}%` }} /> : <span key={n} className="h-1" />))}
+          {/* The pages alone are bones: the head (its "Drawing…" line) and the settings beside them are live. */}
+          <Bones label="Loading">
+            <div className="flex flex-col gap-3">
+              {Array.from({ length: pages }, (_, i) => (
+                // The paper's own shape where the kind knows it, so nothing moves when the pages land; Letter (or 16:9) where it does not.
+                <div key={i} className={`flex w-full flex-col gap-3 bg-card px-12 py-11 outline-1 outline-border ${aspect ? "" : wide ? "aspect-video" : "aspect-[440/569]"}`} style={aspect ? { aspectRatio: String(aspect) } : undefined}>
+                  <SamplePage wide={!!wide} />
+                </div>
+              ))}
             </div>
-          ))}
+          </Bones>
         </div>
         {side && !narrow ? <div className="w-[232px] shrink-0 pt-0.5">{side}</div> : null}
       </div>

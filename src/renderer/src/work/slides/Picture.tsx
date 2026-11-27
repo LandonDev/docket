@@ -105,7 +105,7 @@ export const Picture = memo(function Picture({
       {/* The stage waits on paper with a slide's bones, so a load reads as one and the picture lands without a change of ground; a thumbnail keeps its title. */}
       {!painted && !failed && doc && !thumb ? (
         <span data-slide-waiting className="absolute inset-0 bg-(--paper)">
-          <PaperBones shape="slide" />
+          <PaperBones shape="slide" aspect={aspect} />
         </span>
       ) : !painted && !failed ? (
         <span className="absolute inset-0 grid place-items-center overflow-hidden p-2 text-center text-xs leading-4 text-muted-foreground">{doc && !waitTitle ? "" : title}</span>

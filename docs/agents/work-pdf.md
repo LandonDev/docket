@@ -430,9 +430,11 @@ How it works:
   claims the key, so a full-window tab stays full window. The transcript's markdown
   keeps a `#pdf:` href as a link (pdf.test.ts checks it through the real
   pipeline).
-- **States.** Loading is a page-shaped skeleton. A page not yet drawn
-  (after a jump or a fast scroll) is its paper with the page's bones in
-  `paper-ink` at a low mix (`PaperBones`, pdf/PaperBones.tsx), never a
+- **States.** Loading is a page drawn as bones from sample words
+  (`PageSkeleton`, `SamplePage` in pdf/PaperBones.tsx). A page not yet drawn
+  (after a jump or a fast scroll) is its paper with the page's bones on the
+  `paper` ground (`PaperBones`: the sample set in `cqw`, so any size of sheet
+  wraps it the same; `on="paper"`, the paper's ink at a low mix), never a
   blank page of the file; a thumbnail not yet drawn, or one pdf.js
   refused, wears a fainter fill of the same ink. An encrypted file is one
   field and Open; a wrong password says so. A moved file is the quiet

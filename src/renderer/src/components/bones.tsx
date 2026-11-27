@@ -82,8 +82,8 @@ export type RegionProps = {
   fill?: boolean;
   /** One value in a line of words (a branch's name, a count): the region is a box in the line, on the words' baseline, and what it holds is phrasing content. */
   inline?: boolean;
-  /** The ground the bones lie on, where it is not the page: `stage` or `matte` (docs/DESIGN.md `skeleton-stage`, `skeleton-matte`). */
-  on?: "stage" | "matte";
+  /** The ground the bones lie on, where it is not the page: `stage` or `matte` (docs/DESIGN.md `skeleton-stage`, `skeleton-matte`), or `paper`, white in both themes (a PDF's page, a slide not yet drawn). */
+  on?: "stage" | "matte" | "paper";
   className?: string;
 };
 

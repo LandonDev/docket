@@ -4857,7 +4857,9 @@ comes in over the bones, rows in window order, each bone leaving as its row
 arrives, while the regions still waiting go on sweeping. Nothing waits for
 the slowest read. Content that lands while he types or scrolls, in a hidden
 window, or with motion reduced lands at once. A picture, a chart or a frame
-on its way, which has no words to measure, is one `Bone`. The rules and the
+on its way, which has no words to measure, is one `Bone`. Bones on paper
+(a PDF's page, a slide not yet drawn) are the paper's ink at 8%, the same in
+both themes, as the paper is (`on="paper"`). The rules and the
 recipe are docs/agents/loading-bones.md; `lib/bonesGuard.test.ts` refuses a
 skeleton drawn any other way. A button uses `BusyLabel` to reserve both states
 at rest, and the button clicked is the one that spins (a footer's Clear or

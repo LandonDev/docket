@@ -30,6 +30,11 @@
   --skullet-base: var(--skeleton-matte);
   --skullet-highlight: var(--skeleton-matte-sheen);
 }
+/* Paper is white in both themes (index.css `paper`): its bones are its own ink at a low mix, never the theme's. */
+[data-bones-on="paper"] {
+  --skullet-base: color-mix(in srgb, var(--paper-ink) 8%, transparent);
+  --skullet-highlight: color-mix(in srgb, var(--paper) 45%, transparent);
+}
 /* Bones that have stood `BONES.sweepCapMs` go still (lib/ease.ts): the engine marks their drawing. */
 [data-bones-still] {
   --skullet-animation: none;

@@ -371,7 +371,7 @@ describe("the browser's bar", () => {
     host.stateDown = true;
     const { container } = render(<Bar {...props()} />);
     await waitFor(() => expect(container.querySelector("[data-slot=browser-bar]")).toBeNull());
-    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(container.querySelector("[data-bone]")).toBeNull();
   });
 
   it("while he drives at a held submit, offers Hand back beside the primary, never a second Take over", async () => {
@@ -405,7 +405,7 @@ describe("a held submit's primary waits on the page he approves", () => {
     host.items = [HELD];
     const { container } = render(<Pane />);
     await screen.findByRole("button", { name: "Submit Report in Concur" });
-    await waitFor(() => expect(container.querySelector("[data-slot=skeleton]")).toBeTruthy());
+    await waitFor(() => expect(container.querySelector("[data-bone]")).toBeTruthy());
     expect(submit().hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Discard" }).hasAttribute("disabled")).toBe(false);
     open();
@@ -536,7 +536,7 @@ describe("a held submit's primary waits on the page he approves", () => {
     host.stream = { status: "starting" };
     const { container, rerender } = render(<Pane />);
     await screen.findByRole("button", { name: "Hand back" });
-    await waitFor(() => expect(container.querySelector("[data-face=live] [data-slot=skeleton]")).toBeTruthy());
+    await waitFor(() => expect(container.querySelector("[data-face=live] [data-bone]")).toBeTruthy());
     expect(submit().hasAttribute("disabled")).toBe(true);
     // A frame is coming but not drawn: still off.
     host.stream = { status: "live", app: "Google Chrome", window: null, width: 16, height: 10, drawn: false };
@@ -546,7 +546,7 @@ describe("a held submit's primary waits on the page he approves", () => {
     host.stream = { status: "ended", reason: "window-closed" };
     rerender(<Pane />);
     // An ended stream draws no bones (no first frame is coming), only its line under the empty well.
-    await waitFor(() => expect(container.querySelector("[data-face=live] [data-slot=skeleton]")).toBeNull());
+    await waitFor(() => expect(container.querySelector("[data-face=live] [data-bone]")).toBeNull());
     expect(container.querySelector("[data-face=live]")).toBeTruthy();
     expect(screen.getByText(ENDED_WORDS["window-closed"])).toBeTruthy();
     expect(submit().hasAttribute("disabled")).toBe(true);
@@ -565,7 +565,7 @@ describe("a held submit's primary waits on the page he approves", () => {
     host.items = [HELD];
     const { container } = render(<Pane />);
     await screen.findByRole("button", { name: "Hand back" });
-    await waitFor(() => expect(container.querySelector("[data-slot=skeleton]")).toBeTruthy());
+    await waitFor(() => expect(container.querySelector("[data-bone]")).toBeTruthy());
     expect(submit().hasAttribute("disabled")).toBe(true);
   });
 
@@ -607,7 +607,7 @@ describe("the browser's body", () => {
     const { container } = render(<Body {...p} />);
     await screen.findByText("Couldn't open this page");
     expect(container.querySelector("[data-canvas-failed]")?.textContent).toMatch(/not connected/i);
-    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(container.querySelector("[data-bone]")).toBeNull();
     // The body says it, so no state line says it again.
     expect(p.shell.statusLine).not.toHaveBeenCalledWith(expect.objectContaining({ tone: "failed" }));
     host.stateDown = false;

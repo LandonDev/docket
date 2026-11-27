@@ -2,8 +2,8 @@ import { useEffect, useLayoutEffect, useSyncExternalStore, useMemo, useRef, useS
 import type { BrowserState } from "@shared/contract-work-browser";
 import type { OutboxItem } from "@shared/contract-work-outbox";
 import { Lock } from "../../chrome/icons";
+import { Bone, Bones } from "../../components/bones";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
 import { Tip, TruncateTip, useTruncated } from "../../components/tip";
 import { FADE_IN } from "../../components/ui/reveal";
@@ -140,7 +140,9 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   return (
     <span ref={bar} data-slot="browser-bar" className="@container/browser relative flex min-w-0 flex-1 items-center gap-2">
       {face.face === "loading" ? (
-        <Skeleton className="h-3 w-32" />
+        <Bones inline label="">
+          <Host host={SAMPLE_HOST} />
+        </Bones>
       ) : host && fit.host ? (
         <Host host={host} />
       ) : null}
@@ -192,6 +194,9 @@ function useHeldFit(bar: RefObject<HTMLSpanElement | null>, key: string | null):
  * The site's host, the destination he approves a submit for: cut to its room, and while cut it takes the focus too, so the
  * keyboard brings up the whole of it in the same tip the pointer does. One tip stays mounted, off while the host fits.
  */
+/** A site's host while the first read is out: its length gives the bar's bone. */
+const SAMPLE_HOST = "portal.example.edu";
+
 function Host({ host }: { host: string }) {
   const { ref, cut } = useTruncated(host);
   return (
@@ -385,7 +390,7 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
           ) : state ? (
             <StillView env={env} held={waiting} shownOn={shownOn} />
           ) : (
-            <Skeleton className="aspect-[16/10] w-full rounded-lg" />
+            <Bone className="aspect-[16/10] w-full rounded-lg" />
           ))}
         {values.length ? <Values values={values} /> : null}
       </div>
@@ -416,7 +421,7 @@ export function LiveView({ stream, box, label, focusKey, onOpen }: { stream: Ret
   const shape = { aspectRatio: `${size.width} / ${size.height}`, maxWidth: sharpOf(stream) ?? undefined };
   const inside = (
     <>
-      {coming ? <Skeleton className="absolute inset-0 rounded-lg" /> : null}
+      {coming ? <Bone className="absolute inset-0 rounded-lg" /> : null}
       {face.picture}
       <div className="pointer-events-none absolute inset-0">{face.mark}</div>
     </>
@@ -465,7 +470,7 @@ function StillView({ env, held, shownOn = null }: { env: string; held: OutboxIte
   if (!held) return <ViewportLine words={shownOn ? `Shown on ${shownOn} only` : "The agent is not driving the browser now"} />;
   const payload = held.payload as HeldSubmitPayload | null;
   const shape = payload?.picture ? `${payload.picture.width} / ${payload.picture.height}` : "16 / 10";
-  if (src === undefined) return <Skeleton className="w-full rounded-lg" style={{ aspectRatio: shape }} />;
+  if (src === undefined) return <Bone className="w-full rounded-lg" style={{ aspectRatio: shape }} />;
   if (src === "failed") return <ViewportLine words="The page's picture did not load" onRetry={picture.retry} />;
   if (!src) return <ViewportLine words="No picture of this page was kept" />;
   return (

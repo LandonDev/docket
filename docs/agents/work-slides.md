@@ -1481,7 +1481,8 @@ How it works:
   out, wrapped whole on a line of its own under the words) and the strip and
   stage show each slide's title on a blank. While a drawn slide's page
   comes, the stage is its paper with a slide's bones, a title and a
-  subtitle centred (`PaperBones`, pdf/PaperBones.tsx), in the box the
+  subtitle centred, drawn by Skullet from sample words on the `paper` ground
+  (`PaperBones`, pdf/PaperBones.tsx), in the box the
   picture fills; a thumbnail keeps its title.
 - **PowerPoint.** For a deck that lives in PowerPoint (`hosted`), the tab
   row has the TempCode and PowerPoint switch, where the sheet's Excel

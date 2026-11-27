@@ -41,7 +41,7 @@ describe("the document's body", () => {
     const shell = { statusLine: (line: StatusLine | null) => void lines.push(line), ready: (r: boolean) => void ready.push(r), more: () => {} } as unknown as CanvasShell;
     const { container } = render(<Body item={ITEM} source={FILE} env="box" state={undefined} setState={() => {}} shell={shell} />);
     expect(screen.getByRole("heading", { name: "Run of show" })).toBeTruthy();
-    expect(container.querySelectorAll("[data-slot=skeleton]").length).toBe(3);
+    expect(container.querySelector("[skullet-loading]")).not.toBeNull();
     expect(ready).toEqual([false]);
     await act(async () => opening.fail(new Error("That file is not there any more")));
     const failed = await waitFor(() => {
@@ -54,7 +54,7 @@ describe("the document's body", () => {
     expect(within(failed).getByRole("button", { name: "Retry" })).toBeTruthy();
     // One shape a failure: never a red state line over a blank pane.
     expect(lines.filter((l) => l?.tone === "failed")).toEqual([]);
-    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(container.querySelector("[skullet-loading]")).toBeNull();
     expect(container.querySelector("[aria-busy]")).toBeNull();
     expect(ready.at(-1)).toBe(false);
     // Council round 12 (the walk): Retry dropped to bones at once. The failure stays, Retry spinning, until the open answers.
@@ -62,7 +62,7 @@ describe("the document's body", () => {
     fireEvent.click(within(failed).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(opening.made).toBe(made + 1));
     expect(failed.isConnected).toBe(true);
-    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(container.querySelector("[skullet-loading]")).toBeNull();
     expect(within(failed).getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
     await act(async () => opening.fail(new Error("Still not there")));
     await waitFor(() => expect(container.querySelector("[data-canvas-failed]")?.textContent).toContain("Still not there"));
@@ -180,14 +180,14 @@ describe("the document's bar", () => {
   it("holds the bar's place with a bone while it opens, then draws Share on a LifeOS document and on one kept as a file", () => {
     const { container, unmount } = render(bar(FILE));
     // Before the body has said, and while it opens: the bone.
-    expect(container.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    expect(container.querySelector("[data-bone]")).not.toBeNull();
     act(() => markOpen(ITEM.id, "open"));
     expect(screen.getByRole("button", { name: "Share" })).toBeTruthy();
     unmount();
     act(() => markOpen(ITEM.id, "opening"));
     const view = render(bar(LIFEOS));
     expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
-    expect(view.container.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    expect(view.container.querySelector("[data-bone]")).not.toBeNull();
     act(() => markOpen(ITEM.id, "open"));
     // Led by its glyph, as the bar's other tools are.
     expect(screen.getByRole("button", { name: "Share" }).querySelector("svg")).not.toBeNull();
@@ -202,7 +202,7 @@ describe("the document's bar", () => {
     // The document it becomes has a bar: the hold keeps the bar 32px so the body does not drop when it lands, and it
     // is no bone, which a failed import would leave standing.
     expect(container.querySelector("[data-bar-hold]")).not.toBeNull();
-    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(container.querySelector("[data-bone]")).toBeNull();
     expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
   });
 
@@ -221,7 +221,7 @@ describe("the document's bar", () => {
     expect(lines.filter((l) => l?.tone === "failed")).toEqual([]);
     expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
     // Nor a bone: the bar has nothing, so it goes, and the failure is the tab row and the state line.
-    expect(document.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(document.querySelector("[data-bone]")).toBeNull();
   });
 });
 

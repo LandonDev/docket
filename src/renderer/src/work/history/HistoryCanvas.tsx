@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import type { HistoryBranch, HistoryVersion } from "@shared/contract-work-history";
+import type { HistoryBranch, HistoryVersion, HistoryVersions } from "@shared/contract-work-history";
 import { RowsMenu } from "../../chrome/menuRows";
 import { ChevronDown, ChevronLeft, ChevronRight, FileText, PanelRight } from "../../chrome/icons";
+import { Region } from "../../components/bones";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { reveal, yields } from "../../components/ui/reveal";
 import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { ItemButton } from "../../components/ui/item";
-import { Skeleton } from "../../components/ui/skeleton";
 import { TruncateTip } from "../../components/tip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
@@ -20,7 +20,7 @@ import type { CanvasBodyProps, CanvasShell, MoreEntry } from "../canvas/kind";
 import { History } from "../icons";
 import { Face } from "../mail/face";
 import { PAGE_CHANGE_ID } from "../docs/review";
-import { CompareDoc, CompareSkeleton, type Layout } from "./Compare";
+import { CompareDoc, SAMPLE_COMPARE_TITLE, SAMPLE_DIFF, type Layout } from "./Compare";
 import { historyActions, useBranches, useCompare, useVersions } from "./store";
 
 /**
@@ -193,17 +193,21 @@ function BranchRow({ b, names, onOpen }: { b: HistoryBranch; names: Record<strin
   );
 }
 
-function ListSkeleton() {
+const STILL = () => {};
+const SAMPLE_NAMES: Record<string, string> = { "sample:a": "Jordan Ellis", "sample:b": "Sam Ortiz" };
+/** The versions' sample, for the list's bones (`VersionRow` given these, at rest): three rows, on a fixed clock. */
+const SAMPLE_VERSIONS: HistoryVersion[] = [
+  { id: "sample:1", at: 1_790_000_000_000, cause: "idle", by: ["sample:a"], kept: "snapshot" },
+  { id: "sample:2", at: 1_789_990_000_000, cause: "agent-turn", by: ["sample:b", "sample:a"], kept: "snapshot" },
+  { id: "sample:3", at: 1_789_900_000_000, cause: "import", by: ["sample:a"], kept: "snapshot" },
+];
+
+/** The list's rows, at rest: the versions' bones. */
+function SampleVersions() {
   return (
-    <div className="mx-auto flex max-w-[640px] flex-col gap-0.5 px-2 pt-2">
-      {[38, 30, 44].map((w, i) => (
-        <div key={i} className="flex min-h-[52px] items-center gap-3 p-2 ps-9">
-          <Skeleton className="size-6 rounded-full" />
-          <div className="flex grow flex-col gap-1.5">
-            <Skeleton className="h-3.5" style={{ width: `${w}%` }} />
-            <Skeleton className="h-3" style={{ width: `${w + 20}%` }} />
-          </div>
-        </div>
+    <div className="mx-auto flex w-full max-w-[640px] flex-col gap-0.5 px-2 pt-2">
+      {SAMPLE_VERSIONS.map((ver, i) => (
+        <VersionRow key={ver.id} v={ver} all={SAMPLE_VERSIONS} names={SAMPLE_NAMES} now={i === 0} shared={false} picked={false} picking={false} onPick={STILL} onCompare={STILL} onRestore={STILL} />
       ))}
     </div>
   );
@@ -237,20 +241,24 @@ function List({ env, source, state, setState, shell }: CanvasBodyProps<HistorySt
     );
   }, [shell, v, versions.error, versions.retry, branches.error, branches.retry]);
 
-  if (!v)
-    return versions.error ? (
+  if (!v && versions.error)
+    return (
       <div className="flex min-h-full flex-col">
         <OpenFailed kind="history" why={versions.error} onRetry={versions.retry} />
       </div>
-    ) : (
-      <ListSkeleton />
     );
   const pending = branches.value?.branches ?? [];
-  if (v.versions.length === 0 && pending.length === 0) return <EmptyState title="No versions yet" />;
-  const names = { ...v.names, ...branches.value?.names };
-  const restore = (target: HistoryVersion) => restoreTo(target, actions, shell, set);
+  if (v && v.versions.length === 0 && pending.length === 0) return <EmptyState title="No versions yet" />;
   return (
-    <div className="mx-auto flex max-w-[640px] flex-col gap-0.5 px-2 pt-2 pb-8">
+    <Region loading={!v} label="Loading versions" bones={() => <SampleVersions />}>
+      {v ? <Versions v={v} pending={pending} names={{ ...v.names, ...branches.value?.names }} picked={picked} set={set} restore={(target) => restoreTo(target, actions, shell, set)} /> : null}
+    </Region>
+  );
+}
+
+function Versions({ v, pending, names, picked, set, restore }: { v: HistoryVersions; pending: readonly HistoryBranch[]; names: Record<string, string>; picked: readonly string[]; set(patch: Partial<HistoryState>): void; restore(target: HistoryVersion): Promise<void> }) {
+  return (
+    <div className="mx-auto flex w-full max-w-[640px] flex-col gap-0.5 px-2 pt-2 pb-8">
       {pending.length > 0 ? (
         <>
           <Heading count={pending.length}>Waiting for you</Heading>
@@ -280,6 +288,9 @@ function List({ env, source, state, setState, shell }: CanvasBodyProps<HistorySt
 }
 
 // ── the compare and the review ───────────────────────────────────────
+
+/** A compare's bones: the compare itself drawn from a sample, in the layout it will land in, nothing outlined. */
+const CompareBones = ({ layout }: { layout: Layout }) => <CompareDoc diff={SAMPLE_DIFF} layout={layout} current={-1} title={SAMPLE_COMPARE_TITLE} />;
 
 /** Too narrow for two sides of 420px: one column, whatever was chosen. 0 is a body not yet measured. */
 const tooNarrow = (width: number): boolean => width > 0 && width < SIDE_BY_SIDE_FROM;
@@ -361,21 +372,21 @@ function CompareView({ env, source, item, state, setState, shell }: CanvasBodyPr
           </div>
         </div>
       ) : null}
-      {!diff ? (
-        compare.error ? (
-          <OpenFailed kind="history" why={compare.error} onRetry={compare.retry} />
+      <Region loading={!diff && !compare.error} label="Loading the compare" className="grow" bones={() => <CompareBones layout={layout} />}>
+        {!diff ? (
+          compare.error ? (
+            <OpenFailed kind="history" why={compare.error} onRetry={compare.retry} />
+          ) : null
+        ) : diff.rows.length === 0 && !diff.page?.length ? (
+          <Empty className="min-h-[240px]">
+            <EmptyHeader>
+              <EmptyTitle>No differences</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
         ) : (
-          <CompareSkeleton layout={layout} />
-        )
-      ) : diff.rows.length === 0 && !diff.page?.length ? (
-        <Empty className="min-h-[240px]">
-          <EmptyHeader>
-            <EmptyTitle>No differences</EmptyTitle>
-          </EmptyHeader>
-        </Empty>
-      ) : (
-        <CompareDoc diff={diff} layout={layout} current={current} title={item.title} />
-      )}
+          <CompareDoc diff={diff} layout={layout} current={current} title={item.title} />
+        )}
+      </Region>
     </div>
   );
 }
@@ -420,7 +431,9 @@ function ReviewView({ env, source, item, state, setState, shell }: CanvasBodyPro
   useEffect(() => bringIntoView(ref.current, current), [ref, current, layout, branch]);
   return (
     <div ref={ref} className="flex min-h-full flex-col">
-      {branch ? <CompareDoc diff={branch.diff} layout={layout} current={current} title={item.title} /> : branches.error ? <OpenFailed kind="history" why={branches.error} onRetry={branches.retry} /> : <CompareSkeleton layout={layout} />}
+      <Region loading={!branch && !branches.error} label="Loading the suggestions" className="grow" bones={() => <CompareBones layout={layout} />}>
+        {branch ? <CompareDoc diff={branch.diff} layout={layout} current={current} title={item.title} /> : branches.error ? <OpenFailed kind="history" why={branches.error} onRetry={branches.retry} /> : null}
+      </Region>
     </div>
   );
 }

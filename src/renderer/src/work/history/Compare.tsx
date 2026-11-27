@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { changeWords, inlineSegments, type InlineSegment } from "work-kit/formats/diff";
 import { paraOf } from "work-kit/editor/para";
 import type { BlockDiff, DiffBlock, DiffLine, DiffRow, DiffRun } from "@shared/contract-work-history";
-import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
 
 /**
@@ -282,29 +281,21 @@ export function CompareDoc({ diff, layout, current, title }: { diff: BlockDiff; 
   );
 }
 
-/** The shape of a compare while it loads: a document's lines, once or twice. */
-export function CompareSkeleton({ layout }: { layout: Layout }) {
-  const lines = (
-    <div className="mx-auto flex w-full max-w-[672px] flex-col gap-3 p-6">
-      {[
-        [42, 18],
-        [20, 16],
-        [88, 14],
-        [76, 14],
-        [62, 14],
-        [24, 16],
-        [90, 14],
-        [70, 14],
-      ].map(([w, h], i) => (
-        <Skeleton key={i} style={{ width: `${w}%`, height: `${h}px`, marginTop: h === 16 ? 12 : 0 }} />
-      ))}
-    </div>
-  );
-  if (layout === "one") return lines;
-  return (
-    <div className="grid grid-cols-2">
-      {lines}
-      <div className="border-s border-border">{lines}</div>
-    </div>
-  );
-}
+/** A sample block: one run of words, at the top level. */
+const sampleBlock = (id: string, text: string, type = "paragraph", props: Record<string, unknown> = {}): DiffBlock => ({ id, type, props, text, runs: [{ text }], depth: 0, parent: null, index: 0 });
+
+/**
+ * A compare's sample, for its bones while the diff loads (`CompareDoc` given this, in a `Region`): a heading and three
+ * paragraphs, the same on both sides, so no change is tinted. Nobody reads the words; their lengths give the shape.
+ */
+export const SAMPLE_DIFF: BlockDiff = {
+  stats: { same: 4, added: 0, removed: 0, changed: 0, moved: 0 },
+  rows: [],
+  lines: [
+    sampleBlock("sample:1", "The plan for the spring term, with the dates we set and the rooms we booked for each event.", "paragraph"),
+    sampleBlock("sample:2", "What changed", "heading", { level: 1 }),
+    sampleBlock("sample:3", "Two events moved to the week after the break, and the budget for the second one went up after the venue raised its price."),
+    sampleBlock("sample:4", "The open questions are kept at the end, each with who owns it and when it is due back."),
+  ].map((block) => ({ id: block.id, left: block, right: block, row: null })),
+};
+export const SAMPLE_COMPARE_TITLE = "Notes from the planning call";

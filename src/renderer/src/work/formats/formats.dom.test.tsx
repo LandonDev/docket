@@ -105,7 +105,7 @@ describe("Import", () => {
     // Never a red line over a blank pane.
     expect(s.lines.filter((l) => l?.tone === "failed")).toEqual([]);
     expect(container.querySelector("[data-canvas-skeleton]")).toBeNull();
-    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(container.querySelector("[skullet-loading]")).toBeNull();
   });
 
   it("keeps the failure in place on his Retry, never the bones, until the import answers", async () => {

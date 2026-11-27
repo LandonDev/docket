@@ -23,12 +23,6 @@ const SKELETON = "renderer/src/components/ui/skeleton.tsx";
 
 /** Folders whose files may still import `Skeleton` or write `bg-skeleton`. */
 export const HELD: readonly string[] = [
-  "renderer/src/work/browser",
-  "renderer/src/work/canvas",
-  "renderer/src/work/docs",
-  "renderer/src/work/formats",
-  "renderer/src/work/history",
-  "renderer/src/work/pdf",
 ];
 
 /** Files inside a held folder that are converted already and must stay so. */
@@ -115,6 +109,8 @@ describe("the bones' theme", () => {
     expect(root).toMatch(/--skullet-animation: shimmer;/);
     expect(sheet).toMatch(/\[data-bones-on="stage"\] \{\s*--skullet-base: var\(--skeleton-stage\);/);
     expect(sheet).toMatch(/\[data-bones-on="matte"\] \{\s*--skullet-base: var\(--skeleton-matte\);\s*--skullet-highlight: var\(--skeleton-matte-sheen\);/);
+    // Paper is white in both themes: its bones are its own ink, never the theme's.
+    expect(sheet).toMatch(/\[data-bones-on="paper"\] \{\s*--skullet-base: color-mix\(in srgb, var\(--paper-ink\) 8%, transparent\);\s*--skullet-highlight: color-mix\(in srgb, var\(--paper\) 45%, transparent\);/);
   });
 
   it("stills the bones under reduced motion", () => {

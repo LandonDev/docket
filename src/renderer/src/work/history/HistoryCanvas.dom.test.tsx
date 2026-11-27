@@ -264,7 +264,7 @@ describe("the history canvas", () => {
     const review = await seat({ view: "review", branchId: "b1" });
     await waitFor(() => expect(review.container.querySelector("[data-canvas-failed]")?.textContent).toContain("Couldn't open this history"));
     expect(review.container.querySelector("[data-canvas-state]")).toBeNull();
-    expect(review.container.querySelector("[data-canvas-body] [data-slot=skeleton]")).toBeNull();
+    expect(review.container.querySelector("[data-canvas-body] [skullet-loading]")).toBeNull();
   });
 
   it("says versions that did not load in the body, centred with Retry, never a red line over a blank pane", async () => {
@@ -294,7 +294,7 @@ describe("the history canvas", () => {
       return found!;
     });
     expect(container.querySelector("[data-canvas-state]")).toBeNull();
-    expect(container.querySelector("[data-canvas-body] [data-slot=skeleton]")).toBeNull();
+    expect(container.querySelector("[data-canvas-body] [skullet-loading]")).toBeNull();
     host.failCompare = false;
     fireEvent.click(within(failed).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(container.querySelector("[data-row]")).toBeTruthy());

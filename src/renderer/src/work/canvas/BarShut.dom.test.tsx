@@ -7,7 +7,7 @@
  */
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone } from "../../components/bones";
 import { defineChunk } from "../../lib/lazyChunk";
 import { CanvasPane } from "./CanvasPane";
 import { OpenFailed } from "./FetchState";
@@ -23,7 +23,7 @@ afterEach(cleanup);
 let phase: "opening" | "failed" | "open" = "opening";
 const module = {
   Body: () => (phase === "failed" ? <OpenFailed kind="document" why="The file is not where it was." onRetry={() => undefined} /> : <p>The page</p>),
-  Bar: () => (phase === "opening" ? <Skeleton className="h-3 w-30" /> : null),
+  Bar: () => (phase === "opening" ? <Bone className="h-3 w-30" /> : null),
 } as unknown as CanvasKindModule;
 const chunk = defineChunk<CanvasKindModule>("test-bar-shut", async () => module);
 const kinds = { ...CANVAS, document: { ...CANVAS.document, chunk } };

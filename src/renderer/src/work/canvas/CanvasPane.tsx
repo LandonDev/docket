@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import type { CanvasItem, CanvasKind } from "@shared/work";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone } from "../../components/bones";
 import { ItemSkeleton } from "./ItemBones";
 import { StatusMark } from "../../components/ui/status";
 import type { Chunk } from "../../lib/lazyChunk";
@@ -245,7 +245,7 @@ export function CanvasPane({
   const history = def.history && !historyOpen && module && !fetched && feeds.ready !== false && !shut ? shell.openHistory : undefined;
   const line = feeds.status && !(saveLine && feeds.status.saving) ? feeds.status : null;
   const historyOnLine = !!history && line?.tone === "quiet" && !!line.history;
-  const tools = waiting ? (waiting.phase === "fetching" ? <Skeleton aria-hidden data-bar-bone className="h-3 w-30" /> : undefined) : Bar ? <Bar {...props} /> : module || failed || def.bar === false ? undefined : <Skeleton aria-hidden data-bar-bone className="h-3 w-30" />;
+  const tools = waiting ? (waiting.phase === "fetching" ? <Bone data-bar-bone className="h-3 w-30" /> : undefined) : Bar ? <Bar {...props} /> : module || failed || def.bar === false ? undefined : <Bone data-bar-bone className="h-3 w-30" />;
   return (
     <div
       data-canvas-pane

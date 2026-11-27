@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone } from "../../components/bones";
 import { NO_FEEDS } from "./frame";
 import { BarHold, BarShut, useShutsBar } from "./barHold";
 import { BAR_TOOLS_ONLY, KindBar } from "./KindBar";
@@ -18,8 +18,8 @@ afterEach(cleanup);
 /** A kind's `Bar` as the pane mounts it: a truthy element that may render a bone, its tools, the hold or nothing. */
 function Tools({ shows }: { shows: "pane" | "bone" | "share" | "hold" | "nothing" }) {
   // The pane's own bone while the kind's code loads (CanvasPane.tsx), not the kind's.
-  if (shows === "pane") return <Skeleton aria-hidden data-bar-bone className="h-3 w-30" />;
-  if (shows === "bone") return <Skeleton aria-hidden className="h-3 w-30" />;
+  if (shows === "pane") return <Bone data-bar-bone className="h-3 w-30" />;
+  if (shows === "bone") return <Bone className="h-3 w-30" />;
   if (shows === "share") return <button type="button">Share</button>;
   if (shows === "hold") return <BarHold />;
   return null;

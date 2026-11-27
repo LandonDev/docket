@@ -60,7 +60,7 @@ loading), `children`, and:
 | `hold` | How long the bones wait before they show: 150 ms. `0` for bones that follow a wait already made. |
 | `fill` | Take the room its flex parent has (a list in its pane). Without it the region is as tall as what it holds. |
 | `inline` | One value in a line of words: the region is a `span` in the line, on the words' baseline, and holds phrasing content. |
-| `on` | `"stage"` or `"matte"`: the ground the bones lie on, where it is not the page (`skeleton-stage`, `skeleton-matte`). |
+| `on` | `"stage"`, `"matte"` or `"paper"`: the ground the bones lie on, where it is not the page (`skeleton-stage`, `skeleton-matte`; `paper` is white in both themes, its bones the paper's ink at 8%: a PDF's page or a slide not yet drawn, pdf/PaperBones.tsx). |
 | `id` | Names the region, so its next bones are the shape it last showed and not the sample's. Say what the shape hangs on (`"notes:list"`). |
 | `snap` | Land at the content's height with no ease, for content whose height the sample cannot know. |
 | `className` | The region's own layout. A region is a column holding one box: put gaps and grids on that box, inside. |
@@ -222,6 +222,8 @@ Converted examples to copy:
 | Each row its own read (a usage report a row) | `aliax/views/accounts/usage.tsx`, `aliax/views/accounts/samples.ts` |
 | Each section's body its own region under headings drawn at once | `aliax/views/stats.tsx` |
 | A picture that must stay mounted to load or draw (an `img`, a video canvas): a lone `Bone` over it until its first frame, `data-bones-on` for its ground | `surfaces/MediaViewer.tsx`, `surfaces/threads/computer/Viewport.tsx`, `FullWindow.tsx` (`data-bones-on="matte"`) |
+| Bones on a sheet of any size (sample type in `cqw`, `on="paper"`) | `work/pdf/PaperBones.tsx` (`PaperBones`) |
+| A compare drawn from a sample diff, in the layout it lands in | `work/history/Compare.tsx` (`SAMPLE_DIFF`), `work/history/HistoryCanvas.tsx` (`CompareBones`) |
 
 ## Tests
 

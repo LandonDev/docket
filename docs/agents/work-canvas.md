@@ -329,6 +329,10 @@ What a kind should know:
 - A kind's loading view uses `ItemBones` / `ItemSkeleton`
   (work/canvas/ItemBones.tsx), the pane's own fallback shape, so nothing
   moves when the chunk lands; a failed load shows its failure, never bones.
+  They are a document's title and paragraph in its own type, drawn by
+  Skullet (`Bones`); a title known at once (the item's name, a fetch's
+  progress) stands outside them, as it is. The bar's place while the kind's
+  code loads is one `Bone` (`data-bar-bone`).
 - The tab row scrolls when its tabs pass what fits, past their 36px floor
   (CanvasTabs: `OVERFLOW_FADE` and `useOverflowEdges`, the title strip's
   settled row), and brings the selected tab into view. A tab names its item

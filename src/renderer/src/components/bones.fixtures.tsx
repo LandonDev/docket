@@ -38,7 +38,7 @@ function NoteRows({ notes }: { notes: Note[] }) {
   );
 }
 
-export function BonesOf({ what, ground, on }: { what: "list" | "loaded" | "ground"; ground?: string; on?: "stage" | "matte" }) {
+export function BonesOf({ what, ground, on }: { what: "list" | "loaded" | "ground"; ground?: string; on?: "stage" | "matte" | "paper" }) {
   if (what === "ground") {
     return (
       <div className={`grid h-28 place-items-center ${ground}`}>
@@ -61,4 +61,5 @@ export default [
   { name: "a block on the page", props: { what: "ground", ground: "bg-background" } },
   { name: "a block on stage", props: { what: "ground", ground: "bg-(--stage)", on: "stage" } },
   { name: "a block on matte", props: { what: "ground", ground: "bg-matte", on: "matte" } },
+  { name: "a block on paper", props: { what: "ground", ground: "bg-(--paper)", on: "paper" } },
 ];

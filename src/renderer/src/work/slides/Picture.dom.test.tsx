@@ -18,7 +18,10 @@ describe("a slide's picture", () => {
     expect(container.textContent).toBe("Who comes");
     expect(container.querySelector("[data-paper-bones]")).toBeNull();
     rerender(<Picture doc={waiting} page={1} width={640} title="Who comes" />);
-    expect(container.textContent).toBe("");
+    // The bones' sample words sit in their unseen drawing alone (`[skullet-loading]`, aria-hidden): no word is shown.
+    const drawing = container.querySelector("[skullet-loading]");
+    expect(drawing?.closest("[aria-hidden=true]")).not.toBeNull();
+    expect(container.textContent).toBe(drawing?.textContent);
     expect(container.querySelector("[data-paper-bones='slide']")).not.toBeNull();
     // The Sorter's tile has its label under it: no second title inside.
     rerender(<Picture doc={waiting} page={1} width={160} title="Who comes" thumb first />);

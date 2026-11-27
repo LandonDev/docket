@@ -21,7 +21,7 @@ import {
   type ReviewChange,
 } from "work-kit/editor";
 import type { DocumentPage } from "work-kit/editor/page";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone } from "../../components/bones";
 import type { Draft } from "@shared/work/drafts";
 import { loadToast } from "../../components/ui/toaster";
 import { itemJournal, type DraftJournal } from "../canvas/drafts";
@@ -361,7 +361,7 @@ export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
   if (importsFirst(source) && source.at !== "mail") return <BarHold />;
   // A mail's attachment is read only and is not shared.
   if (source.at === "mail" || state === "failed") return null;
-  if (state === "opening") return <Skeleton aria-hidden className="h-3 w-30" />;
+  if (state === "opening") return <Bone className="h-3 w-30" />;
   return (
     <>
       {workspace ? <DocSaveControls workspace={workspace} source={source} itemId={item.id} /> : null}

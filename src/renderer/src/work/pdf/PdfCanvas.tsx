@@ -5,7 +5,7 @@ import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { GroupInput, Input, InputGroup } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Bones } from "../../components/bones";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { dayTime } from "../../lib/duration";
@@ -24,6 +24,7 @@ import { onItemsGone } from "../canvas/gone";
 import { linkHost, usePdfItem, type PdfHost } from "./item";
 import { ZOOMS, type Zoom } from "./layout";
 import { navOf, useNav, type PdfNav } from "./nav";
+import { SamplePage } from "./PaperBones";
 
 /**
  * The PDF kind (docs/agents/work-pdf.md; the approved page is
@@ -246,12 +247,13 @@ function useMore(shell: CanvasShell, nav: PdfNav, host: PdfHost, open: boolean, 
 /** Loading: the page's own shape, on the card step, on the paper's own side inset (layout.ts `sideInset`: 24px, 12px under 640px). */
 export function PageSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading" className="@container flex min-h-0 flex-1 bg-(--stage)">
+    <div className="@container flex min-h-0 flex-1 bg-(--stage)">
       <div data-pdf-bones className="flex min-w-0 flex-1 justify-center px-6 pt-4 @max-[640px]:px-3">
-        <div className="flex aspect-[440/569] w-[440px] max-w-full flex-col gap-2.5 self-start rounded-[2px] bg-card px-10 py-8 outline-1 outline-border">
-          <Skeleton className="mb-2 h-3 w-[38%] self-center" />
-          {[92, 88, 96, 60, 0, 90, 94, 72, 0, 86, 90, 54].map((w, i) => (w ? <Skeleton key={i} className="h-2" style={{ width: `${w}%` }} /> : <span key={i} className="h-1" />))}
-        </div>
+        <Bones label="Loading" className="w-[440px] max-w-full self-start">
+          <div className="flex aspect-[440/569] w-full flex-col gap-3 rounded-[2px] bg-card px-10 py-8 outline-1 outline-border">
+            <SamplePage />
+          </div>
+        </Bones>
       </div>
     </div>
   );
@@ -321,7 +323,7 @@ export function Bar({ item, env, host: given }: CanvasBodyProps<PdfState> & PdfD
     nav.closeFind();
   }, [nav]);
   // While the file opens the bar holds a bone where the pager will be, so the body does not move when it lands.
-  if (state.pages === 0) return state.shut ? null : <Skeleton data-pdf-bar-bone className="h-3 w-30" />;
+  if (state.pages === 0) return state.shut ? null : <Bone data-pdf-bar-bone className="h-3 w-30" />;
   const fits = barFits(state.width, state.reviewing, state.find.open);
   return (
     <>
