@@ -92,15 +92,17 @@ private struct MessagesList: View {
         let pages = store.map { store in sectors.map { MessagesReads.list(store, sector: $0) } } ?? []
         let rows = Self.rows(pages)
         let ids = rows.map(\.id)
+        let failed = LifeosDownPress(host: host).row(Self.failure(host: host, pages: pages)) { await retry(pages) }
         WorkPlaceScreen(
             place: .messages,
             job: job,
             ids: ids,
             loading: Self.loading(host: host, pages: pages, rows: rows),
             empty: PlaceEmpty(title: "No Messages"),
-            failure: Self.failure(host: host, pages: pages),
-            // Try Again only where asking again can help: not for a sign-in or a connect (the shared rule).
-            retry: host.connecting || host.down.map(\.isSilence) == false ? nil : { await retry(pages) },
+            failure: failed.words,
+            // Try Again only where asking again can help; a sign-in opens Connections on the job's computer, as Mail's does.
+            retry: failed.retry,
+            press: failed.press,
             jobs: filter,
             filter: filter.isEmpty ? nil : pick,
             refresh: { pages.forEach { $0.retryNow() } },

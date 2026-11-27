@@ -34,20 +34,6 @@ struct LifeViewScreen: View {
     /// On Projects: one project's page, drawn once the job's session is ready (Today's Open project).
     var project: String? = nil
 
-    /// Settings → Connections on the host, where its LifeOS sign-in is made: the host asks admin for a Settings target
-    /// (reveal.ts), beyond reveal, as Connections' own "Open on" does.
-    private var maySignIn: Bool { host.client.work.may(.reveal) && host.client.environment.caps.contains(.admin) }
-
-    private func openSignIn() async {
-        let client = host.client
-        do {
-            try await client.work.reveal(RevealTarget(settings: .connections))
-            FleetToastCenter.shared.post(note: "Opened on \(client.environment.name)")
-        } catch {
-            FleetToastCenter.shared.post(message: ActionError.wrap(error).message)
-        }
-    }
-
     var body: some View {
         Group {
             switch host.phase {
@@ -55,22 +41,14 @@ struct LifeViewScreen: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .unavailable(let words):
+                let down = LifeosDownPress(host: host)
                 ContentUnavailableView {
                     Label(words, systemImage: view.symbol)
                 } description: {
                     // A sign-in this key may not open on the host is mended on a computer that manages it.
-                    if host.down?.wantsSignIn == true, !maySignIn { Text(LifeosWords.signInElsewhere(host: host.client.environment.name)) }
+                    if let elsewhere = down.elsewhere { Text(elsewhere) }
                 } actions: {
-                    // Try Again only for silence; a sign-in opens Connections on the host; a connect is a wait.
-                    if host.connecting {
-                        ProgressView()
-                    } else if let down = host.down {
-                        if down.isSilence {
-                            Button("Try Again") { Task { await host.prepare() } }
-                        } else if down.wantsSignIn, maySignIn {
-                            Button("Open on \(host.client.environment.name)") { Task { await openSignIn() } }
-                        }
-                    }
+                    down.actions { await host.prepare() }
                 }
             case .ready:
                 if let store = host.store, let scene = host.scene {
@@ -292,6 +270,58 @@ struct ItemChip: View {
         case .card: "rectangle.split.3x1"
         case .chat: "bubble.left.and.bubble.right"
         case .selection, .unknown: "text.quote"
+        }
+    }
+}
+
+/// LifeOS down on a job's computer, answered by one rule wherever it is read: Mail, Tasks, Agenda, People, a person,
+/// Messages and a conversation (IOS-DESIGN "LifeOS down", `LifeosPress`). Try Again only for silence, a spinner for a
+/// connect, "Open on <computer>" (Settings → Connections there) for a sign-in this key may open, else where to sign in.
+@MainActor
+struct LifeosDownPress {
+    let host: WorkLifeHost
+
+    private var name: String { host.client.environment.name }
+    /// Settings → Connections on the host, where its LifeOS sign-in is made: the host asks admin for a Settings target
+    /// (reveal.ts), beyond reveal, as Connections' own "Open on" does.
+    private var maySignIn: Bool { host.client.work.may(.reveal) && host.client.environment.caps.contains(.admin) }
+    var press: LifeosPress { .of(host.down, connecting: host.connecting, maySignIn: maySignIn, host: name) }
+    /// Where a sign-in this key may not open is mended; nil for every other state.
+    var elsewhere: String? { LifeosPress.elsewhere(host.down, maySignIn: maySignIn, host: name) }
+
+    /// The reason with where to sign in after it, for a page whose title is not the reason.
+    func line(_ words: String) -> String {
+        LifeosPress.line(words, down: host.down, maySignIn: maySignIn, host: name)
+    }
+
+    func openSignIn() async {
+        do {
+            try await host.client.work.reveal(RevealTarget(settings: .connections))
+            FleetToastCenter.shared.post(note: "Opened on \(name)")
+        } catch {
+            FleetToastCenter.shared.post(message: ActionError.wrap(error).message)
+        }
+    }
+
+    /// An unavailable page's actions; `retry` is its Try Again.
+    @ViewBuilder func actions(retry: @escaping () async -> Void) -> some View {
+        switch press {
+        case .wait: ProgressView()
+        case .tryAgain: Button("Try Again") { Task { await retry() } }
+        case .open(let label): Button(label) { Task { await openSignIn() } }
+        case .none: EmptyView()
+        }
+    }
+
+    /// A list's failed row (`WorkPlaceScreen`): the words with where to sign in, and its press. `retry` also answers a
+    /// page that failed under a session that reads, as before; a connect and a sign-in this key may not open get none.
+    func row(_ failure: String?, retry: @escaping () async -> Void) -> (words: String?, retry: (() async -> Void)?, press: String) {
+        guard let failure else { return (nil, nil, "Try Again") }
+        switch press {
+        case .wait: return (failure, nil, "Try Again")
+        case .tryAgain: return (failure, retry, "Try Again")
+        case .open(let label): return (failure, { await openSignIn() }, label)
+        case .none: return (line(failure), host.down == nil ? retry : nil, "Try Again")
         }
     }
 }

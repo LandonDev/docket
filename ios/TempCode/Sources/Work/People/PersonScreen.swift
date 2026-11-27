@@ -167,10 +167,10 @@ private struct PersonPageView: View {
                 ContentUnavailableView {
                     Label("Can’t Reach LifeOS", systemImage: WorkPlace.people.glyph)
                 } description: {
-                    Text(why)
+                    Text(LifeosDownPress(host: host).line(why))
                 } actions: {
-                    // Try Again only for silence: a sign-in, a connect or an ended access asks nothing again (the shared rule).
-                    if host.down?.isSilence == true { Button("Try Again", action: retry) }
+                    // Try Again only for silence; a sign-in opens Connections on the job's computer, as Mail's does (the shared rule).
+                    LifeosDownPress(host: host).actions { retry() }
                 }
             case .failed:
                 ContentUnavailableView {

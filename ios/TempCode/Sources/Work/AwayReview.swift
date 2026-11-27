@@ -113,9 +113,8 @@ struct AwayReviewSheet: View {
     @State private var written: [(environmentId: String, result: WorkResult)] = []
     /// Still reading each host's writes: Written shows its spinner, and nothing says "Nothing happened" yet.
     @State private var reading = true
-    /// Hosts whose writes did not come back: named under Written with Retry, which reads them alone.
+    /// Hosts whose writes did not come back: named under Written with Try Again, which reads them alone.
     @State private var unread: [String] = []
-    @State private var rereading = false
     @State private var undoing: Set<String> = []
 
     var body: some View {
@@ -192,19 +191,10 @@ struct AwayReviewSheet: View {
                             }
                             .frame(minHeight: Layout.rowHeight)
                         }
-                        // A partial read says so, by host, with Retry for the hosts that did not answer.
+                        // A partial read says so, by host, in the house failed row: Try Again reads the hosts that
+                        // did not answer, the row and its spinner staying until they do.
                         if !reading, let line = OutboxModel.unreadLine(unread.map { id in clients.first { $0.environment.id == id }?.environment.name ?? "A host" }) {
-                            HStack(spacing: 12) {
-                                Text(line).textStep(.meta, tint: Tint.destructiveText)
-                                Spacer(minLength: 8)
-                                if rereading {
-                                    ProgressView()
-                                } else {
-                                    PillButton("Try Again") { Task { await reread(ends) } }
-                                }
-                            }
-                            .frame(minHeight: Layout.rowHeight)
-                            .accessibilityElement(children: .combine)
+                            FailedRead(words: line, retry: { await reread(ends) }, identifier: "away-unread", insets: nil, tint: Tint.destructiveText)
                         }
                     }
                 }
@@ -281,26 +271,25 @@ struct AwayReviewSheet: View {
 
     /// Reads again only the hosts that did not answer.
     private func reread(_ ends: [EnvironmentClient]) async {
-        rereading = true
-        defer { rereading = false }
-        let hosts = unread
-        unread = []
-        await read(hosts, ends: ends)
+        await read(unread, ends: ends)
     }
 
     private func read(_ hosts: [String], ends: [EnvironmentClient]) async {
         let stretches = ends.compactMap(\.work.awayEnd)
         guard let since = stretches.map(\.since).min(), let until = stretches.map(\.until).max() else { return }
         var rows = written
+        var missed: [String] = []
         for id in hosts {
             guard let client = model.registry.client(id) else { continue }
             do {
                 rows += OutboxModel.awayWrites(try await client.work.results(since: since), until: until).map { (id, $0) }
             } catch {
-                unread.append(id)
+                missed.append(id)
             }
         }
         written = rows.sorted { $0.result.createdAt > $1.result.createdAt }
+        // The hosts asked are named again only once they answered, so a second try keeps its line in place.
+        unread = unread.filter { !hosts.contains($0) } + missed
     }
 
     private func undo(_ row: (environmentId: String, result: WorkResult)) async {

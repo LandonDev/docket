@@ -54,6 +54,36 @@ public extension TodayDown {
     var wantsSignIn: Bool { self == .signedOut || self == .refused || self == .pairing }
 }
 
+/// The one press a LifeOS that cannot read offers, in every place that reads it (Mail, Tasks, Agenda, People, a person,
+/// Messages, a conversation): a spinner while it connects, Try Again for silence, "Open on <computer>" (Settings →
+/// Connections there) for a sign-in this key may open there, else none; a sign-in it may not open says where instead
+/// (`LifeosWords.signInElsewhere`).
+public enum LifeosPress: Equatable, Sendable {
+    case wait
+    case tryAgain
+    case open(String)
+    case none
+
+    public static func of(_ down: TodayDown?, connecting: Bool, maySignIn: Bool, host: String) -> LifeosPress {
+        if connecting { return .wait }
+        guard let down else { return .none }
+        if down.isSilence { return .tryAgain }
+        return down.wantsSignIn && maySignIn ? .open("Open on \(host)") : .none
+    }
+
+    /// Where a sign-in this key may not open is mended; nil for every other state.
+    public static func elsewhere(_ down: TodayDown?, maySignIn: Bool, host: String) -> String? {
+        down?.wantsSignIn == true && !maySignIn ? LifeosWords.signInElsewhere(host: host) : nil
+    }
+
+    /// A list's one failed line: the reason, then where to sign in when this key may not open it ("Not signed in to
+    /// LifeOS on Mac. Sign in from a computer that manages Mac.").
+    public static func line(_ words: String, down: TodayDown?, maySignIn: Bool, host: String) -> String {
+        guard let elsewhere = elsewhere(down, maySignIn: maySignIn, host: host) else { return words }
+        return "\(words.hasSuffix(".") ? words : words + ".") \(elsewhere)."
+    }
+}
+
 /// The LifeOS words that are not a down state.
 public enum LifeosWords {
     /// A session on its way, a wait with no press: "LifeOS is still connecting on the box".

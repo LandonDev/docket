@@ -42,6 +42,24 @@ import TempCodeContract
         for down in [TodayDown.off, .unreachable, .unanswered, .withheld, .locked] { #expect(!down.wantsSignIn) }
     }
 
+    /// Every place that reads LifeOS offers the one press Mail does: People and Messages included (round 5, sitting F).
+    @Test func aSignInOffersOpenOnTheComputerWhereThisKeyMay() {
+        #expect(LifeosPress.of(.signedOut, connecting: false, maySignIn: true, host: "Mac") == .open("Open on Mac"))
+        #expect(LifeosPress.of(.refused, connecting: false, maySignIn: true, host: "Mac") == .open("Open on Mac"))
+        #expect(LifeosPress.of(.signedOut, connecting: false, maySignIn: false, host: "Mac") == LifeosPress.none)
+        #expect(LifeosPress.of(.unanswered, connecting: false, maySignIn: false, host: "Mac") == .tryAgain)
+        #expect(LifeosPress.of(.off, connecting: false, maySignIn: true, host: "Mac") == LifeosPress.none)
+        #expect(LifeosPress.of(nil, connecting: true, maySignIn: true, host: "Mac") == .wait)
+        #expect(LifeosPress.of(nil, connecting: false, maySignIn: true, host: "Mac") == LifeosPress.none)
+        // A sign-in this key may not open says where it is mended, after the reason in a list's one line.
+        #expect(LifeosPress.elsewhere(.signedOut, maySignIn: false, host: "The box") == "Sign in from a computer that manages the box")
+        #expect(LifeosPress.elsewhere(.signedOut, maySignIn: true, host: "The box") == nil)
+        #expect(LifeosPress.elsewhere(.unanswered, maySignIn: false, host: "The box") == nil)
+        #expect(LifeosPress.line("Not signed in to LifeOS on Mac", down: .signedOut, maySignIn: false, host: "Mac")
+            == "Not signed in to LifeOS on Mac. Sign in from a computer that manages Mac.")
+        #expect(LifeosPress.line("LifeOS did not answer.", down: nil, maySignIn: false, host: "Mac") == "LifeOS did not answer.")
+    }
+
     /// The `@` list's line about LifeOS follows the host's status as it lands: an answer read before the host said its
     /// state and one read after say the one state in one way (m4-01 said "did not answer", m4-30 "Not signed in").
     @MainActor @Test func theMentionLineFollowsTheHostsStatus() async {

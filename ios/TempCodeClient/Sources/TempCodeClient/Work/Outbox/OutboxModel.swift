@@ -107,6 +107,27 @@ public enum OutboxModel {
         return item.kind == .mailSend || item.kind == .officeMailSend ? "Check Sent first" : "Check whether it went first"
     }
 
+    /// Where a thread's held line says the act stands, before the act in his words: "Sending", "Checking", "Was held"
+    /// once decided, and for one still waiting the list's own word: "Not sent", "May have gone" for one the host could
+    /// not confirm, "Out of date", else "Held".
+    public nonisolated static func inlineLead(_ item: OutboxItem?, pending: Bool, checking: Bool) -> String {
+        if pending { return "Sending" }
+        if checking { return "Checking" }
+        guard let item else { return "Was held" }
+        switch item.state {
+        case .failed: return item.outcomeUnknown == true ? "May have gone" : "Not sent"
+        case .stale: return "Out of date"
+        default: return "Held"
+        }
+    }
+
+    /// Whether the held line's press opens the item rather than pressing: one out of date (nothing to send), one that
+    /// failed (its reason, and what to check first when it may have gone, stand there), and what its detail alone shows
+    /// whole. Never a send from the line for any of them.
+    public nonisolated static func inlineOpens(_ item: OutboxItem) -> Bool {
+        item.state == .stale || item.state == .failed || sendsFromDetailOnly(item.kind)
+    }
+
     /// The held detail's line for a failed send: the reason, then what to check when it may have gone.
     public nonisolated static func failureLine(_ item: OutboxItem) -> String {
         let reason = item.error?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

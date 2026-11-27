@@ -73,15 +73,17 @@ private struct PeopleList: View {
         let pages = store.map { store in sectors.map { (sector: $0, query: PeopleReads.directory(store, sector: $0)) } } ?? []
         let everyone = Self.people(pages)
         let rows = PeopleRules.find(everyone, query)
+        let failed = LifeosDownPress(host: host).row(Self.failure(host: host, pages: pages.map(\.query))) { await retry(pages.map(\.query)) }
         WorkPlaceScreen(
             place: .people,
             job: job,
             ids: rows.map(\.id),
             loading: Self.loading(host: host, pages: pages.map(\.query)),
             empty: query.isEmpty ? PlaceEmpty(title: "No People") : PlaceEmpty(title: "No Results", line: "No one here is called “\(query)”."),
-            failure: Self.failure(host: host, pages: pages.map(\.query)),
-            // Try Again only where asking again can help: not for a sign-in or a connect (the shared rule).
-            retry: host.connecting || host.down.map(\.isSilence) == false ? nil : { await retry(pages.map(\.query)) },
+            failure: failed.words,
+            // Try Again only where asking again can help; a sign-in opens Connections on the job's computer, as Mail's does.
+            retry: failed.retry,
+            press: failed.press,
             jobs: filter,
             filter: filter.isEmpty ? nil : pick,
             search: $query,

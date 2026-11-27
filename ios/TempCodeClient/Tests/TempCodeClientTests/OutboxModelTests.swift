@@ -740,6 +740,28 @@ import TempCodeContract
         #expect(OutboxModel.minuteAge(134 * 60_000) == "2h 14m")
     }
 
+    /// A thread's held line never calls a failed send "Held", and its press opens the item where the reason and
+    /// "Check Sent first" stand, never sending from the line (round 5, sitting F).
+    @Test func aFailedSendInAThreadSaysSoAndOpensItsItem() {
+        func held(_ state: OutboxItem.State, kind: OutboxItem.Kind = .teamsPost, unknown: Bool? = nil) -> OutboxItem {
+            OutboxItem(ref: .host(.init(id: "f")), kind: kind, workspaceId: "w1", sessionId: "s1", sector: "purdue", summary: "Post to Events", verb: "Post", account: nil, state: state,
+                       createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .rule, grantId: nil, error: "Teams refused it", result: nil, routineRunId: nil, outcomeUnknown: unknown, updatedAt: 1)
+        }
+        #expect(OutboxModel.inlineLead(held(.failed), pending: false, checking: false) == "Not sent")
+        #expect(OutboxModel.inlineLead(held(.failed, unknown: true), pending: false, checking: false) == "May have gone")
+        #expect(OutboxModel.inlineLead(held(.stale), pending: false, checking: false) == "Out of date")
+        #expect(OutboxModel.inlineLead(held(.held), pending: false, checking: false) == "Held")
+        #expect(OutboxModel.inlineLead(held(.failed), pending: true, checking: false) == "Sending")
+        #expect(OutboxModel.inlineLead(held(.held), pending: false, checking: true) == "Checking")
+        #expect(OutboxModel.inlineLead(nil, pending: false, checking: false) == "Was held")
+        // Send Again opens; a held post still sends from the line, a mail never does.
+        #expect(OutboxModel.inlineOpens(held(.failed)))
+        #expect(OutboxModel.inlineOpens(held(.stale)))
+        #expect(!OutboxModel.inlineOpens(held(.held)))
+        #expect(OutboxModel.inlineOpens(held(.held, kind: .mailSend)))
+        #expect(OutboxModel.pressWord(held(.failed), fallback: "Post") == "Send Again")
+    }
+
     /// Discard's line says what will not happen in the act's own past, never the act's title again (round 1, R1-F8).
     @Test func discardSaysWhatWillNotHappenOnce() {
         func held(_ kind: OutboxItem.Kind, verb: String) -> OutboxItem {

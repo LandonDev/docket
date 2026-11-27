@@ -26,6 +26,8 @@ struct WorkPlaceScreen<Rows: View>: View {
     /// The read that failed, in the host's words; the rows that came before stay.
     var failure: String?
     var retry: (() async -> Void)?
+    /// The failure's press, Try Again unless it mends elsewhere (`FailedRead.press`).
+    var press = "Try Again"
     /// The jobs the filter offers, with the pick the caller keeps; no filter when either is missing.
     var jobs: [PlaceJob] = []
     var filter: Binding<String?>?
@@ -41,7 +43,7 @@ struct WorkPlaceScreen<Rows: View>: View {
         let firstLoad = loading && ids.isEmpty && failure == nil
         List {
             if let failure {
-                Section { FailedRead(words: failure, retry: retry) }
+                Section { FailedRead(words: failure, retry: retry, press: press) }
             }
             if firstLoad {
                 PlaceholderRows()
@@ -253,6 +255,8 @@ struct FailedRead: View {
     var insets: EdgeInsets? = Layout.rowInsets
     /// The words' ink: nil for the meta step's own, the destructive ink where a place says its fault in red.
     var tint: Color?
+    /// The press's name: Try Again, or what mends the fault elsewhere ("Open on Mac" for a LifeOS sign-in).
+    var press = "Try Again"
     @State private var reading = false
 
     var body: some View {
@@ -268,7 +272,7 @@ struct FailedRead: View {
                 if reading {
                     ProgressView()
                 } else {
-                    PillButton("Try Again") {
+                    PillButton(press) {
                         Task {
                             reading = true
                             await retry()

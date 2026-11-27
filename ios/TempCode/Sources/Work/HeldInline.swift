@@ -7,8 +7,9 @@ import TempCodeContract
 /// words, muted. Held is not Needs you: never amber, never a card, and the
 /// turn went on. A tap opens it in place to the act as it will go, in a
 /// hairline frame with no fill, with Send, Edit and Discard. Send waits its
-/// five seconds here, the line reading "Sending… Undo". Once decided the
-/// line says so and opens nothing.
+/// five seconds here, the line reading "Sending… Undo". A failed send reads
+/// "Not sent" (or "May have gone") and its "Send Again…" opens the item, where
+/// the reason stands. Once decided the line says so and opens nothing.
 struct HeldInline: View {
     let n: Int
     let act: String
@@ -95,7 +96,8 @@ struct HeldInline: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: Layout.markWidth)
-            (Text(pending ? "Sending " : checking ? "Checking " : item == nil ? "Was held " : "Held ").foregroundStyle(.secondary) + Text(act).foregroundStyle(.primary))
+            // A failed send leads with the list's "Not sent" or "May have gone", never "Held" (`OutboxModel.inlineLead`).
+            (Text(OutboxModel.inlineLead(item, pending: pending, checking: checking) + " ").foregroundStyle(.secondary) + Text(act).foregroundStyle(.primary))
                 .font(.footnote)
                 .lineLimit(open ? nil : 1)
             Spacer(minLength: 0)
@@ -140,8 +142,9 @@ struct HeldInline: View {
                     if item.state == .stale {
                         // Out of date: nothing to send; its own page asks the thread again.
                         PillButton("Open…") { Task { await navigator.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } }
-                    } else if OutboxModel.sendsFromDetailOnly(item.kind) {
-                        // A LifeOS reply's quote and a computer act's picture show only in the detail: the verb opens it.
+                    } else if OutboxModel.inlineOpens(item) {
+                        // A failed send's reason and "Check Sent first", a LifeOS reply's quote and a computer act's
+                        // picture show only in the detail: "Send Again…" or the verb opens it, never sends from here.
                         PillButton("\(verb)…", tint: .accentColor) { Task { await navigator.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } }
                     } else {
                         PillButton(verb, tint: .accentColor) { Task { line = await OutboxPresses.shared.send(entry, quiet: true) } }

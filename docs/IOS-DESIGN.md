@@ -2779,7 +2779,9 @@ milestone 46 built, where it lives now:
   You Were Away": the span, then Held (each with its verb), Failed,
   Decided without you (a thread and its count, which opens it), Written on
   your files (Undo where the write has a way back), each left out when
-  empty, and one footer line: "Away never sends a held item."
+  empty, and one footer line: "Away never sends a held item." A computer
+  whose writes did not come back is named under Written in the house failed
+  row, in red, with Try Again, the line kept until the second read lands.
 - **Settings → Work** is a row under Computers while any computer has Work: per
   computer, the switch, LifeOS's state in words, Things threads may send on
   their own (each with Remove, no confirm, no press scale), and each add-on's
@@ -2813,8 +2815,11 @@ milestone 46 built, where it lives now:
   A tap opens it in place: the act's fields and body in a hairline frame
   (the field radius, no fill: held is not Needs you) with Discard, Edit
   (the item's detail) and Send. Send waits its five seconds on the line
-  itself ("Sending … Undo"). Once decided the line reads "Was held" and
-  opens nothing.
+  itself ("Sending … Undo"). A failed send leads with the list's "Not sent"
+  ("May have gone" when the host could not confirm it), never "Held", and its
+  "Send Again…" opens the item, where the reason and "Check Sent first"
+  stand: nothing sends from the line (`OutboxModel.inlineLead`,
+  `inlineOpens`). Once decided the line reads "Was held" and opens nothing.
 - **Results**: a Work thread's menu has Results, a document sheet in two
   groups, Can undo (each with Undo or the pillar's own words) and Can't
   undo; an undone row stays, struck through, with "Undone".
@@ -3345,8 +3350,8 @@ People is a place of the Work tab, after Agenda in the Work list (docs/agents/wo
   Them, Waiting on Them, Shared with Them, Past Meetings, Answered. A mail opens in the job's Mail on that thread,
   a meeting opens its page, a task its sheet, a form the job's forms. A shared item says what the link lets them
   do and until when; it opens nothing on the phone. Nothing open: one line. The page is asked at once, never
-  waiting on the directory: LifeOS out of reach is "Can’t Reach LifeOS" with the host's words, a failed read
-  "Can’t Read This Person", each with Try Again, and a person LifeOS does not hold "Can’t Find This Person", even
+  waiting on the directory: LifeOS out of reach is "Can’t Reach LifeOS" with the host's words and Mail's press
+  ("LifeOS down"), a failed read "Can’t Read This Person" with Try Again, and a person LifeOS does not hold "Can’t Find This Person", even
   over a page on screen (merged or deleted: no Write or New Thread left in the bar). A
   read that fails over a page on screen keeps the page under "This person did not refresh" with Try Again, gone
   once a fresh read lands.
@@ -3402,12 +3407,13 @@ the open Duo. It opens from Today's Resolve and from a clash's tell or notice.
 Mail is the Work list's third place: LifeKitUI's own Mail, for every job at once as Tasks and Agenda are (each row
 led by its job's dot, the job filter in the bar, the whole width and its two pages on the open Duo).
 
-- **LifeOS down**: Mail, Tasks, Agenda, People and Messages say why in the one rule Today uses
+- **LifeOS down**: Mail, Tasks, Agenda, People, a person, Messages and a conversation say why in the one rule Today uses
   (`TodayDown.words`, the desktop's lifeosDown.ts), the computer named ("Not signed in to LifeOS on the box"). Try
   Again only for silence ("LifeOS did not answer the box", "The box did not answer"); a sign-in missing, refused
   or waiting offers "Open on <computer>" (Settings → Connections there) where this key may, else says "Sign in from
   a computer that manages the box"; a LifeOS still connecting is a spinner ("LifeOS is still connecting on the
-  box").
+  box"). One press rule for all seven (`LifeosPress`, `LifeosDownPress` in LifeViewScreen.swift); a list says it in
+  its failed row, the press its pill ("Open on the box").
 
 - **Waiting on** is one bar item, the hourglass, filled while it shows: the place swaps to LifeKitUI's Waiting on
   list and back, with no motion, and a fold keeps which one shows. Its rows' Nudge opens the thread that drafts
