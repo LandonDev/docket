@@ -121,3 +121,24 @@ describe("a canvas tab's name", () => {
     expect(screen.getByRole("button", { name: "Close Budget" })).toBeTruthy();
   });
 });
+
+describe("a tab closed by its × from the keyboard (council R5-A1)", () => {
+  it("hands the focus to the tab shown next, and to the lone title's × once the row folds", async () => {
+    const three = [...items, canvasItem("deck", { kind: "deck", title: "Slides" })];
+    const props = { onSelect: () => {}, onReorder: () => {}, kinds: drivenKinds(() => {}) as never };
+    const closed: string[] = [];
+    const view = render(<CanvasTabs {...props} items={three} selected="sheet" onClose={(id) => void closed.push(id)} />);
+    const close = screen.getByRole("button", { name: "Close Budget" });
+    close.focus();
+    fireEvent.click(close);
+    expect(closed).toEqual(["sheet"]);
+    view.rerender(<CanvasTabs {...props} items={[three[0]!, three[2]!]} selected="deck" onClose={(id) => void closed.push(id)} />);
+    await waitFor(() => expect(document.activeElement?.getAttribute("data-canvas-tab")).toBe("deck"));
+    // Down to one, the row folds to the title: its × takes the focus.
+    const last = screen.getByRole("button", { name: "Close Slides" });
+    last.focus();
+    fireEvent.click(last);
+    view.rerender(<CanvasTabs {...props} items={[three[0]!]} selected="doc" onClose={(id) => void closed.push(id)} />);
+    await waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toBe(`Close ${LONG}`));
+  });
+});

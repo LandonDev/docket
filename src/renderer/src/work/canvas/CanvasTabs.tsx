@@ -68,10 +68,23 @@ export function CanvasTabs({
     },
     [edges],
   );
+  // A × that held focus goes with its tab: the tab shown next takes the focus (the lone title's × once the row folds),
+  // unless he moved it elsewhere while the close went through.
+  const refocus = useRef(false);
+  const closeFrom = (itemId: string): void => {
+    refocus.current = !!document.activeElement?.closest("[data-canvas-close]");
+    onClose(itemId);
+  };
   // The selected tab comes into view when it changes, and when a tab opens or closes beside it.
   useEffect(() => {
     if (!selected) return;
-    list.current?.querySelector<HTMLElement>(`[data-canvas-tab="${CSS.escape(selected)}"]`)?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+    const tab = list.current?.querySelector<HTMLElement>(`[data-canvas-tab="${CSS.escape(selected)}"]`);
+    tab?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+    if (!refocus.current) return;
+    const lost = !document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected;
+    if (!lost) return;
+    refocus.current = false;
+    (tab ?? document.querySelector<HTMLElement>("[data-canvas-title] [data-canvas-close]"))?.focus();
   }, [selected, items.length]);
   if (items.length === 1) {
     const [item] = items;
@@ -91,7 +104,7 @@ export function CanvasTabs({
             </span>
           ) : null}
         </div>
-        <CloseButton title={names[0]!} tabbable onClose={() => onClose(item.id)} />
+        <CloseButton title={names[0]!} tabbable onClose={() => closeFrom(item.id)} />
       </div>
     );
   }
@@ -162,7 +175,7 @@ export function CanvasTabs({
               )}
             </TitleTip>
             <div className={`absolute end-0.5 top-0.5 ${active ? "" : reveal("dock-tab", { row: true })}`}>
-              <CloseButton title={names[index]!} tabbable={active} onClose={() => onClose(item.id)} />
+              <CloseButton title={names[index]!} tabbable={active} onClose={() => closeFrom(item.id)} />
             </div>
           </div>
         );
