@@ -327,7 +327,8 @@ export const WorkThreadRow = memo(function WorkThreadRow({ row, project, actions
         {lead ? <LeadMark lead={lead} /> : <ProviderLead provider={row.provider} />}
       </span>
       <span ref={measure} aria-hidden={!renaming || undefined} className={cn(!renaming && ROW_SHOWS, "flex min-w-0 flex-1 flex-col")}>
-        <span className="flex h-5 min-w-0 items-baseline gap-1">
+        {/* 8px between a cut title and its time, so the ellipsis never reads into the time. */}
+        <span className="flex h-5 min-w-0 items-baseline gap-2">
           {renaming ? (
             <InlineRename
               value={row.title}
