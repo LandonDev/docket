@@ -221,7 +221,13 @@ public enum InboxModel {
     /// What sits over a list with no rows.
     public enum Overlay: Sendable, Hashable { case none, spinner, empty, offline }
 
-    /// The hosts whose read failed with nothing held to show: each gets the failed line with Try Again.
+    /// Whether a host's snapshot holds a row to show: an empty one holds nothing, so a failed read over it is said
+    /// rather than left as "No Issues or Pull Requests".
+    public static func holds(_ snapshot: GithubInboxSnapshot?) -> Bool {
+        snapshot?.repos.contains { !$0.items.isEmpty } ?? false
+    }
+
+    /// The hosts whose read failed with nothing held to show: each gets the failed line with Retry.
     public static func failedReads(_ hosts: [HostRead]) -> [HostRead] {
         hosts.filter { !$0.held && $0.read == .failed }
     }

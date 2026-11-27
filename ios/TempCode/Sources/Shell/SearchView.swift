@@ -150,7 +150,7 @@ struct SearchView: View {
                         .listRowSeparator(.hidden)
                 }
             }
-            if severalHosts, !answer.isEmpty, let foot = SearchRows.footLine(answer.hosts) {
+            if !answer.isEmpty, let foot = severalHosts ? SearchRows.footLine(answer.hosts) : SearchRows.loneFailedLine(answer.hosts) {
                 FootRow(text: foot)
                     .listRowInsets(Layout.rowInsets)
                     .listRowSeparator(.hidden)

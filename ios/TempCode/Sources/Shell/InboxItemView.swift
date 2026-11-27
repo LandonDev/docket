@@ -219,16 +219,14 @@ struct InboxItemView: View {
 }
 
 /// A load that failed: the line and Retry, in the meta step.
+/// A part of the item that did not load: the house failed-read row with Retry, its words stacking over the press at
+/// accessibility sizes.
 private struct InboxLoadFailed: View {
     let text: String
     let retry: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(text)
-                .textStep(.meta)
-            PillButton("Retry", action: retry)
-        }
+        FailedRead(words: text, retry: { retry() }, identifier: "inbox-item-failed", insets: nil, press: "Retry")
     }
 }
 

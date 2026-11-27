@@ -182,6 +182,13 @@ private func entry(_ item: GithubInboxItem, host: String = "h1") -> InboxEntry {
         #expect(InboxModel.overlay([read("a", .away)], hasRows: false, hasNotices: false) == .offline)
     }
 
+    @Test func `an empty snapshot holds nothing, so a failed read over it is said`() {
+        #expect(!InboxModel.holds(nil))
+        #expect(!InboxModel.holds(snapshot([])))
+        #expect(!InboxModel.holds(snapshot([repo("acme/app", items: [])])))
+        #expect(InboxModel.holds(snapshot([repo("acme/app", items: [inboxItem(1, repo: "acme/app", updatedAt: "2026-10-21T00:00:00Z")])])))
+    }
+
     @Test func `a failed read with nothing held says so in place of the empty view`() {
         let failed = read("a", .open, .failed)
         #expect(InboxModel.failedReads([failed, read("b", .open, held: true, .failed)]) == [failed])

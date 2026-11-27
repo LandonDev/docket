@@ -94,7 +94,7 @@ final class InboxStore {
             case .connecting, .reconnecting, .suspended: .connecting
             case .offline, .unauthorized: .away
             }
-            return InboxModel.HostRead(environmentId: id, name: client.environment.name, link: link, held: snapshots[id] != nil, read: reads[id])
+            return InboxModel.HostRead(environmentId: id, name: client.environment.name, link: link, held: InboxModel.holds(snapshots[id]), read: reads[id])
         }
     }
 

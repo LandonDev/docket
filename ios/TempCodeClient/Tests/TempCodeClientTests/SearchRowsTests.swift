@@ -133,6 +133,15 @@ import TempCodeContract
         ])
     }
 
+    @Test func `one computer that failed is named under the rows the phone held`() {
+        #expect(SearchRows.loneFailedLine([SearchHostFoot(environmentId: "mac", name: "Mac", state: .failed)]) == "Couldn't search Mac.")
+        #expect(SearchRows.loneFailedLine([SearchHostFoot(environmentId: "mac", name: "Mac", state: .answered(ms: 5))]) == nil)
+        #expect(SearchRows.loneFailedLine([
+            SearchHostFoot(environmentId: "mac", name: "Mac", state: .failed),
+            SearchHostFoot(environmentId: "box", name: "box", state: .failed)
+        ]) == nil)
+    }
+
     @Test func `a failed answer, or an open host with none, is failed in the foot`() {
         let failed = SearchHostAnswer(environmentId: "box", name: "box", sessions: [], threads: nil, elapsedMs: 50, failed: true)
         let answer = SearchRows.build(query: "x", scope: .threads, hosts: [mac, box], answers: [threads("mac", [], sessions: []), failed])

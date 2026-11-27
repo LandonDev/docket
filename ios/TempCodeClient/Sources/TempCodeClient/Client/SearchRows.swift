@@ -361,6 +361,13 @@ public nonisolated enum SearchRows {
         }.joined(separator: ", ")
     }
 
+    /// With one computer, which has no foot: its failed read under the rows the phone already held ("Couldn't
+    /// search Mac."), so a list kept from memory never passes for the whole answer. Nil otherwise.
+    public static func loneFailedLine(_ hosts: [SearchHostFoot]) -> String? {
+        guard hosts.count == 1, hosts[0].state == .failed else { return nil }
+        return SearchStatus.failedLine([hosts[0].name])
+    }
+
     /// "320 ms" under a second, else "1.2 s" with one decimal.
     public static func duration(ms: Int) -> String {
         if ms < 1000 { return "\(ms) ms" }

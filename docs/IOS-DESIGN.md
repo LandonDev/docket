@@ -549,9 +549,11 @@ cannot refresh it." for each that cannot. The list's states come from what
 each host's read came to (`InboxModel.overlay` over `InboxModel.HostRead`),
 never from its having been asked: the system `ProgressView` while any host
 that holds nothing may still answer (connecting, or its read out), and a
-notice line never hides it; a read that failed with nothing held is the
-house failed row (`FailedRead`, "Couldn't read the inbox on box." with Try
-Again); `ContentUnavailableView` "No Issues or Pull Requests" with `tray`
+notice line never hides it; a read that failed with nothing held (no snapshot,
+or one with no rows, `InboxModel.holds`) is the house failed row (`FailedRead`,
+"Couldn't read the inbox on box." with Retry, the word of the non-Work screens),
+which stays, its spinner turning, while its Retry reads; an item's body,
+conversation or changes that did not load is the same row; `ContentUnavailableView` "No Issues or Pull Requests" with `tray`
 (see "Empty screens") once every host has answered or cannot, unless a
 notice or a failed row already says why; "Every computer is offline." when
 none could answer. A snapshot held from disk paints with no spinner.
@@ -685,7 +687,9 @@ through `CrossHostSearch.pairLookup`) is one row on the newer copy, "Newer"
 in the quiet step after its line number, the other hosts in the accessibility label. `host:` (a name,
 an id, or `mac`), `type:` (thread, file, note, project; it wins over the
 scope buttons) and `project:` are typed in the box; the foot names each host
-with its time, "…" while it is still answering, offline or failed.
+with its time, "…" while it is still answering, offline or failed. With one computer, whose
+list has no foot, a failed read is that line under the rows the phone already held
+(`SearchRows.loneFailedLine`).
 
 ## The thread screen
 

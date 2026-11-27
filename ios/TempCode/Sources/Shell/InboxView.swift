@@ -32,9 +32,10 @@ struct InboxView: View {
         let reads = store.hostReads(clients)
         List(selection: selection) {
             ForEach(InboxModel.failedReads(reads), id: \.environmentId) { host in
+                // Retry, the non-Work screens' word; the row stays, its spinner turning, until that read ends.
                 FailedRead(words: InboxModel.failedLine(host, several: clients.count > 1), retry: {
-                    if let client = clients.first(where: { $0.environment.id == host.environmentId }) { await read(client, animated: false) }
-                }, identifier: "inbox-failed")
+                    if let client = clients.first(where: { $0.environment.id == host.environmentId }) { await read(client, animated: false, again: true) }
+                }, identifier: "inbox-failed", press: "Retry")
                 .listRowBackground(Surface.chrome)
             }
             ForEach(notices, id: \.self) { notice in
@@ -158,9 +159,10 @@ struct InboxView: View {
 
     /// One host's stored snapshot. Its outcome is kept: a failure shows the
     /// failed line, and a read cut off is forgotten so the next open asks again.
-    private func read(_ client: EnvironmentClient, animated: Bool) async {
+    /// `again`: a failed host's Retry, which leaves it failed while the read is out, so its row stays and spins.
+    private func read(_ client: EnvironmentClient, animated: Bool, again: Bool = false) async {
         let id = client.environment.id
-        store.markAsked(id)
+        if !again { store.markAsked(id) }
         do {
             let snapshot = try await client.request(Methods.GithubInbox.self, .init())
             if animated {
