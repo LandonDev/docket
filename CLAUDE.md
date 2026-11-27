@@ -142,8 +142,8 @@ Read the file a task touches before changing that subject.
   (index.css "Held in dark"). [docs/agents/appearance.md](docs/agents/appearance.md);
   phone: [appearance-phone.md](docs/agents/appearance-phone.md)
 - **Loading bones** — every skeleton is Skullet's, from a sample: `Region`,
-  `Loaded`, `Bones` (components/bones.tsx); `lib/bonesGuard.test.ts` holds
-  the folders left. [docs/agents/loading-bones.md](docs/agents/loading-bones.md)
+  `Loaded`, `Bones` (components/bones.tsx); `lib/bonesGuard.test.ts` fails a
+  bone by hand. [docs/agents/loading-bones.md](docs/agents/loading-bones.md)
 - **Launch and bundle split** — boot.js migrates renderer preferences before
   paint. Compile caches, `tempcode-app://`, lazy chunks (`defineChunk`),
   and the index budget (`bun run check:bundle`).

@@ -1115,7 +1115,7 @@ tools each under the category it details (at most six, largest first, then
 "+N more"; a list the harness sent no category for stands after them with
 its total; a memory file reads by its name and where it applies, "CLAUDE.md,
 user" or "CLAUDE.md, docs", its path the row's tooltip alone; a tool reads
-"linear/list_issues"; both lists in the sans, one face for names), `Skeleton` rows until the first reading and "Breakdown after
+"linear/list_issues"; both lists in the sans, one face for names), rows drawn as bones from a sample until the first reading and "Breakdown after
 this turn" mid-turn without one, and Compact at the foot when the thread
 can (`canCompact` in lib/threadMenu.ts, the thread menu's rule). The
 breakdown is `session.context` through lib/contextCache.ts, polled only
@@ -1186,7 +1186,7 @@ The branch in that row (chrome/BranchPicker.tsx) is the branch's glyph and
 its name in mono; a folder that is no repo reads "No repo" in sans where
 the draft's type works on a branch, and draws nothing on a chat or research
 draft (a dead control would be the row's only item: DESIGN's chip rule), and the
-wait for the branch is a `Skeleton` in a short name's shape, never a pill.
+wait for the branch is a short name drawn as bones (`Loaded inline`), never a pill.
 
 The host in that row (chrome/DraftHostPicker.tsx) shows for a draft of a
 project linked across hosts, or a chat outside every workspace: the host's
@@ -1289,7 +1289,7 @@ nothing under it repeats them.
   raw error or a path.
   There is no footer and nothing floats over the text.
 - **The body**: the editor, or for Markdown the preview and the source
-  swapped in place. Loading is a `Skeleton` of code lines under the
+  swapped in place. Loading is bones of code lines under the
   header's slot; a file that will not open is one `Empty` with Retry.
   An image, a video or an audio file is the media viewer
   (surfaces/MediaViewer.tsx): its facts are one comma run in the header
@@ -2139,8 +2139,8 @@ brought into view even when it moved section meanwhile.
   or "Then archive the threads", 4px under the last step. The rows above
   paint from the session store the moment the board opens (the answer then
   overrides a row's host and status, `mergeBatchChildren`); only the foot
-  waits on `batch.board`, as one `aria-busy` still `Skeleton` of the
-  heading and two step rows. Nothing on the board spins while it loads. Read from the `batch.board`
+  waits on `batch.board`, as bones of the
+  heading over two sample step rows (`StepRow`). Nothing on the board spins while it loads. Read from the `batch.board`
   answer and the `batch` push (each step's log as the lines since the last
   push, `foldBatchPush`; a push past what is held asks `batch.get` for the
   whole state).

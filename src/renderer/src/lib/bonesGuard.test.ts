@@ -6,27 +6,17 @@ import { describe, expect, it } from "vitest";
  * The loading rule's guard (docs/agents/loading-bones.md; docs/DESIGN.md
  * "Loading and empty states"). Skullet draws every skeleton, and one file
  * imports it: components/bonesEngine.tsx. App code imports
- * components/bones.tsx. A file that imports `skullet`, or the hand-drawn
- * `Skeleton` (components/ui/skeleton.tsx), or writes the bone's fill on a
- * box of its own (`bg-skeleton`), draws bones by hand and fails here.
- *
- * HELD is the folders not yet converted, one line a folder, as paths under
- * src/. A thread that converts a folder deletes its line; a line with
- * nothing left to hold fails, so the list only shrinks. When it is empty,
- * delete components/ui/skeleton.tsx and the two cases that speak of it.
+ * components/bones.tsx. A file that imports `skullet`, writes the bone's
+ * fill on a box of its own (`bg-skeleton`) or a pulse (`animate-pulse`), or
+ * brings back a hand-drawn `Skeleton` (components/ui/skeleton.tsx, deleted
+ * once the last folder was converted, 2026-11-27) draws bones by hand and
+ * fails here. No folder is held: the rule has no exceptions.
  */
 
 const SRC = resolve(__dirname, "../../..");
 const RENDERER = join(SRC, "renderer/src");
 const ENGINE = "renderer/src/components/bonesEngine.tsx";
 const SKELETON = "renderer/src/components/ui/skeleton.tsx";
-
-/** Folders whose files may still import `Skeleton` or write `bg-skeleton`. */
-export const HELD: readonly string[] = [
-];
-
-/** Files inside a held folder that are converted already and must stay so. */
-const CONVERTED_IN_HELD: readonly string[] = [];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -38,7 +28,6 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 const files = walk(SRC).map((path) => ({ file: relative(SRC, path), path, text: readFileSync(path, "utf8") }));
-const held = (file: string) => !CONVERTED_IN_HELD.includes(file) && HELD.some((folder) => file.startsWith(`${folder}/`));
 
 const SPECIFIER = /(?:from\s+|import\s*\(\s*|import\s+)["']([^"']+)["']/g;
 const specifiers = (text: string) => [...text.matchAll(SPECIFIER)].map((match) => match[1]);
@@ -50,8 +39,8 @@ function target(from: string, specifier: string): string | null {
 
 const importsSkullet = (text: string) => specifiers(text).some((specifier) => specifier === "skullet" || specifier.startsWith("skullet/"));
 const importsSkeleton = (path: string, text: string) => specifiers(text).some((specifier) => target(path, specifier) === SKELETON.replace(/\.tsx$/, ""));
-/** The bone's fill as a utility class: a bone drawn by hand, whatever element wears it. */
-const BONE_FILL = /(?<![\w-])bg-skeleton(?:-stage|-matte)?(?![\w-])/;
+/** The bone's fill as a utility class, or a pulse: a bone drawn by hand, whatever element wears it. */
+const BONE_FILL = /(?<![\w-])(?:bg-skeleton(?:-stage|-matte)?|animate-pulse)(?![\w-])/;
 
 describe("the loading bones", () => {
   it("lets one file import Skullet", () => {
@@ -59,19 +48,13 @@ describe("the loading bones", () => {
     expect(offenders, "import components/bones.tsx; only components/bonesEngine.tsx imports skullet").toEqual([]);
   });
 
-  it("draws no bone by hand outside the folders still held: no `Skeleton`, no `bg-skeleton`", () => {
+  it("draws no bone by hand anywhere: no `Skeleton`, no `bg-skeleton`, no `animate-pulse`", () => {
     const offenders = files
-      .filter(({ file }) => file !== SKELETON && !held(file) && !/\.test\.tsx?$/.test(file))
+      .filter(({ file }) => !/\.test\.tsx?$/.test(file))
       .filter(({ path, text }) => importsSkeleton(path, text) || BONE_FILL.test(text))
       .map(({ file }) => file);
     expect(offenders, "draw the screen from a sample in a Region (docs/agents/loading-bones.md)").toEqual([]);
-  });
-
-  it("holds only folders that still draw one: a converted folder's line is deleted", () => {
-    const emptied = HELD.filter((folder) => !files.some(({ file, path, text }) => file.startsWith(`${folder}/`) && held(file) && (importsSkeleton(path, text) || BONE_FILL.test(text))));
-    expect(emptied, "these folders draw no bone by hand any more: delete their lines from HELD").toEqual([]);
-    for (const folder of HELD) expect(existsSync(join(SRC, folder)), folder).toBe(true);
-    expect([...HELD].sort()).toEqual([...HELD]);
+    expect(existsSync(join(SRC, SKELETON)), "the hand-drawn Skeleton stays deleted").toBe(false);
   });
 
   it("keeps the engine out of every static import but the front's own dynamic one", () => {

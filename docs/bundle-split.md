@@ -26,7 +26,7 @@ on intent so the skeleton is rarely seen.
   `threads/threadViews.ts`).
 - `src/renderer/src/surfaces/SurfaceSkeleton.tsx` — the fallbacks, one
   outline per kind (`page`, `pane`, `diff`, `diff-rows`, `terminal`, `frame`,
-  `transcript`, `rows`), the surface's own shape in still `Skeleton` blocks
+  `transcript`, `rows`), the surface's own shape drawn as bones from sample words
   so the frame around it never jumps. An edit's diff waits as `diff-rows`
   (one 20px line per row it will show, the count through a context) and a
   transcript page as `HtmlPagePlaceholder` at the height its frame reserves.

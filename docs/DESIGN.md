@@ -968,7 +968,7 @@ is out of reach.
   shape, at most `min(400px, 45cqh)` of the section (a tall pane gives
   the window room to be read; a short one keeps its list), on the `card` fill
   with `rounded-lg`, the picture centred in it on the `image-outline`
-  edge, a `Skeleton` in its shape until the first picture (and again
+  edge, a `Bone` in its shape until the first picture (and again
   when the stream moves to another window or the section follows
   another session, until that window's own first frame: the last
   picture is never shown as the new one's). A window that changes shape
@@ -1131,7 +1131,7 @@ a row whose control is a wide field (`PageRow wide`, Advanced's Web address)
 lays it on a full-width line 8px under its words once the page's content is
 under 480px, its error 4px under the field and its skeleton the same, so the
 words never thin to a word a line;
-a loading value is a `Skeleton` in its shape, an error a red 12px line
+a loading value is its own words drawn as bones from a sample (`Loaded inline`), an error a red 12px line
 under its row. A section loaded from a host waits for the socket to open,
 asks again on every new socket until it has answered, and past 10 s says
 "The host did not answer" with Retry (on the section's heading line, or at
@@ -5366,7 +5366,7 @@ own row where it settled, as a published page does: its line as a lone
 step, then 8px under it the picture at the column's width in its own shape,
 at most 320px tall (two to four in one line 8px apart, each at most 240px
 tall and keeping its shape), `rounded-lg` on the `image-outline` edge, a
-`Skeleton` in that shape while it loads, a click opening the lightbox from
+`Bone` in that shape while it loads, a click opening the lightbox from
 it; a file its host no longer has is one muted line in its place. A running
 computer call is told by the working line in the host's words ("Clicking
 Save in TextEdit"), and a held one says the scheduler's line whole.

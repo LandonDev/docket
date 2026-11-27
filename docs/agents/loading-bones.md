@@ -20,9 +20,8 @@ when a read answers its content comes in over its bones.
   are unmounted whole. `src/renderer/src/components/bones.css` is the theme
   and the layout. `BONES` in `src/renderer/src/lib/ease.ts` holds the times.
 - `src/renderer/src/lib/bonesGuard.test.ts` (in the guards row) fails a file
-  that imports `skullet`, imports `components/ui/skeleton`, or writes
-  `bg-skeleton` on a box of its own, outside the folders its `HELD` list still
-  names.
+  that imports `skullet`, writes `bg-skeleton` or `animate-pulse` on a box
+  of its own, or brings back `components/ui/skeleton.tsx`. No folder is held.
 
 ## The API
 
@@ -194,10 +193,8 @@ row with no due date draws no date.
 7. A picture, a chart, a frame: one `Bone` with the old box's classes, and
    `on="stage"` or `on="matte"` on its region where the old bone was
    `bg-skeleton-stage` or `bg-skeleton-matte`.
-8. Delete the hand-drawn skeleton and the `Skeleton` import. When a folder
-   draws no bone by hand any more, delete its line from `HELD`
-   (`lib/bonesGuard.test.ts`); the test fails a line with nothing left to
-   hold.
+8. Delete the hand-drawn skeleton. `lib/bonesGuard.test.ts` fails any
+   file, anywhere, that draws a bone by hand.
 
 `SurfaceSkeleton` (the lazy surfaces' fallback, by kind) and
 `PageRowsSkeleton` (a settings section's rows) are drawn in bones already and
@@ -375,15 +372,10 @@ move the pin in package.json and in `lib/bonesGuard.test.ts`.
 
 ## The held list
 
-`HELD` in `src/renderer/src/lib/bonesGuard.test.ts`: the folders not yet
-converted, one line a folder. The list itself says which
-are left: it shrinks as each folder lands. A thread that converts a folder
-deletes its line. When the list is empty, delete
-`components/ui/skeleton.tsx` and the cases that speak of it.
-`CONVERTED_IN_HELD` names a file converted inside a folder still held; it is
-empty now.
-
-`hosted/guest` is the guest page's own bundle
-(`src/hosted/guest/GuestApp.tsx`): it imports the same `components/bones.tsx`,
-but its build and its stylesheet are its own, so whoever converts it checks
+Gone. Every folder was converted on 2026-11-27, `components/ui/skeleton.tsx`
+was deleted with the cases that spoke of it, and `lib/bonesGuard.test.ts`
+holds every file under src/ (the guest page's bundle, `src/hosted/guest`,
+too) to the rule with no exception. The guest page imports the same
+`components/bones.tsx`; its stylesheet (`guest.css`) imports the app's
+`index.css` and reads the bones' classes, so a change there is checked on
 that page in a browser.

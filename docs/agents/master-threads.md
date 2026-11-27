@@ -552,8 +552,8 @@ this is the short one.
   Stop on the running one), the running step's console opening under its
   own row (`Collapsible`; a shell step's command shows once, as the
   console's first line), and "Then notify you" or "Then archive the
-  threads"; the rows paint from the store at once and only the foot is a
-  still `Skeleton` until `batch.board` answers. The foot and the
+  threads"; the rows paint from the store at once and only the foot is
+  bones (sample steps through `StepRow`) until `batch.board` answers. The foot and the
   rules dialog read the steps as the master's
   list: `master/steps.ts` joins `rules.steps` with `state.steps` by id (a
   step the rules name that the host has not seen is pending at the end),

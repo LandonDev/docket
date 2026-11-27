@@ -7,7 +7,6 @@ import { Sheet, SheetContent, SheetTitle } from "./sheet";
 import { Switch } from "./switch";
 import { computerServiceMarkOf, linkMarkOf, STATUS_TONE, STATUS_WORD, StatusMark, statusNeedsYou, threadStateOf, type ThreadState } from "./status";
 import { Kbd } from "./kbd";
-import { Skeleton } from "./skeleton";
 import { GroupInput, InputGroup } from "./input";
 import { Progress } from "./progress";
 import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, resetTooltips, tooltipChunk, warmTooltips } from "./tooltip";
@@ -350,15 +349,6 @@ describe("StatusMark", () => {
     const css = readFileSync(resolve(__dirname, "../../assets/components.css"), "utf8");
     expect(css).toMatch(/\.glyph-in\s*\{\s*animation:\s*glyph-in var\(--dur-layout\) var\(--ease-layout\) both;/);
     expect(css).toMatch(/:where\(\[data-motion="reduced"\]\)\s*\{\s*\.glyph-in\s*\{\s*animation:\s*glyph-fade-in var\(--dur-fast\)/);
-  });
-});
-
-describe("Skeleton", () => {
-  it("is a still block: no sweep class, no animation", () => {
-    render(<Skeleton className="h-4 w-24" />);
-    const block = document.querySelector("[data-slot=skeleton]") as HTMLElement;
-    expect(block.className).toContain("bg-skeleton");
-    expect(block.className).not.toMatch(/pulse|animate/);
   });
 });
 
