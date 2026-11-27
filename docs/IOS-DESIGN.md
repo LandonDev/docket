@@ -3103,14 +3103,17 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   count). A place that does not answer has its glyph and name at half
   strength; its state stays legible. The bar holds Go To
   (`arrow.forward.circle`, ⌘P), Saved Searches while the host has any, and
-  New while one job shows.
+  New while one job shows. A job's places that fail to read, first or on a
+  pull over places kept (`placesFailed`), are one failed-read row over the
+  bands, Try Again reading them again.
 - **A place, a folder, a lens** pushes a plain list in the sidebar column
   (`Route.folder`: a relaunch comes back on it; a file picked opens in the
   detail, `Route.filesFile`, and its row wears the selected fill on the open
   Duo). On a cold launch the list paints the names kept from its last read
   (`FolderKept`; a kept file row opens nothing until the folder answers,
   and a read that fails over rows shown, kept or read live, says so in the
-  failed-read row above them, in the list or the grid).
+  failed-read row above them, in the list or the grid, and above a search's
+  empty result).
   The host's rows come in its order, a page at a time (the next page as the last row shows, a
   spinner row only while one is out; a next page that fails keeps the rows
   and ends the list with the failed-read row: the host's sentence and Try Again). Each row: the kind's glyph, the name (cut
@@ -3185,9 +3188,9 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   Folder), the name field with the kind's "Untitled …" as its placeholder,
   Cancel and Create; the host's refusal is the section's footer in
   destructive text. An Upload section holds From Photos and From Files.
-  The sheet goes at the pick; the upload is a row at the head of the list
-  with the name and a linear bar, or its reason in destructive text with
-  Dismiss.
+  The sheet goes at the pick; the upload is a row at the head of the
+  folder, in the list or the grid, with the name and a linear bar, or its
+  reason in destructive text with Dismiss.
 - **Open**: a LifeOS document or sheet, a PDF, a deck, a picture or a video
   is seated in the workspace's Files pane (`work.files.open`, or the thread
   that already shows it) and opens on the reader page ("A file on the

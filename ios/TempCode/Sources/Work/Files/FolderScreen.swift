@@ -58,8 +58,9 @@ struct FolderScreen: View {
                     FilesFailed(title: "Can’t Open \(title)", message: message) { Task { await retry() } }
                 }
             case .loaded(let shown)?:
-                // An empty folder read again that failed is the list's failed-read row alone, never "No Files".
-                if rows.isEmpty, uploads.isEmpty, !(query.isEmpty && shown.failed != nil) {
+                // The empty views take the screen only with nothing above the rows: a read again that failed keeps
+                // its row, alone in an empty folder, over the search's empty result in a filtered one.
+                if rows.isEmpty, uploads.isEmpty, shown.failed == nil {
                     if query.isEmpty {
                         ContentUnavailableView(emptyTitle, systemImage: place.map { FilesGlyph.of($0) } ?? "folder")
                     } else {
@@ -141,14 +142,14 @@ struct FolderScreen: View {
     private func list(_ shown: FilesHost.Listing, rows: [FileEntry]) -> some View {
         List {
             head(shown)
-            ForEach(uploads) { upload in
-                UploadRow(upload: upload) { files.dismissUpload(workspaceId, at, id: upload.id) }
-                    .listRowInsets(Layout.rowInsets)
-            }
             ForEach(rows, id: \.key) { entry in
                 entryRow(entry)
                     .id(entry.key)
                     .onAppear { if entry.key == shown.entries.last?.key { Task { await files.more(workspaceId, at) } } }
+            }
+            if rows.isEmpty, !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                ContentUnavailableView.search(text: query)
+                    .listRowSeparator(.hidden)
             }
             foot(shown)
         }
@@ -157,7 +158,7 @@ struct FolderScreen: View {
     }
 
     /// Above the rows, in the list and the grid alike: a read again that failed, the host's words over what
-    /// stays shown; a sleeping machine's one muted line.
+    /// stays shown; a sleeping machine's one muted line; each upload under way, or failed with Dismiss.
     @ViewBuilder private func head(_ shown: FilesHost.Listing) -> some View {
         if let failed = shown.failed {
             FailedRead(words: failed, retry: { await retry() }, identifier: "files-folder-failed")
@@ -168,6 +169,10 @@ struct FolderScreen: View {
                 .textStep(.meta)
                 .listRowInsets(Layout.rowInsets)
                 .listRowSeparator(.hidden)
+        }
+        ForEach(uploads) { upload in
+            UploadRow(upload: upload) { files.dismissUpload(workspaceId, at, id: upload.id) }
+                .listRowInsets(Layout.rowInsets)
         }
     }
 

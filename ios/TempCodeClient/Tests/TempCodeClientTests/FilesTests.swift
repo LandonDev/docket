@@ -365,6 +365,29 @@ actor StubFilesWire: FilesWire {
         #expect(host.listing("w1", root)?.value?.moreFailed == nil)
     }
 
+    @Test func `places shown stay through a failed read again, which keeps its reason until a read answers`() async throws {
+        let wire = StubFilesWire()
+        let host = FilesHost(wire: wire, environmentId: "env_box", caps: full)
+        // A first read that fails is the places' own failure, with no second reason beside it.
+        await wire.refuse("work.files.places", "MacBook is out of reach.")
+        await host.loadPlaces("w1")
+        #expect(host.places["w1"]?.failure == "MacBook is out of reach.")
+        #expect(host.placesFailed["w1"] == nil)
+        await wire.answer("work.files.places", #"{"host":"box","places":[\#(place("folder"))],"rev":1,"sources":[]}"#)
+        await host.loadPlaces("w1")
+        await wire.refuse("work.files.places", "MacBook is out of reach.")
+        await host.loadPlaces("w1")
+        #expect(host.places["w1"]?.value?.map(\.id) == ["folder"])
+        #expect(host.placesFailed["w1"] == "MacBook is out of reach.")
+        await wire.answer("work.files.places", #"{"host":"box","places":[\#(place("folder"))],"rev":2,"sources":[]}"#)
+        await host.loadPlaces("w1")
+        #expect(host.placesFailed["w1"] == nil)
+        await wire.refuse("work.files.places", "MacBook is out of reach.")
+        await host.loadPlaces("w1")
+        host.revoked()
+        #expect(host.placesFailed.isEmpty)
+    }
+
     @Test func `a place that fails says why, and a shown list stays through a failed refresh, which it names`() async throws {
         let wire = StubFilesWire()
         let host = FilesHost(wire: wire, environmentId: "env_box", caps: full)

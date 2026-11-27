@@ -160,10 +160,12 @@ struct FilesPlaceScreen: View {
         jobs.flatMap { job in (searches[job.id] ?? []).map { SavedRun(job: job, search: $0) } }
     }
 
-    /// The jobs whose places could not be read, in one line; the places that did read stay below it.
+    /// The jobs whose places could not be read, a first read or a read again over places kept, in one line; the
+    /// places that did read, or were kept, stay below it.
     private static func failure(_ bands: [Shown]) -> String? {
         let failed = bands.compactMap { band -> (String, String)? in
-            guard case .failed(let message)? = band.client.work.files.places[band.job.workspaceId] else { return nil }
+            let files = band.client.work.files
+            guard let message = files.places[band.job.workspaceId]?.failure ?? files.placesFailed[band.job.workspaceId] else { return nil }
             return (band.job.name, FilesRules.sentence(message))
         }
         guard let first = failed.first else { return nil }

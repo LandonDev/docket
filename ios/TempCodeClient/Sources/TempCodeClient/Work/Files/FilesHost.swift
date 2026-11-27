@@ -60,6 +60,8 @@ public final class FilesHost {
     public let caps: FilesRules.Caps
     /// Each workspace's places, as `work.files.places` answered.
     public private(set) var places: [String: WorkRead<[FilePlace]>] = [:]
+    /// Why the last read of a workspace's places failed while its places stay shown: the Files failure line.
+    public private(set) var placesFailed: [String: String] = [:]
     /// Each folder or lens shown, by `slot(workspaceId, folder)`.
     public private(set) var listings: [String: WorkRead<Listing>] = [:]
     /// Uploads per folder slot, newest last; a finished one leaves, a failed one stays with its reason.
@@ -106,6 +108,7 @@ public final class FilesHost {
     func revoked() {
         generation += 1
         places = [:]
+        placesFailed = [:]
         listings = [:]
         far = [:]
         thumbs = [:]
@@ -126,12 +129,14 @@ public final class FilesHost {
 
     // MARK: - reads
 
-    /// The workspace's places. A read that fails while places are shown keeps them; only a first read shows its failure.
+    /// The workspace's places. A read that fails while places are shown keeps them and its reason
+    /// (`placesFailed`), until a read answers.
     public func loadPlaces(_ workspaceId: String) async {
         let asked = generation
         let read = await WorkRead.of { try await self.wire.request(Methods.WorkFilesPlaces.self, .init(workspaceId: workspaceId)).places }
         guard asked == generation else { return }
-        if case .failed = read, places[workspaceId]?.value != nil { return }
+        placesFailed[workspaceId] = places[workspaceId]?.value == nil ? nil : read.failure
+        if read.failure != nil, places[workspaceId]?.value != nil { return }
         places[workspaceId] = read
     }
 
