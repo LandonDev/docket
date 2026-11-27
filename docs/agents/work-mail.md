@@ -228,7 +228,8 @@ chip, `{at: 'lifeos', table: 'mailThreads', id}`; the first send links the
 thread to the mail). Which mailbox, which mail was open and the composer
 stay per workspace while the window lives (`MailPage`). The reader leaves
 the tab order while a full composer covers it. Closing the composer returns
-focus to the control in hand.
+focus to the control in hand. The row tick, Clear search, quoted text and
+recipient remove controls take a 24px press.
 
 A sender, and each known person in a message's Details, opens their page
 in People when the address is one of the sector's people (work-kit's
