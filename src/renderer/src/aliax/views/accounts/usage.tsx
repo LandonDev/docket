@@ -2,20 +2,18 @@ import { Fragment, type CSSProperties, type ReactNode } from "react";
 import type { AccountHeadroom } from "@shared/accounts";
 import { drawnWindows, windowName } from "@shared/usageMeter";
 import type { PlanInfo, UsageReport, UsageWindow } from "aliax-core/shared/types";
+import { Region, useInBones } from "@renderer/components/bones";
 import { Tip, useTruncated } from "@renderer/components/tip";
 import { StatusMark } from "@renderer/components/ui/status";
 import { Button } from "@renderer/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@renderer/components/ui/popover";
 import { Progress, type ProgressFill } from "@renderer/components/ui/progress";
-import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { cn } from "@renderer/lib/cn";
 import { headroomLook, type HeadroomLook } from "@renderer/lib/headroom";
 import { fillFor, onPaceLeft, percentLeft, toneFor, untilLabel } from "@aliax/lib/accounts";
 import { keyStatus, noteWords, resetWords, shortDay, type RowAction, type RowLine } from "./rowLine";
-import { CELL, CELLS, SPAN, cellSkeleton, spacer, UsageCellsSkeleton } from "./usageSkeleton";
-
-export { UsageCellsSkeleton };
+import { SAMPLE_KEY_REPORT, SAMPLE_NOW, sampleReport } from "./samples";
 
 /*
  * What an account row says, drawn once: its usage columns (UsageBars), its
@@ -23,6 +21,34 @@ export { UsageCellsSkeleton };
  * failure card's account picker (chrome/AccountsList.tsx, read-only) both
  * render these, so one account reads the same in both places.
  */
+
+/**
+ * The page's container (accounts.tsx): from 48rem wide the rows are a table,
+ * every usage column 8.5rem (a bar over "Resets Thu 12:00 PM") with the
+ * account's name taking what is left; under it each row stacks its columns
+ * under the name across the row's width.
+ */
+export const CELL = "flex min-w-0 flex-1 basis-0 flex-col gap-1 @3xl/accounts:w-34 @3xl/accounts:flex-none";
+/**
+ * The cells' box. Stacked under the name, the cells wrap as many to a line as
+ * hold a whole column (8.5rem: two in a 400px window), so a label and its
+ * reset are never cut to "We…" and "Resets 1…"; the tracks are filled, not
+ * fitted, so a row with fewer cells keeps the page's column widths. From
+ * 48rem they are the table's fixed columns in one line.
+ */
+const CELLS = "grid grid-cols-[repeat(auto-fill,minmax(min(8.5rem,100%),1fr))] gap-3 @3xl/accounts:flex";
+/** The status words of a row with no windows, over the window columns it stands in for (`--span`). */
+const SPAN = "min-w-0 flex-[var(--span)_1_0%] @3xl/accounts:flex-none @3xl/accounts:w-[calc(var(--span)*8.5rem+(var(--span)-1)*0.75rem)]";
+
+/**
+ * An empty column that keeps a row's cells on the page's columns. Stacked
+ * there is no table to line up with, so one that ends a row is hidden
+ * (`trailing`): it would start an empty grid line and its gap.
+ */
+const spacer = (key: string, trailing = false) => <span key={key} aria-hidden data-slot="usage-cell" className={cn(CELL, trailing ? "@max-3xl/accounts:hidden" : null)} />;
+
+/** A reset line's type, at rest and live. */
+const RESET = "truncate text-xs leading-4 text-muted-foreground tabular-nums";
 
 /** A row shows at most this many bars: the windows, then Rate. */
 export const MAX_BARS = 4;
@@ -54,7 +80,7 @@ export function ResetTime({ at, now }: { at: number; now: number }) {
   const { ref, cut } = useTruncated(words);
   return (
     <Tip label={cut ? `${words}, ${until}` : until}>
-      <span ref={ref} data-slot="reset-time" className="truncate text-xs leading-4 text-muted-foreground tabular-nums">
+      <span ref={ref} data-slot="reset-time" className={RESET}>
         {words}
       </span>
     </Tip>
@@ -117,29 +143,11 @@ export function barResets(report: UsageReport | undefined, columns: BarColumns, 
 }
 
 
-/**
- * One column per usage window, each its bar over the time it resets, then
- * the gateway's Rate bar. The bars of a row sit inside one button whose
- * popover holds every detail, so the detail is drawn once and reachable by
- * keyboard; `readOnly` draws the bars alone. `columns` is what the page reserves; each row fills its window
- * columns from the left and keeps Rate last, so the 5h and weekly columns
- * line up down the page.
- */
-export function UsageBars({
-  name,
-  report,
-  headroom,
-  columns,
-  now,
-  last,
-  keyed = false,
-  readOnly = false,
-  className,
-}: {
+type UsageBarsProps = {
   className?: string;
   name: string;
   report: UsageReport | undefined;
-  /** The row's last report while a Refresh masks `report`: its skeleton takes the shape that report landed in. */
+  /** The row's last report while a Refresh masks `report`: its bones take the shape that report landed in. */
   last?: UsageReport;
   headroom: AccountHeadroom | undefined;
   columns: BarColumns;
@@ -148,39 +156,73 @@ export function UsageBars({
   keyed?: boolean;
   /** The bars alone, with no button or detail popover (the failure card's picker, itself a popover). */
   readOnly?: boolean;
-}) {
+};
+
+/**
+ * One column per usage window, each its bar over the time it resets, then
+ * the gateway's Rate bar. The bars of a row sit inside one button whose
+ * popover holds every detail, so the detail is drawn once and reachable by
+ * keyboard; `readOnly` draws the bars alone. `columns` is what the page reserves; each row fills its window
+ * columns from the left and keeps Rate last, so the 5h and weekly columns
+ * line up down the page.
+ *
+ * A row's report is a read of its own: while it is out the row's cells are a
+ * region whose bones are these same cells at rest, drawn from the report the
+ * row last landed in (a Refresh), else from a sample in the page's columns,
+ * so the row neither shrinks on Refresh nor grows when the report arrives.
+ */
+export function UsageBars({ report, last, className, ...row }: UsageBarsProps) {
+  const inBones = useInBones();
+  // Inside the page's own bones the sample's report is in hand: the cells alone.
+  if (inBones) return <UsageCells {...row} {...(report ? { report } : restingShape(row, last))} still className={className} />;
+  return (
+    <Region loading={report === undefined} label="Loading usage" className={className} bones={() => <UsageCells {...row} {...restingShape(row, last)} still />}>
+      {report !== undefined ? <UsageCells {...row} report={report} /> : null}
+    </Region>
+  );
+}
+
+/**
+ * What a waiting row's bones are drawn from: the report it last landed in,
+ * with the Rate bar it had; else, nothing seen yet, the page's columns every
+ * one a window's cell (a key's: its one line of words over them).
+ */
+function restingShape(row: Pick<UsageBarsProps, "headroom" | "columns" | "now" | "keyed">, last: UsageReport | undefined): Pick<UsageBarsProps, "headroom" | "columns" | "now"> & { report: UsageReport } {
+  if (last) return { report: last, headroom: row.headroom, columns: row.columns, now: row.now };
+  if (row.keyed) return { report: SAMPLE_KEY_REPORT, headroom: undefined, columns: row.columns, now: SAMPLE_NOW };
+  const cells = Math.max(1, row.columns.windows) + (row.columns.rate ? 1 : 0);
+  return { report: sampleReport(cells), headroom: undefined, columns: { windows: cells, rate: false }, now: SAMPLE_NOW };
+}
+
+/** A row's cells for one report. `still`: at rest, for bones (no button, no popover, no hover), in the button's room. */
+function UsageCells({
+  name,
+  report: shape,
+  headroom,
+  columns,
+  now,
+  keyed = false,
+  readOnly = false,
+  still = false,
+  className,
+}: Omit<UsageBarsProps, "report" | "last"> & { report: UsageReport; still?: boolean }) {
   const span = Math.max(1, columns.windows);
-  // Nothing seen yet: the page's columns, every one waiting.
-  if (report === undefined && last === undefined)
-    return <UsageCellsSkeleton cells={span + (columns.rate ? 1 : 0)} keyed={keyed ? { span, rate: columns.rate } : undefined} readOnly={readOnly} className={className} />;
-  // A Refresh: the row waits in the shape its last report landed in, and the
-  // Rate bar, which a refresh never masks, stays.
-  const loading = report === undefined;
-  const shape = (report ?? last)!;
   // Each window as read now (drawnWindows): one past its reset reads unused, never its last poll's 0% left.
   const drawn = drawnWindows(shape.windows, now);
   const windows = drawn.slice(0, columns.windows);
   const rate = headroom ? headroomLook(headroom, now) : null;
   const count = windows.length + (rate ? 1 : 0);
-  const status = keyed && !loading ? keyStatus(shape) : null;
+  const status = keyed ? keyStatus(shape) : null;
   // A note in the page's words; an expired session's is the state line's to say (Session expired, with Sign in), never the cell's too.
   const said = shape.expired ? null : (shape.note ?? shape.extra ?? null);
   const worded = said ? noteWords(said) : null;
-  const note = keyed || loading ? null : drawn.length === 0 ? (shape.rateLimit ? "No usage yet" : shape.expired ? null : (worded?.text ?? "Usage unavailable")) : null;
-  const noteCode = note !== null && worded?.text === note ? worded.code : undefined;
-  const words: ReactNode =
-    loading && (keyed || drawn.length === 0) ? (
-      <span className="flex h-4 items-center">
-        <Skeleton className="h-3 w-24 max-w-full" />
-      </span>
-    ) : (
-      (note ?? status?.text ?? null)
-    );
+  const note = keyed ? null : drawn.length === 0 ? (shape.rateLimit ? "No usage yet" : shape.expired ? null : (worded?.text ?? "Usage unavailable")) : null;
+  const noteCode = note !== null && worded?.text === note && !still ? worded.code : undefined;
+  const words = note ?? status?.text ?? null;
   const grow = { "--grow": (windows.length > 0 ? span : 0) + (columns.rate ? 1 : 0) } as CSSProperties;
   const cells = (
     <>
-      {windows.map((w, i) => {
-        if (loading) return cellSkeleton(i);
+      {windows.map((w) => {
         const left = Math.round(percentLeft(w));
         const label = windowName(w.label);
         const resets = w.resetsAt !== undefined && w.resetsAt > now ? w.resetsAt : null;
@@ -195,7 +237,7 @@ export function UsageBars({
             fill={fillFor(w, now)}
             tick={onPaceLeft(w, now)}
             name={`${label}: ${left} percent left${resets !== null ? `, ${resetWords(resets, now).toLowerCase()}` : ""}`}
-            reset={resets !== null ? <ResetTime at={resets} now={now} /> : null}
+            reset={resets === null ? null : still ? <span className={RESET}>{resetWords(resets, now)}</span> : <ResetTime at={resets} now={now} />}
           />
         );
       })}
@@ -218,7 +260,6 @@ export function UsageBars({
     <span data-slot="usage-cells" className={cn("flex items-start gap-3", className)}>
       {words !== null ? (
         <span
-          data-slot={loading ? "usage-words-skeleton" : undefined}
           className={cn(
             SPAN,
             "truncate text-xs leading-4",
@@ -237,8 +278,9 @@ export function UsageBars({
         </span>
       ) : null}
       {count > 0 ? (
-        readOnly || loading ? (
-          <span className={cn(GROW, CELLS, loading && !readOnly ? "py-1.5" : null)} style={grow} aria-busy={loading || undefined}>
+        readOnly || still ? (
+          // At rest the cells sit where the button holds them: its 6px above and below.
+          <span className={cn(GROW, CELLS, readOnly ? null : "py-1.5")} style={grow}>
             {cells}
           </span>
         ) : (

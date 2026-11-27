@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WinvmPoint, WinvmState } from "@shared/contract-work-winvm";
 import { registry } from "../../../lib/connection";
@@ -337,10 +337,11 @@ describe("Settings › Windows VM", () => {
     render(<WinvmHost env="box" />);
     await flush();
     const row = screen.getByText("Restore points").closest("[data-slot=page-row]") as HTMLElement;
-    expect(within(row).getByRole("status", { name: "Reading restore points" }).className).toContain("h-4");
+    // The count's line drawn from a sample, unseen and inert, in the row's own description.
+    expect(row.querySelector("[data-region][data-inline][data-bones] [skullet-loading] [data-points-bone]")).not.toBeNull();
     await act(async () => land({ points: [] }));
-    expect(within(row).queryByRole("status", { name: "Reading restore points" })).toBeNull();
     expect(within(row).getByText("None yet")).toBeTruthy();
+    await waitFor(() => expect(row.querySelector("[data-points-bone]")).toBeNull());
   });
 
   it("says a refused press in his words, naming the computer, never the link's text", async () => {
@@ -422,8 +423,10 @@ describe("Screen size and picture quality", () => {
     h.settingsRead = "pending";
     const v = render(<WinvmHost env="box" />);
     await flush();
-    expect(v.container.querySelector("[data-setting='winvm.screen'] [data-skeleton-control]")).not.toBeNull();
-    expect(v.container.querySelector("[data-setting='winvm.quality'] [data-skeleton-control]")).not.toBeNull();
+    // Each row's own select, drawn at rest; nothing a person can open.
+    expect(v.container.querySelector("[data-setting='winvm.screen'] [data-region][data-bones] [skullet-loading] [role=combobox]")).not.toBeNull();
+    expect(v.container.querySelector("[data-setting='winvm.quality'] [data-region][data-bones] [skullet-loading] [role=combobox]")).not.toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Screen size" })).toBeNull();
     cleanup();
     h.settingsRead = "refused";
     const w = render(<WinvmHost env="box" />);

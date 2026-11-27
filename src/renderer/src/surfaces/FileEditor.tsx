@@ -28,7 +28,7 @@ import {
 import { RotateCcw } from "../chrome/icons";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
-import { Skeleton } from "../components/ui/skeleton";
+import { Bones } from "../components/bones";
 import { minimalSetup } from "codemirror";
 import {
   useCallback,
@@ -547,19 +547,34 @@ export function FileEditor({
 /** While the bar shows it says what the save state would. */
 const IDLE_SAVE: SaveState = { status: "idle" };
 
-/** Widths of the loading lines, fixed so nothing shifts between renders. */
-const LOADING_LINES = [60, 82, 45, 70, 90, 38, 66, 52];
+/** The sample's code: nobody reads it; its lines' lengths give the bones a file's shape. */
+const SAMPLE_CODE = [
+  "import { join, sep } from \"node:path\";",
+  "export function resolve(path: string, root: string): string {",
+  "  if (!path.startsWith(root)) return root;",
+  "  const parts = path.slice(root.length).split(sep);",
+  "  const kept = parts.filter(Boolean);",
+  "  return join(root, ...kept);",
+  "}",
+  "export const ROOT = resolve(process.cwd(), \"/\");",
+];
 
-/** A file on its way: the header's slot, then bars in the shape of code. */
+/** A file on its way: the header's strip, then sample code in the editor's own type (13px mono, 1.6 lines, 8px in at the
+ *  top), drawn as bones. The editor is a chunk of its own, so the drawing is written out here. */
 export function EditorLoading({ name }: { name: string }) {
   return (
     <div role="status" aria-busy="true" aria-label={`Opening ${name}`} className="flex h-full min-h-0 flex-col">
-      <div className="h-8 shrink-0 border-b border-border" />
-      <div className="flex flex-col gap-2 px-3 pt-3">
-        {LOADING_LINES.map((width, i) => (
-          <Skeleton key={i} data-loading-line="" className="h-3" style={{ width: `${width}%` }} />
-        ))}
-      </div>
+      <Bones label="" fill>
+        {/* Bare, the strip is a leaf Skullet would hide, hairline and all. */}
+        <div skullet-own="" className="h-8 shrink-0 border-b border-border" />
+        <div className="flex flex-col px-3 pt-2">
+          {SAMPLE_CODE.map((line) => (
+            <p key={line} data-loading-line="" className="truncate font-mono text-[13px] leading-[1.6] whitespace-pre">
+              {line}
+            </p>
+          ))}
+        </div>
+      </Bones>
     </div>
   );
 }

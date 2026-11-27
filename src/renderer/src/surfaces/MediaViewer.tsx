@@ -19,7 +19,7 @@ import { registry } from "../lib/connection";
 import { cn } from "../lib/cn";
 import { BusyLabel, Button } from "../components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
-import { Skeleton } from "../components/ui/skeleton";
+import { Bone } from "../components/bones";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { FileHeader, fileFolder } from "./FileHeader";
 
@@ -444,7 +444,7 @@ function MediaBody({
   );
 }
 
-/** An image's load is a load, so a bone in the box it will fit into, never a spinner with a word (DESIGN "Loading and
+/** An image's load is a load, so a picture's bone in the box it will fit into, never a spinner with a word (DESIGN "Loading and
  *  empty states"). Fades in only after --dur-slow, so an image that decodes at once never shows it. */
 function ImageBones() {
   return (
@@ -452,9 +452,11 @@ function ImageBones() {
       role="status"
       aria-label="Loading image"
       data-image-bones
+      // The image is in the page already, decoding unseen, so its wait is one bone over its box, on the media ground's stage.
+      data-bones-on="stage"
       className="pointer-events-none absolute inset-4 animate-in fade-in fill-mode-both duration-(--dur-base) [--tw-animation-delay:var(--dur-slow)]"
     >
-      <Skeleton className="size-full rounded-none bg-skeleton-stage" />
+      <Bone className="size-full rounded-none" />
     </div>
   );
 }

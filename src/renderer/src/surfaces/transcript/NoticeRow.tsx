@@ -8,7 +8,7 @@ import { ErrorChip } from "../ErrorChip";
 import { CompactionCard } from "../CompactionCard";
 import { AgentSpawnRow } from "../AgentSpawnRow";
 import { reviewChunk } from "../chunks";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones } from "../../components/bones";
 import { useTurnState } from "../turnState";
 import { useTranscriptSession } from "../transcriptSession";
 import { CircleHelp, GitMerge, Lock, LockOpen, Users } from "../../chrome/icons";
@@ -17,12 +17,12 @@ import { NoticeLine } from "./NoticeLine";
 import { PlanHandoffRow } from "./PlanHandoffRow";
 
 /** A review's and a gate's notice load with their chunk, warmed with the
- *  first thread's; until then a 28px line in the notice's shape holds its place. */
+ *  first thread's; until then the notice's own line, drawn from sample words,
+ *  holds its place. */
 const NOTICE_HOLD = (
-  <div aria-hidden className="flex h-7 items-center gap-2">
-    <Skeleton className="size-3.5 rounded-full" />
-    <Skeleton className="h-3 w-40" />
-  </div>
+  <Bones label="">
+    <NoticeLine glyph={<GitMerge />} lead="Reviewing the branch" details={["master"]} />
+  </Bones>
 );
 const ReviewCard = reviewChunk.surface("ReviewCard", NOTICE_HOLD);
 const GateCard = reviewChunk.surface("GateCard", NOTICE_HOLD);

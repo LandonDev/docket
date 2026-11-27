@@ -233,7 +233,7 @@ describe("following", () => {
     h.preview.state = { status: "starting" };
     mount(data([running(1)], [entry({ running: { tool: "computer_act", words: "Clicking Save in TextEdit", startedAt: AT } })]));
     await flush();
-    expect(box()!.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    expect(box()!.querySelector("[data-bone]")).toBeTruthy();
     expect(box()!.style.aspectRatio).toBe("16 / 10");
     expect(runningRows()).toHaveLength(1);
     expect(rows()).toHaveLength(0);
@@ -869,7 +869,7 @@ describe("pinning", () => {
     fireEvent.click(rowButton("t1:1:0"));
     await flush();
     // nothing shown yet: a skeleton in the picture's shape
-    expect(box()!.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    expect(box()!.querySelector("[data-bone]")).toBeTruthy();
     expect(box()!.querySelector("img")).toBeNull();
     await reads.answer(1);
     const first = box()!.querySelector("img")!.getAttribute("src");
@@ -1230,13 +1230,14 @@ describe("the read line", () => {
     expect(openRow()!.querySelector('[data-slot="step-read"]')!.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("shows skeleton lines in the console's place while the text is on its way", async () => {
+  it("draws the console as bones in its place while the text is on its way", async () => {
     const reads = deferredReads();
     h.preview.state = live();
     mount(data([call(1, { text: true, read: "Read 46 elements" })], [entry()]));
     await flush();
     await act(async () => fireEvent.click(openRow()!.querySelector<HTMLButtonElement>('[data-slot="step-read"]')!));
-    expect(screen.getByRole("status", { name: "Loading what was read" })).toBeTruthy();
+    const wait = openRow()!.querySelector<HTMLElement>("[data-region][data-bones]")!;
+    expect(wait.querySelector('[skullet-loading] [data-slot="step-read-text"]')).toBeTruthy();
     await reads.answer(1, { ...picture(1), text: "the read" });
     expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read");
   });
@@ -1272,7 +1273,7 @@ describe("the read line", () => {
     view.again(data([{ ...held, rev: 4 }]));
     await flush();
     expect(reads.asked()).toEqual([1]);
-    expect(screen.queryByRole("status", { name: "Loading what was read" })).toBeNull();
+    expect(openRow()!.querySelector("[data-region][data-bones]")).toBeNull();
     expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read");
     await reads.answer(1, { ...picture(1), text: "the read, again" });
     expect(document.querySelector('[data-slot="step-read-text"]')!.textContent).toBe("the read, again");
@@ -1593,12 +1594,12 @@ describe("when the preview ends", () => {
 // ── the journal's own state ──
 
 describe("loading, failing and older steps", () => {
-  it("loading the steps: skeleton rows in the rows' shape", async () => {
+  it("loading the steps: bones drawn from sample rows in the rows' line", async () => {
     mount(data([], [], { status: "loading" }));
     await flush();
-    const loading = screen.getByRole("status", { name: "Loading the steps" });
-    expect(loading.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(3);
-    expect(loading.querySelector(".h-7")).toBeTruthy();
+    const loading = document.querySelector<HTMLElement>('[data-region][data-bones] [skullet-loading] [data-slot="steps-loading"]')!;
+    expect(loading.children).toHaveLength(3);
+    expect(loading.querySelector(".h-7 svg")).toBeTruthy();
   });
 
   it("the read failed: one red line with Retry", async () => {

@@ -14,7 +14,7 @@ import { useDriveHold } from "../lib/driveHold";
 import { computerSessionsStore, previewContext, startComputerSessions } from "../lib/computerSessions";
 import { useEnvironments } from "../lib/connection/status";
 import { nameInLine } from "../lib/hostWords";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Bone, Bones } from "@renderer/components/bones";
 import { useStore } from "zustand";
 import { offerFullScreen, openFullWindow, screenRectOf, useFullWindow, type ScreenRect } from "../lib/fullWindow";
 import { openPopOut, takeStageRequest, useStageRequest } from "../lib/popOut";
@@ -395,8 +395,11 @@ function useComputersState(): ComputersState {
 function NothingDriven({ state }: { state: ComputersState }) {
   if (state.kind === "reading")
     return (
+      // The box names the wait; a stage has no words to measure, so it is one bone in the stage's box.
       <div aria-busy="true" aria-label="Loading computers" data-computers-bones className="flex min-h-0 flex-1 items-start justify-center p-4">
-        <Skeleton className="aspect-[16/10] w-full max-w-[960px] rounded-lg" />
+        <Bones label="" className="w-full max-w-[960px]">
+          <Bone className="aspect-[16/10] w-full rounded-lg" />
+        </Bones>
       </div>
     );
   if (state.kind === "away") return <EmptyState title={`Not connected to ${computerNames(state.names)}`} />;

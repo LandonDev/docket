@@ -16,7 +16,8 @@ import { displayName } from "@aliax/lib/accounts";
 import { compact } from "@aliax/lib/viz";
 import { dayTime } from "@renderer/lib/duration";
 import { Tip } from "@renderer/components/tip";
-import { AccountsSkeleton, AccountsView } from "@aliax/views/accounts";
+import { Region } from "@renderer/components/bones";
+import { AccountsAtRest, AccountsView } from "@aliax/views/accounts";
 import { AddKeyDialog } from "@aliax/views/AddKeyDialog";
 import { StatsView } from "@aliax/views/stats";
 import { useAliax } from "./useAliax";
@@ -224,33 +225,34 @@ export function AccountsPage(): React.JSX.Element {
           </Tip>
         </PageError>
       ) : null}
-      {views === null ? (
-        error === null ? <AccountsSkeleton /> : null
-      ) : (
-        <AccountsView
-          views={views}
-          usage={usage}
-          layout={layout}
-          headroom={headroom}
-          busy={busy}
-          homes={snapshot.homes ?? {}}
-          peers={peers}
-          environments={peerList}
-          localName={localName}
-          mint={snapshot.providers.claude.mint}
-          onCapture={(id) => void run(`capture:${id}`, () => window.aliax.capture(id), "Saved", "Couldn't save the current account")}
-          onAdd={(id) => void addAccount(id)}
-          onAddKey={setKeyFor}
-          onReauth={(id, email) => void addAccount(id, email)}
-          onUse={(id, name) => void onUse(id, name)}
-          onRemove={(serviceId, profile) => setRemoving({ serviceId, name: profile.name, label: displayName(profile), keyed: profile.kind === "key" })}
-          onRefresh={() => void refresh(true)}
-          onSetupToken={(_id, identity) => void convert(identity.name)}
-          onConvertAll={() => void convert()}
-          onSetHome={(provider, id) => void onSetHome(provider, id)}
-          onSync={(id) => void onSync(id)}
-        />
-      )}
+      {/* The services' read: the page's sections drawn from a sample while it is out; a first read that failed is its red line alone. */}
+      <Region loading={views === null && error === null} label="Loading accounts" bones={AccountsAtRest}>
+        {views === null ? null : (
+          <AccountsView
+            views={views}
+            usage={usage}
+            layout={layout}
+            headroom={headroom}
+            busy={busy}
+            homes={snapshot.homes ?? {}}
+            peers={peers}
+            environments={peerList}
+            localName={localName}
+            mint={snapshot.providers.claude.mint}
+            onCapture={(id) => void run(`capture:${id}`, () => window.aliax.capture(id), "Saved", "Couldn't save the current account")}
+            onAdd={(id) => void addAccount(id)}
+            onAddKey={setKeyFor}
+            onReauth={(id, email) => void addAccount(id, email)}
+            onUse={(id, name) => void onUse(id, name)}
+            onRemove={(serviceId, profile) => setRemoving({ serviceId, name: profile.name, label: displayName(profile), keyed: profile.kind === "key" })}
+            onRefresh={() => void refresh(true)}
+            onSetupToken={(_id, identity) => void convert(identity.name)}
+            onConvertAll={() => void convert()}
+            onSetHome={(provider, id) => void onSetHome(provider, id)}
+            onSync={(id) => void onSync(id)}
+          />
+        )}
+      </Region>
 
       {removing ? (
         <ConfirmDialog

@@ -24,8 +24,6 @@ const SKELETON = "renderer/src/components/ui/skeleton.tsx";
 /** Folders whose files may still import `Skeleton` or write `bg-skeleton`. */
 export const HELD: readonly string[] = [
   "hosted/guest",
-  "renderer/src/aliax",
-  "renderer/src/surfaces",
   "renderer/src/work/browser",
   "renderer/src/work/canvas",
   "renderer/src/work/docs",
@@ -36,9 +34,8 @@ export const HELD: readonly string[] = [
   "renderer/src/work/today",
 ];
 
-/** Files inside a held folder that are converted already and must stay so: the shell's own (SurfaceSkeleton is the
- *  lazy surfaces' fallback, drawn in bones, though its folder is held). */
-const CONVERTED_IN_HELD: readonly string[] = ["renderer/src/surfaces/SurfaceSkeleton.tsx"];
+/** Files inside a held folder that are converted already and must stay so. */
+const CONVERTED_IN_HELD: readonly string[] = [];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

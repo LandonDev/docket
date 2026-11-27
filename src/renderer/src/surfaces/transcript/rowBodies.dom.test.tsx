@@ -60,7 +60,7 @@ describe("HtmlPagePlaceholder", () => {
     expect(box.style.height).toBe(`${htmlRenderFrameHeight(reference, HTML_RENDER_COLUMN_WIDTH)}px`);
     expect(classes(box)).toEqual(expect.arrayContaining(["my-1", "w-full"]));
     expect(box.className).not.toMatch(/\bp-\d/);
-    const block = box.querySelector('[data-slot="skeleton"]')!;
+    const block = box.querySelector("[data-bone]")!;
     expect(classes(block)).toEqual(expect.arrayContaining(["size-full", "rounded-lg"]));
     expect(classes(block)).not.toContain("rounded-xl");
   });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Region } from "../../components/bones";
 import { PageRow, PageRowsSkeleton } from "../../components/page";
 import { Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
 import { useHostRead } from "../../lib/connection/hostRead";
 import { SettingSwitch } from "../../components/setting-switch";
 import { StatusMark } from "../../components/ui/status";
@@ -15,6 +15,8 @@ import { ReadFailure } from "./parts/ReadFailure";
 
 /** A computer's jobs in one form on every row where Work is on: "No jobs", "1 job", "5 jobs". */
 export const jobsWords = (n: number): string => (n === 0 ? "No jobs" : n === 1 ? "1 job" : `${n} jobs`);
+
+const STILL = () => {};
 
 /** A sentence's stop, where it has none yet. */
 const withStop = (line: string): string => (/[.!?]$/.test(line) ? line : `${line}.`);
@@ -123,13 +125,12 @@ export function WorkOnRow({ environmentId, report }: { environmentId: string; re
   // A read that failed is said once at the page's head (ReadFailure, with Retry): its row is not drawn meanwhile.
   const failed = failedRead;
   if (failed && report) return null;
+  // Until it answers, its line is unknown (an Off computer has none), so the wait draws none: the switch alone waits.
   const description = !computer.connected
     ? "Offline"
-    : failed
+    : failed || !answered
       ? undefined
-      : !answered
-        ? <Skeleton className="mt-0.5 h-3 w-24" />
-        : !may
+      : !may
           ? withStop(managedElsewhere(computer.name.name))
           : on
             ? jobsWords(jobs)
@@ -138,16 +139,19 @@ export function WorkOnRow({ environmentId, report }: { environmentId: string; re
     <Button variant="ghost" size="sm" onClick={() => void read.retry()}>
       Retry
     </Button>
-  ) : !answered ? (
-    <Skeleton className="h-5 w-8 rounded-full" />
-  ) : may ? (
-    <>
-      <SaveMark state={saved.state} />
-      {/* Held while its own write is out: one press, one answer, and the pending flip stays shown until it lands. */}
-      <SettingSwitch label={`Work on ${computerInLine(computer.name)}`} on={pending ?? on} onChange={flip} disabled={heldLook} />
-    </>
   ) : (
-    <StatusMark state="idle" glyph={false} word={on ? "On" : "Off"} className="text-xs" />
+    // Its own switch drawn at rest while the computer has not said whether Work is on.
+    <Region loading={!answered} label="" className="shrink-0" bones={<SettingSwitch label="" on={false} onChange={STILL} disabled />}>
+      {!answered ? null : may ? (
+        <div className="flex items-center gap-2">
+          <SaveMark state={saved.state} />
+          {/* Held while its own write is out: one press, one answer, and the pending flip stays shown until it lands. */}
+          <SettingSwitch label={`Work on ${computerInLine(computer.name)}`} on={pending ?? on} onChange={flip} disabled={heldLook} />
+        </div>
+      ) : (
+        <StatusMark state="idle" glyph={false} word={on ? "On" : "Off"} className="text-xs" />
+      )}
+    </Region>
   );
   return (
     <PageRow

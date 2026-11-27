@@ -168,7 +168,7 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
       );
     case "accounts":
       // The page's frame and its title in words (known before anything loads, as Stats'), then its sections' rows where the page
-      // draws them (aliax/views/accounts/usageSkeleton.tsx AccountsSkeleton):
+      // draws them from its sample (aliax/views/accounts/samples.ts, AccountsAtRest):
       // no line, since the page has none. The usage bars' bones stay with the
       // page's chunk (6 kB the first paint does not carry); an empty box their
       // height holds each row's, so nothing moves when the chunk lands.
@@ -231,7 +231,7 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
         </>
       );
     case "stats":
-      // The page's frame and title, then the page's own wait (aliax/views/stats.tsx StatsSkeleton): each section's
+      // The page's frame and title, then the page's own wait (aliax/views/stats.tsx SectionBones): each section's
       // heading over the bone its chart holds, in words, so the page's wait lands on the same lines. No line under
       // the title: the page has none until its first read.
       return (

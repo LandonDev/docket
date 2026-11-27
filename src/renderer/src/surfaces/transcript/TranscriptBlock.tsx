@@ -3,7 +3,7 @@ import { registry } from "../../lib/connection";
 import { hostOfCwd } from "../../lib/tcserver/projects";
 import { createContext, memo, useContext, useLayoutEffect, useRef, useState } from "react";
 import { HTML_RENDER_COLUMN_WIDTH, htmlRenderFrameHeight, type HtmlRenderReference } from "@shared/htmlRender";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone } from "../../components/bones";
 import type { ApprovalDecision } from "../../lib/harness";
 import { TodoListBlock } from "../TodoListBlock";
 import { htmlRenderChunk, mailOfferChunk, workOutboxChunk } from "../chunks";
@@ -42,7 +42,7 @@ export function HtmlPagePlaceholder({ reference: given }: { reference?: HtmlRend
   const height = reference ? htmlRenderFrameHeight(reference, width) : undefined;
   return (
     <div ref={box} role="status" aria-label="Loading page" aria-busy data-page-placeholder className="my-1 w-full select-none" style={{ height }}>
-      <Skeleton className="size-full rounded-lg" />
+      <Bone className="size-full rounded-lg" />
     </div>
   );
 }
@@ -50,9 +50,9 @@ export function HtmlPagePlaceholder({ reference: given }: { reference?: HtmlRend
 // An agent's HTML page renders from the html-render chunk (surfaces/chunks.ts).
 export const HtmlRenderRow = htmlRenderChunk.surface("HtmlRenderRow", <HtmlPagePlaceholder />);
 /** A mail chat's card (`mail_offer`), drawn by the mail pillar's chunk. */
-const MailOfferRow = mailOfferChunk.surface("MailOfferRow", <Skeleton className="h-24 w-full rounded-xl" />);
+const MailOfferRow = mailOfferChunk.surface("MailOfferRow", <Bone className="h-24 w-full rounded-xl" />);
 /** A thread's request for his press (`outbox_request`), drawn by the Outbox's chunk. */
-const OutboxRequestRow = workOutboxChunk.surface("OutboxRequestRow", <Skeleton className="h-28 w-full rounded-xl" />);
+const OutboxRequestRow = workOutboxChunk.surface("OutboxRequestRow", <Bone className="h-28 w-full rounded-xl" />);
 
 export const TranscriptBlock = memo(function TranscriptBlock({
   block,

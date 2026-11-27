@@ -6,11 +6,10 @@ import { HeldTip } from "../../components/heldTip";
 import { emptyNotes, notesAsBrief, notesEmpty } from "@shared/notes";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Arrive, Region } from "@renderer/components/bones";
 import { StatusMark } from "@renderer/components/ui/status";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
-import { cn } from "@renderer/lib/cn";
 import { Check, Copy, Pencil } from "../../chrome/icons";
 import type { Session } from "../../lib/session";
 import { saveNotes, useThreadNotes } from "../../lib/threadNotes";
@@ -218,7 +217,9 @@ export function NotesView({
   const state = loading ? null : notesStateLine(saving, updatedAt);
 
   if (!loading && !has && !editing && saving !== "failed") {
+    // Where the notes' bones stood a moment ago, the empty state comes in over them.
     return (
+      <Arrive className="flex min-h-0 flex-1 flex-col">
       <Empty className="p-6">
         <EmptyHeader>
           <EmptyTitle>No notes yet</EmptyTitle>
@@ -233,6 +234,7 @@ export function NotesView({
           </EmptyContent>
         ) : null}
       </Empty>
+      </Arrive>
     );
   }
 
@@ -273,16 +275,7 @@ export function NotesView({
           )}
         </div>
       </TooltipProvider>
-      {loading ? (
-        <div className="flex flex-col px-3 py-2" aria-busy="true" aria-label="Loading notes">
-          {/* Three lines on the compact markdown's 14/22 pitch, a 12px bar for each line's words. */}
-          {["w-1/3", "w-11/12", "w-3/4"].map((width) => (
-            <div key={width} data-slot="notes-skeleton-line" className="flex h-[22px] items-center">
-              <Skeleton className={cn("h-3", width)} />
-            </div>
-          ))}
-        </div>
-      ) : editing ? (
+      {editing ? (
         <>
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
             <div className="px-3 py-2">
@@ -299,12 +292,28 @@ export function NotesView({
           ) : null}
         </>
       ) : (
-        <div tabIndex={0} data-slot="notes-scroller" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto focus-ring">
-          <div className="px-3 py-2 select-text">
-            <AgentMarkdown text={text} cwd={cwd} size="compact" />
-          </div>
-        </div>
+        <Region fill loading={loading} label="Loading notes" bones={<SampleNotes />}>
+          {loading ? null : (
+            <div tabIndex={0} data-slot="notes-scroller" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto focus-ring">
+              <div className="px-3 py-2 select-text">
+                <AgentMarkdown text={text} cwd={cwd} size="compact" />
+              </div>
+            </div>
+          )}
+        </Region>
       )}
+    </div>
+  );
+}
+
+/** The notes' bones: a heading and two lines on the compact markdown's 14/22 pitch (AgentMarkdown `compact`),
+ *  drawn as plain words, since the markdown's own renderer reads in a worker. */
+function SampleNotes() {
+  return (
+    <div className="px-3 py-2 text-sm leading-[22px]">
+      <p className="text-base leading-6 font-semibold">Goal</p>
+      <p>Make the right panel's sections read as one surface.</p>
+      <p>Slice one landed; the next is in flight.</p>
     </div>
   );
 }

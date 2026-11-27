@@ -178,7 +178,9 @@ describe("Permissions", () => {
 
   it("is a skeleton until the grant is known, never a made-up state", () => {
     render(<Permissions accessibility={null} screen={null} without={without} />);
-    expect(screen.getAllByTestId("permission-skeleton")).toHaveLength(2);
-    expect(screen.queryByText("Granted")).toBeNull();
+    // Each row's word drawn from a sample, unseen and inert; nothing said outside the drawing.
+    expect(document.querySelectorAll("[data-region][data-bones] [skullet-loading] [data-testid=permission-skeleton]")).toHaveLength(2);
+    expect(screen.queryByText("Granted", { ignore: "[skullet-loading] *" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Grant…" })).toBeNull();
   });
 });

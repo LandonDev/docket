@@ -8,7 +8,7 @@ import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
 import { Item, ItemActions, ItemButton, ItemContent, ItemMedia } from "@renderer/components/ui/item";
 import { ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "@renderer/components/ui/press";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Region } from "@renderer/components/bones";
 import { CONSOLE } from "@renderer/components/ui/console";
 import { TruncateTip, useTruncated } from "@renderer/components/tip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
@@ -305,35 +305,40 @@ function TaskLogFold({ threadId, taskId, command, live, readLog }: { threadId: s
   }, [text]);
 
   // One console: the command as its first line, then the output; while the
-  // first read is out, the same box with skeleton lines where the output goes.
+  // first read is out, the same console drawn from sample output, the command
+  // in it as it is (it is known at once).
   const head = command ? (
     <span data-slot="task-command" className="block break-all">
       $ {command}
     </span>
   ) : null;
-  if (text === null) {
-    return (
-      <div className="px-2 pt-0.5 pb-2">
-        <div role="status" aria-busy aria-label="Loading the output" data-slot="task-log" className={CONSOLE}>
-          {head}
-          <div className="flex flex-col gap-2 py-1">
-            <Skeleton className="h-3 w-3/4" />
-            <Skeleton className="h-3 w-1/2" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-  if (!text && !head) {
-    return <p className="px-2 pt-0.5 pb-2 text-xs text-muted-foreground">{failed ? "Couldn't read the output" : "No output yet"}</p>;
-  }
   return (
     <div className="px-2 pt-0.5 pb-2">
-      <pre ref={scroller} tabIndex={0} data-slot="task-log" className={cn(CONSOLE, "max-h-60 overflow-x-hidden overflow-y-auto break-words whitespace-pre-wrap")}>
-        {head}
-        {text || <span className="font-sans">{failed ? "Couldn't read the output" : "No output yet"}</span>}
-      </pre>
-      {failed && text ? <p className="pt-1 text-xs text-muted-foreground">Couldn't read the output</p> : null}
+      <Region
+        loading={text === null}
+        label="Loading the output"
+        bones={() => (
+          <pre className={cn(CONSOLE, "break-words whitespace-pre-wrap")}>
+            {head ? <span skullet-own="">{head}</span> : null}
+            {SAMPLE_OUTPUT}
+          </pre>
+        )}
+      >
+        {text === null ? null : !text && !head ? (
+          <p className="text-xs text-muted-foreground">{failed ? "Couldn't read the output" : "No output yet"}</p>
+        ) : (
+          <>
+            <pre ref={scroller} tabIndex={0} data-slot="task-log" className={cn(CONSOLE, "max-h-60 overflow-x-hidden overflow-y-auto break-words whitespace-pre-wrap")}>
+              {head}
+              {text || <span className="font-sans">{failed ? "Couldn't read the output" : "No output yet"}</span>}
+            </pre>
+            {failed && text ? <p className="pt-1 text-xs text-muted-foreground">Couldn't read the output</p> : null}
+          </>
+        )}
+      </Region>
     </div>
   );
 }
+
+/** Two lines of a task's output, for its console's bones. */
+const SAMPLE_OUTPUT = "VITE v6.2.0 ready in 412 ms\nLocal: http://localhost:5173/";

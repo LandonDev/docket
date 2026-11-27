@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { PageRowsSkeleton, type SkeletonRow } from "../../../components/page";
-import { Skeleton } from "../../../components/ui/skeleton";
+import { Bones } from "../../../components/bones";
+import { Button } from "../../../components/ui/button";
 import { ReadFailure } from "../parts/ReadFailure";
 import { useHostRead, type HostRead } from "../../../lib/connection/hostRead";
 import type { Host } from "../parts/hostRpc";
@@ -24,8 +25,14 @@ export function useComputerRead<T>(host: Host, method: string, { params, poll = 
   return read;
 }
 
-/** A small button's bone at a row's end, while whether the row offers its button is not known yet. */
-export const ButtonBone = () => <Skeleton data-skeleton-control aria-label="Loading" className="h-7 w-20 shrink-0 rounded-md" />;
+/** A row's end while whether it offers its button is not known yet: the button itself, held, drawn as bones. */
+export const ButtonBone = ({ label = "Update…" }: { label?: string }) => (
+  <Bones label="" className="shrink-0">
+    <Button data-skeleton-control variant="secondary" size="sm" disabled>
+      {label}
+    </Button>
+  </Bones>
+);
 
 /** A `PageSection` of mine whose only body is a read: a failed read is said at the page's head (ReadFailure) and leaves
  *  the section with nothing, so the section draws nothing (SettingSection does the same). */

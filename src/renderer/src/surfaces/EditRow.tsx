@@ -3,7 +3,6 @@ import { GitCompare, Pencil } from '../chrome/icons'
 import { Button } from '../components/ui/button'
 import { Collapsible, CollapsibleContent } from '../components/ui/collapsible'
 import { reveal } from '../components/ui/reveal'
-import { Skeleton } from '../components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { readTextFile } from '../lib/fs'
 import { hostOfCwd } from '../lib/tcserver/projects'
@@ -260,7 +259,14 @@ export function EditRow({
                   <CornerButton label="Show diff" onClick={() => setEditMode(false)}>
                     <GitCompare />
                   </CornerButton>
-                  <Suspense fallback={<Skeleton className="h-80" />}>
+                  {/* The editor's chunk waits in the drawing its file's read waits in (monaco/InlineEditor.tsx), in its 320px. */}
+                  <Suspense
+                    fallback={
+                      <div className="h-80">
+                        <SurfaceSkeleton kind="pane" label="Loading file" />
+                      </div>
+                    }
+                  >
                     <InlineEditor
                       path={filePath}
                       cwd={cwd}

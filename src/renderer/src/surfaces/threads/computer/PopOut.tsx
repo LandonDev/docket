@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Bone } from "@renderer/components/bones";
 import { TooltipContainerProvider } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
 import { Desktop, Maximize2, Minimize2, X } from "../../../chrome/icons";
@@ -105,7 +105,7 @@ export function PopOutView({ tile, stream, name, boxRef, measureRef, room, dpr =
               data-face="live"
               className={cn("absolute inset-0 overflow-hidden bg-card", face.driving && DRIVEN_CLASS)}
             >
-              {face.drawn ? null : <Skeleton className="absolute inset-0 rounded-none bg-skeleton-matte" />}
+              {face.drawn ? null : <Bone data-bones-on="matte" className="absolute inset-0 rounded-none" />}
               {picture ?? face.picture}
               <div className="pointer-events-none absolute inset-0">{face.mark}</div>
             </div>

@@ -26,12 +26,10 @@ const scopes = new Map<string, PlanScope>();
 const errors = new Map<string, string>();
 const listeners = new Set<() => void>();
 const inflight = new Map<string, Promise<PlanScope>>();
-let version = 0;
 
 const key = (environmentId: string, projectId: string | null): string => `${environmentId}|${projectId ?? ""}`;
 
 function emit(): void {
-  version += 1;
   for (const l of listeners) l();
 }
 
@@ -138,10 +136,11 @@ const subscribe = (cb: () => void): (() => void) => {
 
 /** A scope's plan settings on one host, loaded the first time they are asked for. */
 export function usePlanSettings(environmentId: string | undefined, projectId: string | null): PlanScope | undefined {
-  useSyncExternalStore(subscribe, () => version);
   const k = environmentId ? key(environmentId, projectId) : null;
-  const scope = k ? scopes.get(k) : undefined;
-  const failed = k ? errors.has(k) : false;
+  // The store is read only in the snapshots: the production build's React Compiler caches a read made in the body on
+  // the hook's arguments, so a scope that landed after the first render was never seen (its section stood in bones).
+  const scope = useSyncExternalStore(subscribe, () => (k ? scopes.get(k) : undefined));
+  const failed = useSyncExternalStore(subscribe, () => (k ? errors.has(k) : false));
   useEffect(() => {
     if (environmentId && !scope && !failed) void loadPlanSettings(environmentId, projectId).catch(() => {});
   }, [scope, failed, environmentId, projectId]);
@@ -156,8 +155,8 @@ export function usePlanSettingsError(
   environmentId: string | undefined,
   projectId: string | null,
 ): { error: string; retry: () => void } | null {
-  useSyncExternalStore(subscribe, () => version);
-  const error = environmentId ? errors.get(key(environmentId, projectId)) : undefined;
+  // In the snapshot, never the body (usePlanSettings says why).
+  const error = useSyncExternalStore(subscribe, () => (environmentId ? errors.get(key(environmentId, projectId)) : undefined));
   if (!environmentId || error === undefined) return null;
   return { error, retry: () => void loadPlanSettings(environmentId, projectId).catch(() => {}) };
 }

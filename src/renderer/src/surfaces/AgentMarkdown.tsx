@@ -19,7 +19,7 @@ import type { PluggableList } from "unified";
 import { CodeBlock } from "./CodeBlock";
 import { cn } from "../lib/cn";
 import { Button } from "../components/ui/button";
-import { Skeleton } from "../components/ui/skeleton";
+import { Bone, Region } from "../components/bones";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { FileRefMenu } from "./FileRefMenu";
 import { createLazyMermaidPlugin } from "./mermaidPlugin";
@@ -465,18 +465,17 @@ function MermaidBlock({
     );
   }
 
-  if (!svg) {
-    return (
-      <Skeleton className="h-32 w-full rounded-lg" />
-    );
-  }
-
+  // A diagram has no words to measure: one block while it draws, and its height is the picture's own (snap).
   return (
-    <div
-      className="mermaid-block overflow-x-auto rounded-lg [--scrollbar-inset:var(--radius-lg)] border border-border bg-card p-3"
-      data-streamdown="mermaid-block"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
+    <Region loading={!svg} label="Loading diagram" snap bones={<Bone className="h-32 w-full rounded-lg" />}>
+      {svg ? (
+        <div
+          className="mermaid-block overflow-x-auto rounded-lg [--scrollbar-inset:var(--radius-lg)] border border-border bg-card p-3"
+          data-streamdown="mermaid-block"
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      ) : null}
+    </Region>
   );
 }
 

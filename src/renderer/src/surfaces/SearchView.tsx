@@ -75,7 +75,7 @@ import { sessionStore } from "../lib/tcserver/store";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { useWorkspaceNameAt } from "../hooks/useWorkspaceNameAt";
 import { EmptyState } from "./SurfaceSkeleton";
-import { Skeleton } from "../components/ui/skeleton";
+import { Region } from "../components/bones";
 import { Tip } from "../components/tip";
 
 /**
@@ -564,18 +564,21 @@ export function SearchView({
             line={(!browsing && unsearchedLine(progress)) || (filtered ? "Filters are narrowing this search" : undefined)}
             action={filtered ? { label: "Clear filters", onClick: clearFilters } : undefined}
           />
-        ) : searching && hits.length === 0 ? (
-          <SearchRowsSkeleton />
         ) : (
-          <ResultList
-            hits={hits}
-            active={active}
-            query={text}
-            showHost={multiHost}
-            environments={environments}
-            onActive={setActive}
-            onOpen={openHit}
-          />
+          // Hits on their way: result rows from a sample until the first host answers.
+          <Region loading={searching && hits.length === 0} label="Searching" bones={SampleResultRows}>
+            {searching && hits.length === 0 ? null : (
+              <ResultList
+                hits={hits}
+                active={active}
+                query={text}
+                showHost={multiHost}
+                environments={environments}
+                onActive={setActive}
+                onOpen={openHit}
+              />
+            )}
+          </Region>
         )}
       </div>
 
@@ -584,17 +587,30 @@ export function SearchView({
   );
 }
 
-/** Hits on their way: result rows in their own shape (28px, the 16px glyph on the rows' column, a title
- *  bar), still, until the first host answers. */
-const SKELETON_TITLES = [72, 48, 88, 36, 64, 56];
-function SearchRowsSkeleton() {
+/** The sample's hits: a title and its place, as the rows read. Nobody reads the words; their lengths give the bones a page of hits. */
+const SAMPLE_HITS: readonly { title: string; meta: string }[] = [
+  { title: "Plan the gateway's next pass", meta: "Docket" },
+  { title: "paths.ts", meta: "src/main/server" },
+  { title: "Why the tunnel's port moved", meta: "The box" },
+  { title: "releases.md", meta: "docs/agents" },
+  { title: "Trim the rail", meta: "Docket" },
+  { title: "Answer the open review", meta: "Tracker" },
+];
+
+/** Result rows written out from the sample, in ResultList's row (28px, the glyph on the field's column, the title,
+ *  its place): the list itself reads the window's workspaces and takes keys, so it is not drawn here. */
+function SampleResultRows() {
   return (
-    <div role="status" aria-label="Searching" aria-busy data-search-skeleton className="select-none">
-      {SKELETON_TITLES.map((width, i) => (
-        <div key={i} data-skeleton-row className="flex h-7 items-center gap-2 border border-transparent px-2.5">
-          <Skeleton className="size-4 shrink-0 rounded-sm" />
-          <Skeleton className="h-3" style={{ width: `${width}%` }} />
-        </div>
+    <div data-search-skeleton>
+      {SAMPLE_HITS.map((hit) => (
+        <ItemButton key={hit.title} tabIndex={-1} size="xs" data-skeleton-row className="h-7 flex-nowrap gap-2 rounded-md px-2.5 py-0 text-left transition-none">
+          <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
+            {/* One glyph for every kind: a file's icon is drawn late, and its block is the same 16px. */}
+            <MessageSquare className="size-3.5" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{hit.title}</span>
+          <span className="min-w-0 max-w-[45%] truncate text-xs text-muted-foreground">{hit.meta}</span>
+        </ItemButton>
       ))}
     </div>
   );

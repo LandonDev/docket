@@ -4,11 +4,12 @@ import { ModalBody, ModalPanel } from "../../../chrome/Modal";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { ChoiceSelect } from "../../../components/choice-select";
 import { SettingSwitch } from "../../../components/setting-switch";
+import { Loaded, Region } from "../../../components/bones";
+import { ColdSelectTrigger } from "../../../components/lazy-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../../components/page";
 import { ReadFailure } from "../parts/ReadFailure";
 import { BusyLabel, Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
-import { Skeleton } from "../../../components/ui/skeleton";
 import { registry, useEnvironments } from "../../../lib/connection";
 import { NO_ANSWER } from "../../../lib/connection/openRead";
 import { hostFailure } from "../../../lib/hostFailure";
@@ -521,51 +522,48 @@ export function WinvmView({
           <SettingRow id="winvm.sleeps" description={may.admin ? undefined : sleepWords} saved={may.admin ? saved.sleepAfter : undefined}>
             {may.admin ? <ChoiceSelect size="sm" label="Sleeps after" value={state.sleepAfter} options={SLEEP_AFTER} disabled={sleepLook} onChange={(v) => onSleepAfter(v as WinvmSleepAfter)} /> : null}
           </SettingRow>
-          {!may.admin ? null : settings ? (
-            <>
-              {/* on the old display Windows keeps the size it was set up at through every sleep (guestScreen.ts): a size is a new Set up's */}
-              <SettingRow
-                id="winvm.screen"
-                description={
-                  turning ? (state.step ?? undefined) : lastRead ? LAST_READ : live || settings.screen === "fit" ? undefined : "Used when the VM is set up again"
-                }
-                saved={saved.screen}
-              >
-                <ChoiceSelect
-                  size="sm"
-                  label="Screen size"
-                  value={settings.screen}
-                  options={SCREENS}
-                  disabled={turning || state.state === "setting-up" || screenLook}
-                  onChange={(v) => onScreen(v as WinvmScreen)}
-                />
-              </SettingRow>
-              {upgradeNote ? (
-                <PageError data-upgrade-note="" action={<RetryButton retry={upgradeNote.retry} />}>
-                  {upgradeNote.words}
-                </PageError>
-              ) : null}
-              {live && settings.detail ? (
-                <SettingRow id="winvm.quality" description={lastRead ? LAST_READ : undefined} saved={saved.detail}>
-                  <ChoiceSelect size="sm" label="Picture quality" value={settings.detail} options={QUALITIES} disabled={detailLook} onChange={(v) => onQuality(v as WinvmDetail)} />
-                </SettingRow>
-              ) : null}
-            </>
-          ) : settingsError ? (
+          {!may.admin ? null : settingsError && !settings ? (
             // The display's own read failed before any answer: the wait's shape, its labels with nothing claimed.
             <>
               <SettingRow id="winvm.screen" />
               {live ? <SettingRow id="winvm.quality" /> : null}
             </>
           ) : (
-            // While the display is read, its rows wait in their places with a select's bone each.
+            // While the display is read, its rows wait in their places, each select drawn at rest.
             <>
-              <SettingRow id="winvm.screen">
-                <SelectBone />
+              {/* on the old display Windows keeps the size it was set up at through every sleep (guestScreen.ts): a size is a new Set up's */}
+              <SettingRow
+                id="winvm.screen"
+                description={
+                  !settings ? undefined : turning ? (state.step ?? undefined) : lastRead ? LAST_READ : live || settings.screen === "fit" ? undefined : "Used when the VM is set up again"
+                }
+                saved={saved.screen}
+              >
+                <Region loading={!settings} label="" className="shrink-0" bones={<SelectBone label="Screen size" options={SCREENS} sample="1280x800" />}>
+                  {settings ? (
+                    <ChoiceSelect
+                      size="sm"
+                      label="Screen size"
+                      value={settings.screen}
+                      options={SCREENS}
+                      disabled={turning || state.state === "setting-up" || screenLook}
+                      onChange={(v) => onScreen(v as WinvmScreen)}
+                    />
+                  ) : null}
+                </Region>
               </SettingRow>
-              {live ? (
-                <SettingRow id="winvm.quality">
-                  <SelectBone />
+              {settings && upgradeNote ? (
+                <PageError data-upgrade-note="" action={<RetryButton retry={upgradeNote.retry} />}>
+                  {upgradeNote.words}
+                </PageError>
+              ) : null}
+              {live && (!settings || settings.detail) ? (
+                <SettingRow id="winvm.quality" description={lastRead ? LAST_READ : undefined} saved={saved.detail}>
+                  <Region loading={!settings} label="" className="shrink-0" bones={<SelectBone label="Picture quality" options={QUALITIES} sample="sharp" />}>
+                    {settings?.detail ? (
+                      <ChoiceSelect size="sm" label="Picture quality" value={settings.detail} options={QUALITIES} disabled={detailLook} onChange={(v) => onQuality(v as WinvmDetail)} />
+                    ) : null}
+                  </Region>
                 </SettingRow>
               ) : null}
             </>
@@ -584,16 +582,16 @@ export function WinvmView({
             <SettingRow
               id="winvm.restore"
               description={
-                points === null ? (
-                  // The count's own 16px line, a bone in its place while the read is out: nothing moves when it lands.
-                  <span role="status" aria-label="Reading restore points" data-points-bone className="flex h-4 items-center">
-                    <Skeleton className="h-3 w-36" />
-                  </span>
-                ) : points.length === 0 ? (
-                  "None yet"
-                ) : (
-                  `${points.length} kept, the last ${dayTime(Math.max(...points.map((p) => p.at)))}`
-                )
+                // The count's own line, drawn from a sample while the read is out: nothing moves when it lands.
+                <Loaded
+                  inline
+                  data={points === null ? null : points.length === 0 ? "None yet" : `${points.length} kept, the last ${dayTime(Math.max(...points.map((p) => p.at)))}`}
+                  sample="2 kept, the last Wed 4:00 PM"
+                  label="Reading restore points"
+                  bones={(drawn) => <span data-points-bone="">{drawn}</span>}
+                >
+                  {(words) => words}
+                </Loaded>
               }
               {...(may.admin || may.operate ? { onOpen: onPoints, openLabel: "Restore points", openDisabled: points === null } : {})}
             />
@@ -607,8 +605,15 @@ export function WinvmView({
 /** A display value whose newest read failed. */
 const LAST_READ = "As last read";
 
-/** A small select's bone (`ChoiceSelect size="sm"`, 28px), at a row's end while its value is read. */
-const SelectBone = () => <Skeleton data-skeleton-control aria-label="Loading" className="h-7 w-36 shrink-0 rounded-lg" />;
+const STILL = () => {};
+
+/** A small select at rest (`ChoiceSelect size="sm"`'s own still trigger) on a sample choice, drawn as bones at a row's
+ *  end while its value is read. */
+const SelectBone = <T extends string>({ label, options, sample }: { label: string; options: readonly { value: T; label: string }[]; sample: T }) => (
+  <ColdSelectTrigger size="sm" aria-label={label} disabled onOpen={STILL}>
+    {options.find((option) => option.value === sample)?.label}
+  </ColdSelectTrigger>
+);
 
 /** A failed read's Retry on its own row: it spins until the read it asked settles. */
 function RetryButton({ retry }: { retry: () => void | Promise<void> }) {

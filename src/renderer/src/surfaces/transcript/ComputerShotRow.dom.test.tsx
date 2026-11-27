@@ -45,7 +45,7 @@ describe("ComputerShotRow", () => {
     expect(picture.style.maxWidth).toBe(`${Math.round(320 * 1.6)}px`);
     expect(picture.className).toContain("w-full");
     expect(picture.className).toContain("cursor-zoom-in");
-    expect(picture.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    expect(picture.querySelector("[data-region][data-bones] [skullet-loading] [data-bone]")).toBeTruthy();
     expect(picture.querySelector("img")).toBeNull();
   });
 

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PAGE_SCROLLER } from "../components/page";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { AccountsSkeleton } from "../aliax/views/accounts/usageSkeleton";
+import { SAMPLE_ACCOUNT_VIEWS } from "../aliax/views/accounts/samples";
 import { DIFF_ROWS_SKELETON_CAP, EmptyState, LoadingLine, PAGE_LIST_WIDTH, SurfaceSkeleton, type SkeletonKind } from "./SurfaceSkeleton";
 
 afterEach(cleanup);
@@ -69,13 +69,14 @@ describe("SurfaceSkeleton", () => {
 
   it("accounts: the page's rows under its title, at the table's width, with no line the page does not draw", () => {
     const { container } = render(<SurfaceSkeleton kind="accounts" />);
-    const page = render(<AccountsSkeleton />).container;
-    // The fallback's rows are AccountsSkeleton's, row for row, each with the box the usage bars will fill
-    // (56px: the cells' 44 inside the button's 6 above and below), so the page does not change shape when it lands.
+    // The fallback's rows are the page's own bones', section for section and row for row (the page draws them from
+    // its sample), each with the box the usage bars will fill (56px: the cells' 44 inside the button's 6 above and
+    // below), so the page does not change shape when it lands.
+    const sections = SAMPLE_ACCOUNT_VIEWS.map((s) => s.profiles.length);
     const rows = container.querySelectorAll('[data-slot="account-row-skeleton"]');
-    expect(rows).toHaveLength(page.querySelectorAll('[data-slot="account-row-skeleton"]').length);
+    expect(rows).toHaveLength(sections.reduce((a, b) => a + b, 0));
+    expect(sections.length).toBe(3);
     for (const row of rows) expect(row.querySelector("[data-skeleton-bars]")!.className).toContain("h-14");
-    expect(page.querySelector('[data-slot="usage-cells"]')!.className).toContain("py-1.5");
     // The bars' bones are the page chunk's: the first paint carries none of the Accounts page's code.
     expect(readFileSync(resolve(__dirname, "SurfaceSkeleton.tsx"), "utf8")).not.toMatch(/from "\.\.\/aliax/);
     const column = container.querySelector("[data-skeleton-column]")!;

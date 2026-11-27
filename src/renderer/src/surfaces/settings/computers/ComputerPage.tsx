@@ -1,9 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { AdmissionState } from "@server/shared/contract-admission";
 import type { SavedEnvironment } from "@server/shared/contract-remote";
+import { Loaded, Region } from "../../../components/bones";
 import { PageActions, PageSection } from "../../../components/page";
 import { ReadFailure } from "../parts/ReadFailure";
-import { cn } from "../../../lib/cn";
 import { BusyLabel, Button } from "../../../components/ui/button";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { LOCAL_ENVIRONMENT_ID, WEB_ENVIRONMENT_ID, forgetSeen, registry, useEnvironmentStatus, useLastSeenAt } from "../../../lib/connection";
@@ -40,7 +40,7 @@ import { ThreadsRows } from "./ThreadsRows";
 import { behindWords, useComputerUpdate } from "./update";
 
 export { behindWords };
-import { ButtonBone, SectionRead, useComputerRead } from "./read";
+import { SectionRead, useComputerRead } from "./read";
 
 /** How each computer's page's first read stands: out, failed, or answered. While it is out the title line and the
  *  version are bones; failed, they claim nothing (round 2, rules 1 and 4). A computer with no page open is absent. */
@@ -62,9 +62,12 @@ const useReach = (environmentId: string): Reach | null =>
     () => reaches.get(environmentId) ?? null,
   );
 
-/** A line's bone while the computer has not answered: it holds the line's place and says nothing yet. */
-const LineBone = ({ width = "w-48" }: { width?: string }) => (
-  <span data-slot="skeleton" aria-label="Loading" className={cn("inline-block h-3 rounded-md bg-skeleton align-middle", width)} />
+/** A line that waits for the computer's answer: its words drawn from a sample until then, in their own place, so it
+ *  holds the line's room and says nothing yet. */
+const WaitLine = ({ words, sample }: { words: string | null; sample: string }) => (
+  <Loaded inline data={words} sample={sample} label="">
+    {(said) => said}
+  </Loaded>
 );
 
 /** The computer this page is about, as this window reaches it: the box's own page at /ui, else a linked computer. */
@@ -114,11 +117,13 @@ export function ComputerLine({ environmentId }: { environmentId: string }) {
   // A computer whose page got no answer: the page says so once, in its body; the line claims no connection. While its
   // first read is out, the line waits as a bone.
   if (silent && status.transport === "open") return null;
-  if (reach === "waiting" && status.transport === "open") return <LineBone width="w-64" />;
+  const waiting = reach === "waiting" && status.transport === "open";
   return (
     <>
-        <span data-computer-line={status.transport}>{words}</span>
-        {managed ? <span data-managed="">{` Its settings are changed from a computer that manages ${computerInLine(host.name)}.`}</span> : null}
+        <span data-computer-line={status.transport}>
+          <WaitLine words={waiting ? null : words} sample="Online at box.tail0e1f.ts.net." />
+        </span>
+        {managed && !waiting ? <span data-managed="">{` Its settings are changed from a computer that manages ${computerInLine(host.name)}.`}</span> : null}
         {web ? null : status.transport === "offline" || status.transport === "reconnecting" ? (
           <PageActions>
             <Button variant="ghost" size="sm" onClick={() => registry.retry(environmentId)}>
@@ -201,21 +206,34 @@ function VersionSection({ host }: { host: Host }) {
   const id = host.environmentId;
   const up = useComputerUpdate(id);
   const waiting = useReach(id) === "waiting";
+  const said = up.notInstalled ?? behindWords(up.behind);
   if (!up.version && !up.notInstalled && !up.offered && !up.waiting) return null;
   return (
     <PageSection>
       <SettingRow
         id="pc.version"
         vars={{ version: waiting ? "" : (up.version ?? "") }}
-        description={waiting ? <LineBone width="w-32" /> : (up.notInstalled ?? behindWords(up.behind))}
+        description={waiting || said ? <WaitLine words={waiting ? null : (said ?? null)} sample="2 releases behind" /> : undefined}
         error={up.error ?? undefined}
       >
-        {waiting || up.waiting ? (
-          <ButtonBone />
-        ) : up.offered ? (
-          <Button variant="secondary" size="sm" disabled={up.busy} onClick={() => void up.update()}>
-            <BusyLabel busy={up.busy} label="Update…" />
-          </Button>
+        {waiting || up.waiting || up.offered ? (
+          // Whether it offers Update… is the computer's to say: the button itself, held, until then.
+          <Region
+            loading={waiting || up.waiting}
+            label=""
+            className="shrink-0"
+            bones={
+              <Button data-skeleton-control variant="secondary" size="sm" disabled>
+                Update…
+              </Button>
+            }
+          >
+            {up.offered ? (
+              <Button variant="secondary" size="sm" disabled={up.busy} onClick={() => void up.update()}>
+                <BusyLabel busy={up.busy} label="Update…" />
+              </Button>
+            ) : null}
+          </Region>
         ) : null}
       </SettingRow>
       <JobLog environmentId={id} job="deploy" hostName={host.name.name} />
@@ -279,7 +297,7 @@ function WorkRow({ environmentId }: { environmentId: string }) {
         <SettingRow
           id="pc.work"
           vars={{ computer }}
-          description={description === null ? <LineBone width="w-8" /> : description}
+          description={description === undefined ? undefined : <WaitLine words={description} sample="Off" />}
           // Setup, at this computer's own switch row (and why this key cannot press it, where it cannot).
           onOpen={() => requestSettings("work", workOnRow(environmentId))}
           openLabel={`Work on ${computer}`}

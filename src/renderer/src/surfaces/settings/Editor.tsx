@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ReadFailure } from "./parts/ReadFailure";
 import { NO_ANSWER } from "../../lib/connection/openRead";
 import { EDITOR_IDS, EDITOR_LABELS, type EditorChoice, type EditorConfig } from "@shared/editor";
@@ -6,12 +6,12 @@ import type { LspStatusRow } from "@shared/domain";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
+import { Loaded, Region } from "../../components/bones";
 import { PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { CONSOLE } from "../../components/ui/console";
 import { Dialog } from "../../components/ui/dialog";
-import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
 import { useHostRead } from "../../lib/connection/hostRead";
@@ -283,7 +283,12 @@ function JavaSection() {
           ? [`Build ${engine.build}`, ...(idea.line ? [idea.line] : [])].join(", ")
           : `Build ${engine.build}, waiting for the licence`;
 
-  const loading = <Skeleton className="mt-1 h-3 w-40" />;
+  // Each line waits as its own words, drawn from a sample line of the same kind.
+  const line = (words: ReactNode, sample: ReactNode) => (
+    <Loaded<ReactNode> inline data={words} sample={sample} label="">
+      {(said) => said}
+    </Loaded>
+  );
   const failed = !doctor.value && doctor.error !== null;
 
   return (
@@ -297,22 +302,34 @@ function JavaSection() {
         <>
           <SettingRow
             id="editor.jdk"
-            description={jdkLine === null ? loading : <span className={java?.error || !java?.found ? "text-warning" : undefined}>{jdkLine}</span>}
+            description={line(
+              jdkLine === null ? null : <span className={java?.error || !java?.found ? "text-warning" : undefined}>{jdkLine}</span>,
+              "21.0.4, language support ready",
+            )}
             error={jdtls.error}
           />
-          <SettingRow id="editor.intellij" description={note ?? engineLine ?? loading} error={idea.error}>
-            {engine === undefined ? (
-              // Which verb applies is the doctor's to say: its button's place until then.
-              <Skeleton data-engine-action className="h-7 w-28 rounded-md" />
-            ) : engine?.accepted ? (
-              <Button variant="secondary" size="sm" disabled={checking} onClick={checkUpdate}>
-                <BusyLabel busy={checking} label="Check for update" />
-              </Button>
-            ) : (
-              <Button variant="secondary" size="sm" onClick={openGate}>
-                Read the licence…
-              </Button>
-            )}
+          <SettingRow id="editor.intellij" description={note ?? line(engineLine, "Build 263.2689.0, ready")} error={idea.error}>
+            <Region
+              loading={engine === undefined}
+              label=""
+              className="shrink-0"
+              // Which verb applies is the doctor's to say: until then the button itself, held, with no press.
+              bones={
+                <Button data-engine-action variant="secondary" size="sm" disabled>
+                  Check for update
+                </Button>
+              }
+            >
+              {engine === undefined ? null : engine?.accepted ? (
+                <Button variant="secondary" size="sm" disabled={checking} onClick={checkUpdate}>
+                  <BusyLabel busy={checking} label="Check for update" />
+                </Button>
+              ) : (
+                <Button variant="secondary" size="sm" onClick={openGate}>
+                  Read the licence…
+                </Button>
+              )}
+            </Region>
           </SettingRow>
         </>
       )}

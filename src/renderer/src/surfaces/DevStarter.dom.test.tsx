@@ -129,12 +129,16 @@ describe('DevStarter', () => {
     expect(held.closest('[data-held]')).not.toBeNull()
   })
 
-  it('shows a skeleton in the target field while the host answers', async () => {
+  it('draws the target field as bones while the host answers', async () => {
     vi.spyOn(registry, 'linkOf').mockImplementation(() => ({ request: () => new Promise(() => {}) }) as never)
     probe = mountProbe(<DevServerPanel projectId="p1" />)
     await flush()
-    expect(probe.container.querySelector('[data-dev-target-skeleton]')).not.toBeNull()
-    expect(probe.container.querySelector('[aria-label="Dev server target"]')).toBeNull()
+    const wait = probe.container.querySelector('[data-dev-starter] [data-region][data-bones]')!
+    expect(wait).not.toBeNull()
+    // The field drawn from a sample sits in the unseen drawing; no live field is offered until the targets land.
+    expect(wait.querySelector('[skullet-loading] [aria-label="Dev server target"]')).not.toBeNull()
+    const live = [...probe.container.querySelectorAll('[aria-label="Dev server target"]')].filter((el) => !el.closest('[skullet-loading]'))
+    expect(live).toHaveLength(0)
   })
 
   it('offers each host with a copy of the project, this one picked', async () => {

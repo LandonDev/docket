@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Region } from "../../components/bones";
 import { openLightbox, type LightboxItem } from "../../chrome/lightboxStore";
 import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
@@ -90,18 +90,18 @@ function Picture({
       className={cn("relative block min-w-0 cursor-zoom-in overflow-hidden rounded-lg", share ? "flex-1" : "w-full")}
       style={{ aspectRatio: `${shot.width} / ${shot.height}`, maxWidth: `${Math.round(max * aspect)}px` }}
     >
-      {media.status === "ready" ? (
-        <img
-          src={media.url}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          draggable={false}
-          className="block size-full rounded-lg object-contain outline outline-1 -outline-offset-1 outline-image-outline"
-        />
-      ) : (
-        <Skeleton className="absolute inset-0 rounded-lg" />
-      )}
+      <Region loading={media.status !== "ready"} label="" bones={<Bone className="size-full rounded-lg" />} className="absolute inset-0">
+        {media.status === "ready" ? (
+          <img
+            src={media.url}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className="block size-full rounded-lg object-contain outline outline-1 -outline-offset-1 outline-image-outline"
+          />
+        ) : null}
+      </Region>
     </button>
   );
 }

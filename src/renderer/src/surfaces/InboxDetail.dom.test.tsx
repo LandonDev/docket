@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * and Send to agent showing a spinner while the start is pending.
  */
 
-const h = vi.hoisted(() => ({ item: null as unknown, detailsFail: null as string | null }));
+const h = vi.hoisted(() => ({ item: null as unknown, detailsFail: null as string | null, hold: null as Promise<void> | null }));
 
 vi.mock("../lib/inboxSelection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/inboxSelection")>()),
@@ -24,8 +24,10 @@ vi.mock("../lib/githubTasks", async (importOriginal) => ({
   peekGithubWorkItemDetails: () => null,
   peekGithubWorkItemThread: () => null,
   peekGithubPrDiff: () => null,
-  githubWorkItemDetails: () =>
-    h.detailsFail ? Promise.reject(new Error(h.detailsFail)) : Promise.resolve({ body: "The gate holds a merge.", author: "ana" }),
+  githubWorkItemDetails: async () => {
+    if (h.hold) await h.hold;
+    return h.detailsFail ? Promise.reject(new Error(h.detailsFail)) : Promise.resolve({ body: "The gate holds a merge.", author: "ana" });
+  },
   githubWorkItemThread: () => Promise.resolve({ comments: [] }),
   githubPrDiff: () => Promise.resolve(null),
 }));
@@ -65,6 +67,7 @@ afterEach(() => {
   cleanup();
   h.item = null;
   h.detailsFail = null;
+  h.hold = null;
 });
 
 async function mount(onStart?: () => Promise<void>) {
@@ -140,6 +143,23 @@ describe("the inbox detail", () => {
     expect(marks[0].getAttribute("data-state")).toBe("failed");
     expect(marks[0].querySelector('[data-slot="status-detail"]')?.textContent).toBe("checks");
     expect([...header.querySelectorAll(".text-destructive")].filter((el) => !el.closest('[data-slot="status-mark"]'))).toHaveLength(0);
+  });
+
+  it("waits for its body in a region drawn from a sample paragraph, then lands the body in its place", async () => {
+    let release = () => {};
+    h.hold = new Promise<void>((resolve) => (release = resolve));
+    h.item = item({ kind: "issue" });
+    const view = await mount();
+    const wait = view.container.querySelector<HTMLElement>("[data-region][data-bones]")!;
+    expect(wait.getAttribute("aria-busy")).toBe("true");
+    // The sample's words sit in the unseen drawing, in the markdown's own type; the header is drawn at once.
+    expect(wait.querySelector("[skullet-loading] p")!.className).toContain("text-sm leading-[22px]");
+    expect(view.container.querySelector("header")!.textContent).toContain("Fix the gate");
+    await act(async () => {
+      release();
+    });
+    expect(view.container.querySelector("[data-markdown-size]")!.textContent).toBe("The gate holds a merge.");
+    await waitFor(() => expect(view.container.querySelector("[skullet-loading]")).toBeNull());
   });
 
   it("draws nothing without a selection", async () => {

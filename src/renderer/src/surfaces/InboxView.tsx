@@ -27,7 +27,7 @@ import { useRovingList } from "../hooks/useRovingList";
 import { BusyLabel, Button } from "../components/ui/button";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { ItemButton } from "../components/ui/item";
-import { Skeleton } from "../components/ui/skeleton";
+import { Region } from "../components/bones";
 import { StatusMark } from "../components/ui/status";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
@@ -1200,59 +1200,87 @@ function InboxDetail({
         </Tabs>
       ) : null}
       {isPr && tab === "code" ? (
-        diffLoading ? (
-          <ParagraphSkeleton />
-        ) : diffError ? (
-          <FailLine words="Couldn't load the changes" detail={diffError} />
-        ) : prDiff ? (
-          <InboxPrDiff key={`${item.projectPath}:${item.number}:${revision}`} diff={prDiff} />
-        ) : (
-          <EmptyState title="No file changes" />
-        )
-      ) : loading ? (
-        <ParagraphSkeleton />
-      ) : error ? (
-        <FailLine words={isPr ? "Couldn't load this pull request" : "Couldn't load this issue"} detail={error} />
-      ) : (
-        <>
-          {details?.body.trim() ? (
-            <AgentMarkdown text={details.body} cwd={markdownCwd} size="compact" />
+        // The diff's read: the diff itself drawn from a sample while it is out; how long it runs is the diff's own, so it lands with no ease.
+        <Region key="diff" loading={diffLoading} label="Loading changes" snap bones={() => <InboxPrDiff diff={SAMPLE_PR_DIFF} />}>
+          {diffLoading ? null : diffError ? (
+            <FailLine words="Couldn't load the changes" detail={diffError} />
+          ) : prDiff ? (
+            <InboxPrDiff key={`${item.projectPath}:${item.number}:${revision}`} diff={prDiff} />
           ) : (
-            <p className="text-[13px] text-muted-foreground">No description</p>
+            <EmptyState title="No file changes" />
           )}
-          <InboxComments
-            thread={thread}
-            loading={threadLoading}
-            error={threadError}
-            cwd={markdownCwd}
-            provider={item.provider}
-            replyMode={linear ? "parent" : "thread"}
-            onReply={setReplyTo}
-          />
-          <InboxCommentForm
-            replyTo={replyTo}
-            posting={posting}
-            error={postError}
-            onCancelReply={() => {
-              setReplyTo(null);
-              setPostError(null);
-            }}
-            onSubmit={postComment}
-          />
-        </>
+        </Region>
+      ) : (
+        // The item's read: its body drawn from a sample paragraph, in the body's own type, while it is out.
+        <Region key="body" loading={loading} label={isPr ? "Loading pull request" : "Loading issue"} snap bones={SampleBody}>
+          {loading ? null : error ? (
+            <FailLine words={isPr ? "Couldn't load this pull request" : "Couldn't load this issue"} detail={error} />
+          ) : (
+            <>
+              {details?.body.trim() ? (
+                <AgentMarkdown text={details.body} cwd={markdownCwd} size="compact" />
+              ) : (
+                <p className="text-[13px] text-muted-foreground">No description</p>
+              )}
+              <InboxComments
+                thread={thread}
+                loading={threadLoading}
+                error={threadError}
+                cwd={markdownCwd}
+                provider={item.provider}
+                replyMode={linear ? "parent" : "thread"}
+                onReply={setReplyTo}
+              />
+              <InboxCommentForm
+                replyTo={replyTo}
+                posting={posting}
+                error={postError}
+                onCancelReply={() => {
+                  setReplyTo(null);
+                  setPostError(null);
+                }}
+                onSubmit={postComment}
+              />
+            </>
+          )}
+        </Region>
       )}
     </div>
   );
 }
 
-/** Three lines of text on their way, the last one shorter. */
-function ParagraphSkeleton() {
+/*
+ * The detail's samples (docs/agents/loading-bones.md "Samples"): nobody
+ * reads the words; their lengths give the bones a body's and a diff's shape.
+ */
+const SAMPLE_PR_DIFF: GithubPrDiff = {
+  additions: 9,
+  deletions: 3,
+  truncated: false,
+  files: [
+    { path: "src/main/server/paths.ts", additions: 6, deletions: 2 },
+    { path: "src/renderer/src/chrome/Sidebar.tsx", additions: 3, deletions: 1 },
+    { path: "docs/agents/releases.md", additions: 0, deletions: 0 },
+  ],
+  patch: [
+    "diff --git a/src/main/server/paths.ts b/src/main/server/paths.ts",
+    "--- a/src/main/server/paths.ts",
+    "+++ b/src/main/server/paths.ts",
+    "@@ -24,4 +24,5 @@",
+    " export function resolve(path: string, root: string): string {",
+    "-\tif (!path.startsWith(root)) return root;",
+    "+\tif (!inside(path, root)) return root;",
+    "+\tconst parts = path.slice(root.length).split(sep);",
+    " \treturn join(root, ...parts);",
+  ].join("\n"),
+};
+
+/** An item's body on its way: one paragraph in the compact markdown's type, as a description reads. */
+function SampleBody() {
   return (
-    <div aria-label="Loading" className="flex flex-col gap-2">
-      <Skeleton className="h-3.5 w-full" />
-      <Skeleton className="h-3.5 w-full" />
-      <Skeleton className="h-3.5 w-2/3" />
-    </div>
+    <p className="text-sm leading-[22px]">
+      Every read has a region of its own, so no part waits for the slowest. What is known at once is drawn at once, and the rows land where their bones stood.
+    </p>
   );
 }
 

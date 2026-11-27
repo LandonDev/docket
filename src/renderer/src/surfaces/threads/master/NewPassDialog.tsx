@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Bone, Region } from "@renderer/components/bones";
 import { StatusMark } from "@renderer/components/ui/status";
 import { Modal, useModalClose } from "../../../chrome/Modal";
 import { useMetaById, useSessionById } from "../../../lib/threads/agents";
@@ -53,20 +53,21 @@ function Body({ sessionId, landed, onClose }: Props) {
         <StatusMark state={line.state} detail={line.detail} />
       </p>
       <div className="px-5 pt-4 pb-4">
-        {session ? (
-          <ThreadComposer
-            session={session}
-            actions={actions}
-            visible
-            focused={false}
-            hotkeys={false}
-            onFocus={NOOP}
-            onOpenDiff={NOOP}
-            onSent={() => (close ? close(onClose) : onClose())}
-          />
-        ) : (
-          <Skeleton className="h-[92px] w-full rounded-xl" aria-busy="true" data-new-pass-loading />
-        )}
+        {/* The composer is one field on its way: one block at its resting height. */}
+        <Region loading={!session} label="Loading the composer" bones={<Bone data-new-pass-loading className="h-[92px] w-full rounded-xl" />}>
+          {session ? (
+            <ThreadComposer
+              session={session}
+              actions={actions}
+              visible
+              focused={false}
+              hotkeys={false}
+              onFocus={NOOP}
+              onOpenDiff={NOOP}
+              onSent={() => (close ? close(onClose) : onClose())}
+            />
+          ) : null}
+        </Region>
       </div>
     </div>
   );

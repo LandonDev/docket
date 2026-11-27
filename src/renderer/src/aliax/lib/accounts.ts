@@ -39,10 +39,11 @@ export function untilLabel(resetsAt: number, now: number): string {
 export const resetLabel = (at: number): string =>
   new Date(at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
 
-/** The current time, refreshed on an interval, so countdowns stay honest. */
-export function useNow(everyMs = 30_000): number {
+/** The current time, refreshed on an interval, so countdowns stay honest; `null` keeps no timer (a fixed clock is in use). */
+export function useNow(everyMs: number | null = 30_000): number {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
+    if (everyMs === null) return
     const t = setInterval(() => setNow(Date.now()), everyMs)
     return () => clearInterval(t)
   }, [everyMs])

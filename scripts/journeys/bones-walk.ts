@@ -169,7 +169,7 @@ async function main(): Promise<void> {
     await page.press('button', 'Settings')
     await page.clickOn('[aria-label="Settings"] button > span.truncate, [aria-label="Settings"] a', 'New threads')
     const opened = Date.now()
-    judge(`${theme} settings`, await film(page, `${theme}-2-settings`, () => rows('[data-slot="page"] [data-slot="page-row"]'), { most: 20_000 }), { others: true })
+    judge(`${theme} settings`, await film(page, `${theme}-2-settings`, () => rows('[data-slot="page"] [data-slot="page-row"]'), { most: 20_000 }), { others: true, mayBeQuick: true })
     // The second section's read is asked of the host through this computer, and in this pair it stays out: bones that
     // have stood 20 s go still, so a window left on a host that does not answer costs no frames.
     if ((await page.eval<Bones>(BONES_NOW)).shown > 0) {
@@ -178,11 +178,27 @@ async function main(): Promise<void> {
       await page.shot(join(out, `${theme}-3-settings-still.png`))
       check(`${theme} settings: bones that stood 20 s are still`, after.shown === 0 || (after.bars > 0 && after.sweeping === 0), js(after))
     }
+
+    // Settings' page for the box, which asks the box through this computer: its lines and Update… wait as their own
+    // words and button (surfaces/settings/computers/ComputerPage.tsx).
+    await regions(page, `${theme}-settings-box`, () => page.clickOn('[aria-label="Settings"] button > span.truncate, [aria-label="Settings"] a', 'box'))
+
+    // The rail's pages, each with reads of its own (surfaces/ and aliax/): Stats' sections, the Inbox's list, Accounts'
+    // rows and their usage. Landed once a region has shown itself and none is left waiting.
+    await page.key('Escape')
+    for (const row of ['Stats', 'Inbox', 'Accounts'] as const) await regions(page, `${theme}-${row.toLowerCase()}`, () => page.press('button', row))
   }
 
   if (values['no-ui']) return
   await phone(phoneThreads.map((thread) => thread.id))
   void win
+}
+
+/** Films a screen with regions of its own from `start` until a region has shown itself and none is left waiting. */
+async function regions(page: Window, name: string, start: () => Promise<void>): Promise<void> {
+  await page.eval(`window.__bonesSeen = false; window.__bonesSpy?.disconnect(); window.__bonesSpy = new MutationObserver(() => { if (document.querySelector('[data-region][data-bones]')) window.__bonesSeen = true }); window.__bonesSpy.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-bones'] })`)
+  void start()
+  judge(name, await film(page, name, () => page.eval<boolean>(`window.__bonesSeen && ![...document.querySelectorAll('[data-region][data-bones="held"], [data-region][data-bones="shown"]')].some((el) => el.checkVisibility())`), { most: 20_000 }), { mayBeQuick: true })
 }
 
 /** The same bundle at /ui, in the box's own Chromium at a phone's size: bones, sweep and landing; then a tab hidden while its read lands. */

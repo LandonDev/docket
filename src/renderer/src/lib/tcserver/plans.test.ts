@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_PLAN_SETTINGS } from "@shared/plans";
 import { HOME_RECHECK_MS } from "../settingsHome";
@@ -201,5 +203,45 @@ describe("plan settings store", () => {
     expect(socket.calls).toHaveLength(1);
     socket.calls[0].resolve({ settings: DEFAULT_PLAN_SETTINGS, overridden: false });
     expect(await a).toEqual(await b);
+  });
+});
+
+describe("plan settings in the production build", () => {
+  // The built renderer runs the React Compiler (electron.vite.config.ts) and tests do not. It caches a read made in a
+  // hook's body on the hook's arguments, so Builds from plans stood in bones after its answer landed, and past its
+  // deadline too. This compiles plans.ts with the build's options and drives the copy the window would run.
+  it("lands an answer that comes after the first render, and a failure at the deadline", async () => {
+    const { transformAsync } = await import("@babel/core");
+    const compiler = (await import("babel-plugin-react-compiler")).default;
+    const source = readFileSync(join(__dirname, "plans.ts"), "utf8");
+    const out = await transformAsync(source, {
+      filename: "plans.ts",
+      babelrc: false,
+      configFile: false,
+      parserOpts: { plugins: ["typescript"] },
+      plugins: [[compiler, { target: "19", compilationMode: "infer", panicThreshold: "none" }]],
+    });
+    expect(out?.code).toContain("react/compiler-runtime");
+    const path = join(__dirname, `plans.compiled-${process.pid}.tmp.ts`);
+    writeFileSync(path, out!.code!);
+    try {
+      const built = (await import(/* @vite-ignore */ path)) as typeof import("./plans");
+      built.resetPlanSettingsForTests();
+      const socket = new Scripted();
+      host.link.setSession(socket.asTransport());
+      const { result } = renderHook(() => ({ scope: built.usePlanSettings("local", null), failure: built.usePlanSettingsError("local", null) }));
+      await act(settle);
+      expect(result.current.scope).toBeUndefined();
+      await act(async () => socket.calls[0].resolve(answer));
+      expect(result.current.scope?.settings.autoImplement).toBe(false);
+
+      // A scope that never answers says so at the deadline, as the uncompiled store does.
+      const project = renderHook(() => ({ scope: built.usePlanSettings("local", "p9"), failure: built.usePlanSettingsError("local", "p9") }));
+      await act(settle);
+      await act(() => vi.advanceTimersByTimeAsync(LOAD_DEADLINE_MS));
+      expect(project.result.current.failure?.error).toBe(NO_ANSWER);
+    } finally {
+      rmSync(path, { force: true });
+    }
   });
 });

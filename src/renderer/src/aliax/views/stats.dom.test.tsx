@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { OUTPUT_UNIT, SECTION_SKELETON, StatsView, paceHeight, paceLine, paceTitle, resetPaceCount, tokenValue } from "./stats";
 import { HEATMAP_HEIGHT } from "./stats/heatmap";
@@ -111,12 +111,29 @@ describe("Stats", () => {
     expect(height("Top projects")).toBe("232px");
     expect(height("Tools used")).toBe("232px");
     expect(height("Busiest hours")).toBe(`${HEATMAP_HEIGHT}px`);
-    // The sections with a description line keep it.
+    // The sections with a description line keep it: in words where the words are known, the rate's line waiting in it.
     for (const h of ORDER) {
       const region = screen.getByRole("region", { name: h });
-      const line = region.querySelector("p [data-slot=skeleton]");
+      const line = region.querySelector(":scope > p");
       expect(Boolean(line), h).toBe(Boolean(SECTION_SKELETON[h as keyof typeof SECTION_SKELETON].description));
     }
+    expect(screen.getByRole("region", { name: "Daily output" }).querySelector(":scope > p")!.textContent).toBe(OUTPUT_UNIT);
+    expect(screen.getByRole("region", { name: "Cache hit rate" }).querySelector(":scope > p [data-region][data-inline][data-bones]")).not.toBeNull();
+    // Each body waits in a region of its own, under its heading.
+    for (const h of ORDER) expect(screen.getByRole("region", { name: h }).querySelector("[data-region][data-bones] [data-section-skeleton]"), h).not.toBeNull();
+    // A plot has no words: one bone at its height; a legend's words are drawn.
+    const daily = document.querySelector<HTMLElement>('[data-section-skeleton="Daily output"]')!;
+    expect(daily.querySelector("[data-slot=chart-legend]")).not.toBeNull();
+    expect(daily.querySelector<HTMLElement>("[data-bone]")!.style.height).toBe("200px");
+  });
+
+  it("lands each section's body over its bones, its headings never redrawn", async () => {
+    const { rerender } = render(<StatsView data={null} status={null} />);
+    const pace = screen.getByRole("heading", { name: "Pace" });
+    rerender(<StatsView data={STATS} status={null} />);
+    expect(screen.getByRole("heading", { name: "Pace" })).toBe(pace);
+    await waitFor(() => expect(document.querySelector("[skullet-loading]")).toBeNull());
+    expect(screen.getByText(/% of input served from cache, 30 days/)).toBeTruthy();
   });
 });
 

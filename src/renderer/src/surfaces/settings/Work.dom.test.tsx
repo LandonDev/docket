@@ -169,7 +169,7 @@ describe("Settings → Work: Work is on for", () => {
     render(<WorkPage />);
     await settle();
     expect(within(rowOf("env_box")).queryByRole("switch")).toBeNull();
-    expect(rowOf("env_box").querySelector("[data-slot=skeleton]")).toBeTruthy();
+    expect(rowOf("env_box").querySelector("[data-region][data-bones] [skullet-loading] [role=switch]")).toBeTruthy();
     // A computer whose read failed draws no bare row: the failure says it.
     expect(rowOf("env_pc")).toBeNull();
     // A failed read is one line over the rows with one Retry, never one a row.

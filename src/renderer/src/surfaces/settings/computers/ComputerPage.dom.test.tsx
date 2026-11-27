@@ -219,8 +219,12 @@ describe("while the box has not answered", () => {
       await flush();
       expect(container.textContent).not.toContain("Connected");
       expect(container.textContent).not.toContain("1.0.397");
-      expect(container.querySelector("[data-setting='pc.version'] [data-slot=skeleton]")).not.toBeNull();
-      expect(container.querySelector("[data-setting='pc.work'] [data-slot=skeleton]")).not.toBeNull();
+      // Each line and the Update… press drawn from samples, unseen and inert: no press to make yet.
+      expect(container.querySelector("[data-computer-line] [data-region][data-inline][data-bones]")).not.toBeNull();
+      expect(container.querySelector("[data-setting='pc.version'] [data-region][data-inline][data-bones]")).not.toBeNull();
+      expect(container.querySelector("[data-setting='pc.version'] [data-region][data-bones] [skullet-loading] button")).not.toBeNull();
+      expect(screen.queryByRole("button", { name: "Update…" })).toBeNull();
+      expect(container.querySelector("[data-setting='pc.work'] [data-region][data-inline][data-bones]")).not.toBeNull();
     } finally {
       ANSWERS.env_box["admission.get"] = was;
       ANSWERS.env_box["work.get"] = { enabled: false };

@@ -163,8 +163,9 @@ describe("MediaGate", () => {
     // A load is a skeleton in the shape of what comes, never a spinner and a word.
     expect(line.textContent).toBe("");
     expect(line.getAttribute("aria-label")).toBe("Loading image");
-    expect(line.querySelector('[data-slot="skeleton"]')!.classList).toContain("bg-skeleton-stage");
-    expect(line.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+    // A picture has no words: one bone, on the stage's ground.
+    expect(line.getAttribute("data-bones-on")).toBe("stage");
+    expect(line.querySelector("[data-bone]")).not.toBeNull();
     expect(line.querySelector('[data-slot="spinner"]')).toBeNull();
     expect(line.className).toContain("[--tw-animation-delay:var(--dur-slow)]");
     await act(async () => {
@@ -178,7 +179,7 @@ describe("MediaGate", () => {
     await act(async () => {});
     img = container.querySelector("img")!;
     expect(img.className).toContain("invisible");
-    expect(container.querySelector('[role="status"] [data-slot="skeleton"]')).not.toBeNull();
+    expect(container.querySelector('[role="status"] [data-bone]')).not.toBeNull();
   });
 
   it("plays a video in a focused native player with controls and the hairline", async () => {

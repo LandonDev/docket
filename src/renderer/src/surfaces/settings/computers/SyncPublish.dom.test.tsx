@@ -104,7 +104,7 @@ describe("Sync", () => {
     await act(async () => {});
     const waiting = document.querySelector("[data-setting='sync.memory']")!;
     expect(waiting.textContent).toContain("Agents' memory");
-    expect(waiting.querySelector("[data-skeleton-control]")).not.toBeNull();
+    expect(waiting.querySelector("[data-region][data-bones] [skullet-loading] [role=switch]")).not.toBeNull();
     expect(screen.getByLabelText("Agent settings")).toBeTruthy();
     cleanup();
     // Refused: the row stays, says so, and its Retry reads again.
@@ -144,7 +144,7 @@ describe("Sync", () => {
     expect(rows).toHaveLength(2);
     for (const row of rows) {
       expect(row.textContent).not.toContain("Nothing syncs");
-      expect(row.querySelector("[data-slot=skeleton]")).not.toBeNull();
+      expect(row.querySelector("[data-region][data-inline][data-bones]")).not.toBeNull();
     }
     cleanup();
     answers["memory.status"] = () => Promise.reject(new Error("The computer did not answer"));

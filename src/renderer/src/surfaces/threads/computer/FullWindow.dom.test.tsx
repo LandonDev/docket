@@ -81,9 +81,8 @@ const view = (over: Partial<Parameters<typeof FullWindowView>[0]> = {}) => <Full
 describe("the full window's body", () => {
   it("draws the picture on its way as the bone made for matte, which shows on black in light too", () => {
     const v = render(view());
-    const bone = v.container.querySelector('[data-face="live"] [data-slot="skeleton"]')!;
-    expect(bone.className).toContain("bg-skeleton-matte");
-    expect(bone.className).not.toMatch(/\bbg-skeleton\b(?!-)/);
+    const bone = v.container.querySelector<HTMLElement>('[data-face="live"] [data-bone]')!;
+    expect(bone.dataset.bonesOn).toBe("matte");
   });
 
   it("draws every fixture: the picture or its line, and one bar over it", () => {

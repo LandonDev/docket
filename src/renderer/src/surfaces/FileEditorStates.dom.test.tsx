@@ -5,14 +5,18 @@ import { EditorLoading, EditorOpenError } from "./FileEditor";
 describe("the editor's waiting states", () => {
   afterEach(cleanup);
 
-  it("loads as eight bars shaped like code under the header's slot", () => {
+  it("loads as bones of eight lines of sample code in the editor's type, under the header's strip", () => {
     const { container } = render(<EditorLoading name="App.tsx" />);
-    const bars = container.querySelectorAll('[data-slot="skeleton"]');
-    expect(bars).toHaveLength(8);
-    expect([...bars].map((bar) => (bar as HTMLElement).style.width)).toEqual(["60%", "82%", "45%", "70%", "90%", "38%", "66%", "52%"]);
-    expect(container.querySelector(".h-8")).not.toBeNull();
+    // The drawing is the bones' own, unseen by a screen reader: the status names the wait.
+    const drawing = container.querySelector("[data-region][data-bones] [skullet-loading]")!;
+    expect(drawing.getAttribute("aria-hidden")).toBe("true");
+    const lines = drawing.querySelectorAll<HTMLElement>("[data-loading-line]");
+    expect(lines).toHaveLength(8);
+    for (const line of lines) expect(line.className).toContain("font-mono text-[13px] leading-[1.6]");
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull();
+    // The bare strip keeps its hairline: an empty box is a leaf Skullet would hide.
+    expect(drawing.querySelector(".h-8")!.hasAttribute("skullet-own")).toBe(true);
     expect(container.querySelector('[role="status"]')!.getAttribute("aria-label")).toBe("Opening App.tsx");
-    expect(container.textContent).toBe("");
   });
 
   it("fails as one Empty: the name, why, and Retry", () => {

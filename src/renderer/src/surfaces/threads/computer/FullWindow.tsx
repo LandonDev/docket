@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Bone } from "@renderer/components/bones";
 import { cn } from "@renderer/lib/cn";
 import { Minimize2, PictureInPicture } from "../../../chrome/icons";
 import { driveName, handBack, useComputer, type ComputerTile } from "../../../lib/computers";
@@ -116,7 +116,7 @@ export function FullWindowView({ tile, stream, room, name, kind, boxRef, measure
             className={cn("relative overflow-hidden [&_canvas]:rounded-none [&_canvas]:outline-0 [&_img]:rounded-none [&_img]:outline-0", pixelated && PIXELATED, face.driving && DRIVEN_CLASS)}
             style={{ aspectRatio: aspect }}
           >
-            {face.drawn ? null : <Skeleton className="absolute inset-0 rounded-none bg-skeleton-matte" />}
+            {face.drawn ? null : <Bone data-bones-on="matte" className="absolute inset-0 rounded-none" />}
             {picture ?? face.picture}
             <div className="pointer-events-none absolute inset-0">{face.mark}</div>
           </div>

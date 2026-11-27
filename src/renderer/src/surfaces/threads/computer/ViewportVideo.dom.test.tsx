@@ -112,6 +112,8 @@ beforeEach(() => {
     unobserve(): void {}
   } as never;
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({ drawImage: () => undefined })) as never;
+  // A lone bone's sweep is an animation too (components/bones.tsx `Bone`): each call answers with one to cancel.
+  animate.mockImplementation(() => ({ cancel: () => {} }));
   Element.prototype.animate = animate as never;
   Element.prototype.getAnimations = () => [];
   window.matchMedia = vi.fn(() => ({ matches: false })) as never;
@@ -201,11 +203,11 @@ describe("the live viewport, as video", () => {
     expect(canvas.className).toContain("invisible");
     await act(async () => stream.set({ status: "opening", width: 1280, height: 800 }));
     expect(box().style.aspectRatio).toBe("1280 / 800");
-    expect(box().querySelector('[data-slot="skeleton"]')).not.toBeNull();
+    expect(box().querySelector('[data-bone]')).not.toBeNull();
     await act(async () => stream.set({ status: "live", width: 1280, height: 800 }));
     expect(box().querySelector("canvas")).toBe(canvas);
     expect(canvas.className).not.toContain("invisible");
-    expect(box().querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(box().querySelector('[data-bone]')).toBeNull();
     // nothing here draws on a canvas that is the worker's
     expect(HTMLCanvasElement.prototype.getContext).not.toHaveBeenCalled();
   });
@@ -248,7 +250,8 @@ describe("the live viewport, as video", () => {
     const at = box().querySelector<HTMLElement>('[data-slot="click-mark-at"]')!;
     expect(at.style.left).toBe("25%");
     expect(at.style.top).toBe("50%");
-    expect(animate).toHaveBeenCalledTimes(1);
+    // One ring, besides the bone's sweep before the first frame.
+    expect(animate.mock.contexts.filter((el) => !(el as Element).hasAttribute("data-bone"))).toHaveLength(1);
     expect(box().dataset.marks).toBe("1");
   });
 

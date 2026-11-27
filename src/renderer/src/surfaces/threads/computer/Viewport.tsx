@@ -3,7 +3,7 @@ import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, u
 import type { ComputerPreviewEndReason, HistoryPictureNone } from "@server/shared/contract-computer";
 import { Button } from "@renderer/components/ui/button";
 import { CONSOLE } from "@renderer/components/ui/console";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Bone } from "@renderer/components/bones";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { FADE_IN } from "@renderer/components/ui/reveal";
 import { cn } from "@renderer/lib/cn";
@@ -257,7 +257,7 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
   const waiting = face.kind === "skeleton" || (face.kind === "live" && !face.drawn && !cover);
   const picture = (
     <div data-slot="computer-picture" className={cn(height ? "max-h-full" : "h-full max-w-full", !waiting && "relative")} style={fit}>
-      {waiting ? <Skeleton className="absolute inset-0 rounded-lg" /> : null}
+      {waiting ? <Bone className="absolute inset-0 rounded-lg" /> : null}
       {face.kind === "live" ? face.picture : null}
       {face.kind === "picture" ? (
         <img

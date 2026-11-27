@@ -81,6 +81,8 @@ beforeEach(() => {
   } as never;
   globalThis.createImageBitmap = vi.fn(async () => ({ width: 960, height: 600, close: vi.fn() })) as never;
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({ drawImage: (b: unknown) => drawn.push(b) })) as never;
+  // A lone bone's sweep is an animation too (components/bones.tsx `Bone`): each call answers with one to cancel.
+  animate.mockImplementation(() => ({ cancel: () => {} }));
   Element.prototype.animate = animate as never;
   Element.prototype.getAnimations = () => [];
   window.matchMedia = vi.fn(() => ({ matches: reduced })) as never;
@@ -210,7 +212,7 @@ describe("the live viewport", () => {
     const picture = box().querySelector<HTMLElement>('[data-slot="computer-picture"]')!;
     expect(picture.className).toContain("h-full");
     expect(picture.className).toContain("max-w-full");
-    expect(picture.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    expect(picture.querySelector('[data-bone]')).toBeTruthy();
   });
 
   it("draws a frame and only then acks it, with no transition on the picture", async () => {
@@ -223,7 +225,7 @@ describe("the live viewport", () => {
     expect(link.calls[1].params).toEqual({ preview: "pv_1", seq: 1 });
     expect(box().getAttribute("data-frames")).toBe("1");
     expect(box().querySelector("canvas")?.className).not.toMatch(/transition/);
-    expect(box().querySelector('[data-slot="skeleton"], .animate-pulse')).toBeNull();
+    expect(box().querySelector('[data-bone]')).toBeNull();
   });
 
   it("a dropped socket is no live picture: the box goes back to its skeleton, and a new stream starts when the socket opens", async () => {
@@ -231,10 +233,10 @@ describe("the live viewport", () => {
     await flush();
     await act(async () => link.push(frame(1)));
     await flush();
-    expect(box().querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(box().querySelector('[data-bone]')).toBeNull();
     // the host forgot this viewer with the socket: what is on screen is no longer the window now
     await act(async () => link.drop());
-    expect(box().querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    expect(box().querySelector('[data-bone]')).toBeTruthy();
     expect(box().style.aspectRatio).toBe("960 / 600");
     // a frame of the old stream that was still on its way draws nothing
     await act(async () => link.push(frame(2)));
@@ -247,7 +249,7 @@ describe("the live viewport", () => {
     await act(async () => link.push(frame(1, "pv_2")));
     await flush();
     expect(drawn).toHaveLength(2);
-    expect(box().querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(box().querySelector('[data-bone]')).toBeNull();
   });
 
   it("waits for a window to preview: no start before the thread's first read, one when the row names its window", async () => {
@@ -255,7 +257,7 @@ describe("the live viewport", () => {
     await flush();
     expect(link.methods()).toEqual([]);
     // the skeleton stands in the box meanwhile
-    expect(box().querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    expect(box().querySelector('[data-bone]')).toBeTruthy();
     view.again({}, entry());
     await flush();
     expect(link.methods()).toEqual(["computer.preview.start"]);
@@ -294,7 +296,7 @@ describe("the live viewport", () => {
     await act(async () => link.push(frame(1)));
     await flush();
     // the first frame drops the skeleton: that is the one render a frame may cause
-    expect(box().querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(box().querySelector('[data-bone]')).toBeNull();
     const after = renders;
     for (let seq = 2; seq <= 11; seq++) {
       await act(async () => link.push(frame(seq)));
@@ -321,7 +323,7 @@ describe("the live viewport", () => {
     expect(renders).toBeGreaterThan(after);
     expect(box().style.aspectRatio).toBe("600 / 1200");
     // the frame already drawn stays: no skeleton comes back
-    expect(box().querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(box().querySelector('[data-bone]')).toBeNull();
   });
 
   it("stops when the section stops following (a row is pinned), on a hidden pane, a hidden document and unmount", async () => {
@@ -378,8 +380,9 @@ describe("the live viewport", () => {
     // a click sized for a stream that grew before its first frame landed
     await act(async () => link.push({ push: "computer-click", preview: "pv_1", at: [1280, 0], width: 1280, height: 800 }));
     expect([at.style.left, at.style.top]).toEqual(["100%", "0%"]);
-    expect(animate).toHaveBeenCalledTimes(2);
-    expect(animate).toHaveBeenLastCalledWith(CLICK_MARK.keyframes, CLICK_MARK.timing);
+    const marks = animate.mock.calls.filter(([, timing]) => timing === CLICK_MARK.timing);
+    expect(marks).toHaveLength(2);
+    expect(marks.at(-1)).toEqual([CLICK_MARK.keyframes, CLICK_MARK.timing]);
     expect(box().getAttribute("data-marks")).toBe("2");
     expect(drawn).toHaveLength(0);
   });
@@ -465,7 +468,7 @@ describe("the live viewport", () => {
   });
 
   it("another window is drawn by its own first frame alone: the old window's picture is never shown as it, and a frame of the old one still decoding is dropped", async () => {
-    const skeleton = () => box().querySelector('[data-slot="skeleton"], .animate-pulse');
+    const skeleton = () => box().querySelector('[data-bone]');
     mount();
     await flush();
     await act(async () => link.push(frame(1)));
@@ -505,7 +508,7 @@ describe("the live viewport", () => {
   });
 
   it("two windows of one app and one title are two windows: the host says which, and the second is drawn by its own first frame", async () => {
-    const skeleton = () => box().querySelector('[data-slot="skeleton"], .animate-pulse');
+    const skeleton = () => box().querySelector('[data-bone]');
     link.answer = async () => ({ preview: "pv_1", app: "TextEdit", window: "Untitled", target: "16800:1581", width: 960, height: 600 });
     mount();
     await flush();
@@ -534,7 +537,7 @@ describe("the live viewport", () => {
   });
 
   it("another session's box starts from nothing: the last session's picture is never shown under it, with or without a window of its own to stream", async () => {
-    const skeleton = () => box().querySelector('[data-slot="skeleton"], .animate-pulse');
+    const skeleton = () => box().querySelector('[data-bone]');
     const view = mount();
     await flush();
     await act(async () => link.push(frame(1)));
@@ -596,7 +599,7 @@ describe("the live viewport", () => {
   });
 
   it("a stream that was stopped leaves nothing called live: following again starts from the skeleton in its shape", async () => {
-    const skeleton = () => box().querySelector('[data-slot="skeleton"], .animate-pulse');
+    const skeleton = () => box().querySelector('[data-bone]');
     const view = mount();
     await flush();
     await act(async () => link.push(frame(1)));
@@ -683,7 +686,7 @@ describe("the viewport's faces", () => {
     render(<Viewport face={{ kind: "skeleton" }} label="Untitled in TextEdit at 2:04 PM" size={{ width: 930, height: 1280 }} />);
     const boxEl = screen.getByRole("img");
     expect(boxEl.style.aspectRatio).toBe("930 / 1280");
-    expect(boxEl.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    expect(boxEl.querySelector('[data-bone]')).toBeTruthy();
     expect(boxEl.querySelector("[data-slot=computer-picture]")!.getAttribute("style")).toContain("930 / 1280");
   });
 
@@ -725,7 +728,7 @@ describe("the plate: what a picture says while it has nothing live", () => {
   it("a live picture's cover stands in for its skeleton, and fades out once a frame is on the canvas", () => {
     const live = (drawn: boolean) => ({ kind: "live" as const, drawn, picture: <canvas />, cover: <div data-slot="computer-plate" data-gone={drawn || undefined} /> });
     const { container, rerender } = render(<Viewport fill face={live(false)} label="Live view" />);
-    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(container.querySelector('[data-bone]')).toBeNull();
     expect(container.querySelector('[data-slot="computer-plate"]')!.hasAttribute("data-gone")).toBe(false);
     rerender(<Viewport fill face={live(true)} label="Live view" />);
     // the same canvas: the cover goes over it, nothing is made again

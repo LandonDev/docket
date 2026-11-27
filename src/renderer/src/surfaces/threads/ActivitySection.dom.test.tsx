@@ -108,10 +108,10 @@ describe("ActivitySection", () => {
     openOf("shell").focus();
     fireEvent.click(openOf("shell"));
     expect(openOf("shell").getAttribute("aria-expanded")).toBe("true");
-    // While the first read is out: the console's box with skeleton lines, not a spinner.
-    const loading = document.querySelector('[data-slot="task-log"]')!;
+    // While the first read is out: the console drawn as bones from sample output, the command in it as it is, not a spinner.
+    const loading = document.querySelector<HTMLElement>("[data-region][data-bones]")!;
     expect(loading.getAttribute("aria-busy")).toBe("true");
-    expect(loading.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    expect(loading.querySelector("[skullet-loading] [skullet-own]")!.textContent).toBe("$ bun run dev --port 5173");
     expect(document.querySelector('[data-slot="spinner"]')).toBeNull();
     const output = await screen.findByText(/listening on :5173/);
     // One console (CONSOLE: 12px mono on 20px lines, a pre that takes focus, capped at 240px) holds both.

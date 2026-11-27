@@ -1,6 +1,7 @@
 import { Page } from "@renderer/components/page";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
-import { AccountsView, type AccountsViewProps } from "./accounts";
+import { Region } from "@renderer/components/bones";
+import { AccountsAtRest, AccountsView, type AccountsViewProps } from "./accounts";
 
 /**
  * The Accounts page's frame around its view, drawn with no snapshot, for
@@ -8,7 +9,7 @@ import { AccountsView, type AccountsViewProps } from "./accounts";
  * --width 1400`: the page at the pane's width, so the table and the stacked
  * form show at the widths they ship at. Rendered by nothing in the app.
  */
-export function AccountsPagePreview(props: AccountsViewProps) {
+export function AccountsPagePreview({ waiting = false, ...props }: AccountsViewProps & { /** The services' read is out: the page's bones. */ waiting?: boolean }) {
   return (
     <Page
       title="Accounts"
@@ -20,7 +21,7 @@ export function AccountsPagePreview(props: AccountsViewProps) {
         </Button>
       }
     >
-      <AccountsView {...props} />
+      {waiting ? <Region loading hold={0} label="Loading accounts" bones={AccountsAtRest} /> : <AccountsView {...props} />}
     </Page>
   );
 }

@@ -380,12 +380,14 @@ describe("SearchView across hosts", () => {
     h.searchProject.mockImplementation(() => new Promise(() => {}));
     const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
     await search(view, "zzqx");
-    const skeleton = view.container.querySelector<HTMLElement>("[data-search-results] [data-search-skeleton]")!;
-    expect(skeleton.getAttribute("aria-busy")).toBe("true");
-    // Each bone row as tall as a hit and on its glyph column: 28px, the 1px edge and 10px in.
-    const row = skeleton.querySelector<HTMLElement>("[data-skeleton-row]")!;
+    const wait = view.container.querySelector<HTMLElement>("[data-search-results] [data-region][data-bones]")!;
+    expect(wait.getAttribute("aria-busy")).toBe("true");
+    // Each bone row a hit's own row from a sample: 28px, the 1px edge and 10px in, on the glyph column.
+    const row = wait.querySelector<HTMLElement>("[skullet-loading] [data-search-skeleton] [data-skeleton-row]")!;
     for (const cls of ["h-7", "border", "px-2.5"]) expect(row.className.split(" ")).toContain(cls);
     expect(view.container.querySelector('[data-slot="empty"]')).toBeNull();
+    // No hit is offered while it waits: the sample's rows sit in the unseen drawing alone.
+    expect(view.queryByRole("option")).toBeNull();
     view.unmount();
     answers();
   });

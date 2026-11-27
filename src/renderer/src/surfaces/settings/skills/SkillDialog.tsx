@@ -5,10 +5,10 @@ import { DialogFooter, ErrorLine, confirmAction } from "../../../chrome/ConfirmD
 import { CheckRow, Field, FieldRow } from "../../../chrome/DialogField";
 import { JumpList } from "../../../chrome/JumpList";
 import { ModalBody, ModalPanel } from "../../../chrome/Modal";
+import { Bone, Region } from "../../../components/bones";
 import { ChoiceSelect } from "../../../components/choice-select";
 import { Dialog } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
-import { Skeleton } from "../../../components/ui/skeleton";
 import type { Link } from "../../../lib/connection";
 import { useHostRead } from "../../../lib/connection/hostRead";
 import { refusalWords } from "../../../lib/settingsHome";
@@ -18,7 +18,11 @@ import { everyWorkspace } from "../addons/addonWords";
 import { CLI_LABELS, bytesOf, canUntick, choiceOf, fileBytes, filesToSave, harnessesOf, isBinary, isDirty, newSkillFiles, orderFiles, skillTemplate, type CliChoice, type SkillDraft } from "./skillForm";
 
 /** CodeMirror loads with the editor chunk, never with Settings. */
-const SkillEditor = editorChunk.surface("SkillTextEditor", <Skeleton data-editor-skeleton className="h-full w-full rounded-lg" />);
+const SkillEditor = editorChunk.surface("SkillTextEditor", <Bone data-editor-skeleton className="h-full w-full rounded-lg" />);
+
+/** A skill's files as the list draws them while they are read: a short one's three. */
+const SAMPLE_SKILL_FILES = ["SKILL.md", "scripts/check.sh", "reference.md"] as const;
+const STILL = () => {};
 
 type Props = {
   link: Link;
@@ -176,40 +180,34 @@ export function SkillDialog({ link, skill, workspaces, home, onClose, onSaved }:
                 <ReadFailure computer={link.environmentId} error={read.error} retry={read.retry} />
               ) : (
                 <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-3 @[40rem]/skill:grid-cols-[12rem_minmax(0,1fr)] @[40rem]/skill:grid-rows-1">
-                  {files ? (
-                    <JumpList
-                      label="Files"
-                      groups={[
-                        {
-                          label: null,
-                          items: files.map((f) => ({
-                            key: f.path,
-                            label: <span className="truncate">{f.path}</span>,
-                            name: f.path,
-                            trailing: isBinary(f) ? sizeWords(fileBytes(f)) : undefined,
-                          })),
-                        },
-                      ]}
-                      active={current?.path ?? null}
-                      onJump={(key) => {
-                        setPath(key);
-                        if (files.some((f) => f.path === key && !isBinary(f))) setTextPath(key);
-                      }}
-                      // The rows' 8px padding hangs left of the column, so the names line up with the labels.
-                      className="-ms-2 max-h-32 @[40rem]/skill:max-h-none"
-                    />
-                  ) : (
-                    <div data-files-skeleton aria-busy="true" className="-ms-2 flex flex-col">
-                      {[0, 1, 2].map((i) => (
-                        <div key={i} className="flex h-7 items-center px-2">
-                          <Skeleton className="h-3 w-28" />
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {/* The files' own list, drawn from a sample while they are read. */}
+                  <Region
+                    loading={!files}
+                    label="Loading files"
+                    fill
+                    bones={
+                      <FileList
+                        paths={SAMPLE_SKILL_FILES.map((path) => ({ path }))}
+                        active={null}
+                        onJump={STILL}
+                      />
+                    }
+                  >
+                    {files ? (
+                      <FileList
+                        paths={files.map((f) => ({ path: f.path, trailing: isBinary(f) ? sizeWords(fileBytes(f)) : undefined }))}
+                        active={current?.path ?? null}
+                        onJump={(key) => {
+                          setPath(key);
+                          if (files.some((f) => f.path === key && !isBinary(f))) setTextPath(key);
+                        }}
+                      />
+                    ) : null}
+                  </Region>
                   <div className="min-h-0">
                     {!files || !current ? (
-                      <Skeleton data-editor-skeleton className="h-full w-full rounded-lg" />
+                      // The editor's frame on its way: no words to draw, one block in its place.
+                      <Bone data-editor-skeleton className="h-full w-full rounded-lg" />
                     ) : (
                       <>
                         {textFile ? (
@@ -239,5 +237,32 @@ export function SkillDialog({ link, skill, workspaces, home, onClose, onSaved }:
         </form>
       </ModalPanel>
     </Dialog>
+  );
+}
+
+/** The skill's files beside its editor: one row a path, a binary file's size at its end. */
+function FileList({
+  paths,
+  active,
+  onJump,
+}: {
+  paths: readonly { path: string; trailing?: string }[];
+  active: string | null;
+  onJump: (key: string) => void;
+}) {
+  return (
+    <JumpList
+      label="Files"
+      groups={[
+        {
+          label: null,
+          items: paths.map((f) => ({ key: f.path, label: <span className="truncate">{f.path}</span>, name: f.path, trailing: f.trailing })),
+        },
+      ]}
+      active={active}
+      onJump={onJump}
+      // The rows' 8px padding hangs left of the column, so the names line up with the labels.
+      className="-ms-2 max-h-32 min-h-0 @[40rem]/skill:max-h-none"
+    />
   );
 }

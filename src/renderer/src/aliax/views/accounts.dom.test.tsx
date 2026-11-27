@@ -6,7 +6,9 @@ import type { KeyProfileView } from "@shared/accounts";
 import { tooltipChunk, warmTooltips } from "@renderer/components/ui/tooltip";
 import { clockTime } from "@renderer/lib/duration";
 import { dayClockTime } from "./accounts/rowLine";
-import { AccountsSkeleton, AccountsView, type AccountsViewProps } from "./accounts";
+import { AccountsAtRest, AccountsView, type AccountsViewProps } from "./accounts";
+import { SAMPLE_ACCOUNT_VIEWS } from "./accounts/samples";
+import { Bones } from "@renderer/components/bones";
 import { AccountsPagePreview } from "./accounts.preview";
 import PREVIEW_FIXTURES from "./accounts.preview.fixtures";
 
@@ -283,7 +285,9 @@ describe("AccountsView", () => {
         />,
       );
       expect(resets()).toEqual([]);
-      expect(screen.queryByText(/^Resets/)).toBeNull();
+      // Spare's report is out: its bones hold a sample's reset line, unseen; no row that landed says one.
+      const said = [...document.querySelectorAll("span")].filter((el) => /^Resets/.test(el.textContent ?? "") && !el.closest("[skullet-loading]"));
+      expect(said).toEqual([]);
     });
 
     it("holds how long until the reset for the hover", async () => {
@@ -342,11 +346,13 @@ describe("AccountsView", () => {
       const row = screen.getByText("Main").closest('[data-slot="page-row"]') as HTMLElement;
       // Narrow: the actions box unwraps and the columns take a line of their own under the name.
       expect(row.className).toContain("@max-3xl/accounts:[&>[data-slot=item-actions]]:contents");
-      const cells = row.querySelector('[data-slot="usage-cells"]') as HTMLElement;
-      expect(cells.className).toContain("basis-full");
-      expect(cells.className).toContain("ps-5");
+      // The row's place for its bars is the region its report waits in.
+      const box = row.querySelector('[data-region]') as HTMLElement;
+      expect(box.className).toContain("basis-full");
+      expect(box.className).toContain("ps-5");
       // Wide: back in the line, each column 8.5rem.
-      expect(cells.className).toContain("@3xl/accounts:basis-auto");
+      expect(box.className).toContain("@3xl/accounts:basis-auto");
+      const cells = box.querySelector('[data-slot="usage-cells"]') as HTMLElement;
       const cell = cells.querySelector('[data-slot="usage-cell"]') as HTMLElement;
       expect(cell.className).toContain("flex-1");
       expect(cell.className).toContain("@3xl/accounts:w-34");
@@ -397,12 +403,17 @@ describe("AccountsView", () => {
   });
 
   it("renders the page fixture on the table width, the limited account saying so", () => {
-    for (const f of PREVIEW_FIXTURES) {
-      const { container, unmount } = render(<AccountsPagePreview {...(f.props as unknown as AccountsViewProps)} />);
-      expect(container.querySelector('[data-slot="page"]')?.getAttribute("data-width")).toBe("table");
-      const burst = screen.getByText("Burst").closest('[data-slot="page-row"]') as HTMLElement;
-      expect(burst.querySelector('[data-slot="status-word"]')?.textContent).toBe("Limited");
-      unmount();
+    const [page, ...waits] = PREVIEW_FIXTURES;
+    const { container, unmount } = render(<AccountsPagePreview {...(page.props as unknown as AccountsViewProps)} />);
+    expect(container.querySelector('[data-slot="page"]')?.getAttribute("data-width")).toBe("table");
+    const burst = screen.getByText("Burst").closest('[data-slot="page-row"]') as HTMLElement;
+    expect(burst.querySelector('[data-slot="status-word"]')?.textContent).toBe("Limited");
+    unmount();
+    // The fixtures after it are the page's waits, drawn beside it for the shot: each shows bones.
+    for (const f of waits) {
+      const view = render(<AccountsPagePreview {...(f.props as unknown as AccountsViewProps)} />);
+      expect(view.container.querySelector("[data-region][data-bones]"), f.name).not.toBeNull();
+      view.unmount();
     }
   });
 });
@@ -462,53 +473,60 @@ describe("an uninstalled provider", () => {
   });
 });
 
-describe("AccountsSkeleton", () => {
-  it("draws each heading on PageSection's 20px line, 8px above its rows", () => {
-    const { container } = render(<AccountsSkeleton />);
-    const headings = container.querySelectorAll("[data-slot=heading-skeleton]");
-    expect(headings).toHaveLength(3);
-    for (const h of headings) {
-      expect(h.className).toContain("h-5");
-      expect((h.nextElementSibling as HTMLElement).className).toContain("mt-2");
-    }
-  });
-
-  it("draws each row in an AccountRow's shape: cells of label, bar and reset inside the button's inset, then the switch and ⋯", () => {
-    const { container } = render(<AccountsSkeleton />);
-    const row = container.querySelector("[data-slot=account-row-skeleton]")!;
-    const cells = row.querySelector<HTMLElement>("[data-slot=usage-cells]")!;
+describe("the page's bones", () => {
+  it("are the page itself drawn from its sample, at rest: each section's heading over its rows, their bars and controls", () => {
+    const { container: page } = render(
+      <Bones label="Loading accounts">
+        <AccountsAtRest />
+      </Bones>,
+    );
+    const container = page.querySelector<HTMLElement>("[skullet-loading]")!;
+    expect([...container.querySelectorAll("h2")].map((h) => h.textContent)).toEqual(SAMPLE_ACCOUNT_VIEWS.map((s) => s.name));
+    const rows = container.querySelectorAll('[data-slot="page-row"]');
+    expect(rows).toHaveLength(SAMPLE_ACCOUNT_VIEWS.flatMap((s) => s.profiles).length);
+    // Each row's bars at rest: no button, no popover, the cells inside the button's 6px above and below.
+    const cells = rows[0]!.querySelector<HTMLElement>('[data-slot="usage-cells"] > span')!;
     expect(cells.className).toContain("py-1.5");
+    expect(rows[0]!.querySelector('[aria-haspopup="dialog"]')).toBeNull();
     const cell = cells.querySelector<HTMLElement>("[data-slot=usage-cell]")!;
-    expect([...cell.children].map((el) => el.className.match(/\bh-(4|1)\b/)?.[0])).toEqual(["h-4", "h-1", "h-4"]);
-    // The switch, then ⋯ at icon-sm's 28px.
-    expect(row.lastElementChild!.querySelector(".size-7")).not.toBeNull();
+    expect(cell.querySelector('[role="progressbar"]')).not.toBeNull();
+    // No region inside the drawing: the sample's reports are in hand.
+    expect(container.querySelector("[data-region]")).toBeNull();
+    // A screen reader hears the wait, never the sample: the page has no heading outside the drawing.
+    expect(screen.queryByRole("heading", { name: "Claude Code" })).toBeNull();
   });
 });
 
 describe("a row's bars while its report loads", () => {
-  it("are the AccountsSkeleton's cells: nothing moves when the report lands", () => {
+  /** A row's wait, and the drawing its bones are measured from. */
+  const waitOf = (row: HTMLElement) => row.querySelector<HTMLElement>("[data-region][data-bones]");
+  const drawingOf = (row: HTMLElement) => waitOf(row)!.querySelector<HTMLElement>("[skullet-loading]")!;
+
+  it("are the row's own cells from a sample, in the button's room: nothing moves when the report lands", () => {
     props.usage = {};
     render(<AccountsView {...props} />);
-    const loading = document.querySelector<HTMLElement>('[data-slot="usage-cells"][aria-busy="true"]')!;
-    expect(loading.className).toContain("py-1.5");
-    expect(loading.querySelector("[data-slot=usage-cell]")!.children).toHaveLength(3);
+    const main = screen.getByText("Main").closest('[data-slot="page-row"]') as HTMLElement;
+    const cells = drawingOf(main).querySelector<HTMLElement>('[data-slot="usage-cells"] > span')!;
+    expect(cells.className).toContain("py-1.5");
+    // A cell's label line, its bar and its reset line, as a landed cell draws them.
+    expect(cells.querySelector("[data-slot=usage-cell]")!.children).toHaveLength(3);
   });
 
-  it("keep the columns of the last reports through a Refresh: two windows and Rate, skeletons in each", () => {
+  it("keep the columns of the last reports through a Refresh: two windows and Rate, every cell waiting", () => {
     // Refresh masks every report; `layout` keeps the ones the columns came from.
     render(<AccountsView {...props} usage={{}} layout={{ "claude-code": [report] }} />);
     const main = screen.getByText("Main").closest('[data-slot="page-row"]') as HTMLElement;
-    const loading = main.querySelector<HTMLElement>('[data-slot="usage-cells"] [aria-busy="true"]')!;
-    expect(loading.className).toContain("py-1.5");
-    expect(loading.querySelectorAll("[data-slot=usage-cell]")).toHaveLength(3);
+    expect(drawingOf(main).querySelectorAll("[data-slot=usage-cell]")).toHaveLength(3);
+    // Nothing of the row's is offered while it waits: no details button.
+    expect(screen.queryByRole("button", { name: "Usage details for Main" })).toBeNull();
     cleanup();
     // With no layout, nothing to keep: one window column and Rate's.
     render(<AccountsView {...props} usage={{}} />);
     const bare = screen.getByText("Main").closest('[data-slot="page-row"]') as HTMLElement;
-    expect(bare.querySelectorAll('[data-slot="usage-cells"][aria-busy="true"] [data-slot=usage-cell]')).toHaveLength(2);
+    expect(drawingOf(bare).querySelectorAll("[data-slot=usage-cell]")).toHaveLength(2);
   });
 
-  it("wait in the shape each row's last report landed in through a Refresh, Rate's bar kept", () => {
+  it("wait in the shape each row's last report landed in through a Refresh, Rate's bar drawn as it stood", () => {
     const views: ServiceView[] = [
       {
         ...services()[0],
@@ -528,17 +546,16 @@ describe("a row's bars while its report loads", () => {
     };
     render(<AccountsView {...props} views={views} usage={{}} layout={last} />);
     const rowOf = (name: string) => screen.getByText(name).closest('[data-slot="page-row"]') as HTMLElement;
-    // Main: its two windows wait, and its Rate bar, which a refresh never masks, stays drawn.
-    const main = rowOf("Main");
-    expect(main.querySelectorAll("[data-slot=usage-cell] [data-slot=skeleton]").length).toBeGreaterThan(0);
+    // Main: its two windows and its Rate bar, as the last report and the gateway drew them.
+    const main = drawingOf(rowOf("Main"));
+    expect(main.querySelectorAll('[role=progressbar]')).toHaveLength(3);
     expect(main.querySelector('[role=progressbar][aria-label^="Rate"]')).not.toBeNull();
     // old@x.com landed on "No usage yet": it waits on that one line, not three bars.
-    const old = rowOf("old@x.com");
-    expect(old.querySelector("[data-slot=usage-words-skeleton]")).not.toBeNull();
+    const old = drawingOf(rowOf("old@x.com"));
+    expect(old.textContent).toBe("No usage yet");
     expect([...old.querySelectorAll("[data-slot=usage-cell]")].filter((c) => c.children.length > 0)).toHaveLength(0);
     // one@x.com had one window: one waiting cell, then the empty columns; stacked, the row-ending ones hide.
-    const one = rowOf("one@x.com");
-    const cells = [...one.querySelectorAll<HTMLElement>("[data-slot=usage-cell]")];
+    const cells = [...drawingOf(rowOf("one@x.com")).querySelectorAll<HTMLElement>("[data-slot=usage-cell]")];
     expect(cells.filter((c) => c.children.length > 0)).toHaveLength(1);
     expect(cells.at(-1)!.className).toContain("@max-3xl/accounts:hidden");
   });
@@ -554,15 +571,24 @@ describe("a row's bars while its report loads", () => {
       profiles: [{ name: "Work", createdAt: 1, active: false, static: true, kind: "key", accountId: "1607339912" } as KeyProfileView],
     };
     render(<AccountsView {...props} views={[...services(), meta]} usage={{}} layout={{ "claude-code": [report] }} />);
-    const work = screen.getByText("Work").closest('[data-slot="page-row"]') as HTMLElement;
-    const loading = work.querySelector<HTMLElement>('[data-slot="usage-cells"][aria-busy="true"]')!;
-    const line = loading.querySelector<HTMLElement>("[data-slot=usage-words-skeleton]")!;
-    expect(line.className).toContain("h-4");
+    const work = drawingOf(screen.getByText("Work").closest('[data-slot="page-row"]') as HTMLElement);
+    const line = work.querySelector<HTMLElement>('[data-slot="usage-cells"] > span')!;
+    expect(line.textContent).toBe("Pay as you go");
+    expect(line.className).toContain("leading-4");
+    expect(line.className).toContain("py-1.5");
     expect(line.style.getPropertyValue("--span")).toBe("2");
     // No three-line cell, only Rate's empty column beside it.
-    expect(loading.querySelectorAll("[data-slot=usage-cell]")).toHaveLength(1);
-    expect(loading.querySelector("[data-slot=usage-cell]")!.children).toHaveLength(0);
-    expect(loading.className).toContain("py-1.5");
+    expect(work.querySelectorAll("[data-slot=usage-cell]")).toHaveLength(1);
+    expect(work.querySelector("[data-slot=usage-cell]")!.children).toHaveLength(0);
+  });
+
+  it("goes once the report lands, the row's cells in its place", async () => {
+    const { rerender } = render(<AccountsView {...props} usage={{}} />);
+    const main = () => screen.getByText("Main").closest('[data-slot="page-row"]') as HTMLElement;
+    expect(waitOf(main())).not.toBeNull();
+    rerender(<AccountsView {...props} />);
+    expect(screen.getByRole("button", { name: "Usage details for Main" })).toBeTruthy();
+    await waitFor(() => expect(main().querySelector("[data-region][data-bones]")).toBeNull());
   });
 
   it("stack two to a line under the name: each a whole column wide, never cut to a letter", () => {

@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
 import type { HarnessEnvironmentStatus, HarnessSyncStatus } from "@server/shared/contract-harness";
 import type { MemoryEnvironmentStatus, MemorySyncStatus } from "@server/shared/contract-memory";
+import { Loaded, Region } from "../../../components/bones";
 import { PageEmpty, PageRow, PageRowsSkeleton, PageSection } from "../../../components/page";
 import { SettingSwitch } from "../../../components/setting-switch";
 import { BusyLabel, Button } from "../../../components/ui/button";
-import { Skeleton } from "../../../components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { Modal, ModalBody } from "../../../chrome/Modal";
@@ -58,10 +58,14 @@ function useSyncedNames(harness: HarnessSyncStatus | undefined, memory: MemorySy
 export function SyncLine() {
   const { harness, memory } = useSync();
   const names = useSyncedNames(harness.value, memory.value);
-  // While the read is out the line holds its place, so the title block does not move when it lands.
-  if (harness.value === undefined && !harness.error) return <span data-slot="skeleton" aria-label="Loading" className="inline-block h-3 w-64 rounded-md bg-skeleton align-middle" />;
-  if (!harness.value || names.length === 0) return null;
-  return <>{`${capital(thisDesktopInLine())} keeps ${namesWords(names.map((n) => n.said))} the same as itself.`}</>;
+  // While the read is out the line holds its place, drawn from a sample line, so the title block does not move when it lands.
+  const waiting = harness.value === undefined && !harness.error;
+  if (!waiting && (!harness.value || names.length === 0)) return null;
+  return (
+    <Loaded inline data={waiting ? null : `${capital(thisDesktopInLine())} keeps ${namesWords(names.map((n) => n.said))} the same as itself.`} sample={SAMPLE_SYNC_LINE} label="">
+      {(line) => line}
+    </Loaded>
+  );
 }
 
 /** A failed read's Retry on its own row: it spins until the read it asked settles. */
@@ -112,6 +116,10 @@ const COUNTS = ["", "", "", "three", "four", "five", "six", "seven", "eight", "n
  *  its stop, as the agent settings line beside it and the conflict line under it are. */
 export const memoryWords = (computers: number): string =>
   computers <= 2 ? "Kept the same both ways." : `Kept the same on all ${COUNTS[computers] ?? computers}, both ways.`;
+
+const SAMPLE_SYNC_LINE = "This Mac keeps the box and the studio PC the same as itself.";
+const SAMPLE_SYNCED_LINE = "40 memory files, synced 2 minutes ago";
+const STILL = () => {};
 
 const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -185,29 +193,46 @@ function SyncBody({
     rows.set(mem.id, { ...row, memory: mem });
   }
   const count = memory?.conflicts.length ?? 0;
+  // One region a row's line, so the words land over the bones they stood as.
+  const lineOf = (said: { words: string; error: string | null } | null) => ({
+    words: (
+      <Loaded inline data={said?.words} sample={SAMPLE_SYNCED_LINE} label="">
+        {(words) => words}
+      </Loaded>
+    ),
+    error: said?.error ?? null,
+  });
   return (
     <>
       <PageSection>
         <SettingRow id="sync.settings" saved={settings} description={`${mac}'s Claude Code and Codex settings.${stay}`}>
           <SettingSwitch label="Agent settings" on={harness.enabled} onChange={setHarness} />
         </SettingRow>
-        {memory ? (
-          <SettingRow id="sync.memory" saved={memorySaved} description={memoryWords(names.length + 1)}>
-            <SettingSwitch
-              label="Agents' memory"
-              on={memory.enabled}
-              onChange={(enabled) => memorySaved.run(async () => onMemory(await link.request<MemorySyncStatus>("memory.settings.set", { enabled })))}
-            />
-          </SettingRow>
-        ) : memoryRead.value === null ? null : memoryRead.error ? (
+        {memoryRead.value === null ? null : memoryRead.error && !memory ? (
           // Its own read failed: the row stays, saying so with its own Retry, so the way back to the switch is here.
           <SettingRow id="sync.memory" error={readWords(memoryRead.error)}>
             <RetryButton retry={memoryRead.retry} />
           </SettingRow>
         ) : (
-          // Its own read is out: the row holds its place, its line and switch as bones.
-          <SettingRow id="sync.memory" description={<span data-slot="skeleton" aria-label="Loading" className="inline-block h-3 w-48 rounded-md bg-skeleton align-middle" />}>
-            <Skeleton data-skeleton-control className="h-[18px] w-8 shrink-0 rounded-full" />
+          // The row, with its line and its switch drawn at rest while its own read is out.
+          <SettingRow
+            id="sync.memory"
+            saved={memorySaved}
+            description={
+              <Loaded inline data={memory ? memoryWords(names.length + 1) : null} sample={memoryWords(2)} label="">
+                {(words) => words}
+              </Loaded>
+            }
+          >
+            <Region loading={!memory} label="" className="shrink-0" bones={<SettingSwitch label="" on={false} onChange={STILL} disabled />}>
+              {memory ? (
+                <SettingSwitch
+                  label="Agents' memory"
+                  on={memory.enabled}
+                  onChange={(enabled) => memorySaved.run(async () => onMemory(await link.request<MemorySyncStatus>("memory.settings.set", { enabled })))}
+                />
+              ) : null}
+            </Region>
           </SettingRow>
         )}
         {count > 0 ? (
@@ -223,10 +248,11 @@ function SyncBody({
             name={row.name}
             line={
               // While the memory's own read is out or failed, the line says only what the agent settings know: with them
-              // off it claims nothing ("Nothing syncs" would read as memory off), a bone while that read is out.
+              // off it claims nothing ("Nothing syncs" would read as memory off), its words drawn from a sample while that
+              // read is out.
               memoryRead.value === undefined && !harness.enabled
-                ? { words: memoryRead.error ? undefined : <span data-slot="skeleton" aria-label="Loading" className="inline-block h-3 w-48 rounded-md bg-skeleton align-middle" />, error: null }
-                : syncedWords(harness.enabled ? row.harness : null, memory?.enabled ? row.memory : null)
+                ? memoryRead.error ? { words: undefined, error: null } : lineOf(null)
+                : lineOf(syncedWords(harness.enabled ? row.harness : null, memory?.enabled ? row.memory : null))
             }
             reachable={row.connected}
             running={row.harness?.running === true || row.memory?.running === true}

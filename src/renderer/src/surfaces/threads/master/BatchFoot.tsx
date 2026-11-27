@@ -6,7 +6,7 @@ import type { BatchState } from "@server/shared/contract-batch";
 import { BusyLabel, Button } from "../../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../../components/ui/collapsible";
 import { DISCLOSURE_CHEVRON } from "../../../components/ui/disclosure";
-import { Skeleton } from "../../../components/ui/skeleton";
+import { Region } from "../../../components/bones";
 import { StatusMark } from "../../../components/ui/status";
 import { ChevronRight } from "../../../chrome/icons";
 import { cn } from "../../../lib/cn";
@@ -96,20 +96,18 @@ export function BatchFoot({
     });
   }, []);
 
-  if (!loaded) return <FootSkeleton toastAnchor={toastAnchor} />;
-
   return (
     <div
       ref={toastAnchor ? registerToastAnchor : undefined}
       // Never over three fifths of the board: past that its steps scroll inside, the heading, Edit… and the thread list stay in view.
       className="flex max-h-3/5 min-h-0 shrink-0 flex-col border-t border-border bg-background px-3 py-2"
       data-batch-foot
-      data-foot-mode={active ? "console" : "idle"}
+      data-foot-mode={!loaded ? "loading" : active ? "console" : "idle"}
     >
       <div className="flex h-6 shrink-0 items-center gap-2">
         <h3 className="flex-1 text-xs font-medium text-muted-foreground">When done</h3>
         {/* The foot's trailing buttons end their word on the 12px edge the times keep (-me-2 takes the button's own 8px back). */}
-        {onSave && !failed ? (
+        {loaded && onSave && !failed ? (
           <HeldTip held={held} className="-me-2">
             <Button variant="ghost" size="xs" className={held ? undefined : "-me-2"} disabled={!!held} onClick={() => setEditing(true)}>
               Edit…
@@ -117,35 +115,38 @@ export function BatchFoot({
           </HeldTip>
         ) : null}
       </div>
-      {blocked ? (
+      {loaded && blocked ? (
         // The word and what blocks, two spans in the failed tone (DESIGN "Typography and text hierarchy"), never "Blocked: …".
         <StatusMark state="failed" glyph={false} word="Blocked" detail={blocked} className="flex shrink-0" data-blocked />
       ) : null}
 
-      {failed ? (
-        <RulesFailed onRetry={onRetry} />
-      ) : (
-        <>
-          <ol className="mt-1 flex min-h-0 flex-col overflow-x-hidden overflow-y-auto" data-steps>
-            {steps.map((step) => (
-              <StepRow
-                key={step.id}
-                step={step}
-                detail={stepDetail(step, rules)}
-                now={step.status === "running" ? now : 0}
-                open={active?.id === step.id}
-                onStop={onStop ? stopStep : undefined}
-                held={held}
-                onFold={fold}
-              />
-            ))}
-          </ol>
+      {/* The heading is known at once; the steps are the board's first answer. */}
+      <Region loading={!loaded} label="Loading the batch rules" className="min-h-0" bones={() => <ol className="mt-1 flex flex-col">{SAMPLE_STEPS.map((step) => <StepRow key={step.id} step={step} detail={stepDetail(step, rules)} now={0} open={false} held={null} onFold={NOOP} />)}</ol>}>
+        {!loaded ? null : failed ? (
+          <RulesFailed onRetry={onRetry} />
+        ) : (
+          <>
+            <ol className="mt-1 flex min-h-0 flex-col overflow-x-hidden overflow-y-auto" data-steps>
+              {steps.map((step) => (
+                <StepRow
+                  key={step.id}
+                  step={step}
+                  detail={stepDetail(step, rules)}
+                  now={step.status === "running" ? now : 0}
+                  open={active?.id === step.id}
+                  onStop={onStop ? stopStep : undefined}
+                  held={held}
+                  onFold={fold}
+                />
+              ))}
+            </ol>
 
-          <p className="mt-1 shrink-0 text-xs text-muted-foreground" data-then>
-            {rules.then === "archive-children" ? "Then archive the threads" : "Then notify you"}
-          </p>
-        </>
-      )}
+            <p className="mt-1 shrink-0 text-xs text-muted-foreground" data-then>
+              {rules.then === "archive-children" ? "Then archive the threads" : "Then notify you"}
+            </p>
+          </>
+        )}
+      </Region>
 
       {editing && onSave ? <RulesDialog rules={rules} onClose={() => setEditing(false)} onSave={onSave} /> : null}
     </div>
@@ -175,30 +176,12 @@ function RulesFailed({ onRetry }: { onRetry?: () => Promise<void> }) {
   );
 }
 
-/** The foot's shape before the answer: the heading and two step rows, still. */
-function FootSkeleton({ toastAnchor }: { toastAnchor: boolean }) {
-  return (
-    <div
-      ref={toastAnchor ? registerToastAnchor : undefined}
-      className="flex shrink-0 flex-col border-t border-border bg-background px-3 py-2"
-      data-batch-foot
-      data-foot-mode="loading"
-      aria-busy="true"
-    >
-      <div className="flex h-6 items-center">
-        <Skeleton className="h-3 w-16" />
-      </div>
-      <div className="mt-1 flex flex-col">
-        {[0, 1].map((i) => (
-          <div key={i} className="flex h-7 items-center gap-2">
-            <Skeleton className="size-3.5 rounded-full" />
-            <Skeleton className="h-3 w-24" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+/** The foot's steps before the board's first answer: two waiting steps, at rest. */
+const SAMPLE_STEPS: readonly LiveStep[] = [
+  { id: "sample:merge", name: "Merge each branch", kind: "land", status: "pending", detail: "", log: [] },
+  { id: "sample:gate", name: "Run the gate", kind: "gate", status: "pending", detail: "", log: [] },
+];
+const NOOP = () => {};
 
 /** One step: its glyph, its name, what it is about, its time, and Stop
  *  while it runs (Hide or Show on a failed one); its console under it. */

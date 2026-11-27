@@ -7,7 +7,7 @@ import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent, DISCLOSURE_CHEVRON } from "@renderer/components/ui/collapsible";
 import { CONSOLE } from "@renderer/components/ui/console";
 import { ROW_PRESS } from "@renderer/components/ui/press";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Bones, Region } from "@renderer/components/bones";
 import { StatusMark } from "@renderer/components/ui/status";
 import { TruncateTip } from "@renderer/components/tip";
 import { cn } from "@renderer/lib/cn";
@@ -260,13 +260,10 @@ function StepDetail({ row, read, onToggleRead }: { row: StepRow; read: ReadFold;
                     Retry
                   </Button>
                 </p>
-              ) : read.text === null ? (
-                <div role="status" aria-busy aria-label="Loading what was read" className={cn(CONSOLE, "mt-1 flex flex-col gap-2")}>
-                  <Skeleton className="h-3 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
-                </div>
               ) : (
-                <ReadText text={read.text} element={step.element} />
+                <Region loading={read.text === null} label="Loading what was read" bones={() => <ReadText text={SAMPLE_READ} />}>
+                  {read.text === null ? null : <ReadText text={read.text} element={step.element} />}
+                </Region>
               )}
             </CollapsibleContent>
           </Collapsible>
@@ -353,19 +350,31 @@ const StepRowView = memo(
 /** A row's id inside a quoted attribute selector (a key may hold any character). */
 const quoted = (id: string): string => id.replace(/["\\]/g, "\\$&");
 
-/** The rows' shape while the first read is out. */
-function RowsSkeleton() {
+/** What a step read, for its console's bones: two lines of an element list. */
+const SAMPLE_READ = "[12] button \"Send\"\n[13] text field \"To\"";
+
+/** Steps for the list's bones while its first read is out: a step's glyph and words, as a row draws them. */
+const SAMPLE_STEPS: readonly { id: string; icon: IconComponent; words: string }[] = [
+  { id: "sample:click", icon: MousePointerClick, words: "Clicked Send in Mail" },
+  { id: "sample:type", icon: Keyboard, words: "Typed into To" },
+  { id: "sample:look", icon: Camera, words: "Looked at Mail" },
+];
+
+/** The rows' shape while the first read is out: the rows written out at rest, in the rows' line and inset. */
+function RowsBones() {
   return (
-    <div role="status" aria-busy aria-label="Loading the steps" data-slot="steps-loading">
-      {["w-2/5", "w-3/5", "w-1/3"].map((width) => (
-        <div key={width} className={cn(STEP_LINE, ROW_INSET)}>
-          <span className={GLYPH_SLOT}>
-            <Skeleton className="size-3.5 rounded-sm" />
-          </span>
-          <Skeleton className={cn("h-3", width)} />
-        </div>
-      ))}
-    </div>
+    <Bones label="Loading the steps">
+      <div data-slot="steps-loading">
+        {SAMPLE_STEPS.map(({ id, icon: Icon, words }) => (
+          <div key={id} className={cn(STEP_LINE, ROW_INSET)}>
+            <span className={GLYPH_SLOT}>
+              <Icon className="size-3.5" />
+            </span>
+            <span className="min-w-0 truncate">{words}</span>
+          </div>
+        ))}
+      </div>
+    </Bones>
   );
 }
 
@@ -560,7 +569,7 @@ export function StepList({ running, groups, openId, followId, pinned, read, stat
       {running.map((line) => (
         <RunningRow key={line.id} line={line} pinned={pinned} onFollow={onFollow} />
       ))}
-      {status === "loading" && !ids.length ? <RowsSkeleton /> : null}
+      {status === "loading" && !ids.length ? <RowsBones /> : null}
       {groups.map((group, g) => (
         // groups sit 16px apart; a first group with a heading (a subagent's) stands 8px off the running lines above it
         <section key={group.id} data-slot="step-group" aria-label={group.heading ? groupName(group.heading) : "Latest steps"} className={g > 0 ? "mt-4" : group.heading && running.length ? "mt-2" : undefined}>

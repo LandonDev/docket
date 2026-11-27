@@ -207,19 +207,14 @@ describe("NotesBody", () => {
     expect((screen.getByRole("button", { name: "Start the notes" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("loading shows skeleton lines, not words", () => {
+  it("loading draws the notes' bones from sample words on the markdown's 22px pitch, with no Edit", () => {
     request.mockImplementationOnce(() => new Promise(() => {}));
     render(<NotesBody session={session} />);
-    expect(screen.getByLabelText("Loading notes").getAttribute("aria-busy")).toBe("true");
-    // Lines on the markdown's 22px pitch: 12px bars centred in 22px boxes, no gap between them.
-    const loading = screen.getByLabelText("Loading notes");
-    expect(loading.className).not.toMatch(/gap-/);
-    const lines = [...loading.querySelectorAll<HTMLElement>('[data-slot="notes-skeleton-line"]')];
-    expect(lines).toHaveLength(3);
-    for (const line of lines) {
-      expect(line.className.split(/\s+/)).toEqual(expect.arrayContaining(["h-[22px]", "items-center"]));
-      expect(line.firstElementChild!.className.split(/\s+/)).toContain("h-3");
-    }
+    const loading = document.querySelector<HTMLElement>("[data-region][data-bones]")!;
+    expect(loading.getAttribute("aria-busy")).toBe("true");
+    const drawing = loading.querySelector<HTMLElement>("[skullet-loading] .leading-\\[22px\\]")!;
+    expect(drawing.querySelectorAll("p")).toHaveLength(3);
+    expect(document.querySelector('[data-slot="notes-scroller"]')).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit notes" })).toBeNull();
   });
 

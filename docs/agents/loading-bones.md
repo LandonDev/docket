@@ -194,8 +194,25 @@ Converted examples to copy:
 | A lazy chunk's fallback (`Bones`, sample words, `skullet-own` for known words, `Bone` for blocks) | `surfaces/SurfaceSkeleton.tsx`, `chrome/Sidebar.tsx`, `chrome/WorkspaceSessions.tsx`, `chrome/ProjectRail.tsx` |
 | A settings section's rows | `components/page.tsx` (`PageRowsSkeleton`), `chrome/ProjectDialogs.tsx` (`FieldBones`) |
 | A fixture of the wait beside the loaded screen | `components/bones.fixtures.tsx` |
+| A console whose command is known and whose output is on its way (`skullet-own` for the command) | `surfaces/threads/ActivitySection.tsx` (`SAMPLE_OUTPUT`) |
+| A heading known at once over a list from one read | `surfaces/threads/master/BatchFoot.tsx` (`SAMPLE_STEPS` through the real `StepRow`) |
+| Each row its own read (a usage report a row) | `aliax/views/accounts/usage.tsx`, `aliax/views/accounts/samples.ts` |
+| Each section's body its own region under headings drawn at once | `aliax/views/stats.tsx` |
+| A picture that must stay mounted to load or draw (an `img`, a video canvas): a lone `Bone` over it until its first frame, `data-bones-on` for its ground | `surfaces/MediaViewer.tsx`, `surfaces/threads/computer/Viewport.tsx`, `FullWindow.tsx` (`data-bones-on="matte"`) |
 
 ## Tests
+
+A test that mocks `Element.prototype.animate` must answer with an animation
+(`{ cancel() {} }`): a lone `Bone` joins the sweep through it. Count a piece's
+own animations by their timing or element, never all calls
+(`surfaces/threads/computer/Viewport.dom.test.tsx`).
+
+A store read in a hook's body is cached by the production build's React
+Compiler on the hook's arguments, so a region can stand in bones for good
+after its read has landed while every test passes uncompiled (Builds from
+plans did, 2026-11-27). Read a store in the `useSyncExternalStore` snapshot,
+never the body; `lib/tcserver/plans.test.ts` compiles its file with the
+build's options and drives that copy.
 
 jsdom measures nothing, so every reveal there is instant and content is in
 the document in the commit its data is. The engine is in hand before a dom
@@ -334,9 +351,10 @@ converted, one line a folder. The list itself says which
 are left: it shrinks as each folder lands. A thread that converts a folder
 deletes its line. When the list is empty, delete
 `components/ui/skeleton.tsx` and the cases that speak of it.
+`CONVERTED_IN_HELD` names a file converted inside a folder still held; it is
+empty now.
 
-`surfaces` is one line for the whole folder, and `SurfaceSkeleton.tsx` in it
-is converted already (`CONVERTED_IN_HELD`). `hosted/guest` is the guest
-page's own bundle (`src/hosted/guest/GuestApp.tsx`): it imports the same
-`components/bones.tsx`, but its build and its stylesheet are its own, so
-whoever converts it checks that page in a browser.
+`hosted/guest` is the guest page's own bundle
+(`src/hosted/guest/GuestApp.tsx`): it imports the same `components/bones.tsx`,
+but its build and its stylesheet are its own, so whoever converts it checks
+that page in a browser.

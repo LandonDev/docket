@@ -1316,7 +1316,7 @@ describe("the master view", () => {
     expect(foot.querySelector("[data-then]")?.textContent).toBe("Then notify you");
   });
 
-  it("the rows paint from the store at once; only the foot is a still skeleton until batch.board answers", async () => {
+  it("the rows paint from the store at once; only the foot's steps are bones until batch.board answers", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     let answer: (v: unknown) => void = () => {};
     const request = link.request.bind(link);
@@ -1326,17 +1326,17 @@ describe("the master view", () => {
       renderView();
       await flush();
       expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("loading");
-      expect(document.querySelectorAll("[data-batch-foot] [data-slot=skeleton]").length).toBeGreaterThan(1);
-      // One busy region, the foot; the row it knows from the store is already drawn, and nothing turns.
+      expect(document.querySelectorAll("[data-batch-foot] [data-region][data-bones] [skullet-loading] [data-step]").length).toBe(2);
+      // One busy region, the foot's steps; the row it knows from the store is already drawn, and nothing turns.
       expect(document.querySelectorAll("[aria-busy=true]")).toHaveLength(1);
-      expect(document.querySelector("[aria-busy=true]")?.hasAttribute("data-batch-foot")).toBe(true);
+      expect(document.querySelector("[aria-busy=true]")?.closest("[data-batch-foot]")).toBeTruthy();
       expect(screen.getByRole("button", { name: /Home/ })).toBeTruthy();
       expect(document.querySelector("[data-batch-foot] [data-turning]")).toBeNull();
       await act(async () => answer({ children: [], digests: {}, state: batch }));
       await flush();
       expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("console");
       expect(document.querySelector("[aria-busy=true]")).toBeNull();
-      expect(document.querySelector("[data-batch-foot] [data-slot=skeleton]")).toBeNull();
+      await vi.waitFor(() => expect(document.querySelector("[data-batch-foot] [skullet-loading]")).toBeNull());
     } finally {
       spy.mockRestore();
     }

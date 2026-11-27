@@ -1,12 +1,12 @@
 import { useMemo, type ReactNode } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ComposedChart, Line, LineChart, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import type { PaceSeries, StatsBundle, StatsStatus } from "@shared/aliaxStats";
+import { Bone, Loaded, Region } from "@renderer/components/bones";
 import { PageEmpty, PageSection } from "@renderer/components/page";
 import { Empty, EmptyDescription, EmptyTitle } from "@renderer/components/ui/empty";
-import { Skeleton } from "@renderer/components/ui/skeleton";
 import { thisDesktopInLine } from "@renderer/lib/native";
 import { AXIS, BAR, BAR_CURSOR, CHART_HEIGHT, ChartFrame, GRID, HBAR, LINE, LINE_CURSOR } from "@aliax/charts/chart";
-import { ChartLegend } from "@aliax/charts/legend";
+import { ChartLegend, type LegendItem } from "@aliax/charts/legend";
 import { NEUTRAL_SERIES, SERIES, SERVICE_SERIES } from "@aliax/charts/palette";
 import { ChartTooltipContent } from "@aliax/charts/tooltip";
 import { TIMEZONE, clip, compact, compactTick, modelLabel, shortDay } from "@aliax/lib/viz";
@@ -39,7 +39,7 @@ export function paceLine(p: PaceSeries): { text: string; warning: boolean } {
   return { text: `Ends near ${p.projectedPercent}% used at this pace, resets in ${left}`, warning: p.projectedPercent > 85 };
 }
 
-/** The headings, in order, while the bundle loads. */
+/** The sections' headings, in order: known before the bundle, so drawn at once. */
 const HEADINGS = ["Pace", "Daily output", "Model mix", "Top projects", "Cache hit rate", "Busiest hours", "Tools used"] as const;
 
 const percent = (v: number): string => `${Math.round(v)}%`;
@@ -194,7 +194,8 @@ function PaceLegend({ pace }: { pace: readonly PaceSeries[] }) {
  * where the chart draws one, the ranked lists at their eight rows, and the
  * description lines Daily output, Model mix, Cache hit rate and Busiest hours carry.
  */
-export const SECTION_SKELETON: Record<(typeof HEADINGS)[number], { height: number; description?: boolean }> = {
+type Heading = (typeof HEADINGS)[number];
+export const SECTION_SKELETON: Record<Heading, { height: number; description?: boolean }> = {
   Pace: { height: paceHeight(1) },
   "Daily output": { height: LEGEND_PX + CHART_HEIGHT, description: true },
   "Model mix": { height: LEGEND_PX + CHART_HEIGHT, description: true },
@@ -204,24 +205,74 @@ export const SECTION_SKELETON: Record<(typeof HEADINGS)[number], { height: numbe
   "Tools used": { height: rankedHeight(RANKED_ROWS) },
 };
 
-/** The skeleton while the bundle loads or a first index runs: each section's heading over the shape it will hold. */
-function StatsSkeleton() {
+/** A pace series' headline over its plot: its name, then the line its pace reads. */
+function PaceHeadline({ title, line }: { title: string; line: { text: string; warning: boolean } }) {
   return (
-    <div aria-busy="true" aria-label="Loading" className="contents">
-      {HEADINGS.map((h) => {
-        // Pace as tall as the last bundle drew it: a page lands with two to four series.
-        const shape = h === "Pace" ? { ...SECTION_SKELETON.Pace, height: paceHeight(lastPaceCount) } : SECTION_SKELETON[h];
-        return (
-          <Section
-            key={h}
-            title={h}
-            // A line of the description's 16px, the bar at its text's height (a span: the description is a paragraph).
-            description={shape.description ? <span aria-hidden data-slot="skeleton" className="inline-block h-3 w-56 rounded-md bg-skeleton align-middle" /> : undefined}
-          >
-            <Skeleton aria-hidden data-section-skeleton={h} className="w-full rounded-lg" style={{ height: shape.height }} />
-          </Section>
-        );
-      })}
+    <p className="mb-2 flex flex-wrap gap-x-1 text-xs">
+      <span className="font-medium text-foreground">{title}</span>
+      <span className={line.warning ? "text-warning" : "text-muted-foreground"}>{line.text}</span>
+    </p>
+  );
+}
+
+/*
+ * The bones' samples (docs/agents/loading-bones.md "Samples"): a legend's
+ * words and a pace headline's, in their lengths. A chart has no words to
+ * measure, so its plot is one bone at the plot's height.
+ */
+const SAMPLE_LEGEND: Partial<Record<Heading, LegendItem[]>> = {
+  "Daily output": [
+    { label: "Claude Code", color: SERVICE_SERIES["claude-code"] },
+    { label: "Codex", color: SERVICE_SERIES.codex },
+  ],
+  "Model mix": [
+    { label: "Opus 4.8", color: SERIES[0] },
+    { label: "Sonnet 5", color: SERIES[1] ?? SERIES[0] },
+    { label: "GPT-5.5", color: SERIES[2] ?? SERIES[0] },
+  ],
+};
+const SAMPLE_PACE_LEGEND: LegendItem[] = [
+  { label: "Claude Code cycle", color: SERVICE_SERIES["claude-code"] },
+  { label: "Codex cycle", color: SERVICE_SERIES.codex },
+  { label: "Usual", color: "var(--muted-foreground)" },
+];
+const SAMPLE_PACE_HEADLINE = { title: "Claude Code 5-hour limit", line: { text: "Ends near 62% used at this pace, resets in 3 hours", warning: false } };
+/** Cache hit rate's line, whose number is the bundle's. */
+const SAMPLE_CACHE_LINE = "84% of input served from cache, 30 days";
+/** The plot's own height under each section's legend. */
+const PLOT: Record<Heading, number> = {
+  Pace: CHART_HEIGHT,
+  "Daily output": CHART_HEIGHT,
+  "Model mix": CHART_HEIGHT,
+  "Top projects": rankedHeight(RANKED_ROWS),
+  "Cache hit rate": CHART_HEIGHT,
+  "Busiest hours": HEATMAP_HEIGHT,
+  "Tools used": rankedHeight(RANKED_ROWS),
+};
+
+/** One section's bones while the bundle loads or an index pass runs: its legend in words, its plot one bone, as tall as the section will be. */
+function SectionBones({ heading }: { heading: Heading }) {
+  if (heading === "Pace") {
+    // As tall as the last bundle drew it: a page lands with two to four series.
+    return (
+      <div data-section-skeleton={heading} style={{ height: paceHeight(lastPaceCount) }}>
+        <ChartLegend items={SAMPLE_PACE_LEGEND} />
+        <div className="flex flex-col gap-4">
+          {Array.from({ length: lastPaceCount }, (_, i) => (
+            <div key={i}>
+              <PaceHeadline {...SAMPLE_PACE_HEADLINE} />
+              <Bone className="w-full rounded-lg" height={CHART_HEIGHT} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  const legend = SAMPLE_LEGEND[heading];
+  return (
+    <div data-section-skeleton={heading} style={{ height: SECTION_SKELETON[heading].height }}>
+      {legend ? <ChartLegend items={legend} /> : null}
+      <Bone className="w-full rounded-lg" height={PLOT[heading]} />
     </div>
   );
 }
@@ -260,10 +311,10 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
   const nothing = data !== null && data.totals.turns === 0 && data.pace.length === 0 && data.heatmap.length === 0;
   // An index pass is a load, the first as much as a Reindex: the bundle read meanwhile is an earlier or partial one, and
   // the page's line says how far the pass has got. A worker that is gone runs no pass; its last bundle is drawn.
-  if (!data || !days || (status?.indexing && !data.unavailable)) return <StatsSkeleton />;
+  const ready = data !== null && days !== null && !(status?.indexing && !data.unavailable);
   // A worker that is gone is the page's red line; its empty bundle states nothing.
-  if (nothing && data.unavailable) return null;
-  if (nothing) {
+  if (ready && nothing && data.unavailable) return null;
+  if (ready && nothing) {
     // Logs indexed but none in the window: the window is what is empty, not the machine.
     if ((status?.rows ?? 0) > 0) {
       return (
@@ -279,15 +330,51 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
       </Empty>
     );
   }
-  if (data.pace.length > 0) lastPaceCount = data.pace.length;
+  const bodies = ready ? sectionBodies(data, days, mix) : null;
+  if (ready && data.pace.length > 0) lastPaceCount = data.pace.length;
+  const cacheLine = ready ? cacheWords(data) : null;
+  const description: Partial<Record<Heading, ReactNode>> = {
+    "Daily output": OUTPUT_UNIT,
+    "Model mix": OUTPUT_UNIT,
+    // The rate is the bundle's: its words wait in the line; a month with no input claims no rate, so no line.
+    "Cache hit rate":
+      ready && cacheLine === null ? undefined : (
+        <Loaded inline data={cacheLine} sample={SAMPLE_CACHE_LINE} label="">
+          {(words) => words}
+        </Loaded>
+      ),
+    "Busiest hours": `Output tokens by weekday and hour, last 60 days, times in ${TIMEZONE}`,
+  };
 
-  const t = data.totals;
-  const cacheDenominator = t.cache_read + t.input + t.cache_write;
-  const cacheHit = cacheDenominator > 0 ? Math.round((t.cache_read / cacheDenominator) * 100) : 0;
-
+  // Every heading and every line known before the bundle is drawn at once; each section's body waits in its own region.
   return (
     <>
-      <Section title="Pace">
+      {HEADINGS.map((h, i) => (
+        <Section key={h} title={h} description={description[h]}>
+          <Region loading={bodies === null} label={i === 0 ? "Loading stats" : ""} bones={() => <SectionBones heading={h} />}>
+            {bodies?.[h]}
+          </Region>
+        </Section>
+      ))}
+    </>
+  );
+}
+
+/** Cache hit rate's line: the share of input served from cache, or null for a month with no input. */
+function cacheWords(data: StatsBundle): string | null {
+  const t = data.totals;
+  const cacheDenominator = t.cache_read + t.input + t.cache_write;
+  return cacheDenominator > 0 ? `${Math.round((t.cache_read / cacheDenominator) * 100)}% of input served from cache, 30 days` : null;
+}
+
+type Days = { daily: StatsBundle["daily"]; mix: { day: string }[]; cache: { day: string; hit: number | null }[] };
+
+/** Each section's body once the bundle is in. */
+function sectionBodies(data: StatsBundle, days: Days, mix: ReturnType<typeof modelMix>): Record<Heading, ReactNode> {
+  const cacheNamed = cacheWords(data) !== null;
+  return {
+    Pace: (
+      <>
         {data.pace.length === 0 ? (
           <PageEmpty>Needs three finished cycles</PageEmpty>
         ) : (
@@ -298,10 +385,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
               const line = paceLine(p);
               return (
                 <div key={`${p.service}-${p.label}`} data-slot="pace-series">
-                  <p className="mb-2 flex flex-wrap gap-x-1 text-xs">
-                    <span className="font-medium text-foreground">{paceTitle(p)}</span>
-                    <span className={line.warning ? "text-warning" : "text-muted-foreground"}>{line.text}</span>
-                  </p>
+                  <PaceHeadline title={paceTitle(p)} line={line} />
                   <PaceChart series={p} />
                 </div>
               );
@@ -309,9 +393,10 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
           </div>
           </>
         )}
-      </Section>
-
-      <Section title="Daily output" description={OUTPUT_UNIT}>
+      </>
+    ),
+    "Daily output": (
+      <>
         {data.daily.length === 0 ? (
           <NoData />
         ) : (
@@ -336,9 +421,10 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
             </ChartFrame>
           </>
         )}
-      </Section>
-
-      <Section title="Model mix" description={OUTPUT_UNIT}>
+      </>
+    ),
+    "Model mix": (
+      <>
         {mix.rows.length === 0 ? (
           <NoData />
         ) : (
@@ -363,15 +449,13 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
             </ChartFrame>
           </>
         )}
-      </Section>
-
-      <Section title="Top projects">
-        <RankedBars label="Top projects" data={data.byProject} unit="tokens" />
-      </Section>
-
-      <Section title="Cache hit rate" description={cacheDenominator > 0 ? `${cacheHit}% of input served from cache, 30 days` : undefined}>
+      </>
+    ),
+    "Top projects": <RankedBars label="Top projects" data={data.byProject} unit="tokens" />,
+    "Cache hit rate": (
+      <>
         {data.cacheDaily.length === 0 ? (
-          <NoData named={cacheDenominator > 0} />
+          <NoData named={cacheNamed} />
         ) : (
           <ChartFrame label="Cache hit rate">
             {(width) => (
@@ -386,15 +470,9 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
             )}
           </ChartFrame>
         )}
-      </Section>
-
-      <Section title="Busiest hours" description={`Output tokens by weekday and hour, last 60 days, times in ${TIMEZONE}`}>
-        {data.heatmap.length === 0 ? <NoData named /> : <Heatmap data={data.heatmap} />}
-      </Section>
-
-      <Section title="Tools used">
-        <RankedBars label="Tools used" data={data.byTool} unit="calls" />
-      </Section>
-    </>
-  );
+      </>
+    ),
+    "Busiest hours": data.heatmap.length === 0 ? <NoData named /> : <Heatmap data={data.heatmap} />,
+    "Tools used": <RankedBars label="Tools used" data={data.byTool} unit="calls" />,
+  };
 }

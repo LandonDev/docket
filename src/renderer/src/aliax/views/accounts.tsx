@@ -20,9 +20,7 @@ import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { useNow } from "@aliax/lib/accounts";
 import { AccountRow, barColumns, type BarColumns } from "./accounts/row";
-import { AccountsSkeleton } from "./accounts/usageSkeleton";
-
-export { AccountsSkeleton };
+import { SAMPLE_ACCOUNT_USAGE, SAMPLE_ACCOUNT_VIEWS, SAMPLE_NOW } from "./accounts/samples";
 import { STATIC_WARN_MS, type OwnerView, type RowAction } from "./accounts/rowLine";
 
 /** The mark each section leads with: the harness's, or Meta's vendor mark. */
@@ -222,7 +220,8 @@ function ProviderSection({ service, props, now, columns }: { service: ServiceVie
  * up down the whole page, every section included (row.tsx).
  */
 export function AccountsView(props: AccountsViewProps) {
-  const live = useNow();
+  // A fixed clock (a preview, a test, the bones) keeps no timer.
+  const live = useNow(props.now === undefined ? 30_000 : null);
   const now = props.now ?? live;
   const reports = props.layout ?? props.usage;
   const columns = barColumns(
@@ -240,3 +239,37 @@ export function AccountsView(props: AccountsViewProps) {
   );
 }
 
+
+const noop = () => {};
+/** Every press of the page, doing nothing: the bones are drawn at rest. */
+const STILL: AccountsActions = {
+  onCapture: noop,
+  onAdd: noop,
+  onAddKey: noop,
+  onReauth: noop,
+  onUse: noop,
+  onRemove: noop,
+  onRefresh: noop,
+  onSetupToken: noop,
+  onConvertAll: noop,
+  onSetHome: noop,
+  onSync: noop,
+};
+
+/** The page drawn from its sample, at rest: the bones while the services load (AccountsPage's region). */
+export function AccountsAtRest() {
+  return (
+    <AccountsView
+      views={SAMPLE_ACCOUNT_VIEWS}
+      usage={SAMPLE_ACCOUNT_USAGE}
+      headroom={{}}
+      busy={null}
+      homes={{}}
+      peers={{}}
+      environments={[]}
+      localName=""
+      now={SAMPLE_NOW}
+      {...STILL}
+    />
+  );
+}

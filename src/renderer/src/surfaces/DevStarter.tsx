@@ -5,7 +5,7 @@ import { useHostHeld } from "../lib/connection/degraded";
 import { HeldTip } from "../components/heldTip";
 import { ChoiceSelect } from "../components/choice-select";
 import { BusyLabel, Button } from "../components/ui/button";
-import { Skeleton } from "../components/ui/skeleton";
+import { Region } from "../components/bones";
 import { ChoiceToggle } from "../components/choice-toggle";
 import { devPane } from "../lib/devPane";
 import { dialogErrorWords } from "../lib/dialogErrorWords";
@@ -134,7 +134,8 @@ export function DevStarter({ starter }: { starter: DevStarterState }) {
     <div data-dev-starter="" className="flex shrink-0 flex-col border-b border-border">
       <div className="flex h-9 items-center gap-2 px-3">
         {targets === undefined ? (
-          <Skeleton data-dev-target-skeleton="" className="h-7 min-w-0 flex-1 rounded-md" />
+          // The targets' read: the field itself, disabled, on a sample target while it is out.
+          <Region loading label="Loading dev server targets" className="flex-1" bones={SampleTargetField} />
         ) : options.length > 0 ? (
           <ChoiceSelect
             label="Dev server target"
@@ -180,6 +181,12 @@ export function DevStarter({ starter }: { starter: DevStarterState }) {
 }
 
 const NO_TARGETS = [{ value: "", label: "No targets" }];
+const SAMPLE_TARGETS = [{ value: "sample:dev", label: "bun run dev" }];
+
+/** The target field at rest, from a sample: what the targets' bones are drawn from. */
+function SampleTargetField() {
+  return <ChoiceSelect label="Dev server target" size="sm" value={SAMPLE_TARGETS[0].value} options={SAMPLE_TARGETS} disabled onChange={noop} className="min-w-0 flex-1" />;
+}
 const noop = () => {};
 
 /** Mac or box: the hosts with a copy of the project; one with no project for it shows held, saying why. */
