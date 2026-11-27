@@ -195,6 +195,10 @@ import {
 
 import { THREAD_TITLES, isPlaceholderTitle as isPlaceholderTitleText } from '@shared/placeholderTitles'
 import { titleSeed } from '@shared/titleSeed'
+import { quietMaster, TURN_EDGE, turnByFromLog, turnByOf, type TurnBy } from './quietWakes'
+
+/** How far back `turnStartedBy` reads a turn's rows after a restart. */
+const TURN_LOG_ROWS = 400
 
 type SessionListener = (row: EventRow) => void
 /** `producer` is notifyMeta's tag: which code pushed (the stall log's `pushes=` breakdown). */
@@ -689,13 +693,50 @@ export class SessionRegistry {
   markRead(items: readonly { sessionId: string; at?: number }[]): void {
     for (const { sessionId, at } of items) {
       const next = this.store.markSessionRead(sessionId, at)
+      this.noteRead(next ?? this.row(sessionId))
       if (next) this.notifyMeta(next, 'read')
     }
+  }
+
+  /** A master he has read stays read through the app's own turns, unless he
+   *  read it mid-turn of his own: that turn's end is still news. */
+  private noteRead(s: SessionMeta | null | undefined): void {
+    if (!s || !quietMaster(s) || (s.readAt ?? 0) < s.updatedAt) return
+    if (this.turnBy.get(s.id) === 'person' && (s.status === 'running' || s.status === 'starting')) return
+    this.readThrough.add(s.id)
+  }
+
+  /** Who started the thread's turn (quietWakes.ts). A turn from before this
+   *  boot is read from its log rows; one longer than the read, from the last
+   *  user row's author (a mark too many beats news missed). */
+  turnStartedBy(sessionId: string): TurnBy {
+    const kept = this.turnBy.get(sessionId)
+    if (kept) return kept
+    let by = turnByFromLog(this.store.lastEvents(sessionId, TURN_LOG_ROWS).map((r) => r.event))
+    if (!by) {
+      const last = this.store.recentUserTexts(sessionId, 1)[0]?.event
+      by = last?.type === 'user-text' ? turnByOf(last.by) : 'app'
+    }
+    this.turnBy.set(sessionId, by)
+    return by
+  }
+
+  /** A read master's write that is no news (an app-woken turn, a title, a
+   *  status in between) moves its read mark along with it; needing him or a
+   *  failure ends the carry, and so does his own message (quietWakes.ts). */
+  private carryRead(s: SessionMeta): SessionMeta {
+    if (!this.readThrough.has(s.id) || (s.readAt ?? 0) >= s.updatedAt) return s
+    if (!quietMaster(s)) {
+      this.readThrough.delete(s.id)
+      return s
+    }
+    return this.store.markSessionRead(s.id) ?? s
   }
 
   /** Mark as unread: each thread reads unread until it is seen again. */
   markUnread(sessionIds: readonly string[]): void {
     for (const id of sessionIds) {
+      this.readThrough.delete(id)
       const next = this.store.markSessionUnread(id)
       if (next) this.notifyMeta(next, 'read')
     }
@@ -791,6 +832,12 @@ export class SessionRegistry {
   /** Subagents a tree Stop ended: their settle reports nobody (the parent
    *  stopped with them). Cleared by their settle or their next send. */
   private quietSettles = new Set<string>()
+  /** Who started each thread's turn, kept since this boot (quietWakes.ts); `turnStartedBy` reads the log for one older. */
+  private turnBy = new Map<string, TurnBy>()
+  /** The origin a send or a resume gives the turn its status row is about to start. */
+  private nextTurnBy = new Map<string, TurnBy>()
+  /** Masters read since their last news: a write with no news in it keeps them read (`carryRead`). */
+  private readThrough = new Set<string>()
   /** Threads told their account needs sign-in, and which account: one row per account, the harness's 401 wording dropped meanwhile. */
   private readonly signIns = new Map<string, string>()
   /** Sessions whose harness must reboot once the current turn settles —
@@ -962,7 +1009,10 @@ export class SessionRegistry {
       const cache = this.indexCache
       if (cache && cache.version === this.store.sessionsVersion) applyRowChange(cache.index, change)
     })
-    for (const s of this.indexOf().byId.values()) if (s.context) this.liveContexts.set(s.id, s.context)
+    for (const s of this.indexOf().byId.values()) {
+      if (s.context) this.liveContexts.set(s.id, s.context)
+      if (quietMaster(s) && (s.readAt ?? 0) >= s.updatedAt) this.readThrough.add(s.id)
+    }
     this.scheduler = new ThreadScheduler({
       session: (id) => this.indexOf().byId.get(id) ?? null,
       queued: () => [...this.indexOf().queued.values()],
@@ -1421,6 +1471,8 @@ export class SessionRegistry {
     // the `running` row after the send keeps it (`starting` is no settled
     // row). A watching master's frozen 0 starts the clock now.
     const anchor = Date.now() - frozen
+    // A cut turn goes on as the turn it was; a watching master's nudge is the app's.
+    this.nextTurnBy.set(sessionId, meta.status === 'watching' ? 'app' : this.turnStartedBy(sessionId))
     this.append(sessionId, { type: 'status', status: 'starting' })
     const anchored = this.store.updateSession(sessionId, { busySince: anchor, pausedAt: null, frozenActiveElapsed: null })
     if (anchored) this.notifyMeta(anchored)
@@ -3329,12 +3381,15 @@ export class SessionRegistry {
     // A steer into a live turn keeps its running status; everything else
     // (idle, error, watching) is starting a turn.
     const status = this.store.getSession(sessionId)?.status
+    const by = turnByOf(opts?.by)
+    if (by === 'person') this.readThrough.delete(sessionId)
     if (status !== 'running' && status !== 'starting' && status !== 'waiting') {
+      this.nextTurnBy.set(sessionId, by)
       this.append(sessionId, { type: 'status', status: 'starting' })
       // The socket the turn's first request will ride, opened while the
       // harness boots or wakes; a steer into a live turn already has one.
       this.preconnectFor(meta)
-    }
+    } else if (by === 'person') this.turnBy.set(sessionId, 'person')
     void this.armBaseline(sessionId)
     const retry: QueuedSendOpts = { ...opts, echoed: { first } }
     let handle: DriverHandle
@@ -4726,6 +4781,8 @@ export class SessionRegistry {
       void this.armBaseline(sessionId)
       const handle = await this.handleFor(sessionId)
       this.lastActivity.set(sessionId, Date.now())
+      // The cut turn goes on as the turn it was.
+      this.nextTurnBy.set(sessionId, this.turnStartedBy(sessionId))
       await handle.send(
         `${handoff ? `${handoff}\n\n` : ''}<continue-run>\nThe previous turn was cut off by ${reason}. ${restartedDescendants ? 'Your failed subagents were restarted first and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
       )
@@ -5278,6 +5335,13 @@ export class SessionRegistry {
             : (cur?.busySince ?? row.ts)
       if (event.status !== 'watching') this.watchingSince.delete(sessionId)
       else if (cur?.status !== 'watching' || !this.watchingSince.has(sessionId)) this.watchingSince.set(sessionId, row.ts)
+      // A turn starting takes the origin its send or resume left; a turn the
+      // harness started itself (a wake, a report) is the app's.
+      if ((event.status === 'starting' || event.status === 'running') && TURN_EDGE.has(cur?.status)) {
+        const by = this.nextTurnBy.get(sessionId) ?? 'app'
+        this.nextTurnBy.delete(sessionId)
+        this.turnBy.set(sessionId, by)
+      }
       const next = this.store.updateSession(sessionId, { status: event.status, busySince })
       if (next) this.notifyMeta(next)
       // The parent's live subagents and a master's batch count change with
@@ -5679,6 +5743,10 @@ export class SessionRegistry {
     const handle = this.handles.get(sessionId)
     if (!handle || this.isTreePaused(sessionId)) return false
     const steerId = randomUUID()
+    if (turnByOf(by) === 'person') {
+      this.turnBy.set(sessionId, 'person')
+      this.readThrough.delete(sessionId)
+    }
     this.append(sessionId, { type: 'user-text', text, steerId, by })
     const again: QueuedSendOpts = { echoed: { first: false }, steerId, by }
     const deliver = async (): Promise<void> => {
@@ -6750,6 +6818,7 @@ export class SessionRegistry {
    *  breakdown: `status` by default, `accounts` for a pass over the picks. */
   private notifyMeta(session: SessionMeta, producer = 'status'): void {
     if (this.closed) return
+    session = this.carryRead(session)
     if (this.deferredMeta) {
       this.deferredMeta.set(session.id, session)
       return

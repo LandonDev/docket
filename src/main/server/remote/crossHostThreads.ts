@@ -141,6 +141,7 @@ export interface CrossHostThreadsDeps {
     | 'list'
     | 'hasCompletedTurn'
     | 'lastTurnStopped'
+    | 'turnStartedBy'
   > &
     Partial<Pick<SessionRegistry, 'pauseRun' | 'resumePausedRun' | 'setArchived' | 'setBatchMembership' | 'titleFromTask' | 'stopSubtree' | 'listWorkspaces' | 'delete'>>
   /** The saved hosts (remote.environments), by id and name. */

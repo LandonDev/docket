@@ -594,9 +594,13 @@ this is the short one.
   Nothing inside a master is unread (`housedIds`: the batch and every
   subagent of the master or of its batch): no weight and no count in the
   project card, the rail row, the popover, Mark all read or the Dock
-  badge; the master keeps its own, and reads unread again when a child
-  completes a turn (src/main/server/masterNews.ts; read-and-unread.md
-  "A master's batch"), watching or not. They still light their project's and workspace's Needs
+  badge; the master keeps its own, and reads unread only for news: a
+  turn he started ends, it needs him, its batch reaches an outcome, or a
+  child completes a turn the app did not wake (src/main/server/masterNews.ts;
+  read-and-unread.md "A master's batch"), watching or not. A turn the app
+  woke (a report, a restart's nudge, a background notice, a wake-up, the
+  notes reminder) leaves a read master read (read-and-unread.md "Quiet
+  wakes"). They still light their project's and workspace's Needs
   you and Working (`groupMark` over `cardThreads`).
 - **Proofs and tests.** `bun run script:e2e-master-batch`
   (scripts/e2e-master-batch.ts: the whole flow in one process, a haiku

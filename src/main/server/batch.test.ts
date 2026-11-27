@@ -112,6 +112,8 @@ function world(opts: { master?: string | null; branch?: string | null; children?
   const rows: Record<string, AgentEvent[]> = {}
   const batchCalls: { action: string; ids: string[]; cleanup?: boolean }[] = []
   const reports: { to: string; status: string; text: string }[] = []
+  /** masters marked unread: a batch outcome is news */
+  const marks: string[] = []
   const settings = new Map<string, string>()
   const metaListeners = new Set<(s: SessionMeta) => void>()
   const spoke = new Set<string>(['a', 'b', 'r'])
@@ -130,6 +132,7 @@ function world(opts: { master?: string | null; branch?: string | null; children?
       if (s) sessions.set(id, { ...s, archived })
     },
     deliverAgentReport: (to, r) => void reports.push({ to, status: r.status, text: r.text }),
+    markUnread: (ids) => void marks.push(...ids),
     onMeta: (l) => {
       metaListeners.add(l)
       return () => metaListeners.delete(l)
@@ -220,6 +223,7 @@ function world(opts: { master?: string | null; branch?: string | null; children?
     sessions,
     rows,
     reports,
+    marks,
     batchCalls,
     runs,
     merges,
@@ -443,6 +447,8 @@ describe('Batches: the end of the batch', () => {
     expect(w.reports).toEqual([
       { to: 'm', status: 'done', text: expect.stringContaining('<batch-report>\nThe batch is done: 2 of 2 landed, gate passed in 1m 12s, release-277 tagged in 0s.') }
     ])
+    // The batch's outcome is news: the master reads unread.
+    expect(w.marks).toEqual(['m'])
     expect(b.open('m')).toBe(false)
     // A second review runs nothing again.
     await b.review('m')
@@ -605,6 +611,7 @@ describe('Batches: the end of the batch', () => {
     await b.review('m')
     expect(b.get('m').blocked).toEqual({ sessionId: 'b', why: 'errored' })
     expect(w.reports).toEqual([{ to: 'm', status: 'blocked', text: expect.stringContaining('batch thread "T b" (b) errored') }])
+    expect(w.marks).toEqual(['m'])
     expect(w.runs).toHaveLength(0)
     expect(b.open('m')).toBe(true)
     w.set('b', { status: 'stopped' })
@@ -1457,6 +1464,8 @@ describe('Batches: children on other hosts', () => {
     expect(b.get('m').blocked).toEqual({ sessionId: `${MACID}:x1`, why: 'unreachable', environmentId: MACID })
     expect(b.get('m').children?.[1].linkDown).toBe(true)
     expect(w.reports).toEqual([{ to: 'm', status: 'blocked', text: expect.stringContaining('"Far x1" (' + MACID + ':x1) on Landon Mac is out of reach') }])
+    // A host out of reach wakes the master but is no outcome: it stays read.
+    expect(w.marks).toEqual([])
     await b.review('m')
     expect(w.reports).toHaveLength(1)
     expect(w.runs).toHaveLength(0)
@@ -1465,6 +1474,7 @@ describe('Batches: children on other hosts', () => {
     await b.review('m')
     expect(b.get('m').blocked).toEqual({ sessionId: `${MACID}:x1`, why: 'errored' })
     expect(w.reports.at(-1)?.text).toContain('on Landon Mac errored')
+    expect(w.marks).toEqual(['m'])
     remote.records[0].status = 'done'
     await b.review('m')
     expect(b.get('m').blocked).toBeNull()
@@ -2042,6 +2052,8 @@ describe('the stall watch', () => {
     expect(b.checkStalls()).toEqual(['m'])
     expect(w.reports).toHaveLength(1)
     expect(w.reports[0]).toMatchObject({ to: 'm', status: 'blocked' })
+    // A stall wakes the master but is no outcome: it stays read.
+    expect(w.marks).toEqual([])
     expect(w.reports[0].text).toBe(
       '<batch-report>\nNo batch thread has moved for 31 min: "A" (a) working (last event 31 min ago), "B" (b) queued (waiting for "A"), "C" (c) done.\n</batch-report>'
     )

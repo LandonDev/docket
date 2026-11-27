@@ -91,4 +91,19 @@ describe("badgeCount", () => {
     const metas = [meta("a"), meta("b", { updatedAt: 10 })];
     expect(badgeCount(metas, none, {}, 50)).toBe(1);
   });
+
+  it("follows a master's host mark: a quiet wake carried read counts nothing, news counts once", () => {
+    // The host's read marks as the window lays them over its map (read-and-unread.md "Quiet wakes").
+    const marks = (metas: SessionMeta[]) => Object.fromEntries(metas.map((m) => [m.id, m.readAt ?? 0]));
+    const master = (extra: Partial<SessionMeta>) => meta("m", { isMaster: true, pinned: true, ...extra });
+    const child = meta("c", { masterId: "m", status: "idle" });
+    for (const status of ["idle", "watching", "running"] as const) {
+      const quiet = [master({ status, readAt: 100 }), child];
+      expect(badgeCount(quiet, none, marks(quiet))).toBe(0);
+    }
+    const news = [master({ status: "watching", readAt: 0 }), child, meta("d", { masterId: "m" })];
+    expect(badgeCount(news, none, marks(news))).toBe(1);
+    const asks = [master({ status: "waiting", readAt: 100 }), child];
+    expect(badgeCount(asks, none, marks(asks))).toBe(1);
+  });
 });

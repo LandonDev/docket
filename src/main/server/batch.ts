@@ -229,6 +229,8 @@ export interface BatchesDeps {
     lastActivityAt?(sessionId: string): number
     setArchived?(sessionId: string, archived: boolean): Promise<void>
     deliverAgentReport?(sessionId: string, report: { text: string; agentId: string; title: string; status: string }): void
+    /** an outcome of the batch is news: the master reads unread until he looks (docs/agents/read-and-unread.md "Quiet wakes") */
+    markUnread?(sessionIds: readonly string[]): void
     /** the batch closed with nothing coming: a master left watching idles (sessions.ts) */
     masterIdle?(sessionId: string): void
     onMeta?(listener: (session: SessionMeta) => void): () => void
@@ -1116,7 +1118,8 @@ export class Batches {
                       : blocked.why === 'interrupted'
                         ? 'was stopped: send it a message or remove it'
                         : blocked.why
-              }. Fix it (a message, a new thread) or take it out of the batch (archive_threads); the batch's steps run once every thread is done.`
+              }. Fix it (a message, a new thread) or take it out of the batch (archive_threads); the batch's steps run once every thread is done.`,
+          blocked.why === 'unreachable'
         )
       }
       return
@@ -1470,8 +1473,10 @@ export class Batches {
     )
   }
 
-  /** A wake for the master: the batch's news as an agent report (sessions.ts delivers it idle or at the next settle). */
-  private tell(master: SessionMeta, status: 'done' | 'failed' | 'blocked', text: string): void {
+  /** A wake for the master: the batch's news as an agent report (sessions.ts delivers it idle or at the next settle).
+   *  An outcome marks the master unread; a `quiet` one (a host out of reach, a stall) only wakes it. */
+  private tell(master: SessionMeta, status: 'done' | 'failed' | 'blocked', text: string, quiet = false): void {
+    if (!quiet) this.deps.registry.markUnread?.([master.id])
     this.deps.registry.deliverAgentReport?.(master.id, {
       agentId: master.id,
       title: 'Batch',
@@ -1718,7 +1723,7 @@ export class Batches {
       const lines = members.map((m) => `"${m.title}" (${m.id}) ${this.stallWord(m, members, minutes(m.remote ? m.remote.seenAt : moved(m.id)))}`)
       row.stallToldAt = now
       this.save(row)
-      this.tell(master, 'blocked', `No batch thread has moved for ${minutes(newest)}: ${lines.join(', ')}.`)
+      this.tell(master, 'blocked', `No batch thread has moved for ${minutes(newest)}: ${lines.join(', ')}.`, true)
       told.push(row.masterId)
     }
     return told

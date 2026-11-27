@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionMeta } from '@shared/events'
 import { watchMasterNews } from './masterNews'
+import type { TurnBy } from './quietWakes'
 
 function fake() {
   const metas = new Map<string, SessionMeta>()
@@ -9,6 +10,7 @@ function fake() {
   const completed = new Set<string>()
   const stopped = new Set<string>()
   const unread: string[] = []
+  const origin = new Map<string, TurnBy>()
   const registry = {
     onMeta(l: (m: SessionMeta, producer: string) => void) {
       listeners.add(l)
@@ -21,7 +23,8 @@ function fake() {
     get: (id: string) => metas.get(id) ?? null,
     markUnread: (ids: readonly string[]) => void unread.push(...ids),
     hasCompletedTurn: (id: string) => completed.has(id),
-    lastTurnStopped: (id: string) => stopped.has(id)
+    lastTurnStopped: (id: string) => stopped.has(id),
+    turnStartedBy: (id: string): TurnBy => origin.get(id) ?? 'thread'
   }
   const put = (m: Partial<SessionMeta> & { id: string }) => {
     const next = { status: 'idle', updatedAt: 1, ...metas.get(m.id), ...m } as SessionMeta
@@ -29,7 +32,7 @@ function fake() {
     for (const l of listeners) l(next, 'test')
   }
   put({ id: 'm', isMaster: true })
-  return { registry, put, completed, stopped, unread, remove: (ids: string[]) => removed.forEach((l) => l(ids)) }
+  return { registry, put, completed, stopped, unread, origin, remove: (ids: string[]) => removed.forEach((l) => l(ids)) }
 }
 
 describe('watchMasterNews', () => {
@@ -90,6 +93,22 @@ describe('watchMasterNews', () => {
     f.put({ id: 'y', masterId: 'm', status: 'running' })
     f.put({ id: 'y', status: 'done' })
     expect(f.unread).toEqual([])
+  })
+
+  it('skips a child turn the app woke: a report or a wake-up is the child talking to itself', () => {
+    const f = fake()
+    watchMasterNews(f.registry)
+    f.completed.add('c')
+    f.put({ id: 'c', masterId: 'm', status: 'running' })
+    f.origin.set('c', 'app')
+    f.put({ id: 'c', status: 'idle' })
+    f.put({ id: 'c', status: 'done' })
+    expect(f.unread).toEqual([])
+    // The master's next message is work again, and its end is news.
+    f.put({ id: 'c', status: 'running' })
+    f.origin.set('c', 'thread')
+    f.put({ id: 'c', status: 'idle' })
+    expect(f.unread).toEqual(['m'])
   })
 
   it('forgets a removed child', () => {

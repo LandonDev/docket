@@ -1,4 +1,5 @@
 import type { EventRow, Failure, SessionMeta } from '@shared/events'
+import type { TurnBy } from '../quietWakes'
 import { approvalLine } from '@shared/approvalLine'
 import type { NoticeWork } from '@shared/work/tell'
 
@@ -91,6 +92,8 @@ export interface NotifierRegistry {
   get(id: string): SessionMeta | null
   rootSessionOf(id: string): string
   lastActivityAt(id: string): number
+  /** Who started the thread's turn (quietWakes.ts); absent, every finish is told. */
+  turnStartedBy?(id: string): TurnBy
 }
 
 export interface NotifierOptions {
@@ -464,6 +467,8 @@ export class Notifier {
       if (this.inLiveBatch(meta)) return null
       // A master's idle right after its batch notice would say Done twice.
       if (meta.isMaster === true && state.batchTold) return null
+      // A master's own turn is told only when he started it: one the app woke (a report, a wake-up) is no news.
+      if (meta.isMaster === true && this.options.registry.turnStartedBy && this.options.registry.turnStartedBy(meta.id) !== 'person') return null
       // A plan the planner marked complete (planFlow.ts): only a plan that
       // waits for the person says so; a started build will say Done itself.
       if (meta.threadType === 'planning' && meta.planCompletedAt) {

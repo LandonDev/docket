@@ -59,23 +59,50 @@
   row's object, so one thread's flip re-renders the one row
   (chrome/WorkspaceRowMarks.push.dom.test.tsx).
 - **A master's batch.** Nothing inside a master is unread (`housedIds`).
-  The master is: when a child of its batch completes a turn (done, or idle
-  with a turn behind it, not stopped by the person, no failure, no
-  background agents still out), its host sets the master's `read_at` to 0
-  (src/main/server/masterNews.ts `watchMasterNews`, through
-  `registry.markUnread`). A child that errors or that the person stopped
-  lights nothing here; its Failed reads on the master's row as before.
-  Opening the master clears it like any thread, on every client. A child
-  on another host is judged there by the same rule: its settle report,
-  `crossHost.settled`, carries `completedTurn`, and the master's host marks
-  the master from it (crossHostAgents.ts `settled`, masterNews.ts
-  `markMasterNews`), whether or not a wait covers the settle. A report
-  from a host older than the field marks nothing. In the window a far
-  child is housed like a near one: ids are raw across hosts, so a Mac
-  child whose `masterId` names the box's master shows no mark and no
-  count of its own; while the master's row is not in the window (its host
-  out of reach) the child reads as an ordinary root
-  (masterNews.pair.test.ts, dockBadge.test.ts, sidebarRows.test.ts).
+  The master is unread for four things only, each set on its host:
+  1. A turn that his own message or steer started ends.
+  2. It needs him (waiting on a question or an approval) or it failed.
+  3. Its batch reached an outcome: done with its end steps run, blocked,
+     or an end step failed (batch.ts `tell`). A stall and a host out of
+     reach are reported to the master but mark nothing (`quiet`).
+  4. A child of its batch completes a turn (done, or idle with a turn
+     behind it, not stopped by the person, no failure, no background
+     agents still out), and the turn was not one the app woke
+     (masterNews.ts `completedTurn`, `watchMasterNews`, through
+     `registry.markUnread`). The mark sets `read_at` to 0, so a second
+     child before he looks adds nothing: once per child since he read.
+  A child that errors or that the person stopped lights nothing here; its
+  Failed reads on the master's row as before. Opening the master clears it
+  like any thread, on every client. A child on another host is judged
+  there by the same rule: its settle report, `crossHost.settled`, carries
+  `completedTurn`, and the master's host marks the master from it
+  (crossHostAgents.ts `settled`, masterNews.ts `markMasterNews`), whether
+  or not a wait covers the settle. A report from a host older than the
+  field marks nothing. In the window a far child is housed like a near
+  one: ids are raw across hosts, so a Mac child whose `masterId` names the
+  box's master shows no mark and no count of its own; while the master's
+  row is not in the window (its host out of reach) the child reads as an
+  ordinary root (masterNews.pair.test.ts, dockBadge.test.ts,
+  sidebarRows.test.ts).
+- **Quiet wakes.** A turn the app woke marks a read master nothing: no
+  weight, no badge, no bounce and no notice. The app wakes it with a
+  subagent's or the batch's report, a host restart's nudge, a background
+  task's or monitor's notice, a scheduled wake-up and the notes reminder.
+  The host knows who started each turn (src/main/server/quietWakes.ts
+  `TurnBy`: `person`, `thread` or `app`; `registry.turnStartedBy`): a
+  send stamps its writer (`by`, his own through `writtenByOwner`), a steer
+  of his makes the running turn his, a turn the harness starts with no
+  send is the app's, and a resume after a restart, a pause or a fixed
+  error keeps the turn's own origin, read back from the log after a
+  restart (`turnByFromLog`). While a read master works on a quiet turn
+  its read mark moves with each change (`carryRead` in `notifyMeta`), so
+  every client, the phone and the next boot see it read. A question, an
+  approval or a failure ends the carry. The notifier's Done for a master
+  goes out only for a turn he started, so the hub, the phone's pushes and
+  every other sink follow the same rule. A message from another thread
+  to a master is the app's news, not his. Plain threads keep their old
+  rule: any turn's end is unread, since a turn the app woke there often
+  holds the answer he waits for (sessions-quiet-wakes.test.ts).
 - **The Dock badge** (macOS): one number, the rows that want the person on
   every host: unread by `rowUnread`, or a thread waiting on him. Each counts
   once, as the row he would open: a subagent as its root, a batch thread

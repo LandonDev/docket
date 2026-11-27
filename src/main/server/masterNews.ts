@@ -11,7 +11,9 @@ import type { SessionRegistry } from './sessions'
  * Completed: the child went from not done to done, where done is the batch
  * engine's word (batch.ts `done`): `done`, or idle after a completed turn with
  * no failure on the row, no person's Stop behind it and no subagent still
- * working under it. A turn that failed or was stopped is not news; it shows
+ * working under it, from a turn the app did not wake (quietWakes.ts: a child
+ * talking to itself after a report or a wake-up is no news; a master's or a
+ * person's message is). A turn that failed or was stopped is not news; it shows
  * its own mark on the master's lines. The first meta heard of a thread only
  * sets its state, so a boot or a re-read of the same row marks nothing.
  *
@@ -21,9 +23,11 @@ import type { SessionRegistry } from './sessions'
  * `settled`, through `markMasterNews`).
  */
 
-type Registry = Pick<SessionRegistry, 'onMeta' | 'onRemoved' | 'get' | 'markUnread' | 'hasCompletedTurn' | 'lastTurnStopped'>
+type Registry = Pick<SessionRegistry, 'onMeta' | 'onRemoved' | 'get' | 'markUnread' | 'hasCompletedTurn' | 'lastTurnStopped' | 'turnStartedBy'>
 
-export function completedTurn(registry: Pick<Registry, 'hasCompletedTurn' | 'lastTurnStopped'>, s: SessionMeta): boolean {
+export function completedTurn(registry: Pick<Registry, 'hasCompletedTurn' | 'lastTurnStopped' | 'turnStartedBy'>, s: SessionMeta): boolean {
+  // A turn the app woke (a report, a wake-up) is the child talking to itself, not work done.
+  if (registry.turnStartedBy(s.id) === 'app') return false
   if (s.status === 'done') return true
   if (s.status !== 'idle' || s.failure) return false
   if ((s.background?.agents.length ?? 0) > 0) return false

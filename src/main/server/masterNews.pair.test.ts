@@ -154,6 +154,22 @@ describe("a batch child on another host is its master's news", () => {
     expect(mac.registry.get(master)).toBeFalsy()
   })
 
+  it("a turn the Mac's app woke (a report, a wake-up) is the child talking to itself: the master stays read", async () => {
+    const { box, mac, master, child } = await pair()
+    emit(child, { type: 'turn-complete' } as AgentEvent)
+    emit(child, { type: 'status', status: 'idle' })
+    await reported()
+    expect(box.registry.get(master)?.readAt).toBe(0)
+    box.registry.markRead([{ sessionId: master, at: Date.now() + 1 }])
+    // the harness starts a turn of its own: no send, so the app's
+    emit(child, { type: 'status', status: 'running' })
+    expect(mac.registry.turnStartedBy(child)).toBe('app')
+    emit(child, { type: 'turn-complete' } as AgentEvent)
+    emit(child, { type: 'status', status: 'idle' })
+    await reported()
+    expect(box.registry.get(master)?.readAt).toBeGreaterThan(0)
+  })
+
   it('a failed turn, a stopped turn and a turn that left a subagent working mark nothing', async () => {
     const { box, mac, master, child } = await pair()
     const stillRead = (): void => expect(box.registry.get(master)?.readAt).toBeGreaterThan(0)

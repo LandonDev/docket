@@ -130,6 +130,7 @@ function fakeRegistry() {
     listProjects: () => [{ id: 'p1', cwd: '/Users/landon/IdeaProjects/temp-code' }] as never,
     hasCompletedTurn: (id: string) => (events.get(id) ?? []).some((r) => r.event.type === 'turn-complete'),
     lastTurnStopped: () => false,
+    turnStartedBy: () => 'thread' as const,
     // test seams
     append(id: string, event: AgentEvent) {
       const rows = events.get(id)!
