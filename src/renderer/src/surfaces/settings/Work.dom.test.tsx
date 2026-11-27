@@ -178,24 +178,28 @@ describe("Settings → Work: Work is on for", () => {
     expect(within(rowOf("local")).getByRole("switch")).toBeTruthy();
   });
 
-  it("holds a computer's switch while its own write is out: a second press sends nothing, and the flip stays shown", async () => {
+  it("refuses a second flip at once while its write is out, keeps the pending flip shown, and draws it held only once the hold lasts 150 ms", async () => {
     render(<WorkPage />);
     await settle();
     let let_go!: () => void;
     state.gate = new Promise<void>((done) => (let_go = done));
     const flip = () => within(rowOf("local")).getByRole("switch");
     await act(async () => fireEvent.click(flip()));
-    await settle();
+    // At once: the flip shows and nothing is drawn disabled; a second press sends nothing and the flip stays.
     expect(flip().getAttribute("aria-checked")).toBe("true");
+    expect(flip().hasAttribute("disabled") || flip().hasAttribute("data-disabled")).toBe(false);
     await act(async () => fireEvent.click(flip()));
-    await settle();
+    expect(flip().getAttribute("aria-checked")).toBe("true");
     expect(state.calls).toEqual([{ env: "local", method: "work.set", params: { enabled: true } }]);
+    await act(async () => void (await new Promise((done) => setTimeout(done, 170))));
+    expect(flip().hasAttribute("disabled") || flip().hasAttribute("data-disabled")).toBe(true);
     await act(async () => {
       let_go();
       await state.gate;
     });
     await settle();
     expect(flip().getAttribute("aria-checked")).toBe("true");
+    expect(flip().hasAttribute("data-disabled")).toBe(false);
   });
 
   it("says an offline computer is offline, with no switch", async () => {

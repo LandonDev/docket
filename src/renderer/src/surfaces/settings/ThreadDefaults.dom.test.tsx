@@ -122,6 +122,8 @@ const { usePageHome, resetPageHomesForTests } = await import("../../lib/settings
 const { StartSetRow } = await import("./parts/StartSetRow");
 
 const flush = () => act(async () => {});
+/** Past the 150 ms a hold waits before it is drawn (`useHeldLook`). */
+const pastHoldLook = () => act(async () => new Promise<void>((resolve) => setTimeout(resolve, 170)));
 async function pick(field: string, option: string) {
   await act(async () => {
     fireEvent.click(screen.getByRole("combobox", { name: field }));
@@ -763,14 +765,19 @@ describe("Two edits to one set before the first answers", () => {
   }
   const isHeld = (name: string, within_: HTMLElement = document.body) => (within(within_).getByRole("combobox", { name }) as HTMLButtonElement).disabled;
 
-  it("on New threads, holds every control while the first save is out, its pick on screen, then lays the next on what it confirmed", async () => {
+  it("on New threads, refuses a second pick at once but draws nothing held until 150 ms, then lays the next on what the first confirmed", async () => {
     state.permission = "auto";
     state.globalPermission = "auto";
     const first = holdFirstSave((sent) => sent && (state.globalPermission = sent.permission));
     render(<ThreadDefaultsPage />);
     await pick("Access", "Auto-accept edits");
-    // Out: the pick stays shown, and no control takes a new pick.
+    // 0 ms: the pick shows, nothing is drawn held, and a second pick is refused.
     expect(screen.getByRole("combobox", { name: "Access" }).textContent).toContain("Auto-accept edits");
+    for (const name of ["Agent app", "Model", "Effort", "Access"]) expect(isHeld(name)).toBe(false);
+    await pick("Effort", "High");
+    expect(state.save).toHaveBeenCalledTimes(1);
+    // 150 ms: drawn held.
+    await pastHoldLook();
     for (const name of ["Agent app", "Model", "Effort", "Access"]) expect(isHeld(name)).toBe(true);
     await first.answer();
     await flush();
@@ -788,6 +795,10 @@ describe("Two edits to one set before the first answers", () => {
     const dialog = await screen.findByRole("dialog");
     await act(async () => {});
     await pick("Access", "Auto-accept edits");
+    expect(isHeld("Effort", dialog)).toBe(false);
+    await pick("Effort", "High");
+    expect(state.save).toHaveBeenCalledTimes(1);
+    await pastHoldLook();
     expect(isHeld("Effort", dialog)).toBe(true);
     await first.answer();
     await flush();
@@ -809,12 +820,19 @@ describe("Two edits to one set before the first answers", () => {
     expect(state.save).toHaveBeenCalledTimes(1);
   });
 
-  it("holds Docket's defaults while a pick's save is out", async () => {
+  it("refuses Docket's defaults while a pick's save is out, drawn held after 150 ms", async () => {
     state.overridden = true;
     const first = holdFirstSave(() => {});
     render(<ThreadDefaultsPage />);
     await pick("Effort", "High");
-    expect((within(document.querySelector("[data-setting='defaults.reset']") as HTMLElement).getByRole("button", { name: "Use…" }) as HTMLButtonElement).disabled).toBe(true);
+    const use = () => within(document.querySelector("[data-setting='defaults.reset']") as HTMLElement).getByRole("button", { name: "Use…" }) as HTMLButtonElement;
+    expect(use().disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(use());
+    });
+    expect(state.confirm).not.toHaveBeenCalled();
+    await pastHoldLook();
+    expect(use().disabled).toBe(true);
     await first.answer();
   });
 
@@ -829,6 +847,9 @@ describe("Two edits to one set before the first answers", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
     });
     expect(state.save).toHaveBeenCalledWith("local", "w1", null);
+    await pick("Effort", "High");
+    expect(state.save).toHaveBeenCalledTimes(1);
+    await pastHoldLook();
     for (const name of ["Agent app", "Model", "Effort", "Access"]) expect(isHeld(name, dialog)).toBe(true);
     await first.answer();
     view.rerender(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
@@ -836,10 +857,51 @@ describe("Two edits to one set before the first answers", () => {
     expect(within(screen.getByRole("dialog")).queryByRole("combobox")).toBeNull();
     expect(state.save).toHaveBeenCalledTimes(1);
   });
+
+  it("holds the set from Use New threads' press, through its check, before any write: a pick or a second press is refused", async () => {
+    state.overriding = new Set(["w1"]);
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    // The press's own read of the set it would bring waits.
+    state.inheritedOut = true;
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    await pick("Effort", "High");
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    expect(state.inheritedReads).toBe(2);
+    expect(state.save).not.toHaveBeenCalled();
+    await pastHoldLook();
+    expect(isHeld("Effort", dialog)).toBe(true);
+    expect((within(dialog).getByRole("button", { name: "Use New threads" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("holds the set from the press through the Full access confirm: a pick then is refused", async () => {
+    state.overriding = new Set(["w1"]);
+    state.globalPermission = "auto";
+    let decide!: (ok: boolean) => void;
+    state.confirm.mockImplementation(() => new Promise<boolean>((resolve) => (decide = resolve)));
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    await flush();
+    expect(state.confirm).toHaveBeenCalledTimes(1);
+    await pick("Effort", "High");
+    expect(state.save).not.toHaveBeenCalled();
+    await act(async () => decide(false));
+    await pick("Effort", "High");
+    expect(state.save).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("The rest of a set's interleavings", () => {
-  it("holds Use New threads while a pick's save is out in a place's dialog", async () => {
+  it("refuses Use New threads while a pick's save is out in a place's dialog, drawn held after 150 ms", async () => {
     state.overriding = new Set(["w1"]);
     let answerSave!: () => void;
     state.save.mockImplementationOnce(() => new Promise<void>((resolve) => (answerSave = resolve)));
@@ -847,9 +909,18 @@ describe("The rest of a set's interleavings", () => {
     const dialog = await screen.findByRole("dialog");
     await act(async () => {});
     await pick("Effort", "High");
-    expect((within(dialog).getByRole("button", { name: "Use New threads" }) as HTMLButtonElement).disabled).toBe(true);
+    const press = () => within(dialog).getByRole("button", { name: "Use New threads" }) as HTMLButtonElement;
+    expect(press().disabled).toBe(false);
+    const readsBefore = state.inheritedReads;
+    await act(async () => {
+      fireEvent.click(press());
+    });
+    expect(state.inheritedReads).toBe(readsBefore);
+    await pastHoldLook();
+    expect(press().disabled).toBe(true);
     await act(async () => answerSave());
-    expect((within(dialog).getByRole("button", { name: "Use New threads" }) as HTMLButtonElement).disabled).toBe(false);
+    await flush();
+    expect(press().disabled).toBe(false);
   });
 
   it("keeps the place's set and says why when Use New threads' clear is refused, its controls freed", async () => {

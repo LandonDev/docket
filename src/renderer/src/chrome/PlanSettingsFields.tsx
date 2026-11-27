@@ -1,4 +1,5 @@
 import type { PlanSettings } from "@server/shared/plans";
+import { useHeldLook } from "../surfaces/settings/parts/useHeldLook";
 import { registry } from "../lib/connection";
 import { HARNESS_LABEL } from "../lib/session";
 import { allModels, findModel, nativeModelId } from "../lib/models";
@@ -150,12 +151,15 @@ export function PlanSettingsEditor({ quiet = false }: { quiet?: boolean }) {
   const { blocked } = homeNote(scope?.home);
   const may = useLinkMay(environmentId, "plans.set", { projectId: null, settings: null });
   const change = (next: PlanSettings, row: Row) => draft.change(saved[row], next, (set) => savePlanSettings(environmentId, null, set));
+  // While a save is out a new pick is refused (`useDraft`); the rows are drawn held only once it has lasted 150 ms.
+  const slow = useHeldLook(draft.busy);
+  const look = blocked || slow;
   // Quiet: only the failure, which draws nothing beside the page's same line but lends that line's Retry this read.
   if (quiet && !draft.value && failure) return <ReadFailure computer={environmentId} error={failure.error} retry={failure.retry} />;
   return (
     <SettingSection of="plans.start">
       {draft.value ? (
-        <PlanSettingsFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked || draft.busy} readOnly={!may} />
+        <PlanSettingsFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={look} readOnly={!may} />
       ) : failure ? (
         <ReadFailure computer={environmentId} error={failure.error} retry={failure.retry} />
       ) : (

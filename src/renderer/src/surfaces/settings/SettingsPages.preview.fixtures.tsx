@@ -37,6 +37,7 @@ const PAGES = [
   // One dialog or sheet open over its page: shoot each alone.
   "defaults-places",
   "orchestration-models",
+  "orchestration-models-failed",
   "orchestration-rule",
   "addons-add",
   "addons-edit",
@@ -88,7 +89,7 @@ const PAGES = [
 const READS = new Set<string>(["here", "sharing", "sync", "publish", "winvm", "computer-box", "general", "updates", "appshots", "defaults", "editor", "addons", "skills", "orchestration", "reviews", "workspace", "computer", "job", "project", "archive", "work", "digest", "files"]);
 const only = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.SETTINGS_PREVIEW?.split(",");
 // A fixture with a dialog open covers the window: it is drawn only when named.
-const OPEN = new Set<string>(["defaults-places", "orchestration-models", "orchestration-rule", "addons-add", "addons-edit", "skills-edit"]);
+const OPEN = new Set<string>(["defaults-places", "orchestration-models", "orchestration-models-failed", "orchestration-rule", "addons-add", "addons-edit", "skills-edit"]);
 const shown = PAGES.filter((page) => (only ? only.includes(page) : !OPEN.has(page)));
 
 export default shown.flatMap((page) => [

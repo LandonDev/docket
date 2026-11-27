@@ -16,7 +16,7 @@ const [MAC_COMMAND] = keyCaps("mod", true);
  */
 
 /** The page a row is on: a fixed page, any other computer's page, any job's or any code workspace's. */
-export type SettingNeed = "desktop" | "mac" | "work" | "workHere" | "workMany" | "placesDiffer";
+export type SettingNeed = "desktop" | "mac" | "work" | "workHere" | "workMany" | "placesDiffer" | "reviewsDiffer";
 
 export type SettingPage = StaticSettingsSectionId | "computer:*" | "job" | "workspace";
 
@@ -302,6 +302,9 @@ const NEEDS: Record<string, readonly SettingNeed[]> = {
   "work.home": ["desktop", "workMany"],
   // New threads draws its overrides row only when a place keeps its own set.
   "defaults.different": ["placesDiffer"],
+  // Reviews draws its exceptions row only once every project answered and one keeps its own set: search, which reads
+  // no project, offers the Reviews page instead.
+  "reviews.different": ["reviewsDiffer"],
   "files.word": ["desktop"],
   "accounts.connections": ["work"],
   // A computer's jobs are drawn only where Work is on.

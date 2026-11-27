@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { registry } from "../lib/connection";
 import { useEnvironmentStatuses } from "../lib/connection/status";
@@ -39,7 +39,7 @@ import {
 } from "../lib/tcserver/rules";
 import { usePublishHome } from "../lib/settings/pageHome";
 import { resolveModel } from "../lib/models";
-import { ReadFailure } from "../surfaces/settings/parts/ReadFailure";
+import { FailureLinesHere, FailuresSaidOnce, ReadFailure } from "../surfaces/settings/parts/ReadFailure";
 import { homeNote } from "../lib/settingsHome";
 import { HARNESS_TITLE, type HarnessId } from "../lib/session";
 import type { ModelInfo, ProviderId, Reasoning as Effort } from "../lib/tcserver/types";
@@ -51,6 +51,7 @@ import { useComputerName } from "../lib/settings/computerName";
 import { ListFilter, useListFilter } from "../surfaces/settings/parts/ListFilter";
 import { SaveMark } from "../surfaces/settings/parts/SaveMark";
 import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
+import { useHeldLook } from "../surfaces/settings/parts/useHeldLook";
 
 /**
  * Subagents (server/shared/rules.ts; docs/agents/settings.md "The pages: Everywhere"): what a lead thread that starts
@@ -152,7 +153,7 @@ export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string 
 }
 
 export function RulesEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
-  const { scope, catalog, error, retry } = useRulesScope(environmentId, workspaceId, true);
+  const { scope, catalog, error, retry, catalogFailure } = useRulesScope(environmentId, workspaceId, true);
   const [editing, setEditing] = useState<RoutingRule | "new" | null>(null);
   const [modelsOpen, setModelsOpen] = useState(false);
   const saved: Record<ConductRow, Saved> = {
@@ -170,6 +171,9 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
   // Writes of this set still out: while any is, every control of the set is held, so no pick is built on a change the
   // computer may yet refuse (the store shows each change at once and puts back the last set on a refusal).
   const [out, setOut] = useState(0);
+  // The same count for the handlers, which refuse a pick at once; the controls are drawn held only after 150 ms.
+  const writing = useRef(0);
+  const outLook = useHeldLook(out > 0);
   const mayWrite = useLinkMay(environmentId, "rules.set", { workspaceId, rules: null });
   const computer = useComputerName(environmentId);
   usePublishHome("orchestration", workspaceId === null ? (scope ? (scope.home ?? null) : undefined) : undefined);
@@ -189,22 +193,29 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
 
   // The store shows the change at once and puts the last set back on a refusal; the row's save says which.
   const counted = <T,>(request: Promise<T>): Promise<T> => {
+    writing.current += 1;
     setOut((n) => n + 1);
     return request.then(
       (value) => {
+        writing.current -= 1;
         setOut((n) => n - 1);
         return value;
       },
       (err: unknown) => {
+        writing.current -= 1;
         setOut((n) => n - 1);
         throw err;
       },
     );
   };
   const write = (next: OrchestrationRules) => counted(rulesStore.save(environmentId, workspaceId, next));
-  const held = blocked || out > 0;
-  const patchConduct = (row: ConductRow, patch: Partial<OrchestrationRules["conduct"]>) => saved[row].run(() => write({ ...rules, conduct: { ...rules.conduct, ...patch } }));
+  // Held: a pick is refused at once. Drawn held: at once while the box is out of reach, after 150 ms of a write.
+  const isHeld = () => blocked || writing.current > 0;
+  const look = blocked || outLook;
+  const patchConduct = (row: ConductRow, patch: Partial<OrchestrationRules["conduct"]>) =>
+    isHeld() ? Promise.resolve(false) : saved[row].run(() => write({ ...rules, conduct: { ...rules.conduct, ...patch } }));
   const reset = async () => {
+    if (isHeld()) return;
     const ok = await confirmAction(
       workspaceId === null
         ? { title: "Use Docket's defaults", body: "Every row on this page goes back to Docket's, and every rule for which model gets which work is deleted.", action: "Use Docket's defaults", danger: true }
@@ -212,7 +223,9 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
     );
     if (ok) void cleared.run(() => counted(rulesStore.clear(environmentId, workspaceId)));
   };
-  const move = (from: number, to: number) => void moved.run(() => write(moveRoutingRule(rules, from, to)));
+  const move = (from: number, to: number) => {
+    if (!isHeld()) void moved.run(() => write(moveRoutingRule(rules, from, to)));
+  };
 
   const models = providersOf(catalog).flatMap((p) => (catalog?.[p]?.models ?? []).map((m) => ({ provider: p, id: m.id })));
   // The models an agent may run: "Lead threads only" is not one, so it is not counted.
@@ -231,7 +244,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
             label="Gives its agents"
             value={rules.conduct.delegation}
             options={delegationChoices(rules.conduct.delegation)}
-            disabled={held}
+            disabled={look}
             onChange={(delegation) => void patchConduct("gives", { delegation })}
           />
           )}
@@ -241,7 +254,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
             {readOnly ? (
               <ValueWords>{rules.conduct[key] ? "On" : "Off"}</ValueWords>
             ) : (
-              <SettingSwitch label={TITLES[row]} on={rules.conduct[key]} disabled={held} onChange={(on) => patchConduct(row, { [key]: on } as Partial<OrchestrationRules["conduct"]>)} />
+              <SettingSwitch label={TITLES[row]} on={rules.conduct[key]} disabled={look} onChange={(on) => patchConduct(row, { [key]: on } as Partial<OrchestrationRules["conduct"]>)} />
             )}
           </SettingRow>
         ))}
@@ -249,10 +262,10 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
 
       <SettingSection of="sub.atOnce" description={LIMITS_LINE}>
         <SettingRow id="sub.atOnce" saved={saved.atOnce}>
-          {readOnly ? <ValueWords>{capWords(rules.conduct.maxParallel)}</ValueWords> : <CapSelect label="Agents at once" value={rules.conduct.maxParallel} options={[0, 2, 4, 8, 16, 32, 64, 128]} disabled={held} onChange={(maxParallel) => void patchConduct("atOnce", { maxParallel })} />}
+          {readOnly ? <ValueWords>{capWords(rules.conduct.maxParallel)}</ValueWords> : <CapSelect label="Agents at once" value={rules.conduct.maxParallel} options={[0, 2, 4, 8, 16, 32, 64, 128]} disabled={look} onChange={(maxParallel) => void patchConduct("atOnce", { maxParallel })} />}
         </SettingRow>
         <SettingRow id="sub.perThread" saved={saved.perThread}>
-          {readOnly ? <ValueWords>{capWords(rules.conduct.maxAgents)}</ValueWords> : <CapSelect label="Agents in all" value={rules.conduct.maxAgents} options={[0, 10, 20, 50]} disabled={held} onChange={(maxAgents) => void patchConduct("perThread", { maxAgents })} />}
+          {readOnly ? <ValueWords>{capWords(rules.conduct.maxAgents)}</ValueWords> : <CapSelect label="Agents in all" value={rules.conduct.maxAgents} options={[0, 10, 20, 50]} disabled={look} onChange={(maxAgents) => void patchConduct("perThread", { maxAgents })} />}
         </SettingRow>
       </SettingSection>
 
@@ -265,14 +278,14 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         action={
           // Nothing is offered that cannot work: no Add rule… while the box is out of reach or for a key that may not write.
           blocked || readOnly ? null : (
-            <Button variant="ghost" size="sm" data-setting="sub.addRule" disabled={out > 0} onClick={() => setEditing("new")}>
+            <Button variant="ghost" size="sm" data-setting="sub.addRule" disabled={outLook} onClick={() => !isHeld() && setEditing("new")}>
               Add rule…
             </Button>
           )
         }
       >
         {rules.routing.map((r, i) => (
-          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} disabled={held} readOnly={readOnly} first={i === 0} last={i === rules.routing.length - 1} onEdit={() => setEditing(r)} onMove={(by) => move(i, i + by)} />
+          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} disabled={look} readOnly={readOnly} first={i === 0} last={i === rules.routing.length - 1} onEdit={() => setEditing(r)} onMove={(by) => move(i, i + by)} />
         ))}
         {rules.routing.length === 0 ? <PageEmpty>No rules</PageEmpty> : null}
         {moved.error ? <PageError>{moved.error}</PageError> : null}
@@ -283,13 +296,13 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         <SettingSection of="sub.reset">
           {workspaceId === null ? (
             <SettingRow id="sub.reset" description="Every row here goes back, and every rule is deleted" saved={cleared}>
-              <Button variant="ghost" size="sm" disabled={out > 0} className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
+              <Button variant="ghost" size="sm" disabled={outLook} className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
                 Use…
               </Button>
             </SettingRow>
           ) : (
             <PageRow title="This workspace's own set" description="Its threads follow Subagents once it is gone" error={cleared.error ?? undefined}>
-              <Button variant="ghost" size="sm" disabled={out > 0} className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
+              <Button variant="ghost" size="sm" disabled={outLook} className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
                 Use Subagents…
               </Button>
             </PageRow>
@@ -297,7 +310,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         </SettingSection>
       ) : null}
 
-      {modelsOpen ? <ModelsSheet rules={rules} catalog={catalog} disabled={held} readOnly={readOnly} write={write} onClose={() => setModelsOpen(false)} /> : null}
+      {modelsOpen ? <ModelsSheet rules={rules} catalog={catalog} catalogFailure={catalogFailure} environmentId={environmentId} disabled={look} held={isHeld} readOnly={readOnly} write={write} onClose={() => setModelsOpen(false)} /> : null}
       {editing ? (
         <RuleDialog
           rule={editing === "new" ? null : editing}
@@ -336,19 +349,31 @@ function CapSelect({ label, value, options, disabled, onChange }: { label: strin
   );
 }
 
+/** The Models sheet's rows while the catalog is read: a model's name, and its select. */
+const SHEET_SKELETON = Array.from({ length: 5 }, () => ({ control: "select" as const }));
+
 /** "Models agents may run on": every model of every agent app this computer has, a find field over them, who may
  *  start each and its lowest and highest effort. Each change saves as it is made. */
 function ModelsSheet({
   rules,
   catalog,
+  catalogFailure,
+  environmentId,
   disabled,
+  held,
   readOnly = false,
   write,
   onClose,
 }: {
   rules: OrchestrationRules;
   catalog: RulesCatalog | null;
+  /** Why the computer's catalog did not come, with Retry, while there is none to show. */
+  catalogFailure: { error: string; retry: () => void } | null;
+  environmentId: string;
+  /** Drawn held (a write out past 150 ms, or the box out of reach). */
   disabled: boolean;
+  /** Held now: a pick is refused at once. */
+  held: () => boolean;
   /** A key that may read the rules but not change them: each model's allowance as words. */
   readOnly?: boolean;
   write: (next: OrchestrationRules) => Promise<void>;
@@ -368,8 +393,20 @@ function ModelsSheet({
         <SheetHeader>
           <SheetTitle>Models agents may run on</SheetTitle>
         </SheetHeader>
-        {/* The sheet's own column is the page container the model rows read their width from. */}
+        {/* The sheet's own column is the page container the model rows read their width from. Its failures are said
+            in it, under its title, so a Retry is never behind it. */}
+        <FailuresSaidOnce head={false}>
         <div className="@container/page min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 pb-5">
+          <FailureLinesHere />
+          {!catalog ? (
+            // The catalog has not come: its failure with Retry, else the rows' shape while it is read.
+            catalogFailure ? (
+              <ReadFailure computer={environmentId} error={catalogFailure.error} retry={catalogFailure.retry} />
+            ) : (
+              <PageRowsSkeleton rows={SHEET_SKELETON} />
+            )
+          ) : (
+          <>
           <ListFilter filter={filter} label="Find a model" />
           <Table>
             <TableHeader className="@max-[36rem]/page:hidden">
@@ -403,14 +440,17 @@ function ModelsSheet({
                       </TableRow>
                     ) : null}
                     {mine.map((row) => (
-                      <ModelRow key={`${row.model ? "" : "stale:"}${row.id}`} provider={p} id={row.id} model={row.model} rules={rules} disabled={disabled} readOnly={readOnly} write={write} />
+                      <ModelRow key={`${row.model ? "" : "stale:"}${row.id}`} provider={p} id={row.id} model={row.model} rules={rules} disabled={disabled} held={held} readOnly={readOnly} write={write} />
                     ))}
                   </Fragment>
                 );
               })}
             </TableBody>
           </Table>
+          </>
+          )}
         </div>
+        </FailuresSaidOnce>
       </SheetContent>
     </Sheet>
   );
@@ -433,6 +473,7 @@ function ModelRow({
   model,
   rules,
   disabled,
+  held,
   readOnly = false,
   write,
 }: {
@@ -441,6 +482,8 @@ function ModelRow({
   model?: ModelInfo;
   rules: OrchestrationRules;
   disabled?: boolean;
+  /** Held now (a write of the set out): a pick is refused at once. */
+  held?: () => boolean;
   readOnly?: boolean;
   write: (next: OrchestrationRules) => Promise<void>;
 }) {
@@ -454,7 +497,9 @@ function ModelRow({
   const ladder = model?.reasoning ?? [];
   const min = range[0];
   const max = range[range.length - 1];
-  const change = (patch: Partial<ModelPolicy>) => void saved.run(() => write(patchModelPolicy(rules, provider, id, patch)));
+  const change = (patch: Partial<ModelPolicy>) => {
+    if (!held?.()) void saved.run(() => write(patchModelPolicy(rules, provider, id, patch)));
+  };
   return (
     <TableRow data-stale={model ? undefined : ""} className={MODEL_ROW}>
       {/* `max-w-0` bounds the cell to what the controls leave, so a long name is cut here, never pushing the effort
@@ -615,6 +660,10 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
   const [reasoning, setReasoning] = useState<Effort>(rule?.reasoning ?? "medium");
   const [running, setRunning] = useState<"save" | "delete" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // While Save or Delete is out the fields take no edit (it would be dropped when the dialog closes); drawn held only
+  // once it has lasted 150 ms.
+  const fieldsLook = useHeldLook(running !== null);
+  const editing = running === null;
 
   const models = useMemo(() => (catalog?.[provider]?.models ?? []).filter((m) => modelApproved(rules, provider, m.id)), [catalog, provider, rules]);
   const effective = model || catalog?.[provider]?.defaultModel || "";
@@ -635,11 +684,11 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
     }
   };
   const save = () => {
-    if (!task.trim()) return;
+    if (!task.trim() || !editing) return;
     void run("save", () => onSave({ id: rule?.id ?? newRuleId(), task: task.trim(), provider, model, reasoning, enabled }));
   };
   const remove = async () => {
-    if (!onDelete) return;
+    if (!onDelete || !editing) return;
     const ok = await confirmAction({ title: "Delete this rule", body: `“${rule?.task}” is deleted. Its work goes to the next rule that fits.`, action: "Delete", danger: true });
     if (ok) void run("delete", onDelete);
   };
@@ -653,7 +702,7 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
     >
       <ModalBody>
         <Field label="When the task is">
-          <Input autoFocus value={task} onChange={(e) => setTask(e.target.value)} placeholder="Bulk or mechanical work with a clear spec" />
+          <Input autoFocus value={task} readOnly={!editing} disabled={fieldsLook} onChange={(e) => editing && setTask(e.target.value)} placeholder="Bulk or mechanical work with a clear spec" />
         </Field>
         <div className="flex flex-col">
           <FieldRow label="Agent app">
@@ -661,7 +710,9 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
               label="Agent app"
               size="sm"
               value={provider}
+              disabled={fieldsLook}
               onChange={(v) => {
+                if (!editing) return;
                 setProvider(v);
                 setModel("");
               }}
@@ -669,16 +720,16 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
             />
           </FieldRow>
           <FieldRow label="Model">
-            <ChoiceCombobox label="Model" size="sm" value={model} onChange={setModel} options={[{ value: "", label: "Default" }, ...models.map((m) => ({ value: m.id, label: modelName(provider, m.id, m.label) }))]} />
+            <ChoiceCombobox label="Model" size="sm" value={model} disabled={fieldsLook} onChange={(v) => editing && setModel(v)} options={[{ value: "", label: "Default" }, ...models.map((m) => ({ value: m.id, label: modelName(provider, m.id, m.label) }))]} />
           </FieldRow>
           {ladder.length > 1 ? (
             <FieldRow label="Effort">
-              <ChoiceSelect label="Effort" size="sm" value={reasoning} onChange={setReasoning} options={effortChoices(ladder)} />
+              <ChoiceSelect label="Effort" size="sm" value={reasoning} disabled={fieldsLook} onChange={(v) => editing && setReasoning(v)} options={effortChoices(ladder)} />
             </FieldRow>
           ) : null}
           {rule ? (
             <FieldRow label="Use this rule">
-              <SettingSwitch label="Use this rule" on={enabled} onChange={setEnabled} />
+              <SettingSwitch label="Use this rule" on={enabled} disabled={fieldsLook} onChange={(on) => (editing ? setEnabled(on) : Promise.resolve(false))} />
             </FieldRow>
           ) : null}
         </div>

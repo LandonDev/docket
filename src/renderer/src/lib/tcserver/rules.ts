@@ -63,9 +63,11 @@ export type RulesState = {
   /** Why a scope's last load failed (NO_ANSWER past the deadline), by scope
    *  key, until it is asked again or a late answer lands. */
   errors: ReadonlyMap<string, string>;
+  /** Why a host's catalog read failed, by environment id, until it is asked again or answers. */
+  catalogErrors: ReadonlyMap<string, string>;
 };
 
-const EMPTY: RulesState = { scopes: new Map(), catalogs: new Map(), errors: new Map() };
+const EMPTY: RulesState = { scopes: new Map(), catalogs: new Map(), errors: new Map(), catalogErrors: new Map() };
 
 // ── pure helpers ───────────────────────────────────────────────────────
 
@@ -169,7 +171,9 @@ class RulesStore {
     const catalogs = new Map(this.state.catalogs);
     catalogs.delete(environmentId);
     const errors = new Map([...this.state.errors].filter(([key]) => !key.startsWith(`${environmentId}|`)));
-    this.set({ scopes, catalogs, errors });
+    const catalogErrors = new Map(this.state.catalogErrors);
+    catalogErrors.delete(environmentId);
+    this.set({ scopes, catalogs, errors, catalogErrors });
   }
 
   /** Test seam. */
@@ -253,14 +257,28 @@ class RulesStore {
     if (pending) return pending;
     const link = this.links.get(environmentId);
     if (!link) return Promise.resolve(this.state.catalogs.get(environmentId) ?? {});
-    const request = link
-      .request<RulesCatalog>("catalog.get")
-      .then((catalog) => {
-        const catalogs = new Map(this.state.catalogs);
-        catalogs.set(environmentId, catalog);
-        this.set({ ...this.state, catalogs });
-        return catalog;
-      })
+    const failed = (error: string | null) => {
+      if ((this.state.catalogErrors.get(environmentId) ?? null) === error) return;
+      const catalogErrors = new Map(this.state.catalogErrors);
+      if (error === null) catalogErrors.delete(environmentId);
+      else catalogErrors.set(environmentId, error);
+      this.set({ ...this.state, catalogErrors });
+    };
+    failed(null);
+    // Under the house's deadline: a catalog that never comes is said with Retry, never an empty sheet for ever.
+    const request = withDeadline(link.request<RulesCatalog>("catalog.get"))
+      .then(
+        (catalog) => {
+          const catalogs = new Map(this.state.catalogs);
+          catalogs.set(environmentId, catalog);
+          this.set({ ...this.state, catalogs });
+          return catalog;
+        },
+        (err: unknown) => {
+          failed(err instanceof Error ? err.message : String(err));
+          throw err;
+        },
+      )
       .finally(() => this.catalogInflight.delete(environmentId));
     this.catalogInflight.set(environmentId, request);
     return request;
@@ -362,6 +380,8 @@ export function useRulesScope(
   catalog: RulesCatalog | null;
   error: string | null;
   retry: () => void;
+  /** Why the catalog read failed while there is none to show, with its Retry. */
+  catalogFailure: { error: string; retry: () => void } | null;
 } {
   const state = useRulesState();
   useEffect(() => {
@@ -377,6 +397,10 @@ export function useRulesScope(
     catalog: state.catalogs.get(environmentId) ?? null,
     error: state.errors.get(key) ?? null,
     retry: () => void rulesStore.load(environmentId, workspaceId).catch(() => {}),
+    catalogFailure:
+      !state.catalogs.has(environmentId) && state.catalogErrors.has(environmentId)
+        ? { error: state.catalogErrors.get(environmentId) ?? "", retry: () => void rulesStore.loadCatalog(environmentId, true).catch(() => {}) }
+        : null,
   };
 }
 

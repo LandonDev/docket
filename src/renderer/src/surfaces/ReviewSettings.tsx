@@ -21,6 +21,7 @@ import { andList } from "@shared/addons";
 import { reviewerModel } from "../lib/reviewScope";
 import { useDraft } from "./settings/parts/useDraft";
 import { useSaved, type Saved } from "./settings/parts/useSaved";
+import { useHeldLook } from "./settings/parts/useHeldLook";
 
 /**
  * Settings → Reviews (docs/agents/settings.md "The pages: Everywhere"): the one set every project follows unless its
@@ -39,6 +40,9 @@ export function ReviewsPage() {
   const may = useLinkMay(environmentId, "review.set", { projectId: null, settings: null });
   const computer = useComputerName(environmentId);
   const change = (next: ReviewSettings, row: ReviewRow) => draft.change(saved[row], next, (set) => saveReviewSettings(environmentId, null, set));
+  // While a save is out a new pick is refused (`useDraft`); the rows are drawn held only once it has lasted 150 ms.
+  const slow = useHeldLook(draft.busy);
+  const look = blocked || slow;
 
   // A failed read is said at the page's head; no empty section stands under it.
   if (!draft.value && error) return <ReadFailure computer={environmentId} error={error} retry={retry} />;
@@ -49,7 +53,7 @@ export function ReviewsPage() {
       <PageSection>
         {draft.value ? (
           <>
-            <ReviewFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked || draft.busy} readOnly={!may} />
+            <ReviewFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={look} readOnly={!may} />
             {/* Shown with Reviews off too: a project may keep reviews on of its own. */}
             <DifferentProjects />
           </>
@@ -136,13 +140,15 @@ function DifferentProjects() {
       {unread.map(({ project, error }) => (
         <ReadFailure key={`${project.environmentId}|${project.id}`} computer={project.environmentId} error={error} retry={retry} />
       ))}
-      {own.length || unread.length ? (
+      {/* Drawn only once a project is known to keep its own set: with none known, an unread project's failure and
+          Retry at the head stand alone, never "at least 0". */}
+      {own.length ? (
         <SettingRow
           id="reviews.different"
           vars={{ n }}
           description={line}
-          onOpen={own.length ? () => setOpen(true) : undefined}
-          openLabel={own.length ? settingTitle("reviews.different", { n }) : undefined}
+          onOpen={() => setOpen(true)}
+          openLabel={settingTitle("reviews.different", { n })}
         />
       ) : null}
       {open ? (

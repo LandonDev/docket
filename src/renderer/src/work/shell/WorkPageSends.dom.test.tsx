@@ -16,6 +16,8 @@ const box = vi.hoisted(() => ({
   rulesOut: new Set<string>(),
   /** A rule's save held open until the test lets it go. */
   gate: null as null | Promise<void>,
+  /** The box's linear add-on lists ten tools (past the find field's eight). */
+  many: false,
 }));
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
@@ -59,17 +61,21 @@ const card = (addonId: string, name: string, tools: { tool: string; words: strin
   unreviewed: 0,
   tools: tools.map((t) => ({ ...t, description: "", hints: {}, suggested: "held", changed: false })),
 });
+const linearTools = (): { tool: string; words: string; rule: string | null }[] => [
+  { tool: "create_issue", words: "Create issue", rule: "held" },
+  ...(box.many ? Array.from({ length: 9 }, (_, i) => ({ tool: `t${i}`, words: `Other tool ${i}`, rule: "runs" })) : []),
+];
 vi.mock("../../surfaces/settings/parts/hostRpc", () => ({
   hostRequest: async (env: string, method: string, params: { addonId: string; rules: Record<string, string> }) => {
     box.calls.push({ env, method, params });
     if (method === "work.outbox.rules" && box.rulesOut.has(env)) return new Promise(() => {});
     if (method === "work.outbox.rules" && box.rulesFail.has(env)) throw new Error(NO_ANSWER);
     if (method === "work.outbox.rules")
-      return { addons: env === "env_box" ? [card("a1", "linear", [{ tool: "create_issue", words: "Create issue", rule: "held" }]), card("lo", "LifeOS", [{ tool: "x", words: "X", rule: null }], true)] : [] };
+      return { addons: env === "env_box" ? [card("a1", "linear", linearTools()), card("lo", "LifeOS", [{ tool: "x", words: "X", rule: null }], true)] : [] };
     await box.gate;
     if (box.refuse) throw new Error("forbidden: work.outbox.setRules needs admin");
     const [tool, rule] = Object.entries(params.rules)[0]!;
-    return card("a1", "linear", [{ tool, words: "Create issue", rule }]);
+    return card("a1", "linear", linearTools().map((t) => (t.tool === tool ? { ...t, rule } : t)));
   },
 }));
 
@@ -91,6 +97,7 @@ afterEach(() => {
   box.rulesFail = new Set();
   box.rulesOut = new Set();
   box.gate = null;
+  box.many = false;
 });
 
 describe("Things threads may send on their own", () => {
@@ -266,30 +273,110 @@ describe("What each add-on's tools may do", () => {
     expect(within(sheet).queryByRole("alert")).toBeNull();
   });
 
-  it("holds a tool's rule while its own save is out, its pick shown until that save answers", async () => {
+  it("refuses a second pick of a tool's rule at once while its save is out, and draws it held only once the hold lasts 150 ms", async () => {
     render(<ToolsRow />);
     fireEvent.click(screen.getByRole("button", { name: "What each add-on's tools may do" }));
     const sheet = await screen.findByRole("dialog");
     await settle();
-    const row = sheet.querySelector<HTMLElement>('[data-tool="create_issue"]')!;
+    const row = () => sheet.querySelector<HTMLElement>('[data-tool="create_issue"]')!;
+    const pick = async (name: string) => {
+      await act(async () => fireEvent.click(within(row()).getByRole("combobox")));
+      const option = await screen.findByRole("option", { name });
+      await act(async () => {
+        fireEvent.pointerDown(option, { pointerType: "mouse" });
+        fireEvent.click(option);
+      });
+    };
     let let_go!: () => void;
     box.gate = new Promise<void>((done) => (let_go = done));
-    await act(async () => fireEvent.click(within(row).getByRole("combobox")));
-    const option = await screen.findByRole("option", { name: "Runs" });
-    await act(async () => {
-      fireEvent.pointerDown(option, { pointerType: "mouse" });
-      fireEvent.click(option);
-    });
-    await settle();
-    const select = within(row).getByRole("combobox");
-    expect(select.textContent).toContain("Runs");
-    expect(select.hasAttribute("disabled") || select.getAttribute("aria-disabled") === "true" || select.hasAttribute("data-disabled")).toBe(true);
+    const before = box.calls.length;
+    await pick("Runs");
+    // At once: the pick shows, nothing is drawn disabled, and a second pick sends nothing.
+    expect(within(row()).getByRole("combobox").textContent).toContain("Runs");
+    expect(within(row()).getByRole("combobox").hasAttribute("data-disabled")).toBe(false);
+    await pick("Off");
+    expect(box.calls.slice(before).filter((c) => c.method === "work.outbox.setRules")).toHaveLength(1);
+    expect(within(row()).getByRole("combobox").textContent).toContain("Runs");
+    // Once the hold has lasted 150 ms it is drawn held.
+    await act(async () => void (await new Promise((done) => setTimeout(done, 170))));
+    expect(within(row()).getByRole("combobox").hasAttribute("data-disabled")).toBe(true);
     await act(async () => {
       let_go();
       await box.gate;
     });
     await settle();
-    expect(within(row).getByRole("combobox").textContent).toContain("Runs");
-    expect(within(row).getByRole("combobox").hasAttribute("data-disabled")).toBe(false);
+    expect(within(row()).getByRole("combobox").textContent).toContain("Runs");
+    expect(within(row()).getByRole("combobox").hasAttribute("data-disabled")).toBe(false);
+  });
+
+  it("keeps a tool's pending pick and hold when Find a tool filters its row away and back before the save answers", async () => {
+    box.many = true;
+    render(<ToolsRow />);
+    fireEvent.click(screen.getByRole("button", { name: "What each add-on's tools may do" }));
+    const sheet = await screen.findByRole("dialog");
+    await settle();
+    const row = () => sheet.querySelector<HTMLElement>('[data-tool="create_issue"]');
+    const pick = async (name: string) => {
+      await act(async () => fireEvent.click(within(row()!).getByRole("combobox")));
+      const option = await screen.findByRole("option", { name });
+      await act(async () => {
+        fireEvent.pointerDown(option, { pointerType: "mouse" });
+        fireEvent.click(option);
+      });
+    };
+    let let_go!: () => void;
+    box.gate = new Promise<void>((done) => (let_go = done));
+    const before = box.calls.length;
+    await pick("Runs");
+    const find = within(sheet).getByRole("searchbox", { name: "Find a tool" });
+    fireEvent.change(find, { target: { value: "other" } });
+    expect(row()).toBeNull();
+    fireEvent.change(find, { target: { value: "" } });
+    // Back: the pending pick, and its hold: a second pick sends nothing.
+    expect(within(row()!).getByRole("combobox").textContent).toContain("Runs");
+    await pick("Off");
+    expect(box.calls.slice(before).filter((c) => c.method === "work.outbox.setRules")).toHaveLength(1);
+    await act(async () => {
+      let_go();
+      await box.gate;
+    });
+    await settle();
+    expect(within(row()!).getByRole("combobox").textContent).toContain("Runs");
+  });
+
+  it("keeps a tool's pending pick and hold when the sheet closes and opens again before the save answers", async () => {
+    render(<ToolsRow />);
+    const opener = screen.getByRole("button", { name: "What each add-on's tools may do" });
+    fireEvent.click(opener);
+    let sheet = await screen.findByRole("dialog");
+    await settle();
+    const row = () => sheet.querySelector<HTMLElement>('[data-tool="create_issue"]')!;
+    const pick = async (name: string) => {
+      await act(async () => fireEvent.click(within(row()).getByRole("combobox")));
+      const option = await screen.findByRole("option", { name });
+      await act(async () => {
+        fireEvent.pointerDown(option, { pointerType: "mouse" });
+        fireEvent.click(option);
+      });
+    };
+    let let_go!: () => void;
+    box.gate = new Promise<void>((done) => (let_go = done));
+    const before = box.calls.length;
+    await pick("Runs");
+    await act(async () => fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" }));
+    await settle();
+    fireEvent.click(opener);
+    sheet = await screen.findByRole("dialog");
+    await settle();
+    // The re-read answered with the rule the computer held before the save: the pending pick still shows, still held.
+    expect(within(row()).getByRole("combobox").textContent).toContain("Runs");
+    await pick("Off");
+    expect(box.calls.slice(before).filter((c) => c.method === "work.outbox.setRules")).toHaveLength(1);
+    await act(async () => {
+      let_go();
+      await box.gate;
+    });
+    await settle();
+    expect(within(row()).getByRole("combobox").textContent).toContain("Runs");
   });
 });

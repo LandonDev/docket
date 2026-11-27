@@ -13,11 +13,33 @@ import { confirmAction } from "../../../chrome/ConfirmDialog";
 vi.mock("../../../lib/linkMay", async (original) => (await import("../../../lib/linkMay.testkit")).linkMayMock(await original()));
 
 
-const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, pointsHold: null as Promise<unknown> | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true, settingsRead: "answers" as "answers" | "pending" | "refused", settingsWriteFail: null as string | null, settingsWriteHold: null as Promise<unknown> | null, opens: [] as (() => void)[] }));
+const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, pointsHold: null as Promise<unknown> | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true, settingsRead: "answers" as "answers" | "pending" | "refused", settingsWriteFail: null as string | null, settingsWriteHold: null as Promise<unknown> | null, lookMs: 150, opens: [] as (() => void)[] }));
+// The held look as parts/useHeldLook.ts draws it (its own test holds its timing), with the delay a test may lengthen so a
+// pick tried "before the hold lasts" cannot lose a race with a slow machine.
+vi.mock("../parts/useHeldLook", async () => {
+  const { useEffect, useState } = await import("react");
+  return {
+    useHeldLook: (held: boolean): boolean => {
+      const ms = h.lookMs;
+      const [slow, setSlow] = useState(false);
+      useEffect(() => {
+        if (!held) {
+          setSlow(false);
+          return;
+        }
+        const timer = window.setTimeout(() => setSlow(true), ms);
+        return () => window.clearTimeout(timer);
+      }, [held, ms]);
+      return held && slow;
+    },
+  };
+});
 vi.mock("../../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../../chrome/ConfirmDialog")>()), confirmAction: vi.fn(async () => h.confirm) }));
 
 const at = (s: Partial<WinvmState>): WinvmState => ({ state: "asleep", step: null, error: null, cannot: null, sleepAfter: "30m", since: 1, ...s });
 const flush = () => act(async () => {});
+/** A hold is drawn disabled only once it has lasted (useHeldLook): wait past it before reading the look. */
+const lasted = () => act(async () => void (await new Promise((done) => setTimeout(done, 160))));
 
 beforeEach(() => {
   h.screen = "1280x800";
@@ -33,6 +55,7 @@ beforeEach(() => {
   h.settingsRead = "answers";
   h.settingsWriteFail = null;
   h.settingsWriteHold = null;
+  h.lookMs = 150;
   h.opens = [];
   vi.spyOn(registry, "linkOf").mockImplementation(
     () =>
@@ -619,6 +642,7 @@ describe("Screen size and picture quality", () => {
     expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("Fits my window");
     h.settingsWriteFail = null;
   h.settingsWriteHold = null;
+  h.lookMs = 150;
     await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
     await flush();
     expect(document.querySelector("[data-upgrade-note]")).toBeNull();
@@ -634,28 +658,32 @@ describe("Screen size and picture quality", () => {
     await pick("Screen size", "Fits my window");
     await flush();
     const select = () => screen.getByRole("combobox", { name: "Screen size" }) as HTMLButtonElement;
-    const held = () => select().disabled || select().getAttribute("aria-disabled") === "true" || select().hasAttribute("data-disabled");
+    const held = async () => {
+      await lasted();
+      return select().disabled || select().getAttribute("aria-disabled") === "true" || select().hasAttribute("data-disabled");
+    };
     // Running, with the machine still awake on the old display.
-    expect(held()).toBe(true);
+    expect(await held()).toBe(true);
     // Unconfirmed after a reconnect: still held, Retry there.
     await act(async () => h.opens.forEach((fn) => fn()));
     await flush();
     expect(document.querySelector("[data-upgrade-note]")).not.toBeNull();
-    expect(held()).toBe(true);
+    expect(await held()).toBe(true);
     // It fails and the old size is refused: still held, Retry there.
     await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "setting-up", step: "Restarting Windows", display: vga }) })));
     h.settingsWriteFail = "The box refused the change.";
     await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", error: "Windows did not start with the new display.", display: vga }) })));
     await flush();
     expect(document.querySelector("[data-upgrade-note]")?.closest("[data-slot=page-error-line]")?.textContent).toContain("1280 × 800");
-    expect(held()).toBe(true);
+    expect(await held()).toBe(true);
     // The old size goes back: Screen size takes picks again.
     h.settingsWriteFail = null;
   h.settingsWriteHold = null;
+  h.lookMs = 150;
     const line = document.querySelector("[data-upgrade-note]")!.closest("[data-slot=page-error-line]") as HTMLElement;
     await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
     await flush();
-    expect(held()).toBe(false);
+    expect(await held()).toBe(false);
   });
 
   it("holds Screen size from the Fits my window confirm, before the watch starts, while its save is out", async () => {
@@ -667,6 +695,7 @@ describe("Screen size and picture quality", () => {
     await pick("Screen size", "Fits my window");
     await flush();
     const select = screen.getByRole("combobox", { name: "Screen size" }) as HTMLButtonElement;
+    await lasted();
     expect(select.disabled || select.hasAttribute("data-disabled")).toBe(true);
     // A pick now is refused: no second write leaves.
     const writes = h.calls.filter((c) => c.method === "work.winvm.settings" && (c.params as { screen?: string }).screen).length;
@@ -685,6 +714,7 @@ describe("Screen size and picture quality", () => {
     await flush();
     const select = screen.getByRole("combobox", { name: "Screen size" }) as HTMLButtonElement;
     expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).toContain("As last read");
+    await lasted();
     expect(select.disabled || select.hasAttribute("data-disabled")).toBe(true);
     // No upgrade can start from the size last read.
     await act(async () => fireEvent.click(select));
@@ -696,12 +726,14 @@ describe("Screen size and picture quality", () => {
     await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
     await flush();
     const fresh = screen.getByRole("combobox", { name: "Screen size" }) as HTMLButtonElement;
+    await lasted();
     expect(fresh.disabled || fresh.hasAttribute("data-disabled")).toBe(false);
     expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).not.toContain("As last read");
   });
 
   describe("one rule: a control is held while a write or read its value depends on is out", () => {
-    const isHeld = (name: string) => {
+    const isHeld = async (name: string) => {
+      await lasted();
       const select = screen.getByRole("combobox", { name }) as HTMLButtonElement;
       return select.disabled || select.hasAttribute("data-disabled");
     };
@@ -717,13 +749,14 @@ describe("Screen size and picture quality", () => {
       await flush();
       // Its own pick stays on screen, and the select takes no other until the save answers.
       expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1920 × 1200");
-      expect(isHeld("Screen size")).toBe(true);
+      expect(await isHeld("Screen size")).toBe(true);
       expect(confirmAction).not.toHaveBeenCalled();
       h.settingsWriteHold = null;
+  h.lookMs = 150;
       h.screen = "1920x1200";
       await act(async () => land({ sleepAfter: "30m", screen: "1920x1200", detail: "sharp" }));
       await flush();
-      expect(isHeld("Screen size")).toBe(false);
+      expect(await isHeld("Screen size")).toBe(false);
       // Now Fits my window starts from the size the box confirmed: a failure puts 1920 × 1200 back.
       h.fail["work.winvm.display.upgrade"] = "A thread is using the Windows VM. Stop it or take over first.";
       await pick("Screen size", "Fits my window");
@@ -739,12 +772,12 @@ describe("Screen size and picture quality", () => {
       await flush();
       await pick("Screen size", "Fits my window");
       await flush();
-      expect(isHeld("Screen size")).toBe(true);
+      expect(await isHeld("Screen size")).toBe(true);
       expect(mark("winvm.screen")).not.toBe("slow");
       expect(mark("winvm.screen")).not.toBe("saving");
       await act(async () => answer(false));
       await flush();
-      expect(isHeld("Screen size")).toBe(false);
+      expect(await isHeld("Screen size")).toBe(false);
       expect(pressed()).toEqual([]);
     });
 
@@ -757,14 +790,14 @@ describe("Screen size and picture quality", () => {
       await pick("Sleeps after", "2 hours");
       await flush();
       expect(screen.getByRole("combobox", { name: "Sleeps after" }).textContent).toContain("2 hours");
-      expect(isHeld("Sleeps after")).toBe(true);
+      expect(await isHeld("Sleeps after")).toBe(true);
       // A push of the machine's state meanwhile does not take the pick off screen.
       await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", display: virtio }) })));
       expect(screen.getByRole("combobox", { name: "Sleeps after" }).textContent).toContain("2 hours");
       await pick("Picture quality", "Faster");
       await flush();
       expect(screen.getByRole("combobox", { name: "Picture quality" }).textContent).toContain("Faster");
-      expect(isHeld("Picture quality")).toBe(true);
+      expect(await isHeld("Picture quality")).toBe(true);
     });
 
     it("holds the selects while the reads their values come from are out again", async () => {
@@ -772,18 +805,105 @@ describe("Screen size and picture quality", () => {
       h.screen = "fit";
       render(<WinvmHost env="box" />);
       await flush();
-      expect(isHeld("Screen size")).toBe(false);
+      expect(await isHeld("Screen size")).toBe(false);
       h.settingsRead = "pending";
       // The machine's state read again hangs too: Sleeps after comes from it.
       const was = h.state;
       h.state = new Promise(() => {});
       await act(async () => h.opens.forEach((fn) => fn()));
       await flush();
-      expect(isHeld("Screen size")).toBe(true);
-      expect(isHeld("Picture quality")).toBe(true);
-      expect(isHeld("Sleeps after")).toBe(true);
+      expect(await isHeld("Screen size")).toBe(true);
+      expect(await isHeld("Picture quality")).toBe(true);
+      expect(await isHeld("Sleeps after")).toBe(true);
       h.state = was;
     });
+  });
+
+  it("refuses a second pick at once without drawing the select disabled, and draws it disabled once the hold lasts", async () => {
+    h.state = at({ state: "awake", display: virtio });
+    h.screen = "fit";
+    render(<WinvmHost env="box" />);
+    await flush();
+    h.settingsWriteHold = new Promise(() => {});
+    // The look's delay is long while the second pick is tried, so "before it lasts" holds however slow the run.
+    h.lookMs = 60_000;
+    await pick("Sleeps after", "2 hours");
+    const select = () => screen.getByRole("combobox", { name: "Sleeps after" }) as HTMLButtonElement;
+    const drawnHeld = () => select().disabled || select().hasAttribute("data-disabled");
+    // Before the hold lasts: nothing drawn disabled, and a second pick sends nothing.
+    expect(drawnHeld()).toBe(false);
+    const writes = () => h.calls.filter((c) => c.method === "work.winvm.settings" && (c.params as { sleepAfter?: string }).sleepAfter).length;
+    expect(writes()).toBe(1);
+    await pick("Sleeps after", "Never");
+    await flush();
+    expect(writes()).toBe(1);
+    expect(select().textContent).toContain("2 hours");
+    // At the real 150 ms: drawn disabled.
+    h.lookMs = 150;
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", display: virtio }) })));
+    await lasted();
+    expect(drawnHeld()).toBe(true);
+  });
+
+  it("holds Screen size on a reconnect until the machine's state has answered too, though the display answered first", async () => {
+    h.state = at({ state: "awake", display: virtio });
+    h.screen = "1920x1200";
+    render(<WinvmHost env="box" />);
+    await flush();
+    // On reopen the display answers at once; the machine's state hangs (it may now be on the old display).
+    let answer: (v: unknown) => void = () => {};
+    h.state = new Promise((resolve) => (answer = resolve));
+    // The look's delay is long while the pick is tried, so the select opens however slow the run; the handler refuses.
+    h.lookMs = 60_000;
+    await act(async () => h.opens.forEach((fn) => fn()));
+    await flush();
+    const writes = () => h.calls.filter((c) => c.method === "work.winvm.settings" && Object.keys(c.params as object).length > 0).length;
+    await pick("Screen size", "2560 × 1600");
+    await flush();
+    expect(writes()).toBe(0);
+    // At the real 150 ms it is drawn disabled.
+    h.lookMs = 150;
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", display: virtio }) })));
+    await lasted();
+    const select = screen.getByRole("combobox", { name: "Screen size" }) as HTMLButtonElement;
+    expect(select.disabled || select.hasAttribute("data-disabled")).toBe(true);
+    // The state answers: the old display now, so Fits my window would take the restart path. Freed.
+    await act(async () => answer(at({ state: "awake", display: vga })));
+    await flush();
+    await lasted();
+    const freed = screen.getByRole("combobox", { name: "Screen size" }) as HTMLButtonElement;
+    expect(freed.disabled || freed.hasAttribute("data-disabled")).toBe(false);
+    h.state = at({ state: "awake", display: vga });
+    await pick("Screen size", "Fits my window");
+    await flush();
+    expect(confirmAction).toHaveBeenCalledWith(TURN_ON);
+  });
+
+  it("says a failed state read again under the Windows row with Retry, and holds the selects until it answers", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: virtio });
+    h.screen = "fit";
+    render(<WinvmHost env="box" />);
+    await flush();
+    const was = h.state;
+    // The pick below is tried on a held select: a long look delay keeps it open however slow the run.
+    h.lookMs = 60_000;
+    h.state = Promise.reject(new Error("The computer did not answer")) as never;
+    void (h.state as Promise<unknown>).catch(() => undefined);
+    await act(async () => h.opens.forEach((fn) => fn()));
+    await flush();
+    const line = document.querySelector("[data-state-failure]")!.closest("[data-slot=page-error-line]") as HTMLElement;
+    expect(line.textContent).toContain("did not answer.");
+    await pick("Sleeps after", "Never");
+    await flush();
+    expect(h.calls.some((c) => c.method === "work.winvm.settings" && (c.params as { sleepAfter?: string }).sleepAfter)).toBe(false);
+    h.state = was;
+    await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
+    await flush();
+    expect(document.querySelector("[data-state-failure]")).toBeNull();
+    await pick("Sleeps after", "Never");
+    await flush();
+    expect(h.calls.some((c) => c.method === "work.winvm.settings" && (c.params as { sleepAfter?: string }).sleepAfter === "never")).toBe(true);
   });
 
   it("ignores a reconnect's reply that lands after the watch settled", async () => {

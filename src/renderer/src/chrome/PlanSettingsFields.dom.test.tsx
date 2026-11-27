@@ -87,16 +87,26 @@ describe("Builds from plans", () => {
     expect(screen.getByRole("switch", { name: "Archive the plan's thread once the build starts" }).getAttribute("aria-checked")).toBe(String(DEFAULT_PLAN_SETTINGS.archiveAfterStart));
   });
 
-  it("holds every control while a save of the set is out, and frees them once it answers", async () => {
+  it("refuses a second pick while a save is out, draws the rows held only after 150 ms, and frees them once it answers", async () => {
     plans.scope = { settings: { ...DEFAULT_PLAN_SETTINGS, autoImplement: true }, overridden: false };
     let answerSave!: () => void;
+    plans.save.mockClear();
     plans.save.mockImplementationOnce(() => new Promise<void>((resolve) => (answerSave = resolve)));
     render(<PlanSettingsEditor />);
     await act(async () => {
       fireEvent.click(screen.getByRole("switch", { name: "Start the build when a plan is done" }));
     });
     expect(screen.getByRole("switch", { name: "Start the build when a plan is done" }).getAttribute("aria-checked")).toBe("false");
-    expect((screen.getByRole("switch", { name: "Archive the plan's thread once the build starts" }) as HTMLButtonElement).disabled).toBe(true);
+    const archive = () => screen.getByRole("switch", { name: "Archive the plan's thread once the build starts" }) as HTMLButtonElement;
+    // 0 ms: nothing drawn held, and a second pick is refused.
+    expect(archive().disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(archive());
+    });
+    expect(plans.save).toHaveBeenCalledTimes(1);
+    // 150 ms: drawn held.
+    await act(async () => new Promise<void>((resolve) => setTimeout(resolve, 170)));
+    expect(archive().disabled).toBe(true);
     await act(async () => answerSave());
     expect((screen.getByRole("switch", { name: "Archive the plan's thread once the build starts" }) as HTMLButtonElement).disabled).toBe(false);
   });

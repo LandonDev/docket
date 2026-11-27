@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageRow, PageRowsSkeleton } from "../../components/page";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -27,6 +27,7 @@ import { useHost } from "./parts/hostRpc";
 import { SaveMark } from "./parts/SaveMark";
 import { SettingSection } from "./parts/SettingRow";
 import { useSaved } from "./parts/useSaved";
+import { useHeldLook } from "./parts/useHeldLook";
 
 // The rest of the page (each job's access, what goes without asking, travel, where new jobs go) rides Work's own chunk.
 export const workPageChunk = defineChunk("work-settings", () => import("../../work/shell/WorkPage"));
@@ -96,16 +97,28 @@ export function WorkOnRow({ environmentId, report }: { environmentId: string; re
   const on = useWorkHosts().has(environmentId);
   const jobs = useWorkspaces().filter((w) => w.kind === "work" && w.environmentId === environmentId).length;
   const saved = useSaved();
+  const busy = useRef(false);
+  const [pending, setPending] = useState<boolean | null>(null);
+  const heldLook = useHeldLook(pending !== null);
   const may = computer.may("work.set", { enabled: !on });
   const flip = async (next: boolean): Promise<boolean> => {
-    if (!next && !(await confirmAction(workOffAsk(computerInLine(computer.name), jobs)))) return false;
-    return saved.run(async () => {
-      // A refusal in the house's words, naming the computer: never the link's own text.
-      const answer = await computer.request<{ enabled: boolean }>("work.set", { enabled: next }).catch((err: unknown) => {
-        throw new Error(hostFailure(environmentId, err, "did not save the change", true));
-      });
-      setWorkOn(environmentId, !!answer?.enabled);
-    });
+    // One flip at a time, from the press through the ask and the write: a second press is refused at once, and the
+    // switch keeps showing the pending flip (`pending`), drawn held only once the hold lasts (`useHeldLook`).
+    if (busy.current) return false;
+    busy.current = true;
+    setPending(next);
+    const landed = (!next && !(await confirmAction(workOffAsk(computerInLine(computer.name), jobs))))
+      ? false
+      : await saved.run(async () => {
+          // A refusal in the house's words, naming the computer: never the link's own text.
+          const answer = await computer.request<{ enabled: boolean }>("work.set", { enabled: next }).catch((err: unknown) => {
+            throw new Error(hostFailure(environmentId, err, "did not save the change", true));
+          });
+          setWorkOn(environmentId, !!answer?.enabled);
+        });
+    busy.current = false;
+    setPending(null);
+    return landed;
   };
   // A read that failed is said once at the page's head (ReadFailure, with Retry): its row is not drawn meanwhile.
   const failed = failedRead;
@@ -131,7 +144,7 @@ export function WorkOnRow({ environmentId, report }: { environmentId: string; re
     <>
       <SaveMark state={saved.state} />
       {/* Held while its own write is out: one press, one answer, and the pending flip stays shown until it lands. */}
-      <SettingSwitch label={`Work on ${computerInLine(computer.name)}`} on={on} onChange={flip} disabled={saved.state === "saving" || saved.state === "slow"} />
+      <SettingSwitch label={`Work on ${computerInLine(computer.name)}`} on={pending ?? on} onChange={flip} disabled={heldLook} />
     </>
   ) : (
     <StatusMark state="idle" glyph={false} word={on ? "On" : "Off"} className="text-xs" />

@@ -66,7 +66,8 @@ export const SIGN_IN_NAMES: readonly SearchExtra[] = ["LifeOS", "Office", "Googl
 
 export const SEARCH_LIMIT = 40;
 
-type Indexed = SearchResult & { names: string; old: readonly string[]; rank: number };
+/** `counted`: a row whose page names it with a count the index cannot know: a typed number does not have to match. */
+type Indexed = SearchResult & { names: string; old: readonly string[]; rank: number; counted?: boolean };
 
 const pageKind = (row: ListRow): SettingPage => (row.kind === "computer" ? "computer:*" : row.kind === "job" ? "job" : row.kind === "workspace" ? "workspace" : (row.id as SettingPage));
 
@@ -81,7 +82,7 @@ const computersOf = (groups: readonly ListGroup[]): ListRow[] => listPages(group
 /** `jobsOn`: the computers (environment ids) with Work on that hold a job, whose pages list their jobs. */
 /** `workCount`: how many linked computers have Work on; `placesDiffer`: a place may keep its own start set (New
  *  threads draws its overrides row). */
-export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean; workHere?: boolean; jobsOn?: readonly string[]; workCount?: number; placesDiffer?: boolean };
+export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean; workHere?: boolean; jobsOn?: readonly string[]; workCount?: number; placesDiffer?: boolean; reviewsDiffer?: boolean };
 
 const drawn = (entry: SettingEntry, window: SearchWindow): boolean =>
   !entry.needs || entry.needs.every((need) =>
@@ -95,7 +96,9 @@ const drawn = (entry: SettingEntry, window: SearchWindow): boolean =>
             ? (window.workCount ?? 2) > 1
             : need === "placesDiffer"
               ? window.placesDiffer !== false
-              : window.work !== false,
+              : need === "reviewsDiffer"
+                ? window.reviewsDiffer === true
+                : window.work !== false,
   );
 
 function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly SearchExtra[], window: SearchWindow): Indexed[] {
@@ -150,6 +153,7 @@ function rowResult(entry: SettingEntry, row: ListRow, place: string | undefined,
     row: entry.id,
     // A counted row is also found by its page's own words ("different in places").
     names: uncounted ? `${title} ${settingWords(entry.title, vars)}` : title,
+    counted: uncounted !== undefined,
     // An old name says the computer a row was on ("Hosts › The box › Port"), never "a host".
     old: entry.was.map((was) => settingWords(was, vars)),
     rank: 1,
@@ -185,8 +189,10 @@ export function searchSettings(query: string, groups: readonly ListGroup[], vars
   const typed = needles.join(" ");
   const scored: { result: SearchResult; score: number; at: number }[] = [];
   index(groups, vars, extras, window).forEach((item, at) => {
-    const { names, old, rank, ...result } = item;
-    if (has(names, needles)) {
+    const { names, old, rank, counted, ...result } = item;
+    // "Different in 2 places" is found with its count typed, whatever the count is today.
+    const wanted = counted ? needles.filter((needle) => !/^\d+$/.test(needle)) : needles;
+    if (wanted.length && has(names, wanted)) {
       scored.push({ result, score: rank * 2 + (names.toLowerCase().startsWith(typed) ? 0 : 1), at });
       return;
     }

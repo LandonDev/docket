@@ -21,6 +21,7 @@ import { SaveMark } from "../../surfaces/settings/parts/SaveMark";
 import { SettingRow } from "../../surfaces/settings/parts/SettingRow";
 import { hostRequest } from "../../surfaces/settings/parts/hostRpc";
 import { useSaved } from "../../surfaces/settings/parts/useSaved";
+import { useHeldLook } from "../../surfaces/settings/parts/useHeldLook";
 import { grantLine, WORK_CHATS_KEY } from "../outbox/model";
 import { loadHost, removeGrant, useOutbox, useOutboxPage, type HostGrant } from "../outbox/store";
 
@@ -293,6 +294,38 @@ export function ToolsSheet({ open, onOpenChange }: { open: boolean; onOpenChange
   const matched = hosts.reduce((n, id) => n + cardsOf(id).reduce((m, card) => m + matching(card).length, 0), 0);
   // More than one computer has Work on: every rule names the computer it changes, whatever has answered yet.
   const several = hosts.length > 1;
+  // Each tool's save while it is out, and its refusal, by computer, add-on and tool: kept by the sheet, which stays
+  // mounted while closed, so a row filtered away and back (or the sheet closed and opened) keeps its pick, its hold and
+  // its reason, and never sends a second write while one is out.
+  const [picks, setPicks] = useState<Readonly<Record<string, ToolRule>>>({});
+  const [refusals, setRefusals] = useState<Readonly<Record<string, string>>>({});
+  const out = useRef(new Set<string>());
+  const ruleKey = (id: string, card: ToolRulesCard, tool: ToolRuleRow): string => `${id}|${card.addonId}|${tool.tool}`;
+  const without = <T,>(was: Readonly<Record<string, T>>, key: string): Record<string, T> => Object.fromEntries(Object.entries(was).filter(([k]) => k !== key));
+  /** One pick's save, or null when that tool's save is already out (the pick is refused at once). */
+  const pick = (id: string, card: ToolRulesCard, tool: ToolRuleRow, next: ToolRule): Promise<void> | null => {
+    const key = ruleKey(id, card, tool);
+    if (out.current.has(key)) return null;
+    out.current.add(key);
+    setPicks((was) => ({ ...was, [key]: next }));
+    setRefusals((was) => without(was, key));
+    // Taken, the card the computer sends back holds the rule; refused, the select goes back to the rule it holds.
+    const saving = hostRequest<ToolRulesCard>(id, "work.outbox.setRules", { addonId: card.addonId, rules: { [tool.tool]: next } }).then(
+      (answer) => put(id, answer),
+      (err: unknown) => {
+        const why = hostFailure(id, err, "did not save the rule", true);
+        setRefusals((was) => ({ ...was, [key]: why }));
+        throw new Error(why);
+      },
+    );
+    void saving
+      .catch(() => {})
+      .then(() => {
+        out.current.delete(key);
+        setPicks((was) => without(was, key));
+      });
+    return saving;
+  };
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" data-tools-sheet="">
@@ -325,7 +358,14 @@ export function ToolsSheet({ open, onOpenChange }: { open: boolean; onOpenChange
                     return (
                       <PageSection key={card.addonId} title={`${card.name}${where}`} data-addon={card.addonId}>
                         {tools.map((tool) => (
-                          <ToolRow key={tool.tool} environmentId={id} card={card} tool={tool} mayWrite={mayWrite} onCard={(next) => put(id, next)} />
+                          <ToolRow
+                            key={tool.tool}
+                            tool={tool}
+                            mayWrite={mayWrite}
+                            pending={picks[ruleKey(id, card, tool)]}
+                            refusal={refusals[ruleKey(id, card, tool)]}
+                            onPick={(next) => pick(id, card, tool, next)}
+                          />
                         ))}
                       </PageSection>
                     );
@@ -340,37 +380,35 @@ export function ToolsSheet({ open, onOpenChange }: { open: boolean; onOpenChange
   );
 }
 
-/** One tool's rule: the select moves at once and goes back if its computer refuses. */
-function ToolRow({ environmentId, card, tool, mayWrite, onCard }: { environmentId: string; card: ToolRulesCard; tool: ToolRuleRow; mayWrite: boolean; onCard: (card: ToolRulesCard) => void }) {
+/**
+ * One tool's rule: the select moves at once and goes back if its computer refuses. The pick while its save is out, and
+ * the refusal, are the sheet's (`pending`, `refusal`); the row is held while that save is out, drawn so once the hold
+ * lasts (`useHeldLook`), and a second pick is refused at once by the sheet.
+ */
+function ToolRow({ tool, mayWrite, pending, refusal, onPick }: { tool: ToolRuleRow; mayWrite: boolean; pending: ToolRule | undefined; refusal: string | undefined; onPick: (next: ToolRule) => Promise<void> | null }) {
   const saved = useSaved();
-  const [shown, setShown] = useState<ToolRule | null>(null);
-  const value = shown ?? tool.rule;
-  const change = async (next: ToolRule): Promise<void> => {
-    setShown(next);
-    // Taken, the card the computer sends back holds the rule; refused, the select goes back to the rule it holds.
-    await saved.run(async () =>
-      onCard(
-        await hostRequest<ToolRulesCard>(environmentId, "work.outbox.setRules", { addonId: card.addonId, rules: { [tool.tool]: next } }).catch((err: unknown) => {
-          throw new Error(hostFailure(environmentId, err, "did not save the rule", true));
-        }),
-      ),
-    );
-    setShown(null);
+  const held = pending !== undefined;
+  const heldLook = useHeldLook(held);
+  const value = pending ?? tool.rule;
+  const change = (next: ToolRule): void => {
+    const saving = onPick(next);
+    if (saving) void saved.run(() => saving);
   };
+  // A row drawn again while its save is out (filtered away and back) shows the sheet's save: its spinner once slow.
+  const mark = saved.state !== "idle" ? saved.state : held ? (heldLook ? "slow" : "saving") : "idle";
   return (
-    <PageRow data-tool={tool.tool} title={tool.words} description={toolLine({ rule: value, changed: tool.changed && shown === null })} error={saved.error}>
+    <PageRow data-tool={tool.tool} title={tool.words} description={toolLine({ rule: value, changed: tool.changed && !held })} error={saved.error ?? refusal}>
       {mayWrite ? (
         <>
-          <SaveMark state={saved.state} />
+          <SaveMark state={mark} />
           <ChoiceSelect
             size="sm"
             label={tool.words}
             value={value ?? "held"}
             options={RULES}
-            // Held while its own save is out: the pick stays shown until that save answers, and no second pick can
-            // be overtaken by the first one's answer.
-            disabled={saved.state === "saving" || saved.state === "slow"}
-            onChange={(next) => void change(next as ToolRule)}
+            // Held while its own save is out: drawn disabled only once the hold lasts, so a fast save never flashes.
+            disabled={heldLook}
+            onChange={(next) => change(next as ToolRule)}
           />
         </>
       ) : (

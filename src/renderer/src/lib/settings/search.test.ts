@@ -224,6 +224,9 @@ describe("the overrides row in search", () => {
   it("is found by the page's words and only where a place may keep its own set", () => {
     const rows = (query: string, window = {}) => searchSettings(query, settingsList(MAC), { mac: "this Mac" }, [], window).map((result) => result.row);
     expect(rows("different in places")).toContain("defaults.different");
+    expect(rows("different in 2 places")).toContain("defaults.different");
     expect(rows("different from new threads", { placesDiffer: false })).not.toContain("defaults.different");
+    // Reviews' exceptions row is drawn only once every project answered: search offers the page, not the row.
+    expect(rows("projects that differ from reviews")).not.toContain("reviews.different");
   });
 });

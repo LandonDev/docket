@@ -1120,6 +1120,16 @@ const PAGES: Record<
     body: () => <Pressing press="Models agents may run on"><OrchestrationPage /></Pressing>,
     answers: { "rules.get": { rules: { ...withProbedDefaults(DEFAULT_RULES), routing: ROUTING }, overridden: true, home: ON_THE_BOX } },
   },
+  // The computer's model catalog did not come: the sheet says so with Retry, never an empty table.
+  "orchestration-models-failed": {
+    title: "Subagents",
+    description: <HomeLine page="orchestration" />,
+    body: () => <Pressing press="Models agents may run on"><OrchestrationPage /></Pressing>,
+    answers: {
+      "rules.get": { rules: { ...withProbedDefaults(DEFAULT_RULES), routing: ROUTING }, overridden: true, home: ON_THE_BOX },
+      "catalog.get": () => Promise.reject(new Error(NO_ANSWER)),
+    },
+  },
   "orchestration-rule": {
     title: "Subagents",
     description: <HomeLine page="orchestration" />,

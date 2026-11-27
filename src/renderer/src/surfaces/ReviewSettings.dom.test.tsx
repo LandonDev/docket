@@ -283,24 +283,50 @@ describe("Reviews page", () => {
     }
   });
 
-  it("holds every control while a save of the set is out, the pick on screen, and frees them once it answers", async () => {
-    let answerSave!: () => void;
-    state.set.mockImplementation(() => new Promise<void>((resolve) => (answerSave = resolve)));
-    answer({ ...SETTINGS, beforeMerge: true });
-    await renderPage();
+  const pickStop = async (name: string) => {
     await act(async () => {
       fireEvent.click(screen.getByRole("combobox", { name: "Stop the merge for" }));
     });
-    const option = await screen.findByRole("option", { name: "Any finding" });
+    const option = await screen.findByRole("option", { name });
     await act(async () => {
       fireEvent.pointerDown(option, { pointerType: "mouse" });
       fireEvent.click(option);
     });
+  };
+
+  it("refuses a second pick while a save is out, draws nothing held until 150 ms, and frees the rows once it answers", async () => {
+    let answerSave!: () => void;
+    state.set.mockImplementation(() => new Promise<void>((resolve) => (answerSave = resolve)));
+    answer({ ...SETTINGS, beforeMerge: true });
+    await renderPage();
+    await pickStop("Any finding");
+    const flip = () => screen.getByRole("switch", { name: "Review before merge" }) as HTMLButtonElement;
     expect(screen.getByRole("combobox", { name: "Stop the merge for" }).textContent).toContain("Any finding");
-    expect((screen.getByRole("switch", { name: "Review before merge" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("combobox", { name: "Stop the merge for" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(flip().disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(flip());
+    });
+    expect(state.set).toHaveBeenCalledTimes(1);
+    await act(async () => new Promise<void>((resolve) => setTimeout(resolve, 170)));
+    expect(flip().disabled).toBe(true);
     await act(async () => answerSave());
-    expect((screen.getByRole("switch", { name: "Review before merge" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(flip().disabled).toBe(false);
+  });
+
+  it("puts a refused change back to the set the last good save sent, not the first read's", async () => {
+    answer({ ...SETTINGS, beforeMerge: true });
+    await renderPage();
+    await pickStop("Any finding");
+    expect(lastSet().blockOn).toBe("any");
+    state.set.mockImplementationOnce(async () => {
+      throw new Error("refused: review settings live on box; it is offline");
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("switch", { name: "Review before merge" }));
+    });
+    // Back on, and Stop the merge for still says the pick that landed.
+    expect(screen.getByRole("switch", { name: "Review before merge" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("combobox", { name: "Stop the merge for" }).textContent).toContain("Any finding");
   });
 
   it("puts a refused change back and says why under its row", async () => {
@@ -393,6 +419,17 @@ describe("Different in N projects, beside Reviews off", () => {
     await act(async () => {});
     expect(screen.queryByRole("alert")).toBeNull();
     expect((document.querySelector("[data-setting='reviews.different']") as HTMLElement).textContent).toContain("Different in 1 project");
+  });
+
+  it("draws no row, never \"at least 0\", with no known exception and a project not heard from: the failure and Retry alone", async () => {
+    catalog.projects = [{ id: "p2", name: "docket", environmentId: "env_box", workspaceId: "w1" }];
+    catalog.silent = new Set(["p2"]);
+    answer({ ...SETTINGS, beforeMerge: true });
+    await renderPage();
+    await act(async () => {});
+    expect(document.querySelector("[data-setting='reviews.different']")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("The box did not answer.");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
   it("holds the row in its shape while the projects are read, and reads a project again once its sheet closes", async () => {

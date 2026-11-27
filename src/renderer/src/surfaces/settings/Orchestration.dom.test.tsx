@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   load: vi.fn(async () => {}),
   error: null as string | null,
   retry: vi.fn(),
+  catalogFailure: null as { error: string; retry: () => void } | null,
 }));
 
 const keyRights = vi.hoisted(() => ({ write: true }));
@@ -35,7 +36,7 @@ vi.mock("../../lib/connection/status", () => ({ useEnvironmentStatuses: () => ne
 vi.mock("../../lib/tcserver/workspaces", () => ({ useWorkspaces: () => state.workspaces }));
 vi.mock("../../lib/tcserver/rules", async (original) => ({
   ...(await original<typeof import("../../lib/tcserver/rules")>()),
-  useRulesScope: () => ({ scope: state.scope, catalog: state.catalog, error: state.error, retry: state.retry }),
+  useRulesScope: () => ({ scope: state.scope, catalog: state.catalog, error: state.error, retry: state.retry, catalogFailure: state.catalogFailure }),
   rulesStore: {
     save: (...a: unknown[]) => state.save(...a),
     clear: (...a: unknown[]) => state.clear(...(a as [])),
@@ -115,6 +116,9 @@ async function saveDialog(dialog: HTMLElement) {
 const ruleRow = (task: string) => screen.getByRole("button", { name: `Edit rule: ${task}` }).closest<HTMLElement>("[data-slot=page-row]")!;
 
 /** The Models sheet, opened from its row. */
+/** Past the 150 ms a hold waits before it is drawn (`useHeldLook`). */
+const pastHoldLook = () => act(async () => new Promise<void>((resolve) => setTimeout(resolve, 170)));
+
 async function openModels() {
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Models agents may run on" }));
@@ -130,6 +134,7 @@ const withConfirm = () => (
 );
 
 beforeEach(() => {
+  state.catalogFailure = null;
   state.scope = { rules: rules(), overridden: false };
   state.catalog = CATALOG;
   state.workspaces = [];
@@ -202,18 +207,78 @@ describe("Subagents", () => {
     expect((document.querySelector("[data-setting='sub.edits']") as HTMLElement).textContent).toContain("Saved");
   });
 
-  it("holds every control while a write of the set is out, so no pick is built on a change that may be refused", async () => {
+  it("refuses a pick while a write of the set is out, draws nothing held until 150 ms, and frees the page on the refusal", async () => {
     let refuse!: () => void;
     state.save.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => (refuse = () => reject(new Error("refused: the box said no")))));
     render(<OrchestrationPage />);
     await act(async () => {
       fireEvent.click(screen.getByRole("switch", { name: "May edit files itself" }));
     });
-    expect((screen.getByRole("switch", { name: "May run commands itself" }) as HTMLButtonElement).disabled).toBe(true);
+    const commands = () => screen.getByRole("switch", { name: "May run commands itself" }) as HTMLButtonElement;
+    // 0 ms: nothing drawn held; a second pick is refused (and its switch slides back).
+    expect(commands().disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(commands());
+    });
+    expect(state.save).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Add rule…" }));
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // 150 ms: drawn held.
+    await pastHoldLook();
+    expect(commands().disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Add rule…" }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => refuse());
-    expect((screen.getByRole("switch", { name: "May run commands itself" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(commands().disabled).toBe(false);
     expect(state.save).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a model pick in the sheet while another's write is out", async () => {
+    state.catalog = CATALOG;
+    let answer!: () => void;
+    state.save.mockImplementationOnce(() => new Promise<void>((resolve) => (answer = resolve)));
+    render(<OrchestrationPage />);
+    await openModels();
+    await choose(screen.getByRole("combobox", { name: "Who may start Opus" }), "Lead threads only");
+    await choose(screen.getByRole("combobox", { name: "Who may start Sol" }), "Everyone");
+    expect(state.save).toHaveBeenCalledTimes(1);
+    await act(async () => answer());
+  });
+
+  it("gives the Models sheet the rows' shape while the catalog is read, and its failure with Retry", async () => {
+    state.catalog = null;
+    const view = render(<OrchestrationPage />);
+    const sheet = await openModels();
+    expect(sheet.querySelector("[aria-busy=true]")).toBeTruthy();
+    expect(within(sheet).queryByRole("table")).toBeNull();
+    state.catalogFailure = { error: NO_ANSWER, retry: state.retry };
+    view.rerender(<OrchestrationPage />);
+    const open = screen.getByRole("dialog");
+    expect(within(open).getByRole("alert").textContent).toBe("This Mac did not answer.");
+    await act(async () => {
+      fireEvent.click(within(open).getByRole("button", { name: "Retry" }));
+    });
+    expect(state.retry).toHaveBeenCalled();
+  });
+
+  it("holds the rule dialog's fields while its Save is out, drawn held after 150 ms", async () => {
+    let answer!: () => void;
+    state.save.mockImplementationOnce(() => new Promise<void>((resolve) => (answer = resolve)));
+    render(<OrchestrationPage />);
+    const dialog = await openRule("Reviews");
+    const task = within(dialog).getByLabelText("When the task is") as HTMLInputElement;
+    const before = task.value;
+    await saveDialog(dialog);
+    await act(async () => {
+      fireEvent.change(task, { target: { value: "Something else" } });
+    });
+    expect(task.value).toBe(before);
+    expect(task.disabled).toBe(false);
+    await pastHoldLook();
+    expect(task.disabled).toBe(true);
+    expect((within(dialog).getByRole("combobox", { name: "Agent app" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => answer());
   });
 
   it("says once that both limits are for each thread, tells them apart by name, and names no limit", () => {

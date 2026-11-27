@@ -13,7 +13,7 @@ import { scopeKey, useThreadDefaults, useThreadDefaultsError, useThreadDefaultsS
 import type { ThreadDefaults, WorkspaceMeta } from "../lib/tcserver/types";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
 import { SaveMark } from "../surfaces/settings/parts/SaveMark";
 import { ValueWords } from "../surfaces/settings/parts/ValueWords";
@@ -24,6 +24,7 @@ import { readWhenOpen, withDeadline } from "../lib/connection/openRead";
 import { Skeleton } from "../components/ui/skeleton";
 import { useDraft } from "../surfaces/settings/parts/useDraft";
 import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
+import { useHeldLook } from "../surfaces/settings/parts/useHeldLook";
 import { confirmAction, DialogFooter } from "./ConfirmDialog";
 import { FieldRow } from "./DialogField";
 import { Modal, ModalBody } from "./Modal";
@@ -84,8 +85,9 @@ export function queueDefaults<T>(environmentId: string, workspaceId: string | nu
   return run;
 }
 
-/** One scope's set as an editor holds it: what the computer confirmed, what is shown, each row's save. */
-function useDefaultsSet(environmentId: string, workspaceId: string | null) {
+/** One scope's set as an editor holds it: what the computer confirmed, what is shown, each row's save. `pressing`:
+ *  Use New threads is under way for this place (its check, confirm, clear), which holds the set as a save does. */
+function useDefaultsSet(environmentId: string, workspaceId: string | null, pressing = false) {
   const scope = useThreadDefaults(environmentId, workspaceId, true);
   const failure = useThreadDefaultsError(environmentId, workspaceId);
   // A refresh that failed over a held answer: the rows stay, as last read, under the failure and its Retry.
@@ -98,7 +100,17 @@ function useDefaultsSet(environmentId: string, workspaceId: string | null) {
   const blocked = home.blocked || stale !== null;
   // A key that may read the set but not change it sees each value as words (`DefaultsRows`), and no Use….
   const may = useLinkMay(environmentId, "defaults.set", { workspaceId, defaults: null });
+  // While any save of this set is out (a pick, Docket's defaults, Use New threads from its press to its clear) every
+  // control of it is held, the pending pick on screen: no new pick is laid on a set that save may yet replace. After a
+  // clear the set is gone until the computer is read again, so the rows wait as bones and nothing can be picked. The
+  // hold refuses a pick at once (`held`); it is drawn (`look`) only once it has lasted 150 ms, so a fast save never
+  // flashes the set. A blocked set (its home out of reach, or as last read) is drawn held at once.
+  const busy = draft.busy || cleared.state === "saving" || cleared.state === "slow" || pressing;
+  const held = blocked || busy;
+  const slow = useHeldLook(busy);
+  const look = blocked || slow;
   const write = (row: Row, next: ThreadDefaults) => {
+    if (held) return Promise.resolve(false);
     const shown = draft.value;
     const chosen = normalizeDefaults(next, environmentId);
     // Only the change goes out, queued behind any save still out, onto the set the store holds when its turn comes:
@@ -110,12 +122,9 @@ function useDefaultsSet(environmentId: string, workspaceId: string | null) {
     );
   };
   /** Drops the scope's own set: a workspace follows New threads again, New threads takes Docket's. */
-  const clear = () => cleared.run(() => queueDefaults(environmentId, workspaceId, () => workspaceStore.saveDefaults(environmentId, workspaceId, null)));
-  // While any save of this set is out (a pick, Docket's defaults, Use New threads' clear) every control of it is held,
-  // the pending pick on screen: no new pick is laid on a set that save may yet replace. After a clear the set is gone
-  // until the computer is read again, so the rows wait as bones and nothing can be picked.
-  const held = blocked || draft.busy || cleared.state === "saving" || cleared.state === "slow";
-  return { scope, failure, stale, value: draft.value, saved, write, blocked, held, clear, cleared, may };
+  const clear = () =>
+    held ? Promise.resolve(false) : cleared.run(() => queueDefaults(environmentId, workspaceId, () => workspaceStore.saveDefaults(environmentId, workspaceId, null)));
+  return { scope, failure, stale, value: draft.value, saved, write, blocked, held, look, clear, cleared, may };
 }
 type DefaultsSet = ReturnType<typeof useDefaultsSet>;
 
@@ -140,9 +149,10 @@ function LastRead({ environmentId, stale }: { environmentId: string; stale: { er
 function DefaultsRows({ set, environmentId, startOn, layout }: { set: DefaultsSet; environmentId: string; startOn: boolean; layout: "setting" | "page" | "dialog" }) {
   const value = set.value!;
   const ladder = effortLadder(modelForDefaults(value, environmentId));
-  const disabled = set.held;
+  const disabled = set.look;
   const size = layout === "dialog" ? "sm" : undefined;
   const pickAccess = async (permission: ThreadDefaults["permission"]) => {
+    if (set.held) return;
     // Full access as the start of every new thread widens what they do unasked: it asks first.
     if (permission === "auto" && value.permission !== "auto" && !(await confirmAction(FULL_ACCESS_CONFIRM))) return;
     void set.write("access", { ...value, permission });
@@ -277,6 +287,7 @@ function StartWith({ environmentId }: { environmentId: string }) {
   // Which copy of a linked project a thread starts on is a question only with two computers.
   const startOn = useEnvironments().length > 1;
   const reset = async () => {
+    if (set.held) return;
     const ok = await confirmAction({
       title: "Use Docket's defaults",
       body: `The set saved for every computer is cleared. New threads start with ${DOCKETS}.`,
@@ -295,7 +306,7 @@ function StartWith({ environmentId }: { environmentId: string }) {
           {/* Asks first, so last in its section; offered only while there is a set to clear and the box can take it. */}
           {set.scope?.overridden && !set.blocked && set.may ? (
             <SettingRow id="defaults.reset" description={DOCKETS} saved={set.cleared}>
-              <Button variant="ghost" size="sm" disabled={set.held} className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
+              <Button variant="ghost" size="sm" disabled={set.look} className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
                 Use…
               </Button>
             </SettingRow>
@@ -314,15 +325,15 @@ function StartWith({ environmentId }: { environmentId: string }) {
 /** A workspace's own set on its page: the same rows as plain page rows (the map's are the one set's alone), and Use
  *  New threads while it keeps one. */
 function WorkspaceSet({ environmentId, workspaceId }: { environmentId: string; workspaceId: string }) {
-  const set = useDefaultsSet(environmentId, workspaceId);
   const workspace = useWorkspaceCatalog().workspaces.find((w) => w.id === workspaceId && w.environmentId === environmentId);
   const reset = useUseNewThreads({ id: workspaceId, environmentId, name: workspace?.name ?? "This workspace" });
+  const set = useDefaultsSet(environmentId, workspaceId, reset.pressing);
   return (
     <PageSection
       title="New threads"
       action={
         set.scope?.overridden && reset.may ? (
-          <UseNewThreadsPress reset={reset} saved={set.cleared} disabled={set.held} variant="ghost" />
+          <UseNewThreadsPress reset={reset} saved={set.cleared} held={set.held} disabled={set.look} variant="ghost" />
         ) : null
       }
     >
@@ -460,7 +471,7 @@ function OwnSetRow({ place }: { place: WorkspaceMeta }) {
       {failure ? <ReadFailure computer={place.environmentId} error={failure.error} retry={failure.retry} /> : null}
       {stale ? <ReadFailure computer={place.environmentId} error={stale.error} retry={stale.retry} /> : null}
       <SaveMark state={saved.state} />
-      {own && reset.may ? <UseNewThreadsPress reset={reset} saved={saved} disabled={blocked} variant="outline" /> : null}
+      {own && reset.may ? <UseNewThreadsPress reset={reset} saved={saved} held={blocked} disabled={blocked} variant="outline" /> : null}
     </PageRow>
   );
 }
@@ -469,12 +480,35 @@ function OwnSetRow({ place }: { place: WorkspaceMeta }) {
  * Use New threads, once the set it would bring is read: a button-shaped bone while the inherited set is out, its
  * computer's failure (with Retry) when it could not be read, the press once it is known.
  */
-function UseNewThreadsPress({ reset, saved, disabled, variant }: { reset: ReturnType<typeof useUseNewThreads>; saved: Saved; disabled?: boolean; variant: "outline" | "ghost" }) {
+function UseNewThreadsPress({
+  reset,
+  saved,
+  held = false,
+  disabled,
+  variant,
+}: {
+  reset: ReturnType<typeof useUseNewThreads>;
+  saved: Saved;
+  /** The set is held (a pick's save out, its home out of reach): a press is refused at once. */
+  held?: boolean;
+  /** Drawn held: once a hold has lasted 150 ms, or at once for a blocked set. */
+  disabled?: boolean;
+  variant: "outline" | "ghost";
+}) {
   if (reset.failure) return <ReadFailure computer={reset.environmentId} error={reset.failure.error} retry={reset.failure.retry} />;
   if (!reset.inherited) return <Skeleton data-skeleton-control className="h-7 w-32 shrink-0 rounded-md" />;
   return (
-    <Button variant={variant} size="sm" disabled={disabled || saved.state === "saving" || saved.state === "slow"} onClick={() => void reset.run(saved)}>
-      Use New threads
+    <Button
+      variant={variant}
+      size="sm"
+      disabled={disabled || reset.look}
+      onClick={() => {
+        if (held) return;
+        void reset.run(saved);
+      }}
+    >
+      {/* Saving once the clear has been out 150 ms, as the row's spinner. */}
+      <BusyLabel busy={saved.state === "slow"} label="Use New threads" />
     </Button>
   );
 }
@@ -523,7 +557,31 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
       live = false;
     };
   }, [read, attempt]);
-  const run = async (saved: Saved): Promise<boolean> => {
+  // From the press to the clear's answer (its check, the confirm, the clear) the place's set is held: a second press
+  // or any pick is refused. The re-read after it holds the set by itself: the store has no set to pick from until then.
+  const [pressing, setPressing] = useState(false);
+  const going = useRef(false);
+  const look = useHeldLook(pressing);
+  const run = (saved: Saved): Promise<boolean> => {
+    if (going.current) return Promise.resolve(false);
+    going.current = true;
+    setPressing(true);
+    const done = () => {
+      going.current = false;
+      setPressing(false);
+    };
+    return press(saved).then(
+      (cleared) => {
+        done();
+        return cleared;
+      },
+      (err: unknown) => {
+        done();
+        throw err;
+      },
+    );
+  };
+  const press = async (saved: Saved): Promise<boolean> => {
     // The answer in hand at the press: asked again, so a change made meanwhile cannot skip the Full access check.
     let now: InheritedRead;
     try {
@@ -560,6 +618,8 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
     failure: fresh.error === null ? null : { error: fresh.error, retry: () => setAttempt((n) => n + 1) },
     environmentId,
     run,
+    pressing,
+    look,
   };
 }
 
@@ -569,8 +629,8 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
  * and workspace pages and the Work page. Its props stay `workspace` and `onClose`.
  */
 export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: WorkspaceMeta; onClose: () => void }) {
-  const set = useDefaultsSet(workspace.environmentId, workspace.id);
   const reset = useUseNewThreads(workspace);
+  const set = useDefaultsSet(workspace.environmentId, workspace.id, reset.pressing);
   const computer = useComputerName(workspace.environmentId);
   return (
     <Modal title="New threads" description={workspace.name} size="sm" onClose={onClose}>
@@ -591,7 +651,7 @@ export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: Worksp
       </ModalBody>
       <DialogFooter
         start={
-          set.scope?.overridden && reset.may ? <UseNewThreadsPress reset={reset} saved={set.cleared} disabled={set.held} variant="ghost" /> : null
+          set.scope?.overridden && reset.may ? <UseNewThreadsPress reset={reset} saved={set.cleared} held={set.held} disabled={set.look} variant="ghost" /> : null
         }
         note={set.scope && !set.scope.overridden ? "Same as New threads" : undefined}
         confirmLabel="Done"

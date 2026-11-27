@@ -239,8 +239,11 @@ through `useSaved`.
   read again fails over values shown, they say "As last read" and both selects are held until a fresh read answers,
   so no upgrade starts from a size that may not stand. One rule covers the page's three selects: while a write or a
   read a select's value depends on is out (its own save, the machine's state for Sleeps after, the display read for
-  the other two), it takes no new pick, and its own pending pick stays on screen until its save answers. The hold
-  through Fits my window's confirm draws no Saving mark; the save's mark starts with its write. Its sign-ins and its
+  the other two, which also read whether live resize is on from the machine's state), it takes no new pick, and its
+  own pending pick stays on screen until its save answers; on a reconnect all three wait for both the state and the
+  display. The handler refuses at once; the select is drawn disabled only once the hold has lasted (`useHeldLook`), so
+  a fast save never flashes the row. A failed state read again over a state shown is a line with Retry under the
+  Windows row. The hold through Fits my window's confirm draws no Saving mark; the save's mark starts with its write. Its sign-ins and its
   edition's end are Connections' rows alone. The Work page no longer has it.
 
 The preview (`SettingsPages.preview.tsx`) answers per computer: `<environment id>:<method>` answers first, a fixture
@@ -284,9 +287,13 @@ the set the computer last confirmed on a refusal.
   answers: its controls, Docket's defaults and Use New threads are held (Change… on a job's or workspace's page still
   opens the dialog to look and retry). A change then sends only the fields chosen, laid on the newest set held
   (`onLatest`), so an old Access is never written over a newer one. One rule holds a
-  set's interleavings: while any save of the set is out (a pick, Docket's defaults, Use New threads' clear), every
-  control of it is held and the pending pick stays on screen (`useDraft`'s `busy`; New threads, a place's dialog,
-  Reviews, Builds from plans, and Subagents' own count of writes out). A refusal puts back that one pick. After a
+  set's interleavings: while any save of the set is out (a pick, Docket's defaults, Use New threads from its press
+  through its check, confirm and clear), every control of it is held and the pending pick stays on screen
+  (`useDraft`'s `busy`; New threads, a place's dialog, Reviews, Builds from plans, and Subagents' own count of writes
+  out, the Models sheet and the rule dialog's fields during Save and Delete included). The hold refuses a pick at once
+  in the handler, but the controls are drawn held only once it has lasted 150 ms (`parts/useHeldLook.ts`), so a fast
+  save never flashes the page; a blocked set (its home out of reach, or as last read) is drawn held at once. A refusal
+  puts back the set the last good save sent (`useDraft`'s `accepted`), else the confirmed one. After a
   clear the rows wait as bones for the re-read. Saves are still queued per set (`queueDefaults`) for two editors of
   one set. The store drops a read asked before a write to its scope when it lands after (`defaultsWrites`), so an
   older answer, or its failure, never replaces a saved set. "Different in N places" counts confirmed answers alone

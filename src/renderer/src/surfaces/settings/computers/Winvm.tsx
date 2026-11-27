@@ -18,6 +18,7 @@ import { useLinkMay } from "../../../lib/linkMay";
 import { useSettingsKnown, tellSettingsList } from "../../../lib/settings/useListWindow";
 import { useWorkHosts } from "../../../lib/workSwitch";
 import { SettingRow } from "../parts/SettingRow";
+import { useHeldLook } from "../parts/useHeldLook";
 import { useSaved, type Saved } from "../parts/useSaved";
 import { forgetUpgrade, holdForUpgrade, releaseHold, retryUpgrade, runUpgrade, upgradeHolds, useUpgrade, type Upgrade } from "./winvmUpgrade";
 
@@ -186,6 +187,9 @@ export function WinvmHost({ env }: { env: string }) {
   const [error, setError] = useState<string | null>(null);
   /** The machine's read's own reason, for the page's one failure line. */
   const [readError, setReadError] = useState<string | null>(null);
+  /** The machine's state read failed (`null` words: no answer): the page head's line with none shown yet; over a
+   *  state shown, a line with Retry under the Windows row, and the selects whose values it brings held. */
+  const [stateError, setStateError] = useState<{ words: string | null } | null>(null);
   const [pressing, setPressing] = useState(false);
   /** Reads out now (a count, since a Retry may overlap the socket's own): a control whose value they bring is held. */
   const [readingState, setReadingState] = useState(0);
@@ -237,9 +241,10 @@ export function WinvmHost({ env }: { env: string }) {
         (s) => {
           setState(s);
           setError(null);
+          setStateError(null);
         },
         (err: unknown) => {
-          setError(hostFailure(env, err, "could not read the Windows VM"));
+          setStateError({ words: err instanceof Error && err.message === NO_ANSWER ? null : hostFailure(env, err, "could not read the Windows VM") });
           setReadError(err instanceof Error ? err.message : String(err));
         },
       )
@@ -275,7 +280,7 @@ export function WinvmHost({ env }: { env: string }) {
       </PageSection>
     );
   // The machine's own read failed: said at the page's head, naming the computer; nothing stands under it.
-  if (!state && error) return <ReadFailure computer={env} error={readError ?? ""} retry={load} />;
+  if (!state && stateError) return <ReadFailure computer={env} error={readError ?? ""} retry={load} />;
   if (!state)
     return (
       <PageSection>
@@ -328,10 +333,14 @@ export function WinvmHost({ env }: { env: string }) {
    *  Fits my window would not hold. */
   // One rule: while a write or a read a control's value depends on is out, the control takes no new pick; its own
   // pending pick stays on screen until its own save answers.
+  // The machine's state is a read every select's value depends on: Sleeps after is its own, and the display's two
+  // read whether live resize is on from it (Fits my window's path, Picture quality's row). On a reconnect they are held
+  // until both the state and the display have answered.
+  const stateOut = readingState > 0 || !!stateError;
   const held: Record<keyof Changes, boolean> = {
-    sleepAfter: pending.sleepAfter !== undefined || readingState > 0,
-    screen: pending.screen !== undefined || readingDisplay > 0 || upgradeHolds(upgrade) || !!settingsError,
-    detail: pending.detail !== undefined || readingDisplay > 0 || !!settingsError,
+    sleepAfter: pending.sleepAfter !== undefined || stateOut,
+    screen: pending.screen !== undefined || readingDisplay > 0 || stateOut || upgradeHolds(upgrade) || !!settingsError,
+    detail: pending.detail !== undefined || readingDisplay > 0 || stateOut || !!settingsError,
   };
   const pickScreen = async (screen: WinvmScreen): Promise<void> => {
     // Held while an upgrade is unresolved (its rollback could write the size that stood over this pick), and while the
@@ -368,6 +377,8 @@ export function WinvmHost({ env }: { env: string }) {
         onRetrySettings={loadSettings}
         saved={{ ...savers, screen: screenMark(savers.screen, upgrade) }}
         held={held}
+        stateError={state && stateError ? (stateError.words ?? readWords(NO_ANSWER)) : null}
+        onRetryState={load}
         upgradeNote={upgrade?.phase === "unconfirmed" || upgrade?.phase === "unrestored" ? { words: upgrade.reason, retry: () => retryUpgrade(env) } : null}
         error={error}
         pressing={pressing}
@@ -401,6 +412,9 @@ export interface WinvmViewProps {
   /** Each select that takes no pick now: its own save out, a read its value comes from out, Fits my window's upgrade
    *  unresolved (`upgradeHolds`), or its value only as last read */
   held?: Partial<Record<keyof Changes, boolean>>;
+  /** the machine's state read again failed over the state shown: its line with Retry under the Windows row */
+  stateError?: string | null;
+  onRetryState?: () => void | Promise<void>;
   /** each select's save mark and refusal, on its own row */
   saved?: Partial<Record<keyof Changes, Saved>>;
   /** a refused press (Set up, Wake, Sleep), on the Windows row */
@@ -427,6 +441,8 @@ export function WinvmView({
   saved = {},
   upgradeNote = null,
   held = {},
+  stateError = null,
+  onRetryState,
   error,
   pressing,
   onPress,
@@ -439,6 +455,11 @@ export function WinvmView({
   const row = winvmRow(state);
   // The display's newest read failed over values shown: they stand as last read, held until a fresh read answers.
   const lastRead = !!settingsError && !!settings;
+  // A held select refuses a pick at once (its handler); it is drawn disabled only once the hold has lasted, so a save
+  // that answers in a few frames never flashes the row.
+  const sleepLook = useHeldLook(!!held.sleepAfter);
+  const screenLook = useHeldLook(!!held.screen || lastRead);
+  const detailLook = useHeldLook(!!held.detail || lastRead);
   // a computer before live resize says no display: the size is a new Set up's
   const live = state.display?.device === "virtio";
   const turning = resizing(state);
@@ -457,10 +478,15 @@ export function WinvmView({
           </Button>
         )}
       </SettingRow>
+      {stateError ? (
+        <PageError data-state-failure="" action={onRetryState ? <RetryButton retry={onRetryState} /> : undefined}>
+          {stateError}
+        </PageError>
+      ) : null}
       {state.state !== "none" ? (
         <>
           <SettingRow id="winvm.sleeps" description={may.admin ? undefined : sleepWords} saved={may.admin ? saved.sleepAfter : undefined}>
-            {may.admin ? <ChoiceSelect size="sm" label="Sleeps after" value={state.sleepAfter} options={SLEEP_AFTER} disabled={!!held.sleepAfter} onChange={(v) => onSleepAfter(v as WinvmSleepAfter)} /> : null}
+            {may.admin ? <ChoiceSelect size="sm" label="Sleeps after" value={state.sleepAfter} options={SLEEP_AFTER} disabled={sleepLook} onChange={(v) => onSleepAfter(v as WinvmSleepAfter)} /> : null}
           </SettingRow>
           {!may.admin ? null : settings ? (
             <>
@@ -477,7 +503,7 @@ export function WinvmView({
                   label="Screen size"
                   value={settings.screen}
                   options={SCREENS}
-                  disabled={turning || state.state === "setting-up" || !!held.screen || lastRead}
+                  disabled={turning || state.state === "setting-up" || screenLook}
                   onChange={(v) => onScreen(v as WinvmScreen)}
                 />
               </SettingRow>
@@ -488,7 +514,7 @@ export function WinvmView({
               ) : null}
               {live && settings.detail ? (
                 <SettingRow id="winvm.quality" description={lastRead ? LAST_READ : undefined} saved={saved.detail}>
-                  <ChoiceSelect size="sm" label="Picture quality" value={settings.detail} options={QUALITIES} disabled={!!held.detail || lastRead} onChange={(v) => onQuality(v as WinvmDetail)} />
+                  <ChoiceSelect size="sm" label="Picture quality" value={settings.detail} options={QUALITIES} disabled={detailLook} onChange={(v) => onQuality(v as WinvmDetail)} />
                 </SettingRow>
               ) : null}
             </>
