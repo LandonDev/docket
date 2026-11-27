@@ -220,7 +220,7 @@ struct SearchView: View {
         if answer.isEmpty {
             let connecting = paired.count { [.connecting, .reconnecting].contains($0.status.transport) }
             switch SearchStatus.of(paired: paired.count, open: openHosts.count, connecting: connecting, queryLength: trimmed.count,
-                                   searching: searching, answered: answer.query == trimmed && answer.scope == scope) {
+                                   searching: searching, answered: answer.query == trimmed && answer.scope == scope, hosts: answer.hosts) {
             case .noHosts: NoHostsView()
             case .offline: SearchStatusLine("Every computer is offline.")
             case .spinner:
@@ -228,6 +228,14 @@ struct SearchView: View {
                     .controlSize(.small)
                     .accessibilityLabel(openHosts.isEmpty ? "Connecting" : "Searching")
             case .noResults: ContentUnavailableView.search(text: answer.query)
+            case .failed(let names): SearchStatusLine(SearchStatus.failedLine(names))
+            case .noResultsFailed(let names):
+                // The system's no-results view, its spelling hint traded for the computers that never answered.
+                ContentUnavailableView {
+                    Label("No Results for “\(answer.query)”", systemImage: "magnifyingglass")
+                } description: {
+                    Text(SearchStatus.failedLine(names))
+                }
             case .none: EmptyView()
             }
         }

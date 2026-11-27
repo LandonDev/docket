@@ -8,7 +8,9 @@ import TempCodeContract
 /// is a poll, so this is the one place a pull is right) and only then does
 /// the list reorder with the default animation. Rows never name the host
 /// (the item's screen does, with several); a row is unread by weight alone, and the swipes mark
-/// it read or open it on GitHub. The rules are `InboxModel`; this is the list.
+/// it read or open it on GitHub. The list's spinner, failed lines and empty
+/// view follow what each host's read came to (`InboxModel.overlay`), never
+/// whether it was merely asked. The rules are `InboxModel`; this is the list.
 struct InboxView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -17,8 +19,8 @@ struct InboxView: View {
     /// The sidebar of the unfolded split: a tap selects instead of pushing, and the row reads selected.
     let split: Bool
     private let store = InboxStore.shared
-    /// A refresh answered forbidden, so the key reads but cannot refresh.
-    @State private var refreshRefused = false
+    /// Hosts whose refresh answered forbidden: that key reads but cannot refresh.
+    @State private var refreshRefused: Set<String> = []
     /// Hosts whose last pull failed: a notice line each until the next pull answers.
     @State private var refreshFailed: Set<String> = []
     @State private var opened = false
@@ -27,7 +29,14 @@ struct InboxView: View {
         let clients = model.registry.ordered
         let entries = store.entries(clients: clients)
         let notices = InboxModel.notices(hosts: store.hosts(clients), refreshDenied: refreshDenied(clients), refreshFailed: refreshFailed)
+        let reads = store.hostReads(clients)
         List(selection: selection) {
+            ForEach(InboxModel.failedReads(reads), id: \.environmentId) { host in
+                FailedRead(words: InboxModel.failedLine(host, several: clients.count > 1), retry: {
+                    if let client = clients.first(where: { $0.environment.id == host.environmentId }) { await read(client, animated: false) }
+                }, identifier: "inbox-failed")
+                .listRowBackground(Surface.chrome)
+            }
             ForEach(notices, id: \.self) { notice in
                 Text(notice)
                     .textStep(.meta)
@@ -82,16 +91,11 @@ struct InboxView: View {
         .listStyle(.plain)
         .refreshable { await refresh(clients) }
         .overlay {
-            if entries.isEmpty, notices.isEmpty {
-                if Self.settled(clients, store: store) {
-                    if let line = InboxModel.emptyLine(anyOpen: clients.contains { $0.status.transport == .open }) {
-                        Text(line).textStep(.meta)
-                    } else {
-                        ContentUnavailableView(InboxModel.emptyTitle, systemImage: "tray")
-                    }
-                } else {
-                    ProgressView()
-                }
+            switch InboxModel.overlay(reads, hasRows: !entries.isEmpty, hasNotices: !notices.isEmpty) {
+            case .spinner: ProgressView()
+            case .empty: ContentUnavailableView(InboxModel.emptyTitle, systemImage: "tray")
+            case .offline: Text(InboxModel.offlineLine).textStep(.meta)
+            case .none: EmptyView()
             }
         }
         .navigationTitle("Inbox")
@@ -136,12 +140,10 @@ struct InboxView: View {
         clients.map { "\($0.environment.id):\($0.status.transport == .open)" }.joined(separator: ",")
     }
 
-    /// The key cannot refresh: every connected host's key is read-only, or a
-    /// refresh already came back forbidden.
-    private func refreshDenied(_ clients: [EnvironmentClient]) -> Bool {
-        if refreshRefused { return true }
-        let connected = clients.filter { $0.status.transport == .open }
-        return !connected.isEmpty && connected.allSatisfy { $0.operateBlock == .readOnly }
+    /// The hosts whose key cannot refresh: a connected read-only key, or a
+    /// refresh that already came back forbidden.
+    private func refreshDenied(_ clients: [EnvironmentClient]) -> Set<String> {
+        refreshRefused.union(clients.filter { $0.status.transport == .open && $0.operateBlock == .readOnly }.map(\.environment.id))
     }
 
     /// The host's stored snapshot (SQLite, never the network), landing without
@@ -149,50 +151,52 @@ struct InboxView: View {
     /// minute, since the desktop may have refreshed it meanwhile.
     private func load(_ clients: [EnvironmentClient]) async {
         for client in clients where client.status.transport == .open && store.shouldAsk(client.environment.id) {
-            store.markAsked(client.environment.id)
-            guard let snapshot = try? await client.request(Methods.GithubInbox.self, .init()) else { continue }
-            Motion.withoutAnimation { store.put(snapshot, for: client.environment.id) }
+            await read(client, animated: false)
         }
         openForProof(clients)
+    }
+
+    /// One host's stored snapshot. Its outcome is kept: a failure shows the
+    /// failed line, and a read cut off is forgotten so the next open asks again.
+    private func read(_ client: EnvironmentClient, animated: Bool) async {
+        let id = client.environment.id
+        store.markAsked(id)
+        do {
+            let snapshot = try await client.request(Methods.GithubInbox.self, .init())
+            if animated {
+                withAnimation(.default) { store.put(snapshot, for: id) }
+            } else {
+                Motion.withoutAnimation { store.put(snapshot, for: id) }
+            }
+        } catch {
+            if Task.isCancelled || error is CancellationError { store.forgetAsk(id) } else { store.markFailed(id) }
+        }
     }
 
     /// The pull: GitHub is asked again and the rows move under the default
     /// animation. A read-only key is known before the call and reads the
     /// stored snapshot instead; a refusal the host answers is read the same way.
     private func refresh(_ clients: [EnvironmentClient]) async {
-        refreshRefused = false
+        var refused: Set<String> = []
         var failed: Set<String> = []
-        defer { refreshFailed = failed }
+        defer {
+            refreshRefused = refused
+            refreshFailed = failed
+        }
         for client in clients where client.status.transport == .open {
             if client.operateBlock == .readOnly {
-                refreshRefused = true
-                await readStored(client)
+                await read(client, animated: true)
                 continue
             }
             do {
                 let snapshot = try await client.request(Methods.GithubInboxRefresh.self, .init(reason: .manual))
                 withAnimation(.default) { store.put(snapshot, for: client.environment.id) }
             } catch let error as TransportError where error.isForbidden {
-                refreshRefused = true
-                await readStored(client)
+                refused.insert(client.environment.id)
+                await read(client, animated: true)
             } catch {
                 failed.insert(client.environment.id)
             }
-        }
-    }
-
-    private func readStored(_ client: EnvironmentClient) async {
-        if let snapshot = try? await client.request(Methods.GithubInbox.self, .init()) {
-            withAnimation(.default) { store.put(snapshot, for: client.environment.id) }
-        }
-    }
-
-    /// Every host has answered, or cannot: the empty line may show.
-    static func settled(_ clients: [EnvironmentClient], store: InboxStore) -> Bool {
-        clients.allSatisfy { client in
-            store.snapshots[client.environment.id] != nil
-                || (store.asked.contains(client.environment.id) && client.status.transport != .connecting)
-                || client.status.transport == .unauthorized || client.status.transport == .offline
         }
     }
 

@@ -12,8 +12,8 @@ final class InboxStore {
     static let shared = InboxStore()
 
     private(set) var snapshots: [String: GithubInboxSnapshot] = [:]
-    /// The hosts whose snapshot was asked for in this process, answered or not.
-    private(set) var asked: Set<String> = []
+    /// What each host's read of its stored snapshot came to in this process.
+    private(set) var reads: [String: InboxModel.Read] = [:]
     /// When each host was last asked, so a reopened tab asks again only after a while.
     private var askedAt: [String: Date] = [:]
     /// A stored snapshot older than this is read again when the tab opens (the desktop may have refreshed it).
@@ -41,7 +41,8 @@ final class InboxStore {
 
     /// A host's snapshot, written through to disk. The first one ever seeds the seen marks.
     func put(_ snapshot: GithubInboxSnapshot, for environmentId: String) {
-        markAsked(environmentId)
+        reads[environmentId] = .answered
+        askedAt[environmentId] = .now
         snapshots[environmentId] = snapshot
         if !defaults.bool(forKey: Self.seededKey) {
             let now = Int(Date.now.timeIntervalSince1970 * 1000)
@@ -57,8 +58,20 @@ final class InboxStore {
     }
 
     func markAsked(_ environmentId: String) {
-        asked.insert(environmentId)
+        reads[environmentId] = .asking
         askedAt[environmentId] = .now
+    }
+
+    /// A read cut off before it answered: as if never asked, so the next open asks.
+    func forgetAsk(_ environmentId: String) {
+        reads[environmentId] = nil
+        askedAt[environmentId] = nil
+    }
+
+    /// A read that came to nothing: it says so, and the next open asks again at once.
+    func markFailed(_ environmentId: String) {
+        reads[environmentId] = .failed
+        askedAt[environmentId] = nil
     }
 
     /// The host's stored snapshot is worth asking for: never asked in this process, or not for a minute.
@@ -70,6 +83,19 @@ final class InboxStore {
     /// The clients as the model reads them: id, name, and the snapshot held for each.
     func hosts(_ clients: [EnvironmentClient]) -> [InboxModel.Host] {
         clients.map { InboxModel.Host(environmentId: $0.environment.id, name: $0.environment.name, snapshot: snapshots[$0.environment.id]) }
+    }
+
+    /// The clients as the list's states read them: the link, a held snapshot, the read.
+    func hostReads(_ clients: [EnvironmentClient]) -> [InboxModel.HostRead] {
+        clients.map { client in
+            let id = client.environment.id
+            let link: InboxModel.HostRead.Link = switch client.status.transport {
+            case .open: .open
+            case .connecting, .reconnecting, .suspended: .connecting
+            case .offline, .unauthorized: .away
+            }
+            return InboxModel.HostRead(environmentId: id, name: client.environment.name, link: link, held: snapshots[id] != nil, read: reads[id])
+        }
     }
 
     /// Every item of every client, newest first, as the desktop sorts.

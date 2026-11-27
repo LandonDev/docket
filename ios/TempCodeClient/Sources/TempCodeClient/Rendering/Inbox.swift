@@ -147,21 +147,30 @@ public enum InboxModel {
         return out
     }
 
-    /// What stands between the person and a full inbox: a key that cannot
-    /// refresh first, then each host whose last pull failed ("Couldn't
-    /// refresh box"), then each host's gh problem and each repo's error,
-    /// prefixed with the host's name only when there are several hosts.
     /// The empty list's words: none while any host can answer (the system's
     /// empty view says "No Issues or Pull Requests"), else that every host is offline.
     public static func emptyLine(anyOpen: Bool) -> String? {
-        anyOpen ? nil : "Every computer is offline."
+        anyOpen ? nil : offlineLine
     }
+
+    public static let offlineLine = "Every computer is offline."
 
     public static let emptyTitle = "No Issues or Pull Requests"
 
-    public static func notices(hosts: [Host], refreshDenied: Bool, refreshFailed: Set<String> = []) -> [String] {
+    /// What stands between the person and a full inbox: the hosts whose key
+    /// cannot refresh first (one line when every host's cannot, else a line
+    /// per host by name), then each host whose last pull failed ("Couldn't
+    /// refresh box"), then each host's gh problem and each repo's error,
+    /// prefixed with the host's name only when there are several hosts.
+    public static func notices(hosts: [Host], refreshDenied: Set<String> = [], refreshFailed: Set<String> = []) -> [String] {
         var out: [String] = []
-        if refreshDenied { out.append("This key reads the inbox but cannot refresh it.") }
+        let denied = hosts.filter { refreshDenied.contains($0.environmentId) }
+        let deniedLine = "This key reads the inbox but cannot refresh it."
+        if denied.count == hosts.count, !denied.isEmpty {
+            out.append(deniedLine)
+        } else {
+            out += denied.map { "\($0.name): \(deniedLine)" }
+        }
         for host in hosts where refreshFailed.contains(host.environmentId) {
             out.append(hosts.count > 1 ? "Couldn't refresh \(host.name)" : "Couldn't refresh the inbox")
         }
@@ -176,6 +185,81 @@ public enum InboxModel {
             }
         }
         return out
+    }
+
+    // MARK: reads
+
+    /// What one host's read of its stored snapshot came to in this process.
+    public enum Read: Sendable, Hashable { case asking, answered, failed }
+
+    /// One host as the list's states read it: its link, whether a snapshot is
+    /// held (from disk or an answer), and its read, if one was made.
+    public struct HostRead: Sendable, Hashable {
+        public enum Link: Sendable, Hashable { case open, connecting, away }
+
+        public let environmentId: String
+        public let name: String
+        public let link: Link
+        public let held: Bool
+        public let read: Read?
+
+        public init(environmentId: String, name: String, link: Link, held: Bool, read: Read?) {
+            self.environmentId = environmentId
+            self.name = name
+            self.link = link
+            self.held = held
+            self.read = read
+        }
+
+        /// Holds nothing yet and may still answer: connecting, or open with its read not back.
+        var pending: Bool {
+            guard !held else { return false }
+            return link == .connecting || (link == .open && read != .answered && read != .failed)
+        }
+    }
+
+    /// What sits over a list with no rows.
+    public enum Overlay: Sendable, Hashable { case none, spinner, empty, offline }
+
+    /// The hosts whose read failed with nothing held to show: each gets the failed line with Try Again.
+    public static func failedReads(_ hosts: [HostRead]) -> [HostRead] {
+        hosts.filter { !$0.held && $0.read == .failed }
+    }
+
+    /// "Couldn't read the inbox", naming the host when there are several.
+    public static func failedLine(_ host: HostRead, several: Bool) -> String {
+        several ? "Couldn't read the inbox on \(host.name)." : "Couldn't read the inbox."
+    }
+
+    /// The empty list, from what the reads came to: a spinner while any host
+    /// may still answer (a notice never hides it), nothing when a failed read
+    /// or a notice already says why, else the empty title, or that every host
+    /// is offline when none can answer.
+    public static func overlay(_ hosts: [HostRead], hasRows: Bool, hasNotices: Bool) -> Overlay {
+        guard !hasRows else { return .none }
+        if hosts.contains(where: \.pending) { return .spinner }
+        if hasNotices || !failedReads(hosts).isEmpty { return .none }
+        return hosts.contains { $0.link == .open } ? .empty : .offline
+    }
+
+    // MARK: the item screen
+
+    /// The checkout gh runs in for an item: a workspace of the item's own
+    /// repository, never another, since a pull request number means nothing
+    /// outside its repository. Nil is the "No checkout of …" line.
+    public static func checkout(repo: String, in workspaces: [WorkspaceMeta]) -> String? {
+        workspaces.first { $0.githubRepo?.caseInsensitiveCompare(repo) == .orderedSame }?.path
+    }
+
+    /// Which read the item screen says failed once its load settled: the
+    /// body's line when the details did not land (it stands for the whole
+    /// item), else the conversation's own when only it did not.
+    public enum DetailFailure: Sendable, Hashable { case body, conversation }
+
+    public static func detailFailure(settled: Bool, details: Bool, thread: Bool) -> DetailFailure? {
+        guard settled else { return nil }
+        if !details { return .body }
+        return thread ? nil : .conversation
     }
 }
 

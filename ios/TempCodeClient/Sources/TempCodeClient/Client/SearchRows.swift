@@ -408,20 +408,36 @@ public nonisolated enum MatchRanges {
 /// nothing paired (the shared No Hosts view with Add a Host), a spinner
 /// while a host is still connecting or the first answer is out, "Every host
 /// is offline." once none can answer, nothing before a query (the field's
-/// prompt says what it searches), else no results.
+/// prompt says what it searches), else no results. A query whose reads
+/// failed names the computers that failed (`hosts` is the answer's feet):
+/// alone when no host answered, under "No Results" when some did.
 public nonisolated enum SearchStatus: Equatable, Sendable {
     case noHosts
     case spinner
     case offline
     case none
     case noResults
+    /// No host answered: every one asked failed.
+    case failed([String])
+    /// Some hosts answered with nothing; these failed.
+    case noResultsFailed([String])
 
-    public static func of(paired: Int, open: Int, connecting: Int, queryLength: Int, searching: Bool, answered: Bool) -> SearchStatus {
+    public static func of(paired: Int, open: Int, connecting: Int, queryLength: Int, searching: Bool, answered: Bool, hosts: [SearchHostFoot] = []) -> SearchStatus {
         if paired == 0 { return .noHosts }
         if open == 0 { return connecting > 0 ? .spinner : .offline }
         if queryLength < SearchDebounce.minimumLength { return .none }
         if searching { return .spinner }
-        return answered ? .noResults : .none
+        guard answered else { return .none }
+        let failed = hosts.filter { $0.state == .failed }.map(\.name)
+        if failed.isEmpty { return .noResults }
+        let anyAnswered = hosts.contains { if case .answered = $0.state { true } else { false } }
+        return anyAnswered ? .noResultsFailed(failed) : .failed(failed)
+    }
+
+    /// "Couldn't search box.", "Couldn't search box or Mac.", "Couldn't search box, Mac or Mac mini."
+    public static func failedLine(_ names: [String]) -> String {
+        let joined = names.count > 1 ? names.dropLast().joined(separator: ", ") + " or " + names[names.count - 1] : names.first ?? ""
+        return "Couldn't search \(joined)."
     }
 }
 

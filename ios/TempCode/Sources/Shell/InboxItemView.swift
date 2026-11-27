@@ -17,7 +17,8 @@ struct InboxItemView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var model
-    @State private var failed = false
+    /// The details and conversation load came back (each landed or not); the failed lines wait on it.
+    @State private var settled = false
     @State private var diffFailed = false
     /// Bumped by Retry; the load task keys on it.
     @State private var attempt = 0
@@ -28,22 +29,22 @@ struct InboxItemView: View {
     private var isPullRequest: Bool { item.kind == .pr }
     private var key: String { InboxModel.key(environmentId: client.environment.id, item: item) }
 
-    /// The checkout gh runs in: the workspace of the repo, else any git workspace.
-    private var cwd: String? {
-        client.workspaces.first { $0.githubRepo?.lowercased() == item.repo.lowercased() }?.path
-            ?? client.workspaces.first { $0.git }?.path
-    }
+    /// The checkout gh runs in: a workspace of the item's own repository, never another.
+    private var cwd: String? { InboxModel.checkout(repo: item.repo, in: client.workspaces) }
 
     var body: some View {
         let details = store.details[key]
         let thread = store.threads[key]
         let diff = store.diffs[key]
+        let failure = InboxModel.detailFailure(settled: settled, details: details != nil, thread: thread != nil)
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header(details: details, thread: thread)
-                description(details)
+                description(details, failed: failure == .body)
                 if let thread, !thread.comments.isEmpty {
                     InboxConversation(thread: thread)
+                } else if failure == .conversation {
+                    InboxLoadFailed(text: "The conversation could not be loaded.") { retry() }
                 }
                 if isPullRequest {
                     changes(diff)
@@ -130,7 +131,7 @@ struct InboxItemView: View {
     /// The description: a shimmer of the height it will take, then the
     /// markdown cross-faded over it (a plain swap under reduced motion).
     @ViewBuilder
-    private func description(_ details: GitHubWorkItemDetails?) -> some View {
+    private func description(_ details: GitHubWorkItemDetails?, failed: Bool) -> some View {
         Group {
             if let details {
                 if details.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -174,7 +175,7 @@ struct InboxItemView: View {
     }
 
     private func retry() {
-        failed = false
+        settled = false
         diffFailed = false
         attempt += 1
     }
@@ -182,7 +183,8 @@ struct InboxItemView: View {
     // MARK: - loading
 
     /// The details and the conversation together, then the diff; each lands
-    /// in the store as it comes, and a cancelled load settles nothing.
+    /// in the store as it comes, and a cancelled load settles nothing. The
+    /// diff asks by number alone, so it runs only in the item's own checkout.
     private func load() async {
         guard let cwd else { return }
         let kind = item.kind.rawValue
@@ -193,8 +195,8 @@ struct InboxItemView: View {
             guard !Task.isCancelled else { return }
             if let details { store.putDetails(details, for: key) }
             if let thread { store.putThread(thread, for: key) }
-            failed = store.details[key] == nil
         }
+        settled = true
         if isPullRequest, store.diffs[key] == nil {
             let diff = try? await client.request(Methods.GithubPrDiff.self, .init(cwd: cwd, number: item.number))
             guard !Task.isCancelled else { return }

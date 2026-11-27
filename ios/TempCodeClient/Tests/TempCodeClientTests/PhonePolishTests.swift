@@ -54,6 +54,19 @@ import TempCodeContract
         #expect(SearchStatus.of(paired: 1, open: 1, connecting: 0, queryLength: 4, searching: false, answered: true) == .noResults)
         #expect(SearchStatus.of(paired: 1, open: 1, connecting: 0, queryLength: 4, searching: false, answered: false) == .none)
     }
+
+    @Test func `a query whose reads failed names the computers instead of "No Results"`() {
+        let mac = SearchHostFoot(environmentId: "a", name: "Mac", state: .answered(ms: 120))
+        let box = SearchHostFoot(environmentId: "b", name: "box", state: .failed)
+        let mini = SearchHostFoot(environmentId: "c", name: "Mac mini", state: .failed)
+        let away = SearchHostFoot(environmentId: "d", name: "PC", state: .offline)
+        #expect(SearchStatus.of(paired: 2, open: 2, connecting: 0, queryLength: 4, searching: false, answered: true, hosts: [box, mini]) == .failed(["box", "Mac mini"]))
+        #expect(SearchStatus.of(paired: 3, open: 2, connecting: 0, queryLength: 4, searching: false, answered: true, hosts: [mac, box, away]) == .noResultsFailed(["box"]))
+        #expect(SearchStatus.of(paired: 2, open: 1, connecting: 0, queryLength: 4, searching: false, answered: true, hosts: [mac, away]) == .noResults)
+        #expect(SearchStatus.failedLine(["box"]) == "Couldn't search box.")
+        #expect(SearchStatus.failedLine(["box", "Mac"]) == "Couldn't search box or Mac.")
+        #expect(SearchStatus.failedLine(["box", "Mac", "Mac mini"]) == "Couldn't search box, Mac or Mac mini.")
+    }
 }
 
 /// Home holds a reconnecting host 1.5 s before its status row (`HomeSections.troubled`).

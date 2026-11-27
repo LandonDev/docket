@@ -132,26 +132,81 @@ private func entry(_ item: GithubInboxItem, host: String = "h1") -> InboxEntry {
     @Test func `notices: one host has no prefix, several do, errors follow auth, refreshDenied comes first`() {
         let signedOut = GithubInboxAuth(state: .loggedOut, message: "gh is not signed in.")
         let one = [InboxModel.Host(environmentId: "a", name: "Mac", snapshot: snapshot([repo("acme/app", items: [], error: "rate limited")], auth: signedOut))]
-        #expect(InboxModel.notices(hosts: one, refreshDenied: false) == ["gh is not signed in.", "acme/app: rate limited"])
+        #expect(InboxModel.notices(hosts: one, ) == ["gh is not signed in.", "acme/app: rate limited"])
         let two = one + [InboxModel.Host(environmentId: "b", name: "Box", snapshot: snapshot([repo("acme/lib", items: [])]))]
-        #expect(InboxModel.notices(hosts: two, refreshDenied: true) == [
+        #expect(InboxModel.notices(hosts: two, refreshDenied: ["a", "b"]) == [
             "This key reads the inbox but cannot refresh it.",
             "Mac: gh is not signed in.",
             "Mac: acme/app: rate limited"
         ])
         let quiet = [InboxModel.Host(environmentId: "a", name: "Mac", snapshot: snapshot([repo("acme/app", items: [])], auth: GithubInboxAuth(state: .error, message: "")))]
-        #expect(InboxModel.notices(hosts: quiet, refreshDenied: false).isEmpty)
-        #expect(InboxModel.notices(hosts: [InboxModel.Host(environmentId: "a", name: "Mac", snapshot: nil)], refreshDenied: false).isEmpty)
+        #expect(InboxModel.notices(hosts: quiet, ).isEmpty)
+        #expect(InboxModel.notices(hosts: [InboxModel.Host(environmentId: "a", name: "Mac", snapshot: nil)], ).isEmpty)
     }
 
     @Test func `a failed pull says so per host, and an inbox with every host offline says that`() {
         let mac = InboxModel.Host(environmentId: "a", name: "Mac", snapshot: nil)
         let box = InboxModel.Host(environmentId: "b", name: "box", snapshot: nil)
-        #expect(InboxModel.notices(hosts: [mac], refreshDenied: false, refreshFailed: ["a"]) == ["Couldn't refresh the inbox"])
-        #expect(InboxModel.notices(hosts: [mac, box], refreshDenied: false, refreshFailed: ["b"]) == ["Couldn't refresh box"])
+        #expect(InboxModel.notices(hosts: [mac], refreshFailed: ["a"]) == ["Couldn't refresh the inbox"])
+        #expect(InboxModel.notices(hosts: [mac, box], refreshFailed: ["b"]) == ["Couldn't refresh box"])
         #expect(InboxModel.emptyLine(anyOpen: false) == "Every computer is offline.")
         #expect(InboxModel.emptyLine(anyOpen: true) == nil)
         #expect(InboxModel.emptyTitle == "No Issues or Pull Requests")
+    }
+
+    @Test func `a refresh refused on one computer of two names that computer, not the whole inbox`() {
+        let mac = InboxModel.Host(environmentId: "a", name: "Mac", snapshot: nil)
+        let box = InboxModel.Host(environmentId: "b", name: "box", snapshot: nil)
+        #expect(InboxModel.notices(hosts: [mac, box], refreshDenied: ["b"]) == ["box: This key reads the inbox but cannot refresh it."])
+        #expect(InboxModel.notices(hosts: [mac, box], refreshDenied: ["a", "b"]) == ["This key reads the inbox but cannot refresh it."])
+        #expect(InboxModel.notices(hosts: [mac], refreshDenied: ["a"]) == ["This key reads the inbox but cannot refresh it."])
+        #expect(InboxModel.notices(hosts: [mac, box], refreshDenied: ["gone"]).isEmpty)
+    }
+
+    private func read(_ id: String, _ link: InboxModel.HostRead.Link, held: Bool = false, _ read: InboxModel.Read? = nil) -> InboxModel.HostRead {
+        InboxModel.HostRead(environmentId: id, name: id, link: link, held: held, read: read)
+    }
+
+    @Test func `the empty inbox spins until every host answers, and a notice never hides the spinner`() {
+        #expect(InboxModel.overlay([read("a", .open)], hasRows: false, hasNotices: false) == .spinner)
+        #expect(InboxModel.overlay([read("a", .open, .asking)], hasRows: false, hasNotices: true) == .spinner)
+        #expect(InboxModel.overlay([read("a", .connecting)], hasRows: false, hasNotices: false) == .spinner)
+        #expect(InboxModel.overlay([read("a", .open, .answered), read("b", .open, .asking)], hasRows: false, hasNotices: false) == .spinner)
+        #expect(InboxModel.overlay([read("a", .open, .answered)], hasRows: false, hasNotices: false) == .empty)
+        #expect(InboxModel.overlay([read("a", .open, .answered)], hasRows: false, hasNotices: true) == .none)
+        #expect(InboxModel.overlay([read("a", .open, .asking)], hasRows: true, hasNotices: false) == .none)
+    }
+
+    @Test func `a snapshot held from disk paints with no spinner while its read is out`() {
+        #expect(InboxModel.overlay([read("a", .open, held: true, .asking)], hasRows: false, hasNotices: false) == .empty)
+        #expect(InboxModel.overlay([read("a", .away)], hasRows: false, hasNotices: false) == .offline)
+    }
+
+    @Test func `a failed read with nothing held says so in place of the empty view`() {
+        let failed = read("a", .open, .failed)
+        #expect(InboxModel.failedReads([failed, read("b", .open, held: true, .failed)]) == [failed])
+        #expect(InboxModel.overlay([failed], hasRows: false, hasNotices: false) == .none)
+        #expect(InboxModel.failedLine(failed, several: false) == "Couldn't read the inbox.")
+        #expect(InboxModel.failedLine(InboxModel.HostRead(environmentId: "b", name: "box", link: .open, held: false, read: .failed), several: true) == "Couldn't read the inbox on box.")
+    }
+
+    private func workspace(_ id: String, repo: String?) -> WorkspaceMeta {
+        WorkspaceMeta(id: id, name: id, path: "/src/\(id)", git: true, githubRepo: repo, createdAt: 0)
+    }
+
+    @Test func `an item is read only in a checkout of its own repository`() {
+        let other = workspace("other", repo: "acme/lib")
+        let own = workspace("app", repo: "Acme/App")
+        #expect(InboxModel.checkout(repo: "acme/app", in: [other, own]) == "/src/app")
+        #expect(InboxModel.checkout(repo: "acme/app", in: [other, workspace("plain", repo: nil)]) == nil)
+    }
+
+    @Test func `a conversation that failed beside a loaded body gets its own failed line`() {
+        #expect(InboxModel.detailFailure(settled: false, details: false, thread: false) == nil)
+        #expect(InboxModel.detailFailure(settled: true, details: false, thread: false) == .body)
+        #expect(InboxModel.detailFailure(settled: true, details: false, thread: true) == .body)
+        #expect(InboxModel.detailFailure(settled: true, details: true, thread: false) == .conversation)
+        #expect(InboxModel.detailFailure(settled: true, details: true, thread: true) == nil)
     }
 }
 

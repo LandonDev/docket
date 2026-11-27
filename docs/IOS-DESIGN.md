@@ -543,10 +543,18 @@ since the inbox is a poll, not a live push), shows the system indicator, and
 is the only time the rows reorder under the default animation. A read-only
 key is known from `operateBlock` before the pull and reads the stored
 snapshot instead; it, a signed-out gh and a repository that failed each get
-one meta line at the top. Empty: `ContentUnavailableView` "No Issues or Pull
-Requests" with `tray` (see "Empty screens"), shown once every host has
-answered or cannot; "Every computer is offline." when none could answer; the system `ProgressView` until then, never on a paint
-from disk.
+one meta line at the top. A key that cannot refresh is kept per computer: one
+line when no computer's key can, else "box: This key reads the inbox but
+cannot refresh it." for each that cannot. The list's states come from what
+each host's read came to (`InboxModel.overlay` over `InboxModel.HostRead`),
+never from its having been asked: the system `ProgressView` while any host
+that holds nothing may still answer (connecting, or its read out), and a
+notice line never hides it; a read that failed with nothing held is the
+house failed row (`FailedRead`, "Couldn't read the inbox on box." with Try
+Again); `ContentUnavailableView` "No Issues or Pull Requests" with `tray`
+(see "Empty screens") once every host has answered or cannot, unless a
+notice or a failed row already says why; "Every computer is offline." when
+none could answer. A snapshot held from disk paints with no spinner.
 
 **The fleet switches** (ios/TempCode/Sources/Shell/FleetSwitches.swift over
 the client package's ThreadBatch.swift, the desktop's threadBatch.ts ported
@@ -602,9 +610,10 @@ the title in `title3` semibold, the state word in its color or Open in
 success, `head → base` in mono one step down, labels as plain capsules on the
 fill step), then the body as markdown and the conversation (comments, reviews
 and review threads in time order, 24 pt pictures, the review verdict in its
-color, Resolved plain, `path:line` in mono, replies one step in). A host with
-no checkout of the repository says "No checkout of <repo> on <host>." and
-asks nothing. For a pull request the Changes section is a count line and a
+color, Resolved plain, `path:line` in mono, replies one step in). Only a
+checkout of the item's own repository is asked (`InboxModel.checkout`), never
+another Git workspace, since the diff asks by number alone; a host with none
+says "No checkout of <repo> on <host>." and asks nothing. For a pull request the Changes section is a count line and a
 `groupCard` of rows over `InboxPatch.changes`, 44 pt each with a hairline
 between: "All files" first when there are several, then one per file (the
 directory dim, the name primary, in mono one step down, head-truncated) with
@@ -614,7 +623,9 @@ screen, not two. A file whose block the host did not send is inert, and a
 truncated patch ends with "The rest of the patch is on GitHub." The body and
 the diff load behind a `Shimmer` of the height they will take and cross-fade
 in on `Motion.crossFade` (a plain swap under reduced motion); a failed load is
-one meta line with Retry. What loaded once stays in the store so going back
+one meta line with Retry: the body's when the details did not land, else the
+conversation's own ("The conversation could not be loaded.") where the
+conversation sits (`InboxModel.detailFailure`), and the changes' own. What loaded once stays in the store so going back
 and in paints from memory. Open on GitHub is the bar's one button. Nothing on
 either screen animates except the press, the cross-fades above and `AgoText`'s
 digits.
@@ -652,7 +663,9 @@ with Add a Computer when nothing is paired; a small spinner while a host is
 still connecting or the first answer is out; one calm `.meta` line, "Every
 computer is offline.", once none can answer; nothing before a query (the
 field's prompt says what it searches); `ContentUnavailableView.search` for
-no results (see "Empty screens"). Cancel clears the field. Nothing animates on a keystroke or a scope
+no results (see "Empty screens"). A query whose reads failed names the
+computers that failed: "Couldn't search box." alone when no host answered,
+and under "No Results for …" in place of the spelling hint when some did. Cancel clears the field. Nothing animates on a keystroke or a scope
 tap; the press scale and the ticking time are the only motion. DEBUG
 hooks: `TC_TEST_SEARCH` is the query, `TC_TEST_SEARCH_SCOPE=files` opens
 the Files scope.
