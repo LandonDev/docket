@@ -9,7 +9,7 @@ import { DIFF_ROWS_SKELETON_CAP, EmptyState, LoadingLine, PAGE_LIST_WIDTH, Surfa
 
 afterEach(cleanup);
 
-const KINDS: SkeletonKind[] = ["page", "search", "column", "accounts", "pane", "diff", "diff-rows", "terminal", "frame", "transcript", "rows"];
+const KINDS: SkeletonKind[] = ["page", "search", "column", "stats", "accounts", "pane", "diff", "diff-rows", "terminal", "frame", "transcript", "rows"];
 
 describe("SurfaceSkeleton", () => {
   it.each(KINDS)("%s: a labelled status of still skeleton blocks", (kind) => {
@@ -42,7 +42,7 @@ describe("SurfaceSkeleton", () => {
     expect(container.querySelector("[data-surface-skeleton] > .border-b")).not.toBeNull();
   });
 
-  it.each(["column", "accounts"] as const)("%s: the column sits in the page's own scroller, so it lands where the page does", (kind) => {
+  it.each(["column", "stats", "accounts"] as const)("%s: the column sits in the page's own scroller, so it lands where the page does", (kind) => {
     const { container } = render(<SurfaceSkeleton kind={kind} />);
     const scroller = container.querySelector("[data-skeleton-scroller]")!;
     expect(scroller.className).toBe(PAGE_SCROLLER);

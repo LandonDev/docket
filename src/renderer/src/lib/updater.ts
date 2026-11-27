@@ -203,9 +203,17 @@ export async function runUpdateFlow(
   }
   onProgress?.(snapshot);
 
+  if (snapshot.phase === "available") announceUpdateAvailable(snapshot.availableVersion!);
+  return manual ? answerCheck(snapshot, onProgress) : snapshot;
+}
+
+/** A finished check's reply to the person who asked for it: the offer of a release, a failed install's retry, the
+ *  feed's failure or "up to date". A background check he joined with a press gets it too (updateStore). */
+export async function answerCheck(
+  snapshot: UpdaterSnapshot,
+  onProgress?: (snapshot: UpdaterSnapshot) => void,
+): Promise<UpdaterSnapshot> {
   if (snapshot.phase === "available") {
-    announceUpdateAvailable(snapshot.availableVersion!);
-    if (!manual) return snapshot;
     // The notes are What's New's (the row's hover action), never pasted here whole.
     const yes = await ask(
       `Release ${snapshot.availableVersion} is available. You have ${snapshot.currentVersion}.\n\nDownload it now?`,
@@ -213,18 +221,18 @@ export async function runUpdateFlow(
     );
     return yes ? installPendingUpdate(onProgress) : snapshot;
   }
-  if (manual && canRetry(snapshot)) {
+  if (canRetry(snapshot)) {
     const yes = await ask(
       `Release ${snapshot.availableVersion} did not install. ${updateFailureWords(snapshot.error)}\n\nDownload it again?`,
       { title: "Update failed", kind: "warning", okLabel: "Download" },
     );
     return yes ? installPendingUpdate(onProgress) : snapshot;
   }
-  if (manual && snapshot.phase === "error") {
+  if (snapshot.phase === "error") {
     await message(`Couldn't check for updates.\n\n${updateFailureWords(snapshot.error, FEED_UNREACHABLE)}`, {
       title: APP_NAME,
     });
-  } else if (manual && snapshot.phase !== "idle") {
+  } else if (snapshot.phase !== "idle") {
     await message(`${APP_NAME} is up to date.`, { title: APP_NAME });
   }
   return snapshot;

@@ -18,10 +18,9 @@ export const choiceLabel = (c: SectorChoice, jobs?: readonly { sector: SectorKey
 /** "on this Mac" from the window's own name for this computer ("This Mac"); "on this computer" when it has none. */
 export const onThis = (host?: string): string => `on ${host ? host.charAt(0).toLowerCase() + host.slice(1) : "this computer"}`;
 
-/** Tab and Shift+Tab step through the choices, round. */
-export function stepChoice(c: SectorChoice, by: 1 | -1): SectorChoice {
-  const i = SECTOR_CHOICES.indexOf(c);
-  return SECTOR_CHOICES[(i + by + SECTOR_CHOICES.length) % SECTOR_CHOICES.length]!;
+/** Tab and Shift+Tab step through the choices; past the last (or before the first) null, and the key moves focus on. */
+export function stepChoice(c: SectorChoice, by: 1 | -1): SectorChoice | null {
+  return SECTOR_CHOICES[SECTOR_CHOICES.indexOf(c) + by] ?? null;
 }
 
 /** The choice ⌘1 to ⌘7 names, by the digit's key; null for any other key. */

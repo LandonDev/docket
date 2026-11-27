@@ -94,7 +94,8 @@ A frame change in the main process, kept small:
   (`client.ts`, the renderer's `Transport` on the loopback port) when shown
   and closes it a minute after it hides. Return files, mod+Return files and
   starts a thread, Shift+Return is a new line, Tab and Shift+Tab step the
-  sector, mod+1 to mod+7 pick one (Unsorted first), Escape hides and keeps
+  sector (past the last, or before Unsorted, they move focus on, so Remove,
+  Retry and the presses are reached by keyboard), mod+1 to mod+7 pick one (Unsorted first), Escape hides and keeps
   the draft. The window hides and the draft clears the moment he presses
   (the press, so the next capture starts empty while this one is on its way;
   each press is its own capture with its own key. A failure brings the window
@@ -192,8 +193,8 @@ said, then Scan Receipt, Add Photos and Add Files.
   start its thread) again. Words cannot be added while a Save is on its
   way: the field and the hold wait for its answer, which clears them.
   A thread that did not start (`threadError`) is said in the sheet; the task
-  is filed. The desktop's capture window says "Filed. The thread did not
-  start", then the cause only in words (`workErrorWords`), never the start
+  is filed. The desktop's capture window says "Filed, but the thread did
+  not start", then the cause only in words (`workErrorWords`), never the start
   call's own text.
 - **Code.** Client package `Work/Capture/`: `VoiceNote` (the draft, the host,
   the key; `CaptureHost`, which `WorkHost` is) and `Dictation` (hold, prepare,

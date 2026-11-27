@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { loadToast } from "../components/ui/toaster";
 import {
+  answerCheck,
   canRetry,
   firstSaying,
   installPendingUpdate,
@@ -86,11 +87,21 @@ class UpdateStore {
    * installing) ignores the request.
    */
   check(manual: boolean): Promise<UpdaterSnapshot> {
-    if (this.inflight) return this.inflight;
+    if (this.inflight) {
+      // A press during a background check makes it his: Checking… from the press, and its reply once it lands.
+      if (manual && !this.manualCheck) {
+        this.manualCheck = true;
+        this.state = { ...this.state };
+        for (const listener of this.listeners) listener();
+      }
+      return this.inflight;
+    }
     if (installing(this.state)) return Promise.resolve(this.state);
     this.lastCheckAt = Date.now();
     this.manualCheck = manual;
     const run = runUpdateFlow(manual, this.set).then((result) => {
+      // A background check he joined answers him once, as his own would have.
+      if (!manual && this.manualCheck) return answerCheck(result, this.set).then(() => this.state);
       // A failed probe is not worth showing; a failed install is, until the
       // user retries it.
       if (!manual && result.phase === "error" && !canRetry(result)) {

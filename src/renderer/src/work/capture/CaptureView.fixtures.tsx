@@ -42,7 +42,7 @@ export const fixtures = [
     },
   },
   { name: "No workspace for the file", props: { ...base, sector: "cosmic", files: [{ id: "a", name: "Loot table.xlsx", path: "/a" }], error: "No Cosmic workspace on this Mac to keep the file in" } },
-  { name: "Filed, the thread did not start", props: { ...base, error: "Filed. The thread did not start. This Mac is missing a program it needs for this." } },
+  { name: "Filed, the thread did not start", props: { ...base, error: "Filed, but the thread did not start. This Mac is missing a program it needs for this." } },
   { name: "Not signed in to LifeOS", props: { ...base, text: "Call the ref assigner", status: "offline", lifeos: "signed-out", host: "This Mac", canFile: true } },
   { name: "LifeOS did not answer", props: { ...base, text: "Call the ref assigner", status: "offline", lifeos: "unreachable", host: "This Mac", onRetry: () => {}, canFile: true } },
   { name: "The sign-in waits", props: { ...base, text: "Call the ref assigner", status: "offline", lifeos: "pairing", host: "This Mac", canFile: true } },

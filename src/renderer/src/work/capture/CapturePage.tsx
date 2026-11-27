@@ -167,7 +167,7 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
           // Its cause follows in words when it is one the app knows, never the start call's own text (S F10.1, round 4).
           if (filed.threadError) {
             const why = workErrorWords(new Error(filed.threadError), { host: thisComputerInLine() });
-            setError(`Filed. The thread did not start${why ? `. ${why}` : ""}`);
+            setError(`Filed, but the thread did not start${why ? `. ${why}` : ""}`);
             bridge.failed();
           }
         },
@@ -194,10 +194,11 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
       e.preventDefault();
       file(modKey(e));
     } else if (e.key === "Tab" && !chordKey(e)) {
+      // Past the last job, or before the first, Tab is the page's again: focus moves on to Remove, Retry, the presses.
+      const sector = stepChoice(draft.sector, e.shiftKey ? -1 : 1);
+      if (!sector) return;
       e.preventDefault();
-      touched.current = true;
-      const by = e.shiftKey ? -1 : 1;
-      setDraft((d) => ({ ...d, sector: stepChoice(d.sector, by) }));
+      pick(sector);
     } else if (modKey(e) && !e.shiftKey && !e.altKey) {
       const picked = choiceOfDigit(e.nativeEvent.code);
       if (picked) {

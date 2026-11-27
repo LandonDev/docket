@@ -179,6 +179,26 @@ export function failureWords(text: string): string {
   return bare;
 }
 
+/** A gate step's failure on its row, in words: the host writes the gate's
+ *  failing step and its first error line ("vitest: src/total.test.ts >
+ *  rounds the total", `gateFailureDetail`), a path and a test's name that
+ *  Log shows whole. The row says which part failed ("Tests failed"); the
+ *  step is the one the gate's own lines name failing (`✗ vitest`, `gate
+ *  failed: vitest`), so an error line that merely starts "word:" keeps its
+ *  words. Null when the detail names no such step. */
+const GATE_PART_WORDS: Readonly<Record<string, string>> = { vitest: "Tests failed", typecheck: "Typecheck failed", build: "Build failed", guards: "Guards failed" };
+export function gateFailureWords(step: Pick<LiveStep, "kind" | "detail" | "log">): string | null {
+  if (step.kind !== "gate") return null;
+  const part = /^([a-z0-9][a-z0-9-]*): \S/.exec(step.detail.trim())?.[1];
+  if (!part) return null;
+  const named = step.log.some((line) => {
+    const text = line.trim();
+    return text.startsWith(`✗ ${part} `) || text === `✗ ${part}` || text.startsWith(`gate failed: ${part} `) || text.startsWith(`gate failed: ${part},`);
+  });
+  if (!named) return null;
+  return GATE_PART_WORDS[part] ?? `${part.charAt(0).toUpperCase()}${part.slice(1)} failed`;
+}
+
 /** What a step's row says after its name: the land step how branches
  *  land until it runs, then how many landed; a running step its progress;
  *  a skipped one the host's reason, else "skipped"; otherwise the host's
@@ -188,11 +208,11 @@ export function failureWords(text: string): string {
  *  a plain first word takes its capital here, as a legacy detail does
  *  (statusWords.ts `sentenceStart`); a name ("v1.0.312 published") keeps
  *  its case. */
-export function stepDetail(step: Pick<LiveStep, "kind" | "status" | "detail" | "progress" | "startedAt" | "endedAt">, rules: Pick<BatchRules, "land">): { text: string; label: string | null } {
+export function stepDetail(step: Pick<LiveStep, "kind" | "status" | "detail" | "progress" | "startedAt" | "endedAt" | "log">, rules: Pick<BatchRules, "land">): { text: string; label: string | null } {
   const plain = (text: string) => ({ text: sentenceStart(detailText(text)) ?? "", label: null });
   // A failure is said once, on its row; ahead of a land step's progress,
   // which would hide it.
-  if (step.status === "failed") return plain(failureWords(untimed(step)));
+  if (step.status === "failed") return plain(gateFailureWords(step) ?? failureWords(untimed(step)));
   if (step.kind === "land") {
     if (step.status === "pending") return plain(rules.land === "all-at-once" ? "All at once" : "As they finish");
     if (step.progress && step.progress.total > 0) return plain(`${step.progress.done} of ${step.progress.total} landed`);

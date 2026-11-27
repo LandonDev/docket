@@ -851,7 +851,7 @@ describe("the master view", () => {
     expect(board).not.toMatch(/[·•—]/);
   });
 
-  it("a working row has one moving mark, its glyph on line two; its subagents' lines draw working as a dot and say Working; settled and queued rows never move", async () => {
+  it("a working row has one moving mark, its glyph on line two; its subagents' lines draw working as a dot, its word in the name alone; settled and queued rows never move", async () => {
     seed([
       meta({ id: "c-run", title: "Home", status: "running", activity: "Running ios:test", createdAt: 1 }),
       meta({ id: "a1", title: "Rail rows", status: "running", parentId: "c-run", masterId: null as unknown as string, activity: "Editing Rail.tsx", createdAt: 2 }),
@@ -867,7 +867,8 @@ describe("the master view", () => {
     const line = run.querySelector("[data-agent='a1']")!;
     expect(line.querySelector("[data-slot=spinner]")).toBeNull();
     expect(line.querySelector("[data-slot=working-dot]")).toBeTruthy();
-    expect(line.querySelector("[data-slot=status-word]")?.textContent).toBe("Working");
+    expect(line.querySelector("[data-slot=status-word]")).toBeNull();
+    expect(line.querySelector("[data-agent-what]")?.getAttribute("aria-label")).toBe("Working: Editing Rail.tsx");
     expect(line.querySelector("[data-slot=status-detail]")?.textContent).toBe("Editing Rail.tsx");
     for (const name of [/Queued one/, /Done one/]) expect(spinning(screen.getByRole("button", { name }))).toHaveLength(0);
     // The queued row says the host's detail as written.
@@ -886,7 +887,7 @@ describe("the master view", () => {
     expect(row.querySelector("[data-slot=spinner]")).toBeNull();
     const line = row.querySelector("[data-agent='a1']")!;
     expect(line.querySelector("[data-slot=working-dot]")).toBeTruthy();
-    expect(line.querySelector("[data-slot=status-word]")?.textContent).toBe("Working");
+    expect(line.querySelector("[data-slot=status-word]")).toBeNull();
     // The glyph sits 8px from the title, and the 20px line answers a 24px target.
     expect(line.className.split(/\s+/)).toEqual(expect.arrayContaining(["gap-2", "relative", "after:absolute", "after:-inset-y-0.5"]));
     expect(line.className.split(/\s+/)).not.toContain("gap-1.5");
@@ -1336,6 +1337,35 @@ describe("the master view", () => {
       expect(document.querySelector("[data-batch-foot]")?.getAttribute("data-foot-mode")).toBe("console");
       expect(document.querySelector("[aria-busy=true]")).toBeNull();
       expect(document.querySelector("[data-batch-foot] [data-slot=skeleton]")).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("both batch reads failing on first open keep the rows, say so in the foot with Retry, and hold Edit until a good read", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    let fail = true;
+    const request = link.request.bind(link);
+    const spy = vi.spyOn(link, "request").mockImplementation(((method: string, params?: unknown) =>
+      fail && (method === "batch.board" || method === "batch.get") ? Promise.reject(new Error("socket closed")) : request(method, params)) as typeof link.request);
+    try {
+      renderView();
+      await flush();
+      const foot = document.querySelector<HTMLElement>("[data-batch-foot]")!;
+      expect(foot.getAttribute("data-foot-mode")).not.toBe("loading");
+      // The row it knows from the store stays; no step is drawn from the default rules, and no Edit… offers them.
+      expect(screen.getByRole("button", { name: /Home/ })).toBeTruthy();
+      expect(within(foot).getByRole("alert").textContent).toBe("Couldn't load the batch rules");
+      expect(foot.querySelectorAll("[data-step]")).toHaveLength(0);
+      expect(foot.querySelector("[data-then]")).toBeNull();
+      expect(within(foot).queryByRole("button", { name: "Edit…" })).toBeNull();
+      // Retry reads again; a good answer brings the steps and Edit….
+      fail = false;
+      await act(async () => fireEvent.click(within(foot).getByRole("button", { name: "Retry" })));
+      await flush();
+      expect(foot.querySelector("[data-rules-failed]")).toBeNull();
+      expect([...foot.querySelectorAll("[data-step]")].map((li) => li.getAttribute("data-step"))).toEqual(["land", "gate", "release"]);
+      expect(within(foot).getByRole("button", { name: "Edit…" })).toBeTruthy();
     } finally {
       spy.mockRestore();
     }
@@ -2027,8 +2057,14 @@ describe("a row's subagents", () => {
     expect(linesOf(/Home screen/)).toEqual([
       "waiting TestsNeeds youApprove Bash",
       "failed LintFailedUsage cap",
-      "working Rail rowsWorkingEditing Rail.tsx",
+      // Working says no word on an agent line (beside the title it read as one run-on title, O F6.2); its name keeps it.
+      "working Rail rowsEditing Rail.tsx",
     ]);
+    const working = rowOf(/Home screen/).querySelector("[data-agent='a1']")!;
+    expect(working.querySelector("[data-slot=status-word]")).toBeNull();
+    expect(screen.getByRole("button", { name: /^Rail rows\s?Working: Editing Rail\.tsx$/ })).toBe(working);
+    // The tail starts on the titles' edge: the 14px glyph and its 8px gap (O F6.3).
+    expect(tailOf(/Home screen/) && rowOf(/Home screen/).querySelector("[data-agents-tail]")!.className).toContain("pl-[22px]");
     const waiting = rowOf(/Home screen/).querySelector("[data-agent='a11'] [data-agent-what]")!;
     expect(waiting.className).toContain("text-warning");
     expect(rowOf(/Home screen/).querySelector("[data-agent='a111'] [data-agent-what]")!.className).toContain("text-destructive");
@@ -2088,12 +2124,12 @@ describe("a row's subagents", () => {
     ]);
     renderView();
     await flush();
-    expect(linesOf(/Home screen/)).toEqual(["working RailWorkingReading a.ts"]);
+    expect(linesOf(/Home screen/)).toEqual(["working RailReading a.ts"]);
     rowReads.length = 0;
     const { environmentId: _e, ...wire } = agent("a1", "c-impl", "running", { title: "Rail", activity: "Editing a.ts" });
     act(() => link.push({ push: "session", session: wire } as unknown as ServerPush));
     await act(() => new Promise((r) => setTimeout(r, 50)));
-    expect(linesOf(/Home screen/)).toEqual(["working RailWorkingEditing a.ts"]);
+    expect(linesOf(/Home screen/)).toEqual(["working RailEditing a.ts"]);
     expect(rowReads.filter((id) => id === "c-other")).toEqual([]);
     const { environmentId: _g, ...settled } = agent("a1", "c-impl", "idle", { title: "Rail" });
     act(() => link.push({ push: "session", session: settled } as unknown as ServerPush));
@@ -2102,7 +2138,7 @@ describe("a row's subagents", () => {
     const { environmentId: _f, ...spawned } = agent("a2", "c-other", "starting", { createdAt: 9 });
     act(() => link.push({ push: "session", session: spawned } as unknown as ServerPush));
     await act(() => new Promise((r) => setTimeout(r, 50)));
-    expect(linesOf(/Search/)).toEqual(["working SubagentWorking"]);
+    expect(linesOf(/Search/)).toEqual(["working Subagent"]);
   });
 });
 
@@ -2154,7 +2190,12 @@ describe("the batch across hosts", () => {
     });
     await flush();
     expect(screen.getByRole("button", { name: /Inbox/ }).querySelector("[data-row-status]")!.textContent).toBe("Is out of reach on the box");
-    expect(document.querySelector("[data-batch-foot] [data-blocked]")!.textContent).toBe("Blocked: Inbox is out of reach on the box");
+    // The word and what blocks are two spans, the word in the failed tone, with no colon on screen (O F6.1).
+    const blocked = document.querySelector("[data-batch-foot] [data-blocked]")!;
+    expect(blocked.getAttribute("data-state")).toBe("failed");
+    expect(blocked.querySelector("[data-slot=status-word]")!.textContent).toBe("Blocked");
+    expect(blocked.querySelector("[data-slot=status-detail]")!.textContent).toBe("Inbox is out of reach on the box");
+    expect(blocked.textContent).not.toContain(":");
   });
 
   it("a child on another host lists its subagents from that host's rows, with the host's glyph", async () => {

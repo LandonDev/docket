@@ -20,7 +20,8 @@ export type UpdateRowState =
 /** A download in hand outranks one to start, which outranks the note that
  *  an update just landed; otherwise the row offers a check with the running
  *  version, and says Checking… while a check the person asked for runs
- *  (`manual`; the background probes keep the row still). A build that cannot
+ *  (`manual`; the background probes keep the row still, until a press joins
+ *  one and makes it his). A build that cannot
  *  apply a release (unpackaged: `dev:prod`, a dev instance) draws no row
  *  until a code-only update is known: its check would answer nothing. */
 export function updateRowState(snapshot: UpdaterSnapshot, notice: InstalledUpdate | null, manual = false): UpdateRowState | null {

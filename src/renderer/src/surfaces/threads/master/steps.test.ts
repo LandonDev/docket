@@ -78,6 +78,14 @@ describe("a step as the foot reads it", () => {
     expect(stepDetail(live({ status: "skipped" }), rules).text).toBe("Skipped");
     expect(stepDetail(live({ status: "skipped", detail: "needs a release" }), rules).text).toBe("Needs a release");
     expect(stepDetail(live({ status: "failed", detail: "vitest: 2 failed" }), rules).text).toBe("vitest: 2 failed");
+    // A gate whose own lines name the failing part says that part in words; the path and test stay in Log (S F6.2).
+    const red = ["✓ typecheck 21.0s passed", "✗ vitest       48s  failed  exit 1", " FAIL  src/total.test.ts > rounds the total", "gate failed: vitest in 1m 9s"];
+    expect(stepDetail(live({ status: "failed", detail: "vitest: src/total.test.ts > rounds the total", log: red }), rules).text).toBe("Tests failed");
+    expect(stepDetail(live({ status: "failed", detail: "typecheck: src/x.ts(1,1): error TS2322", log: ["✗ typecheck 12s failed"] }), rules).text).toBe("Typecheck failed");
+    expect(stepDetail(live({ status: "failed", detail: "boot-built: no window", log: ["gate failed: boot-built in 9s"] }), rules).text).toBe("Boot-built failed");
+    // An error line that only starts "word:" keeps its words; so does another kind of step.
+    expect(stepDetail(live({ status: "failed", detail: "fatal: not a git repository", log: ["fatal: not a git repository"] }), rules).text).toBe("fatal: not a git repository");
+    expect(stepDetail(live({ kind: "shell", status: "failed", detail: "vitest: x", log: ["✗ vitest 1s failed"] }), rules).text).toBe("vitest: x");
     expect(stepDetail(live({ status: "pending", kind: "shell", run: "bun run smoke" }), rules).text).toBe("");
   });
 

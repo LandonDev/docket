@@ -9,7 +9,7 @@ import {
   type BoardDigest,
 } from "@server/shared/contract-batch";
 import { batchThreadId, remoteArchivePlan, type ArchiveWhich, type BatchDone } from "./boardActions";
-import { blockedWords } from "@shared/batchWords";
+import { blockedReason } from "@shared/batchWords";
 import { AgentSummaries } from "./agentSummary";
 import { registry } from "../../../lib/connection";
 import { useEnvironmentStatuses } from "../../../lib/connection/status";
@@ -292,7 +292,7 @@ export type { BatchRules };
 
 export type Rules = BatchRules;
 
-/** What blocks the batch's end, as the foot says it: "Blocked: <title> errored". */
+/** What blocks the batch's end, as the foot says it after the word Blocked: "<title> errored". */
 export function blockedLine(
   batch: Pick<BatchState, "blocked" | "children">,
   titleOf: (id: string) => string | undefined,
@@ -303,7 +303,8 @@ export function blockedLine(
   const host = blocked.environmentId ? hostName?.(blocked.environmentId) : undefined;
   // A child on another host is blocked as `<env>:<session>`; the batch's list has its title.
   const listed = batch.children?.find((c) => blocked.sessionId === `${c.environmentId}:${c.sessionId}`)?.title;
-  return blockedWords(blocked, titleOf(blocked.sessionId) ?? listed, host);
+  // The word Blocked is the foot's own span; this is what follows it ("Inbox errored"). The phone and the host keep `blockedWords`.
+  return `${(titleOf(blocked.sessionId) ?? listed)?.trim() || "a thread"} ${blockedReason(blocked.why, host)}`;
 }
 
 export async function setBatchRules(environmentId: string, masterId: string, rules: Rules): Promise<void> {
@@ -515,7 +516,19 @@ export const BOARD_RENEW_MS = 45_000;
  */
 export class BatchHolder {
   private state: BatchState;
-  private answer: BoardAnswer = { children: NO_METAS, loaded: false };
+  private answer: BoardAnswer = { children: NO_METAS, loaded: false, failed: false };
+  /** A state from the host is in (an answer or a push): its rules are the batch's, not the defaults. */
+  private known = false;
+  /** The board's read while `useBoard` watches: the foot's Retry. */
+  private read: (() => Promise<void>) | null = null;
+  readonly retry = (): Promise<void> => this.read?.() ?? Promise.resolve();
+  /** Hand Retry the board's read; the returned call takes it back. */
+  reader(read: () => Promise<void>): () => void {
+    this.read = read;
+    return () => {
+      if (this.read === read) this.read = null;
+    };
+  }
   private readonly listeners = new Set<() => void>();
   /** When the first answer came in (`performance.now()`): the board's open clock (`board-paint answer=`). */
   answeredAt: number | null = null;
@@ -527,16 +540,19 @@ export class BatchHolder {
   }
   readonly get = (): BatchState => this.state;
   readonly answered = (): BoardAnswer => this.answer;
-  /** A new state; with `answer`, the answer's children (when it names them) and that it is in. */
-  set(state: BatchState, answer?: { children?: SessionMeta[]; loaded?: boolean }): void {
+  /** A new state; with `answer`, the answer's children (when it names them), that it is in, and how the read went:
+   *  `ok` for the host's own state, `failed` when no read answered (the foot says so until a good one, never the default rules). */
+  set(state: BatchState, answer?: { children?: SessionMeta[]; loaded?: boolean; read?: "ok" | "failed" }): void {
     let moved = state !== this.state;
     this.state = state;
     if (answer) {
+      if (answer.read === "ok") this.known = true;
       const children = answer.children ?? this.answer.children;
       const loaded = this.answer.loaded || !!answer.loaded;
-      if (children !== this.answer.children || loaded !== this.answer.loaded) {
+      const failed = answer.read === undefined ? this.answer.failed : answer.read === "failed" && !this.known;
+      if (children !== this.answer.children || loaded !== this.answer.loaded || failed !== this.answer.failed) {
         if (loaded && !this.answer.loaded) this.answeredAt = this.now();
-        this.answer = { children, loaded };
+        this.answer = { children, loaded, failed };
         moved = true;
       }
     }
@@ -548,8 +564,9 @@ export class BatchHolder {
   };
 }
 
-/** The answer's rows for children the store does not hold yet, and whether the first answer is in. */
-export type BoardAnswer = { children: SessionMeta[]; loaded: boolean };
+/** The answer's rows for children the store does not hold yet, whether the first answer is in, and whether
+ *  every read so far failed (the batch's rules are not known). */
+export type BoardAnswer = { children: SessionMeta[]; loaded: boolean; failed: boolean };
 
 /** The whole state, followed: the foot's. */
 export function useBatchState(holder: BatchHolder): BatchState {
@@ -605,7 +622,7 @@ export function useBoard(masterId: string, environmentId: string): Board {
     const link = registry.link(environmentId);
     if (!link) return;
     // An answer marks the board loaded; a push only moves the state it holds.
-    const take = (state: BatchState, children?: SessionMeta[], answer = true) => holder.set(state, answer ? { children, loaded: true } : undefined);
+    const take = (state: BatchState, children?: SessionMeta[], answer = true) => holder.set(state, answer ? { children, loaded: true, read: "ok" } : { read: "ok" });
     const readState = () =>
       link
         .request<BatchState>("batch.get", { masterId })
@@ -613,21 +630,22 @@ export function useBoard(masterId: string, environmentId: string): Board {
           if (alive && state && Array.isArray(state.steps)) take(state);
         })
         .catch(() => {
-          if (alive) holder.set(holder.get(), { loaded: true });
+          if (alive) holder.set(holder.get(), { loaded: true, read: "failed" });
         });
-    const read = () => {
+    const read = (): Promise<void> => {
       reads.asked();
-      link.request<BatchBoard>("batch.board", { masterId }).then(
+      return link.request<BatchBoard>("batch.board", { masterId }).then(
         (answer) => {
           if (!alive || !answer?.state || !Array.isArray(answer.state.steps)) return;
           digests.replace(answer.digests ?? {});
           // The wire's metas name no host: they are the master's host's, as the store stamps a list.
           take(answer.state, Array.isArray(answer.children) ? answer.children.map((m) => ({ ...m, environmentId })) : NO_METAS);
         },
-        () => void readState(),
+        () => readState(),
       );
     };
-    const offRead = reads.start(read);
+    const offReader = holder.reader(read);
+    const offRead = reads.start(() => void read());
     const offOpen = link.onOpen(() => reads.reopened());
     const offPush = link.onPush((push) => {
       if (!alive) return;
@@ -652,6 +670,7 @@ export function useBoard(masterId: string, environmentId: string): Board {
     });
     return () => {
       alive = false;
+      offReader();
       offRead();
       offOpen();
       offPush();

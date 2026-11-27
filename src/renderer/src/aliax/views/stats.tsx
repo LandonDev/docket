@@ -11,6 +11,7 @@ import { NEUTRAL_SERIES, SERIES, SERVICE_SERIES } from "@aliax/charts/palette";
 import { ChartTooltipContent } from "@aliax/charts/tooltip";
 import { TIMEZONE, clip, compact, compactTick, modelLabel, shortDay } from "@aliax/lib/viz";
 import { HEATMAP_HEIGHT, Heatmap } from "./stats/heatmap";
+import { fillDays, windowDays } from "./stats/days";
 import { modelMix, OTHER_KEY } from "./stats/modelMix";
 
 const PROVIDER: Record<string, string> = { codex: "Codex", "claude-code": "Claude Code" };
@@ -129,6 +130,12 @@ function PaceChart({ series }: { series: PaceSeries }) {
   );
 }
 
+/** A cache rate's dot where neither neighbour has one (the line needs two points); nothing elsewhere. */
+function LoneDot({ rows, index, cx, cy }: { rows: readonly { hit: number | null }[]; index: number; cx?: number; cy?: number }) {
+  const lone = rows[index]?.hit != null && rows[index - 1]?.hit == null && rows[index + 1]?.hit == null;
+  return lone && cx !== undefined && cy !== undefined ? <circle data-lone-dot cx={cx} cy={cy} r={2} fill={NEUTRAL_SERIES} /> : <g />;
+}
+
 /** A ranked list shows at most this many rows, each 28px, with 8px under the last. */
 const RANKED_ROWS = 8;
 const rankedHeight = (rows: number): number => rows * 28 + 8;
@@ -205,7 +212,7 @@ function StatsSkeleton() {
             key={h}
             title={h}
             // A line of the description's 16px, the bar at its text's height (a span: the description is a paragraph).
-            description={shape.description ? <span aria-hidden data-slot="skeleton" className="inline-block h-3 w-56 rounded-md bg-muted align-middle" /> : undefined}
+            description={shape.description ? <span aria-hidden data-slot="skeleton" className="inline-block h-3 w-56 rounded-md bg-skeleton align-middle" /> : undefined}
           >
             <Skeleton aria-hidden data-section-skeleton={h} className="w-full rounded-lg" style={{ height: shape.height }} />
           </Section>
@@ -234,11 +241,22 @@ export function dayTickInterval(days: number, frameWidth = 0): number {
 
 export function StatsView({ data, status }: { data: StatsBundle | null; status: StatsStatus | null }) {
   const mix = useMemo(() => (data ? modelMix(data) : { series: [], rows: [] }), [data]);
+  // One slot a calendar day over the window: an idle day draws zero output, and no cache rate a gap, never no room.
+  const days = useMemo(() => {
+    if (!data) return null;
+    const all = windowDays(data);
+    return {
+      daily: fillDays(all, data.daily, (day) => ({ day, claude: 0, codex: 0 })),
+      mix: fillDays(all, mix.rows as { day: string }[], (day) => ({ day, ...Object.fromEntries(mix.series.map((m) => [m.key, 0])) })),
+      cache: fillDays<{ day: string; hit: number | null }>(all, data.cacheDaily, (day) => ({ day, hit: null })),
+    };
+  }, [data, mix]);
 
   // Busiest hours reads 60 days: a populated heatmap keeps the page open when the 30-day sections are empty.
   const nothing = data !== null && data.totals.turns === 0 && data.pace.length === 0 && data.heatmap.length === 0;
-  // A first index is a load: the page's line says how far it has got.
-  if (!data || (nothing && status?.indexing)) return <StatsSkeleton />;
+  // An index pass is a load, the first as much as a Reindex: the bundle read meanwhile is an earlier or partial one, and
+  // the page's line says how far the pass has got. A worker that is gone runs no pass; its last bundle is drawn.
+  if (!data || !days || (status?.indexing && !data.unavailable)) return <StatsSkeleton />;
   // A worker that is gone is the page's red line; its empty bundle states nothing.
   if (nothing && data.unavailable) return null;
   if (nothing) {
@@ -302,9 +320,9 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
             />
             <ChartFrame label="Daily output">
               {(width) => (
-              <BarChart data={data.daily} barGap={2} margin={PLOT_MARGIN}>
+              <BarChart data={days.daily} barGap={2} margin={PLOT_MARGIN}>
                 <CartesianGrid {...GRID} />
-                <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(data.daily.length, width)} />
+                <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(days.daily.length, width)} />
                 <YAxis {...VALUE_AXIS} tickFormatter={compactTick} />
                 <ChartTooltip cursor={BAR_CURSOR} isAnimationActive={false} content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: compact })} />
                 <Bar {...BAR} dataKey="claude" name="Claude Code" fill={SERVICE_SERIES["claude-code"]} />
@@ -324,9 +342,9 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
             <ChartLegend items={mix.series.map((m) => ({ label: m.key === OTHER_KEY ? m.name : modelLabel(m.name), color: m.color }))} />
             <ChartFrame label="Model mix">
               {(width) => (
-              <AreaChart data={mix.rows} margin={PLOT_MARGIN}>
+              <AreaChart data={days.mix} margin={PLOT_MARGIN}>
                 <CartesianGrid {...GRID} />
-                <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(mix.rows.length, width)} />
+                <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(days.mix.length, width)} />
                 <YAxis {...VALUE_AXIS} tickFormatter={compactTick} />
                 <ChartTooltip
                   cursor={LINE_CURSOR}
@@ -353,12 +371,13 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
         ) : (
           <ChartFrame label="Cache hit rate">
             {(width) => (
-            <LineChart data={data.cacheDaily} margin={PLOT_MARGIN}>
+            <LineChart data={days.cache} margin={PLOT_MARGIN}>
               <CartesianGrid {...GRID} />
-              <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(data.cacheDaily.length, width)} />
+              <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} interval={dayTickInterval(days.cache.length, width)} />
               <YAxis {...VALUE_AXIS} domain={[0, 100]} tickFormatter={percent} />
               <ChartTooltip cursor={LINE_CURSOR} isAnimationActive={false} content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: percent })} />
-              <Line {...LINE} dataKey="hit" name="Hit rate" stroke={NEUTRAL_SERIES} />
+              {/* A rate between two days with none draws no line: its dot alone, so the day is not lost. */}
+              <Line {...LINE} dataKey="hit" name="Hit rate" stroke={NEUTRAL_SERIES} dot={(p: { index: number; cx?: number; cy?: number }) => <LoneDot key={p.index} rows={days.cache} {...p} />} />
             </LineChart>
             )}
           </ChartFrame>

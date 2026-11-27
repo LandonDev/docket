@@ -118,7 +118,8 @@ function MilestoneField({
   );
 }
 
-/** The header's pin: keeps the plan as the project's, ticked as builds land. */
+/** The header's pin, the glyph alone as the header's other actions are (the title already says "Project plan"):
+ *  keeps the plan as the project's, ticked as builds land. */
 export function ProjectPlanPin({
   projectId,
   pinned,
@@ -145,6 +146,7 @@ export function ProjectPlanPin({
         render={
           <Toggle
             size="sm"
+            aria-label="Keep as the project's plan"
             pressed={pinned}
             disabled={!projectId || busy}
             onPressedChange={(next) => void flip(next)}
@@ -152,7 +154,6 @@ export function ProjectPlanPin({
         }
       >
         <Pin />
-        Project's plan
       </TooltipTrigger>
       <TooltipContent>Keep as the project's plan</TooltipContent>
     </Tooltip>

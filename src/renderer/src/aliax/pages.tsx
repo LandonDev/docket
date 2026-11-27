@@ -154,7 +154,7 @@ export function AccountsPage(): React.JSX.Element {
       width="table"
       actions={
         <Button variant="ghost" size="sm" disabled={refreshing} onClick={() => void reload()}>
-          <BusyLabel busy={refreshing} label="Refresh" />
+          <BusyLabel busy={refreshing} label="Refresh" align="end" />
         </Button>
       }
     >
@@ -369,7 +369,7 @@ export function StatsPage(): React.JSX.Element {
       description={description}
       actions={
         <Button variant="ghost" size="sm" disabled={reindexing} onClick={() => void reindex()}>
-          <BusyLabel busy={reindexing} label="Reindex" />
+          <BusyLabel busy={reindexing} label="Reindex" align="end" />
         </Button>
       }
     >

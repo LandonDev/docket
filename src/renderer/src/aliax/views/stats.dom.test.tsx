@@ -3,6 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SECTION_SKELETON, StatsView, paceHeight, paceLine, paceTitle, resetPaceCount } from "./stats";
 import { HEATMAP_HEIGHT } from "./stats/heatmap";
+import { STATS_SECTIONS } from "@renderer/surfaces/statsSkeletonShape";
 import { STATS } from "./stats.fixtures";
 import { thisDesktopInLine } from "@renderer/lib/native";
 
@@ -153,5 +154,34 @@ describe("an empty month", () => {
     expect(document.querySelector("[data-slot=empty]")).toBeNull();
     // No hit rate is claimed for a month with no input.
     expect(screen.getByRole("region", { name: "Cache hit rate" }).textContent).not.toContain("% of input");
+  });
+});
+
+describe("an index pass", () => {
+  it("draws the sections' bones while the first pass runs over rows already indexed, never the earlier read's charts", () => {
+    render(<StatsView data={STATS} status={{ indexing: true, filesDone: 12, filesTotal: 900, rows: 4000 }} />);
+    expect(document.querySelector("[aria-busy=true]")).toBeTruthy();
+    expect(document.querySelector('[data-section-skeleton="Daily output"]')).toBeTruthy();
+    expect(document.querySelector("[data-chart]")).toBeNull();
+    cleanup();
+    render(<StatsView data={STATS} status={{ indexing: false, filesDone: 900, filesTotal: 900, rows: 4100 }} />);
+    expect(document.querySelector("[aria-busy=true]")).toBeNull();
+  });
+
+  it("draws a gone worker's last bundle, not bones under its red line, whatever its last count said", () => {
+    render(<StatsView data={{ ...STATS, unavailable: "exited (1)" }} status={{ indexing: true, filesDone: 12, filesTotal: 900, rows: 4000 }} />);
+    expect(document.querySelector("[aria-busy=true]")).toBeNull();
+  });
+});
+
+describe("the first paint's fallback", () => {
+  it("holds the page's own wait: its sections in order, each at the height and with the line the page's skeleton draws", () => {
+    resetPaceCount(2);
+    expect(STATS_SECTIONS.map((s) => s.title)).toEqual(ORDER);
+    for (const s of STATS_SECTIONS) {
+      const page = SECTION_SKELETON[s.title as keyof typeof SECTION_SKELETON];
+      expect(s.height, s.title).toBe(s.title === "Pace" ? paceHeight(2) : page.height);
+      expect(Boolean(s.description), s.title).toBe(Boolean(page.description));
+    }
   });
 });

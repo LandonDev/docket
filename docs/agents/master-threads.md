@@ -355,7 +355,8 @@ this is the short one.
   boots only. `decorate` gives a watching master its batch's reason ahead
   of the watch line ("Blocked: A errored", "Blocked: A ended its turn
   without completing": `blockedWords` in src/shared/batchWords.ts, which the
-  board's foot and the phone say too) and every meta carries
+  phone says too; the board's foot draws the word Blocked and the rest as two
+  spans, `blockedLine`) and every meta carries
   `lastEventAt`. A batch that has not moved for `STALE_WATCH_MS` (30 min:
   the children's last rows, a far child's last settle, the steps, the
   master itself) while its master watches unblocked is told once as a

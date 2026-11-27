@@ -122,6 +122,22 @@ describe("the capture window", () => {
     expect(filed[0]).toMatchObject({ sector: null });
   });
 
+  it("lets Tab past the last job and Shift+Tab before the first move focus on, so Remove, Retry and the presses are reached", async () => {
+    await open();
+    fireEvent.keyDown(field(), { key: "1", code: "Digit1", ctrlKey: true });
+    expect(pressed()).toBe("Unsorted");
+    // fireEvent answers false when the page took the key; true leaves it to the window's focus order.
+    expect(fireEvent.keyDown(field(), { key: "Tab", shiftKey: true })).toBe(true);
+    expect(pressed()).toBe("Unsorted");
+    fireEvent.keyDown(field(), { key: "7", code: "Digit7", ctrlKey: true });
+    const last = pressed();
+    expect(fireEvent.keyDown(field(), { key: "Tab" })).toBe(true);
+    expect(pressed()).toBe(last);
+    // Within the jobs the keys stay the job's.
+    expect(fireEvent.keyDown(field(), { key: "Tab", shiftKey: true })).toBe(false);
+    expect(pressed()).not.toBe(last);
+  });
+
   it("calls each job by its workspace's name, the sector's word only where no workspace names it", async () => {
     state = { ...state, jobs: [{ sector: "purdue", name: "Purdue Esports" }, { sector: "life", name: "Life" }] };
     await open();
@@ -197,14 +213,14 @@ describe("the capture window", () => {
     fireEvent.keyDown(field(), { key: "Enter", ctrlKey: true });
     await flush();
     expect(field().value).toBe("");
-    expect(screen.getByRole("alert").textContent).toBe("Filed. The thread did not start. No model is signed in");
+    expect(screen.getByRole("alert").textContent).toBe("Filed, but the thread did not start. No model is signed in");
   });
 
   // Council round 4 (S F10.1): the start call's raw text rode after "Filed".
   it("adds the cause after a thread that did not start only in words, never the start call's own text", async () => {
     for (const [threadError, said] of [
-      ["session.create: socket hang up at /srv/agents/work/x", "Filed. The thread did not start"],
-      ["spawn claude ENOENT", "Filed. The thread did not start. This Mac is missing a program it needs for this."],
+      ["session.create: socket hang up at /srv/agents/work/x", "Filed, but the thread did not start"],
+      ["spawn claude ENOENT", "Filed, but the thread did not start. This Mac is missing a program it needs for this."],
     ] as const) {
       answer = () => Promise.resolve({ taskId: "t1", kept: [], threadError });
       await open();
@@ -384,8 +400,9 @@ describe("a sign-in made elsewhere while the window shows (council round 9)", ()
 
 describe("the draft", () => {
   it("steps round, reads digits, and needs words or a file", () => {
-    expect(stepChoice("life", 1)).toBe("unsorted");
-    expect(stepChoice("unsorted", -1)).toBe("life");
+    expect(stepChoice("life", 1)).toBeNull();
+    expect(stepChoice("unsorted", -1)).toBeNull();
+    expect(stepChoice("unsorted", 1)).toBe("cosmic");
     expect(choiceOfDigit("Digit7")).toBe("life");
     expect(choiceOfDigit("Digit8")).toBeNull();
     expect(draftRefusal({ text: " ", files: [], sector: "life" }, [])).toBe("");

@@ -180,7 +180,9 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
     rows.push({
       kind: "item",
       id: "mac-bridge",
-      label: on && !online ? "Mac bridge (offline)" : "Mac bridge",
+      label: "Mac bridge",
+      // A fact rides the row's end as its hint, as Resources…'s count does: never in brackets in the label.
+      ...(on && !online ? { hint: "Offline" } : {}),
       icon: Laptop,
       checked: on,
       disabled: !known || inherited,

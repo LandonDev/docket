@@ -73,6 +73,19 @@ describe('StatsHost', () => {
     expect(r.host.progress().running).toBe(false)
   })
 
+  it('says a pass runs from its ask, before the worker counts a file, and not after a worker dies mid-pass', async () => {
+    const r = rig()
+    await tick()
+    const pass = r.host.index()
+    // The worker has posted no progress yet: the page must not read the bundle from before the pass as its result.
+    expect(r.host.progress().running).toBe(true)
+    await pass
+    expect(r.host.progress().running).toBe(false)
+    r.worker().emit('message', { type: 'progress', progress: { running: true, filesDone: 1, filesTotal: 9, rows: 4 } })
+    r.worker().emit('exit', 1)
+    expect(r.host.progress().running).toBe(false)
+  })
+
   it('forwards a sample and an app event without waiting', () => {
     const r = rig()
     r.host.sample('codex', 'acct', '5h', 42, 1_000, 5_000)

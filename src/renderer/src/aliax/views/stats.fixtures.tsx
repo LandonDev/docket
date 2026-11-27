@@ -56,8 +56,13 @@ export const STATS: StatsBundle = {
   flow: [],
 };
 
+/** Oct 12–18 and Oct 20–21 idle: each keeps its slot on the day axis, Oct 19's cache rate a dot between two gaps. */
+const idle = (r: { day: string }): boolean => !/^2026-10-(1[2-8]|2[01])$/.test(r.day);
+const IDLE: StatsBundle = { ...STATS, daily: STATS.daily.filter(idle), cacheDaily: STATS.cacheDaily.filter(idle), modelDaily: STATS.modelDaily.filter(idle) };
+
 export default [
   { name: "Two pace series, one running low", props: { data: STATS, status: null } },
+  { name: "An idle week and two idle days", props: { data: IDLE, status: null } },
   { name: "Pace with no finished cycles", props: { data: { ...STATS, pace: [] }, status: null } },
   { name: "Empty sections", props: { data: { ...STATS, daily: [], heatmap: [], byTool: [] }, status: null } },
   {

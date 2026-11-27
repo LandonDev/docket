@@ -4,6 +4,7 @@ import { BusyLabel, Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
+import { STATS_SECTIONS } from "./statsSkeletonShape";
 import { COLUMN_MAX_CLASS } from "./transcriptOutlineModel";
 
 /**
@@ -20,6 +21,8 @@ export type SkeletonKind =
   | "search"
   /** A page in the one 672px column under the title strip (Settings, Stats). */
   | "column"
+  /** The Stats page: its title over each section's heading and the bone its chart holds, as the page's own wait. */
+  | "stats"
   /** The Accounts page: its title over its sections' rows, each as tall as the row that lands (the usage bars' bones are the page's own, once its chunk is here). */
   | "accounts"
   /** A pane of text lines (the editor, release notes, an issue body). */
@@ -225,6 +228,33 @@ function body(kind: SkeletonKind, count: number, lines: 2 | 3): ReactNode {
           </div>
         </>
       );
+    case "stats":
+      // The page's frame and title, then the page's own wait (aliax/views/stats.tsx StatsSkeleton): each section's
+      // heading over the bone its chart holds, in words, so the page's wait lands on the same lines. No line under
+      // the title: the page has none until its first read.
+      return (
+        <>
+          <div data-skeleton-strip className={STRIP} />
+          <div data-skeleton-scroller className={PAGE_SCROLLER}>
+            <div data-skeleton-column className={`mx-auto w-full p-6 ${PAGE_WIDTH.column}`}>
+              <p className="text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">Stats</p>
+              <div className="mt-6 flex flex-col gap-6">
+                {STATS_SECTIONS.map((s) => (
+                  <div key={s.title} className="min-w-0">
+                    <p className="flex h-5 items-center text-xs font-medium text-muted-foreground">{s.title}</p>
+                    {s.description ? (
+                      <span className="flex h-4 items-center">
+                        <Skeleton className="h-3 w-56" />
+                      </span>
+                    ) : null}
+                    <Skeleton data-section-skeleton={s.title} className="mt-2 w-full rounded-lg" style={{ height: s.height }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      );
     case "pane":
       return (
         <div className="max-w-2xl p-4">
@@ -284,6 +314,7 @@ const FRAME: Record<SkeletonKind, string> = {
   page: "flex min-h-0 min-w-0 flex-1 flex-col",
   search: "flex min-h-0 min-w-0 flex-1 flex-col",
   column: "flex min-h-0 min-w-0 flex-1 flex-col",
+  stats: "flex min-h-0 min-w-0 flex-1 flex-col",
   accounts: "flex min-h-0 min-w-0 flex-1 flex-col",
   pane: "h-full min-h-0 w-full overflow-hidden",
   diff: "flex h-full min-h-0 w-full flex-col overflow-hidden",

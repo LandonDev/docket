@@ -79,6 +79,36 @@ describe("updateStore", () => {
     expect(updateStore.manualCheck).toBe(false);
   });
 
+  it("makes a background check his when he presses Check during it: Checking… from the press, and one reply when it lands", async () => {
+    let land: (s: ReturnType<typeof status>) => void = () => {};
+    mocks.check.mockImplementationOnce(() => new Promise((resolve) => (land = resolve)));
+    updateStore.start();
+    await flush();
+    expect(updateStore.getSnapshot().phase).toBe("checking");
+    expect(updateStore.manualCheck).toBe(false);
+    const seen = vi.fn();
+    const unsubscribe = updateStore.subscribe(seen);
+    const joined = updateStore.check(true);
+    // The row reads the mark on the next snapshot: the store tells it at once.
+    expect(updateStore.manualCheck).toBe(true);
+    expect(seen).toHaveBeenCalled();
+    land(status());
+    await joined;
+    unsubscribe();
+    expect(mocks.message).toHaveBeenCalledTimes(1);
+    expect(String(mocks.message.mock.calls[0]![0])).toMatch(/is up to date\.$/);
+    expect(updateStore.manualCheck).toBe(false);
+    expect(mocks.check).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers no one for a background check he did not press", async () => {
+    mocks.check.mockResolvedValue(status());
+    updateStore.start();
+    await flush();
+    await flush();
+    expect(mocks.message).not.toHaveBeenCalled();
+  });
+
   it("probes at launch and keeps the release notes on the snapshot", async () => {
     mocks.check.mockResolvedValue(
       status({ latest: "1.0.96", notes: "Build tab shows behind-origin counts\n" }),

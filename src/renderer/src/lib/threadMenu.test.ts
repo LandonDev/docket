@@ -166,7 +166,9 @@ describe("threadMenuRows: resources, the bridge and the host moves", () => {
     const bridge = (b: ThreadMenuFacts["bridge"]) => row(threadMenuRows(facts({ bridge: b })), "mac-bridge");
     expect(ids(threadMenuRows(facts()))).not.toContain("mac-bridge");
     expect(bridge({ on: false, online: true, inherited: false, known: true })).toMatchObject({ label: "Mac bridge", checked: false, disabled: false });
-    expect(bridge({ on: true, online: false, inherited: false, known: true })).toMatchObject({ label: "Mac bridge (offline)", checked: true });
+    // The state is the row's hint, never brackets in its label (O F6.5).
+    expect(bridge({ on: true, online: false, inherited: false, known: true })).toMatchObject({ label: "Mac bridge", hint: "Offline", checked: true });
+    expect(bridge({ on: true, online: true, inherited: false, known: true })?.hint).toBeUndefined();
     expect(bridge({ on: true, online: true, inherited: true, known: true })).toMatchObject({ disabled: true, reason: "Set on the parent thread" });
     expect(bridge({ on: false, online: false, inherited: false, known: false })).toMatchObject({ disabled: true, reason: "Loading" });
     expect(bridge({ on: false, online: true, inherited: false, known: true })).not.toHaveProperty("reason");

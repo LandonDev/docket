@@ -212,6 +212,8 @@ describe('AccountsPage', () => {
     expect(button.getAttribute('data-variant')).toBe('ghost')
     expect(button.className).toContain('h-7')
     expect(button.querySelector('svg')).toBeNull()
+    // The word ends at the button's edge, on the column's line, not centred in the room its busy state keeps.
+    expect(button.querySelector('[data-slot=busy-label] > span')!.className).toContain('justify-end')
     await act(async () => { fireEvent.click(button); await flush() })
     expect(button.querySelector('[data-slot=busy-label]')!.hasAttribute('data-busy')).toBe(true)
     await act(async () => { release(); await flush() })
@@ -463,6 +465,7 @@ describe('StatsPage', () => {
     expect(button.className).toContain('h-7')
     expect(button.querySelector('svg')).toBeNull()
     expect(button.textContent).toBe('Reindex')
+    expect(button.querySelector('[data-slot=busy-label] > span')!.className).toContain('justify-end')
   })
 
   it('counts a Reindex as it runs, and says a refused one in red with its reason on hover alone', async () => {

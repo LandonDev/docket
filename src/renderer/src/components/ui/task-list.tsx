@@ -286,9 +286,12 @@ export function TaskList({
           <span className="block min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-foreground">{headline}</span>
         </TruncateTip>
         <span className={cn("flex shrink-0 items-center gap-2 text-[13px] leading-5 tabular-nums transition-colors", complete ? "text-foreground" : "text-muted-foreground")}>
-          <span dir="ltr">
-            {done}/{tasks.length}
-          </span>
+          {/* Folded and finished, the line already says "All tasks complete": no tally to say it twice. */}
+          {complete && !open ? null : (
+            <span dir="ltr" data-slot="task-tally">
+              {done}/{tasks.length}
+            </span>
+          )}
           <ChevronRight aria-hidden data-slot="task-chevron" className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
         </span>
       </CollapsibleTrigger>

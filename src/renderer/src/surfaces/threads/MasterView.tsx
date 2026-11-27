@@ -1,5 +1,5 @@
 import { measureElement, useVirtualizer, type Virtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactElement, type RefObject } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactElement, type RefObject } from "react";
 import { useLinkMay } from "../../lib/linkMayCore";
 import { useHostHeld } from "../../lib/connection/degraded";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
@@ -110,8 +110,9 @@ const BoardRow = memo(function BoardRow({
 });
 
 /** The foot on the batch's whole state: the one part of the view a step's log line renders. */
-const LiveBatchFoot = memo(function LiveBatchFoot({ holder, ...foot }: { holder: BatchHolder } & Omit<ComponentProps<typeof BatchFoot>, "batch">) {
-  return <BatchFoot batch={useBatchState(holder)} {...foot} />;
+const LiveBatchFoot = memo(function LiveBatchFoot({ holder, ...foot }: { holder: BatchHolder } & Omit<ComponentProps<typeof BatchFoot>, "batch" | "failed" | "onRetry">) {
+  const { failed } = useSyncExternalStore(holder.subscribe, holder.answered);
+  return <BatchFoot batch={useBatchState(holder)} failed={failed} onRetry={holder.retry} {...foot} />;
 });
 
 /** A section heading is 32px, its words on the last 16px with 4px under

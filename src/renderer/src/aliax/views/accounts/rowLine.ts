@@ -3,6 +3,7 @@ import type { ProfileView, UsageReport } from "aliax-core/shared/types";
 import { isLive } from "@shared/usageMeter";
 import { percentLeft } from "@aliax/lib/accounts";
 import { clockTime } from "@renderer/lib/duration";
+import { nameInLine } from "@renderer/lib/hostWords";
 
 /** The host that refreshes an account, as a row sees it. */
 export interface OwnerView {
@@ -151,7 +152,7 @@ export function rowLine(
   }
   if (owner && lapsed) {
     const retry: RowAction = { label: "Retry", kind: "sync" };
-    if (owner.connected) return { text: `Waiting for a fresh token from ${owner.name}`, tone: "warning", action: retry };
+    if (owner.connected) return { text: `Waiting for a fresh token from ${nameInLine(owner.name)}`, tone: "warning", action: retry };
     const since = profile.expiresAt !== undefined ? ` ${agoLabel(profile.expiresAt, now)}` : "";
     return { text: `${owner.name} is unreachable, token lapsed${since}`, tone: "warning", action: retry };
   }
@@ -160,7 +161,7 @@ export function rowLine(
     return { text: "One-year token", tone: "muted", detail: profile.expiresAt !== undefined ? `lapses ${shortDay(profile.expiresAt)}` : undefined };
   }
   if (owner) {
-    return { text: `Refreshed by ${owner.name}`, tone: "muted", detail: profile.syncedAt !== undefined ? agoLabel(profile.syncedAt, now) : undefined };
+    return { text: `Refreshed by ${nameInLine(owner.name)}`, tone: "muted", detail: profile.syncedAt !== undefined ? agoLabel(profile.syncedAt, now) : undefined };
   }
   return null;
 }

@@ -88,7 +88,7 @@ describe("PlanView for a project plan", () => {
     expect([...document.querySelectorAll("[data-md]")].map((e) => e.textContent).join("")).not.toContain("### [ ] 1. A");
     expect(document.querySelector("[data-project-plan-card]")).toBeNull();
     expect(screen.getByText("0 of 1 milestone done")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Project's plan" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Keep as the project's plan" }).getAttribute("aria-pressed")).toBe("true");
     view.unmount();
     doc = `---\nstatus: complete\n---\n${PLAN}`;
     render(<PlanView {...props(session({}))} />);
@@ -99,8 +99,10 @@ describe("PlanView for a project plan", () => {
     doc = PLAN;
     pinned = false;
     render(<PlanView {...props(session({}))} />);
-    const pin = screen.getByRole("button", { name: "Project's plan" });
+    const pin = screen.getByRole("button", { name: "Keep as the project's plan" });
     expect(pin.getAttribute("aria-pressed")).toBe("false");
+    // The glyph alone: the header's title already says "Project plan" (O F6.4).
+    expect(pin.textContent).toBe("");
     fireEvent.click(pin);
     await act(async () => {});
     expect(pinProjectPlan).toHaveBeenCalledWith("p1", true);

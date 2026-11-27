@@ -1,4 +1,5 @@
 import { Page } from "@renderer/components/page";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { AccountsView, type AccountsViewProps } from "./accounts";
 
 /**
@@ -9,7 +10,16 @@ import { AccountsView, type AccountsViewProps } from "./accounts";
  */
 export function AccountsPagePreview(props: AccountsViewProps) {
   return (
-    <Page title="Accounts" width="table">
+    <Page
+      title="Accounts"
+      width="table"
+      actions={
+        // The page's Refresh as pages.tsx draws it, so the title line's edge shows against the sections' ⋯.
+        <Button variant="ghost" size="sm">
+          <BusyLabel busy={false} label="Refresh" align="end" />
+        </Button>
+      }
+    >
       <AccountsView {...props} />
     </Page>
   );

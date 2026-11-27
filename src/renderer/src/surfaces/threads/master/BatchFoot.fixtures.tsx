@@ -29,6 +29,16 @@ export default [
     props: { ...props(batch({ status: "running" })), loaded: false },
   },
   {
+    // Both reads failed on first open: no steps from the default rules and no Edit…, one red line with Retry.
+    name: "rules not read",
+    props: { ...props(emptyBatch("m")), failed: true, onRetry: noop },
+  },
+  {
+    // A child blocks the end: the word Blocked and what blocks, two spans.
+    name: "blocked",
+    props: { ...props({ ...batch({ status: "pending", startedAt: undefined, endedAt: undefined, at: null }), blocked: { sessionId: "c1", why: "unreachable", environmentId: "mac" } }), titleOf: () => "Release notes", hostName: () => "this Mac" },
+  },
+  {
     // A running step's count and its label are one detail with a comma.
     name: "gate running",
     props: props(batch({ status: "running", endedAt: undefined, progress: { done: 3, total: 7, label: "vitest" }, log: ["✓ typecheck 12s", "vitest: 3 of 7 files"] })),

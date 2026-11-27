@@ -259,19 +259,19 @@ describe("a plan and its build are one row", () => {
 });
 
 describe("the batch's words", () => {
-  it("names the blocking child", () => {
+  it("names the blocking child and why, the word Blocked left to the foot's own span", () => {
     const titleOf = (id: string) => (id === "c9" ? "Inbox" : undefined);
-    expect(blockedLine({ blocked: { sessionId: "c9", why: "errored" } }, titleOf)).toBe("Blocked: Inbox errored");
-    expect(blockedLine({ blocked: { sessionId: "zz", why: "stopped" } }, titleOf)).toBe("Blocked: a thread stopped");
+    expect(blockedLine({ blocked: { sessionId: "c9", why: "errored" } }, titleOf)).toBe("Inbox errored");
+    expect(blockedLine({ blocked: { sessionId: "zz", why: "stopped" } }, titleOf)).toBe("a thread stopped");
     expect(blockedLine({ blocked: null }, titleOf)).toBeNull();
     expect(blockedLine({ blocked: { sessionId: "c9", why: "no-turn" } }, titleOf)).toBe(
-      "Blocked: Inbox ended its turn without completing",
+      "Inbox ended its turn without completing",
     );
     expect(
       blockedLine({ blocked: { sessionId: "c9", why: "unreachable", environmentId: "env_box" } }, titleOf, (id) =>
         id === "env_box" ? "box" : undefined,
       ),
-    ).toBe("Blocked: Inbox is out of reach on box");
+    ).toBe("Inbox is out of reach on box");
     // A far child is blocked by its `<env>:<session>` id: the batch's list names it.
     expect(
       blockedLine(
@@ -281,7 +281,7 @@ describe("the batch's words", () => {
         },
         titleOf,
       ),
-    ).toBe("Blocked: Pricing survey errored");
+    ).toBe("Pricing survey errored");
   });
 });
 
@@ -492,5 +492,30 @@ describe("the board's open clock", () => {
     holder.set(emptyBatch("m1"), { loaded: true });
     holder.set(emptyBatch("m1"), { children: [] });
     expect(holder.answeredAt).toBe(250);
+  });
+});
+
+describe("a batch whose reads failed", () => {
+  it("is failed until a good state comes in, and a later failed read keeps the rules already read", () => {
+    const holder = new BatchHolder("m1");
+    holder.set(emptyBatch("m1"), { loaded: true, read: "failed" });
+    expect(holder.answered()).toMatchObject({ loaded: true, failed: true });
+    // A push of the host's own state is a good read too.
+    holder.set(emptyBatch("m1"), { read: "ok" });
+    expect(holder.answered().failed).toBe(false);
+    holder.set(holder.get(), { loaded: true, read: "failed" });
+    expect(holder.answered().failed).toBe(false);
+  });
+
+  it("retries through the board's read while one is set, and answers at once without one", async () => {
+    const holder = new BatchHolder("m1");
+    await expect(holder.retry()).resolves.toBeUndefined();
+    let asked = 0;
+    const off = holder.reader(async () => void asked++);
+    await holder.retry();
+    expect(asked).toBe(1);
+    off();
+    await holder.retry();
+    expect(asked).toBe(1);
   });
 });

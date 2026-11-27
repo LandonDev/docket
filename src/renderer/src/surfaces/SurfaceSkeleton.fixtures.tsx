@@ -6,6 +6,7 @@ export default [
   { name: 'Page (Notes)', props: { kind: 'page', lines: 3 } },
   { name: 'Search', props: { kind: 'search', count: 8 } },
   { name: 'Column', props: { kind: 'column' } },
+  { name: 'Stats', props: { kind: 'stats' } },
   { name: 'Accounts', props: { kind: 'accounts' } },
   { name: 'Pane', props: { kind: 'pane' } },
   { name: 'Diff', props: { kind: 'diff' } },

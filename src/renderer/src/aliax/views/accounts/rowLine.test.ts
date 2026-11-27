@@ -109,6 +109,14 @@ describe("rowLine", () => {
     });
   });
 
+  it("sets a host named \"The box\" or \"This Mac\" mid-line in lower case, and keeps it whole at a line's head", () => {
+    const theBox = { name: "The box", connected: true };
+    expect(rowLine(p({ owner: "env_box", syncedAt: NOW - 60_000 }), r(), theBox, undefined, NOW)?.text).toBe("Refreshed by the box");
+    expect(rowLine(p({ owner: "env_box", expiresAt: NOW - 1 }), r(), theBox, undefined, NOW)?.text).toBe("Waiting for a fresh token from the box");
+    expect(rowLine(p({ owner: "env_mac", syncedAt: NOW - 60_000 }), r(), { name: "This Mac", connected: true }, undefined, NOW)?.text).toBe("Refreshed by this Mac");
+    expect(rowLine(p({ owner: "env_box", expiresAt: NOW - 1 }), r(), { ...theBox, connected: false }, undefined, NOW)?.text).toMatch(/^The box is unreachable/);
+  });
+
   it("words a provider's note: sentence case, no closing period, its status code out of the words", () => {
     expect(noteWords("usage unavailable (502)")).toEqual({ text: "Usage unavailable", code: "502" });
     expect(noteWords("rate limited.")).toEqual({ text: "Rate limited" });

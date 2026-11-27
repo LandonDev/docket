@@ -241,6 +241,20 @@ describe("the folded list's header", () => {
     expect(headline.className).toContain("min-w-0");
     expect(headline.querySelector('[data-slot="working-text"]')).toBeNull();
   });
+
+  it("folded with every task done says All tasks complete with no tally, and opened shows the tally again", () => {
+    const done: Task[] = [{ id: "1", label: "Read the brief", state: "done" }];
+    const { container } = render(<TaskList tasks={done} />);
+    const header = container.querySelector<HTMLElement>("[data-slot='task-list'] > [data-slot='collapsible-trigger']")!;
+    expect(header.textContent).toBe("All tasks complete");
+    expect(header.querySelector("[data-slot='task-tally']")).toBeNull();
+    fireEvent.click(header);
+    expect(header.querySelector("[data-slot='task-tally']")?.textContent).toBe("1/1");
+    // Unfinished, the folded line keeps its tally.
+    cleanup();
+    render(<TaskList defaultOpen={false} tasks={TASKS} />);
+    expect(document.querySelector("[data-slot='task-tally']")).toBeTruthy();
+  });
 });
 
 describe("the compact rows", () => {

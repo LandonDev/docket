@@ -39,6 +39,8 @@ export class StatsHost {
   private lastBundle: StatsBundle | null = null
   private bundleInFlight: Promise<StatsBundle> | null = null
   private last: IndexProgress = { running: false, filesDone: 0, filesTotal: 0, rows: 0 }
+  /** Index and reindex asks the worker has not yet answered. */
+  private passes = 0
   private readonly log: (line: string) => void
 
   constructor(private readonly opts: StatsHostOptions) {
@@ -70,6 +72,8 @@ export class StatsHost {
     if (this.stopped || this.worker !== worker) return
     this.worker = null
     this.ready = false
+    // Its pass ended with it: no count of a dead worker's says it runs on.
+    this.last = { ...this.last, running: false }
     for (const p of this.pending.values()) p.reject(new Error(why))
     this.pending.clear()
     if (this.restarts < STATS_WORKER_RESTARTS) {
@@ -133,7 +137,15 @@ export class StatsHost {
 
   /** Index everything new; the worker joins a pass already running. */
   index(): Promise<IndexProgress> {
-    return this.ask<IndexProgress>({ type: 'index' })
+    return this.pass(this.ask<IndexProgress>({ type: 'index' }))
+  }
+
+  /** A pass asked for runs until it answers: `progress()` says so from the ask, before the worker's first count. */
+  private pass(ask: Promise<IndexProgress>): Promise<IndexProgress> {
+    this.passes++
+    return ask.finally(() => {
+      this.passes--
+    })
   }
 
   /** Index everything again. A worker that was left down is started first,
@@ -145,7 +157,7 @@ export class StatsHost {
       this.unavailable = null
       this.start()
     }
-    return this.ask<IndexProgress>({ type: 'reindex' })
+    return this.pass(this.ask<IndexProgress>({ type: 'reindex' }))
   }
 
   /** The page's bundle: one ask in flight at a time, every caller meanwhile
@@ -175,8 +187,10 @@ export class StatsHost {
     this.worker?.postMessage({ type: 'appEvent', kind, service, account, detail } satisfies StatsRequest)
   }
 
+  /** The worker's last count; running from the moment a pass is asked for until it answers, so the page never reads
+   *  the bundle from before a pass as its result. */
   progress(): IndexProgress {
-    return { ...this.last }
+    return { ...this.last, running: this.last.running || this.passes > 0 }
   }
 
   status(): { ready: boolean; restarts: number; unavailable: string | null } {

@@ -37,6 +37,8 @@ const LOG_LINES = 200;
 export function BatchFoot({
   batch,
   loaded = true,
+  failed = false,
+  onRetry,
   titleOf,
   hostName,
   onSave,
@@ -48,6 +50,9 @@ export function BatchFoot({
   batch: BatchState;
   /** False until the board's first answer: the foot is its skeleton. */
   loaded?: boolean;
+  /** Every read of the batch failed, so its rules are not known: a red line with Retry, no steps and no Edit…. */
+  failed?: boolean;
+  onRetry?: () => Promise<void>;
   /** A child's title by id, for the blocked line. */
   titleOf: (id: string) => string | undefined;
   /** A host's name by id, for a blocked child out of reach on it. */
@@ -103,7 +108,7 @@ export function BatchFoot({
       <div className="flex h-6 items-center gap-2">
         <h3 className="flex-1 text-xs font-medium text-muted-foreground">When done</h3>
         {/* The foot's trailing buttons end their word on the 12px edge the times keep (-me-2 takes the button's own 8px back). */}
-        {onSave ? (
+        {onSave && !failed ? (
           <HeldTip held={held} className="-me-2">
             <Button variant="ghost" size="xs" className={held ? undefined : "-me-2"} disabled={!!held} onClick={() => setEditing(true)}>
               Edit…
@@ -112,31 +117,59 @@ export function BatchFoot({
         ) : null}
       </div>
       {blocked ? (
-        <p className="text-xs text-destructive" data-blocked>
-          {blocked}
-        </p>
+        // The word and what blocks, two spans in the failed tone (DESIGN "Typography and text hierarchy"), never "Blocked: …".
+        <StatusMark state="failed" glyph={false} word="Blocked" detail={blocked} className="flex" data-blocked />
       ) : null}
 
-      <ol className="mt-1 flex flex-col">
-        {steps.map((step) => (
-          <StepRow
-            key={step.id}
-            step={step}
-            detail={stepDetail(step, rules)}
-            now={step.status === "running" ? now : 0}
-            open={active?.id === step.id}
-            onStop={onStop ? stopStep : undefined}
-            held={held}
-            onFold={fold}
-          />
-        ))}
-      </ol>
+      {failed ? (
+        <RulesFailed onRetry={onRetry} />
+      ) : (
+        <>
+          <ol className="mt-1 flex flex-col">
+            {steps.map((step) => (
+              <StepRow
+                key={step.id}
+                step={step}
+                detail={stepDetail(step, rules)}
+                now={step.status === "running" ? now : 0}
+                open={active?.id === step.id}
+                onStop={onStop ? stopStep : undefined}
+                held={held}
+                onFold={fold}
+              />
+            ))}
+          </ol>
 
-      <p className="mt-1 text-xs text-muted-foreground" data-then>
-        {rules.then === "archive-children" ? "Then archive the threads" : "Then notify you"}
-      </p>
+          <p className="mt-1 text-xs text-muted-foreground" data-then>
+            {rules.then === "archive-children" ? "Then archive the threads" : "Then notify you"}
+          </p>
+        </>
+      )}
 
       {editing && onSave ? <RulesDialog rules={rules} onClose={() => setEditing(false)} onSave={onSave} /> : null}
+    </div>
+  );
+}
+
+/** No read of the batch answered: its rules are not known, so no step is drawn from the defaults and Edit… waits.
+ *  One red line with Retry (DESIGN "Loading and empty states"); Retry spins until its read settles. */
+function RulesFailed({ onRetry }: { onRetry?: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const retry = () => {
+    if (busy || !onRetry) return;
+    setBusy(true);
+    void onRetry().finally(() => setBusy(false));
+  };
+  return (
+    <div className="flex min-h-7 items-center gap-2" data-rules-failed>
+      <span role="alert" className="min-w-0 flex-1 text-xs text-destructive">
+        Couldn't load the batch rules
+      </span>
+      {onRetry ? (
+        <Button variant="ghost" size="xs" className="-me-2 shrink-0" onClick={retry} disabled={busy} aria-busy={busy || undefined}>
+          <BusyLabel busy={busy} label="Retry" />
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -297,7 +330,7 @@ function Console({ step }: { step: LiveStep }) {
       data-console={step.id}
       data-log
       tabIndex={0}
-      className={cn(CONSOLE, "mb-1 ml-[22px] max-h-44 min-h-15 overflow-x-hidden overflow-y-auto whitespace-pre-wrap")}
+      className={cn(CONSOLE, "mb-1 ml-[22px] max-h-[min(11rem,20vh)] min-h-15 overflow-x-hidden overflow-y-auto whitespace-pre-wrap")}
     >
       {lines.length > 0 ? lines.join("\n") : "Starting…"}
     </pre>

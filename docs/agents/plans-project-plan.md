@@ -15,8 +15,8 @@
   `plans.autoImplement` says. A complete plan ends with three buttons: Plan
   milestone N (a planning thread linked to the first undone milestone, then
   the ordinary single Start), Orchestrate milestone N, Revise… (a dialog
-  whose text goes in as a new turn); the view header's "Project's plan"
-  toggle keeps it as the project's plan (the header chip then reads "Plan"
+  whose text goes in as a new turn); the view header's pin (the glyph alone,
+  named and tipped "Keep as the project's plan") keeps it as the project's plan (the header chip then reads "Plan"
   and `3/7`). A landed
   `project.mergeInto` ticks the milestone of every linked build
   (`ProjectPlans.landed`, src/main/server/projectPlan.ts); the checkbox in
