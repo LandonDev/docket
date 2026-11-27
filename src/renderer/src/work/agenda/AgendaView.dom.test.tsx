@@ -150,7 +150,8 @@ describe("the Agenda's bones", () => {
     const rows = list.querySelectorAll<HTMLElement>("[data-bone-row]");
     expect(rows).toHaveLength(5);
     for (const row of rows) expect(row.className).toContain("grid min-h-9 grid-cols-[88px_minmax(0,1fr)] gap-x-2 px-3 py-1.5");
-    // A title's bar over a shorter place's, on the row's own two lines.
-    expect(rows[0]!.querySelectorAll(":scope > div:last-child > div")).toHaveLength(2);
+    // A title over a shorter place, on the row's own two lines, inside the drawing Skullet measures.
+    expect(rows[0]!.querySelectorAll(":scope > div:last-child > span")).toHaveLength(2);
+    expect(list.closest("[skullet-loading]")!.getAttribute("aria-hidden")).toBe("true");
   });
 });

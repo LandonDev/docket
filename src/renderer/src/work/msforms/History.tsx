@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { MsFormHistoryRow } from "@shared/contract-work-msforms";
 import { Modal } from "../../chrome/Modal";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { dayTime } from "../../lib/duration";
 
 /**
@@ -33,35 +33,41 @@ export function HistoryDialog({ title, load, onClose }: { title: string; load():
   }, [load]);
   return (
     <Modal title="Question History" description={title} size="md" onClose={onClose}>
-      {failed ? (
-        <p className="text-[13px] leading-5 text-muted-foreground">{failed}</p>
-      ) : !rows ? (
-        <div aria-busy="true" className="flex flex-col gap-4">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="flex flex-col gap-1.5">
-              <Skeleton className="h-3 w-32" />
-              <Skeleton className="h-4 w-[70%]" />
-            </div>
-          ))}
-        </div>
-      ) : !rows.length ? (
-        <p className="text-[13px] leading-5 text-muted-foreground">No changes yet</p>
-      ) : (
-        <ol data-msform-history className="flex flex-col gap-4">
-          {rows.map((row) => (
-            <li key={row.rev} className="flex flex-col gap-0.5">
-              <span className="text-xs text-muted-foreground">
-                {byWords(row.by)} · {dayTime(row.at)}
-              </span>
-              {row.words.map((w, i) => (
-                <span key={i} className="text-[13px] leading-5 text-foreground">
-                  {w}
-                </span>
-              ))}
-            </li>
-          ))}
-        </ol>
-      )}
+      <Region loading={!rows && !failed} label="Loading the history" bones={() => <HistoryRows rows={SAMPLE_HISTORY} />}>
+        {failed ? (
+          <p className="text-[13px] leading-5 text-muted-foreground">{failed}</p>
+        ) : !rows ? null : !rows.length ? (
+          <p className="text-[13px] leading-5 text-muted-foreground">No changes yet</p>
+        ) : (
+          <HistoryRows rows={rows} />
+        )}
+      </Region>
     </Modal>
   );
 }
+
+function HistoryRows({ rows }: { rows: readonly MsFormHistoryRow[] }) {
+  return (
+    <ol data-msform-history className="flex flex-col gap-4">
+      {rows.map((row) => (
+        <li key={row.rev} className="flex flex-col gap-0.5">
+          <span className="text-xs text-muted-foreground">
+            {byWords(row.by)} · {dayTime(row.at)}
+          </span>
+          {row.words.map((w, i) => (
+            <span key={i} className="text-[13px] leading-5 text-foreground">
+              {w}
+            </span>
+          ))}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Three changes, one line each: the history's bones. */
+const SAMPLE_HISTORY: readonly MsFormHistoryRow[] = [
+  { rev: 3, at: 0, by: "owner", words: ["New question “Which night works best for you?”"] },
+  { rev: 2, at: 0, by: "page", words: ["Made “Email” required"] },
+  { rev: 1, at: 0, by: "owner", words: ["Renamed “Team” to “Team name”"] },
+];

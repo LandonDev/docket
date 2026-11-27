@@ -491,6 +491,8 @@ describe("the responses' check (perf M10)", () => {
       await found("[data-form]");
       fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
       await found("[data-form-responses]");
+      // The responses' bones are gone before the clock jumps: a jump of minutes with bones still leaving runs their every frame.
+      await waitFor(() => expect(document.querySelector("[data-region][data-bones]")).toBeNull());
       const asked = formHost.responses.mock.calls.length;
       hidden.mockReturnValue(true);
       await act(async () => void vi.advanceTimersByTime(5 * 60_000));
@@ -514,6 +516,7 @@ describe("the responses' ticks", () => {
       await found("[data-form]");
       fireEvent.click(screen.getByRole("tab", { name: "Responses" }));
       const table = await found("[data-form-responses]");
+      await waitFor(() => expect(document.querySelector("[data-region][data-bones]")).toBeNull());
       const rowOf = (name: string) => [...table.querySelectorAll("tbody tr")].find((r) => r.textContent?.includes(name))!;
       const ticked = () => [...table.querySelectorAll("tbody tr[data-picked]")].map((r) => r.querySelectorAll("td")[1].textContent);
       fireEvent.click(rowOf("Ava Thompson").querySelector('[aria-label="Select Ava Thompson"]')!);

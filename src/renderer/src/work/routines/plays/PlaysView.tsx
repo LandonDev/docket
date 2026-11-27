@@ -5,7 +5,7 @@ import { Pencil, Plus } from "../../../chrome/icons";
 import { Button } from "../../../components/ui/button";
 import { Item, ItemButton } from "../../../components/ui/item";
 import { reveal } from "../../../components/ui/reveal";
-import { Skeleton } from "../../../components/ui/skeleton";
+import { Region } from "../../../components/bones";
 import { Spinner } from "../../../components/ui/spinner";
 import { loadToast } from "../../../components/ui/toaster";
 import { cn } from "../../../lib/cn";
@@ -68,19 +68,8 @@ export function View({ env, workspace, sector }: WorkViewProps) {
   newPlay.useAnswer(() => !linkDown && setDialog({ kind: "new" }));
 
   if (linkDown) return <HostLinkLine word={linkDown} retryHost={env} />;
-  if (load.status === "loading") return <PlaysSkeleton />;
-  // New play is the header's press in every state the view draws, so its dialog stands beside the failure too.
+  // New play is the header's press in every state the view draws, so its dialog stands beside the failure and the wait too.
   const playDialog = dialog ? <PlayDialog key={dialog.kind === "edit" ? dialog.row.id : dialog.kind === "starter" ? dialog.starter.key : dialog.kind} env={env} workspaceId={workspace.id} source={dialog} onClose={() => setDialog(null)} /> : null;
-  if (load.status === "error")
-    return (
-      <>
-        <EmptyState title="Plays did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} />
-        {playDialog}
-      </>
-    );
-  const proposed = maySave ? load.value.filter((p) => p.proposed) : [];
-  const plays = load.value.filter((p) => !p.proposed);
-  const starters = maySave ? startersLeft(sector, load.value) : [];
 
   const start = (play: PlayRow) => {
     if (play.takes.length) return setRun(play);
@@ -94,57 +83,66 @@ export function View({ env, workspace, sector }: WorkViewProps) {
     );
   };
 
+  const lists = (value: readonly PlayRow[], failed: string | undefined) => {
+    const proposed = maySave ? value.filter((p) => p.proposed) : [];
+    const plays = value.filter((p) => !p.proposed);
+    const starters = maySave ? startersLeft(sector, value) : [];
+    return plays.length + proposed.length + starters.length === 0 ? (
+      maySave ? (
+        <EmptyState title="No plays yet" action={{ label: "New play", onClick: () => setDialog({ kind: "new" }) }} />
+      ) : (
+        <EmptyState title="No plays yet" line={addedElsewhere(host)} />
+      )
+    ) : (
+      <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
+        {failed ? (
+          // The cause cut to one line reads whole in the line's tip (as Forms').
+          <TruncateTip text={failed}>
+            <div data-state-tip="">
+              <ViewStateLine word="Plays did not load" detail={failed} onRetry={retry} />
+            </div>
+          </TruncateTip>
+        ) : null}
+        <div className="mx-auto flex max-w-[672px] flex-col gap-6 px-4 py-4">
+          {plays.length ? (
+            <Section>
+              {plays.map((p) => (
+                <Row
+                  key={p.id}
+                  name={p.name}
+                  line={p.takes.length ? takesLine(p.takes) : null}
+                  busy={starting === p.id}
+                  disabled={starting !== null}
+                  onPress={mayStart ? () => start(p) : undefined}
+                  onEdit={maySave ? () => setDialog({ kind: "edit", row: p }) : undefined}
+                />
+              ))}
+            </Section>
+          ) : null}
+          {proposed.length ? (
+            <Section title="Proposed">
+              {proposed.map((p) => (
+                <Row key={p.id} name={p.name} line={p.takes.length ? takesLine(p.takes) : null} onPress={() => setDialog({ kind: "edit", row: p })} />
+              ))}
+            </Section>
+          ) : null}
+          {starters.length ? (
+            <Section title="Starters">
+              {starters.map((s: StarterPlay) => (
+                <Row key={s.key} name={s.name} line={s.takes.length ? takesLine(s.takes) : null} onPress={() => setDialog({ kind: "starter", starter: s })} />
+              ))}
+            </Section>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
-      {plays.length + proposed.length + starters.length === 0 ? (
-        maySave ? (
-          <EmptyState title="No plays yet" action={{ label: "New play", onClick: () => setDialog({ kind: "new" }) }} />
-        ) : (
-          <EmptyState title="No plays yet" line={addedElsewhere(host)} />
-        )
-      ) : (
-        <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
-          {load.failed ? (
-            // The cause cut to one line reads whole in the line's tip (as Forms').
-            <TruncateTip text={load.failed}>
-              <div data-state-tip="">
-                <ViewStateLine word="Plays did not load" detail={load.failed} onRetry={retry} />
-              </div>
-            </TruncateTip>
-          ) : null}
-          <div className="mx-auto flex max-w-[672px] flex-col gap-6 px-4 py-4">
-            {plays.length ? (
-              <Section>
-                {plays.map((p) => (
-                  <Row
-                    key={p.id}
-                    name={p.name}
-                    line={p.takes.length ? takesLine(p.takes) : null}
-                    busy={starting === p.id}
-                    disabled={starting !== null}
-                    onPress={mayStart ? () => start(p) : undefined}
-                    onEdit={maySave ? () => setDialog({ kind: "edit", row: p }) : undefined}
-                  />
-                ))}
-              </Section>
-            ) : null}
-            {proposed.length ? (
-              <Section title="Proposed">
-                {proposed.map((p) => (
-                  <Row key={p.id} name={p.name} line={p.takes.length ? takesLine(p.takes) : null} onPress={() => setDialog({ kind: "edit", row: p })} />
-                ))}
-              </Section>
-            ) : null}
-            {starters.length ? (
-              <Section title="Starters">
-                {starters.map((s: StarterPlay) => (
-                  <Row key={s.key} name={s.name} line={s.takes.length ? takesLine(s.takes) : null} onPress={() => setDialog({ kind: "starter", starter: s })} />
-                ))}
-              </Section>
-            ) : null}
-          </div>
-        </div>
-      )}
+      <Region loading={load.status === "loading"} label="Loading plays" className="h-full" bones={PlaysBones}>
+        {load.status === "loading" ? null : load.status === "error" ? <EmptyState title="Plays did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} /> : lists(load.value, load.failed)}
+      </Region>
       {playDialog}
       {run ? <RunDialog key={run.id} env={env} workspaceId={workspace.id} play={run} onClose={() => setRun(null)} /> : null}
     </>
@@ -198,15 +196,21 @@ function Row({ name, line, busy, disabled, onPress, onEdit }: { name: string; li
   );
 }
 
-function PlaysSkeleton() {
+/** Three plays, one that takes nothing: the list's bones, the rows at rest with no press. */
+const SAMPLE_PLAYS: readonly { name: string; line: string | null }[] = [
+  { name: "Answer a parent's email", line: "Takes a mail" },
+  { name: "Weekly staff schedule", line: null },
+  { name: "Tournament recap post", line: "Takes a date and a project" },
+];
+
+function PlaysBones() {
   return (
-    <div aria-busy="true" aria-label="Loading plays" className="mx-auto flex max-w-[672px] flex-col gap-3 px-6 py-5">
-      {[40, 56, 32].map((w, i) => (
-        <div key={i} className="flex flex-col gap-1.5">
-          <Skeleton className="h-3.5" style={{ width: `${w}%` }} />
-          <Skeleton className="h-3" style={{ width: `${w - 12}%` }} />
-        </div>
-      ))}
+    <div className="mx-auto flex max-w-[672px] flex-col gap-6 px-4 py-4">
+      <Section>
+        {SAMPLE_PLAYS.map((p) => (
+          <Row key={p.name} name={p.name} line={p.line} />
+        ))}
+      </Section>
     </div>
   );
 }

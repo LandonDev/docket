@@ -7,7 +7,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { Progress } from "../../components/ui/progress";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Bones } from "../../components/bones";
 import { Spinner } from "../../components/ui/spinner";
 import { Textarea } from "../../components/ui/textarea";
 import { TruncateTip, useTruncated } from "../../components/tip";
@@ -170,17 +170,29 @@ export function PeopleForm({
   );
 }
 
+/** The directory's people while it is read: names and addresses of the lengths real ones run to. */
+const SAMPLE_PICKS = [
+  { name: "Dana Lee", address: "dana@starboard.games" },
+  { name: "Omar Haddad", address: "omar.haddad@starboard.games" },
+  { name: "Priya Raman", address: "priya@starboard.games" },
+  { name: "Lucas Brandt", address: "lucas.b@starboard.games" },
+];
+
+/** The directory's bones: `PickRow`'s box written out from a sample, since the row itself measures its words and takes a tooltip. */
 function ListBones() {
   return (
-    <div aria-busy className="flex flex-col px-2">
-      {[46, 34, 52, 40].map((w, i) => (
-        <div key={i} className="flex h-8 items-center gap-2">
-          <Skeleton className="size-4 rounded-[4px]" />
-          <Skeleton className="size-6 rounded-full" />
-          <Skeleton className="h-3" style={{ width: `${w}%` }} />
+    <Bones label="Loading people">
+      {SAMPLE_PICKS.map((person) => (
+        <div key={person.name} className="flex h-8 items-center gap-2 px-2 text-[13px]">
+          <Bone className="size-4 rounded-[4px]" />
+          <Bone className="size-6 rounded-full" />
+          <span className="flex min-w-0 flex-1 items-baseline gap-1">
+            <span className="shrink-0 truncate text-foreground">{person.name}</span>
+            <span className="min-w-0 truncate text-xs text-muted-foreground">{person.address}</span>
+          </span>
         </div>
       ))}
-    </div>
+    </Bones>
   );
 }
 

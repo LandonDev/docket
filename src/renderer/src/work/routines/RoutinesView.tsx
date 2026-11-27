@@ -1,13 +1,13 @@
 import { downOf, downWords } from "../shell/lifeosDown";
 import { connectingWords } from "../shell/lifeosWords";
 import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import type { RoutineRow, RoutineRun } from "@shared/contract-work-routines";
 import { ChevronLeft, Plus } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Item, ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { StatusMark } from "../../components/ui/status";
 import { registry, useEnvironments } from "../../lib/connection";
 import { dayTime } from "../../lib/duration";
@@ -175,58 +175,60 @@ export function View({ env, workspace }: WorkViewProps) {
   // New routine is the header's press in every state the view draws, so its dialog stands beside each of them.
   const dialog = form ? <RoutineDialog env={env} workspaceId={workspace.id} row={form.row} onClose={() => setForm(null)} onSaved={(row) => setPicked(row.id)} /> : null;
   if (linkDown) return <HostLinkLine word={linkDown} retryHost={env} />;
-  if (load.status === "loading") return <ListSkeleton />;
-  if (load.status === "error")
-    return (
-      <>
-        <EmptyState title="Routines did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} />
-        {dialog}
-      </>
-    );
   // Narrow, the detail shows only once a routine is picked; wide, the first is shown until then.
   const narrowDetail = picked !== null && current?.id === picked;
   return (
     <>
-      {rows.length === 0 ? (
-        <EmptyState title="No routines yet" />
-      ) : (
-        <div className="flex h-full min-h-0 flex-col">
-          {load.failed ? (
-            // The cause cut to one line reads whole in the line's tip (as Forms').
-            <TruncateTip text={load.failed}>
-              <div data-state-tip="">
-                <ViewStateLine word="Routines did not load" detail={load.failed} onRetry={retry} />
-              </div>
-            </TruncateTip>
-          ) : null}
-          <div ref={setPane} className="@container/routines flex min-h-0 flex-1">
-            {/* A list of buttons, the picked one marked current: Tab moves through them, as a listbox's arrows would not. */}
-            <ul
-              ref={list}
-              aria-label="Routines"
-              data-routine-list=""
-              className={cn(
-                "flex w-70 shrink-0 flex-col gap-px overflow-x-hidden overflow-y-auto border-r border-border p-2 @max-[40rem]/routines:w-full @max-[40rem]/routines:border-r-0",
-                narrowDetail && "@max-[40rem]/routines:hidden",
-              )}
-            >
-              {rows.map((r) => (
-                <li key={r.id} className="flex flex-col">
-                  <RoutineItem lifeosWait={lifeosWait} row={r} current={r.id === current?.id} picked={r.id === picked} open={r.id === current?.id && (r.id === picked || wide)} onPick={() => setPicked(r.id)} />
-                </li>
-              ))}
-            </ul>
-            {current ? (
-              <Detail key={current.id} env={env} row={current} play={playName(current.playId)} tick={tick} narrowShown={narrowDetail} onBack={() => {
-                  backFrom.current = picked;
-                  setPicked(null);
-                }} onEdit={() => setForm({ row: current })} />
+      <Region loading={load.status === "loading"} label="Loading routines" className="h-full" bones={RoutinesBones}>
+        {load.status === "loading" ? null : load.status === "error" ? (
+          <EmptyState title="Routines did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} />
+        ) : rows.length === 0 ? (
+          <EmptyState title="No routines yet" />
+        ) : (
+          <div className="flex h-full min-h-0 flex-col">
+            {load.failed ? (
+              // The cause cut to one line reads whole in the line's tip (as Forms').
+              <TruncateTip text={load.failed}>
+                <div data-state-tip="">
+                  <ViewStateLine word="Routines did not load" detail={load.failed} onRetry={retry} />
+                </div>
+              </TruncateTip>
             ) : null}
+            <div ref={setPane} className="@container/routines flex min-h-0 flex-1">
+              <RoutineList listRef={list} rows={rows} current={current?.id ?? null} picked={picked} wide={wide} hidden={narrowDetail} lifeosWait={lifeosWait} onPick={setPicked} />
+              {current ? (
+                <Detail key={current.id} env={env} row={current} play={playName(current.playId)} tick={tick} narrowShown={narrowDetail} onBack={() => {
+                    backFrom.current = picked;
+                    setPicked(null);
+                  }} onEdit={() => setForm({ row: current })} />
+              ) : null}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </Region>
       {dialog}
     </>
+  );
+}
+
+/** The list of routines: buttons, the picked one marked current, so Tab moves through them as a listbox's arrows would not. */
+function RoutineList({ listRef, rows, current, picked, wide, hidden, lifeosWait, onPick }: { listRef?: Ref<HTMLUListElement>; rows: readonly RoutineRow[]; current: string | null; picked: string | null; wide: boolean; hidden: boolean; lifeosWait: string | null; onPick(id: string): void }) {
+  return (
+    <ul
+      ref={listRef}
+      aria-label="Routines"
+      data-routine-list=""
+      className={cn(
+        "flex w-70 shrink-0 flex-col gap-px overflow-x-hidden overflow-y-auto border-r border-border p-2 @max-[40rem]/routines:w-full @max-[40rem]/routines:border-r-0",
+        hidden && "@max-[40rem]/routines:hidden",
+      )}
+    >
+      {rows.map((r) => (
+        <li key={r.id} className="flex flex-col">
+          <RoutineItem lifeosWait={lifeosWait} row={r} current={r.id === current} picked={r.id === picked} open={r.id === current && (r.id === picked || wide)} onPick={() => onPick(r.id)} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -399,51 +401,29 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
         {row.proposed ? null : (
           <section aria-label="Runs" className="flex flex-col gap-1">
             <h2 className="text-xs font-medium text-muted-foreground">Runs</h2>
-            {runs === null ? (
-              <Skeleton className="h-4 w-1/2" />
-            ) : "error" in runs ? (
-              <p className="inline-flex flex-wrap items-center gap-x-2 text-xs">
-                <span className="min-w-0 text-destructive">{runs.error}</span>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="-my-1"
-                  disabled={runsAgain}
-                  onClick={() => {
-                    setRunsAgain(true);
-                    void retryRuns().finally(() => setRunsAgain(false));
-                  }}
-                >
-                  <BusyLabel busy={runsAgain} label="Retry" />
-                </Button>
-              </p>
-            ) : runs.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{noRunsLine(row)}</p>
-            ) : (
-              <div className="flex flex-col">
-                {runs.map((run) => {
-                  const press = openRun(run);
-                  const cells = (
-                    <>
-                      <time className="w-28 shrink-0 text-muted-foreground tabular-nums">{dayTime(run.firedAt)}</time>
-                      <StatusMark state={runMark(run)} word={false} className="mt-[3px] shrink-0" />
-                      <span className={cn("min-w-0 flex-1 [overflow-wrap:anywhere]", run.state === "failed" ? "text-destructive" : run.state === "held" ? "text-foreground" : "text-muted-foreground")}>{runWords(run)}</span>
-                    </>
-                  );
-                  return press ? (
-                    // A run that opens something answers the pointer as every row that opens its thing does; one with nothing to
-                    // open is plain. Its words keep the heading's edge: the fill reaches 8px past them, and no border sets them in.
-                    <ItemButton key={run.id} onClick={press} className={cn(RUN_ROW, ROW_PRESS)}>
-                      {cells}
-                    </ItemButton>
-                  ) : (
-                    <Item key={run.id} className={RUN_ROW}>
-                      {cells}
-                    </Item>
-                  );
-                })}
-              </div>
-            )}
+            <Region loading={runs === null} label="Loading runs" bones={() => <RunRows runs={SAMPLE_RUNS} openRun={() => null} />}>
+              {runs === null ? null : "error" in runs ? (
+                <p className="inline-flex flex-wrap items-center gap-x-2 text-xs">
+                  <span className="min-w-0 text-destructive">{runs.error}</span>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="-my-1"
+                    disabled={runsAgain}
+                    onClick={() => {
+                      setRunsAgain(true);
+                      void retryRuns().finally(() => setRunsAgain(false));
+                    }}
+                  >
+                    <BusyLabel busy={runsAgain} label="Retry" />
+                  </Button>
+                </p>
+              ) : runs.length === 0 ? (
+                <p className="text-xs text-muted-foreground">{noRunsLine(row)}</p>
+              ) : (
+                <RunRows runs={runs} openRun={openRun} />
+              )}
+            </Region>
           </section>
         )}
       </div>
@@ -454,22 +434,99 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
 /** A run's row: 32px at least, growing with an outcome too long for its cell (a narrow pane), which wraps and is never cut. */
 const RUN_ROW = "-mx-2 min-h-8 w-[calc(100%+1rem)] flex-nowrap items-start gap-3 border-0 px-2 py-1.5 text-[13px] leading-5";
 
-/** The list and the detail in their own shapes, by the view's own container rule: under 640px the list alone, as the view lands. */
-function ListSkeleton() {
+/** A routine's runs, newest first: a run that opens something is a press, one with nothing to open is plain. */
+function RunRows({ runs, openRun }: { runs: readonly RoutineRun[]; openRun(run: RoutineRun): (() => void) | null }) {
   return (
-    <div aria-busy="true" aria-label="Loading routines" className="@container/routines flex h-full min-h-0">
-      <div data-bones="list" className="flex w-70 shrink-0 flex-col gap-3 border-r border-border p-4 @max-[40rem]/routines:w-full @max-[40rem]/routines:border-r-0">
-        {[64, 48, 72, 40].map((w, i) => (
-          <div key={i} className="flex flex-col gap-1.5">
-            <Skeleton className="h-3.5" style={{ width: `${w}%` }} />
-            <Skeleton className="h-3" style={{ width: `${w - 16}%` }} />
-          </div>
-        ))}
-      </div>
-      <div data-bones="detail" className="flex flex-1 flex-col gap-3 px-6 py-5 @max-[40rem]/routines:hidden">
-        <Skeleton className="h-5 w-1/3" />
-        <Skeleton className="h-4 w-4/5" />
-        <Skeleton className="h-4 w-2/3" />
+    <div className="flex flex-col">
+      {runs.map((run) => {
+        const press = openRun(run);
+        const cells = (
+          <>
+            <time className="w-28 shrink-0 text-muted-foreground tabular-nums">{dayTime(run.firedAt)}</time>
+            <StatusMark state={runMark(run)} word={false} className="mt-[3px] shrink-0" />
+            <span className={cn("min-w-0 flex-1 [overflow-wrap:anywhere]", run.state === "failed" ? "text-destructive" : run.state === "held" ? "text-foreground" : "text-muted-foreground")}>{runWords(run)}</span>
+          </>
+        );
+        return press ? (
+          // A run that opens something answers the pointer as every row that opens its thing does. Its words keep the
+          // heading's edge: the fill reaches 8px past them, and no border sets them in.
+          <ItemButton key={run.id} onClick={press} className={cn(RUN_ROW, ROW_PRESS)}>
+            {cells}
+          </ItemButton>
+        ) : (
+          <Item key={run.id} className={RUN_ROW}>
+            {cells}
+          </Item>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A routine as the bones draw it, a weekday schedule that has run: every field the list reads set. */
+const sampleRoutine = (id: string, name: string, words: string): RoutineRow => ({
+  id,
+  workspaceId: "sample:ws",
+  projectId: null,
+  kind: "routine",
+  name,
+  prompt: "Read my mail and list what needs me today.",
+  playId: null,
+  model: null,
+  reasoning: null,
+  trigger: { on: "schedule", rrule: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=7;BYMINUTE=0", tz: "America/Chicago" },
+  words,
+  ends: { kind: "never" },
+  enabled: true,
+  proposed: false,
+  resumeSessionId: null,
+  madeIn: null,
+  nextAt: null,
+  lastAt: null,
+  lastState: null,
+  lastWords: null,
+  checkedAt: null,
+  waiting: null,
+  running: false,
+  ended: false,
+  createdBy: "owner",
+  createdAt: 0,
+  host: "sample:host",
+});
+
+const SAMPLE_ROUTINES: readonly RoutineRow[] = [
+  sampleRoutine("sample:1", "Morning brief", "Weekdays at 7:00 AM"),
+  sampleRoutine("sample:2", "Friday review", "Fridays at 3:00 PM"),
+  sampleRoutine("sample:3", "Watch the sign-up sheet", "Every 15 minutes"),
+  sampleRoutine("sample:4", "Invoice reminders", "Mondays at 9:00 AM"),
+];
+
+/** Two runs of a routine: the runs' bones. */
+const SAMPLE_RUNS: readonly RoutineRun[] = [
+  { id: "sample:run-1", routineId: "sample:1", sessionId: null, firedAt: 0, cause: "Weekdays at 7:00 AM", folded: 0, state: "held", summary: "Held 2" },
+  { id: "sample:run-2", routineId: "sample:1", sessionId: null, firedAt: 0, cause: "Weekdays at 7:00 AM", folded: 0, state: "quiet", summary: "Nothing to do" },
+];
+
+/**
+ * The list and the detail in their own shapes, by the view's own container rule: under 640px the list alone, as the
+ * view lands. The detail is drawn without its presses, which hang on his rights.
+ */
+function RoutinesBones() {
+  const first = SAMPLE_ROUTINES[0]!;
+  return (
+    <div data-routine-bones="" className="@container/routines flex h-full min-h-0">
+      <RoutineList rows={SAMPLE_ROUTINES} current={first.id} picked={null} wide hidden={false} lifeosWait={null} onPick={() => undefined} />
+      <div data-routine-detail-bones="" className="min-w-0 flex-1 @max-[40rem]/routines:hidden">
+        <div className="mx-auto flex max-w-[672px] flex-col gap-6 px-6 py-5">
+          <h1 className="text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">{first.name}</h1>
+          <p className="text-sm leading-[22px] text-foreground">{first.prompt}</p>
+          <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]">
+            <dt className="text-muted-foreground">Starts</dt>
+            <dd className="text-foreground">{first.words}</dd>
+            <dt className="text-muted-foreground">Runs on</dt>
+            <dd className="text-foreground">The box</dd>
+          </dl>
+        </div>
       </div>
     </div>
   );

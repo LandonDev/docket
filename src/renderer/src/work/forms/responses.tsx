@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { FormResponses } from "@shared/contract-work-forms";
 import type { CanvasSource } from "@shared/work";
 import { Checkbox } from "../../components/ui/checkbox";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Bones, useInBones } from "../../components/bones";
+import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { Table as DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { dayTime } from "../../lib/duration";
@@ -102,7 +103,10 @@ export function ResponseTable({ title, got, chart, chipRef, shell, timeColumn, w
       edges(null);
     };
   }, [edges]);
+  // The bones' table publishes no selection: the drawing is unseen, and the pane's real selection is not its to clear.
+  const inBones = useInBones();
   useEffect(() => {
+    if (inBones) return;
     const el = table.current;
     if (!picked.size || !el) return shell.selection(null);
     const rows = got.rows.filter((_, i) => picked.has(keys[i]!));
@@ -112,7 +116,7 @@ export function ResponseTable({ title, got, chart, chipRef, shell, timeColumn, w
       rect: (el.querySelector("tr[data-picked]") ?? el).getBoundingClientRect(),
     });
     return () => shell.selection(null);
-  }, [shell, picked, got, keys, chipRef, title]);
+  }, [inBones, shell, picked, got, keys, chipRef, title]);
   const toggle = (key: string): void =>
     setPicked(() => {
       const next = new Set(picked);
@@ -121,7 +125,7 @@ export function ResponseTable({ title, got, chart, chipRef, shell, timeColumn, w
     });
   const all = got.rows.length > 0 && picked.size === keys.length;
   return (
-    <div data-form-responses className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+    <div data-form-responses={inBones ? undefined : ""} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
       <div className="flex items-center gap-2 px-4 pt-3">
         <p className="min-w-0 flex-1 text-[13px] leading-5 text-muted-foreground">
           {plural(got.count, "response")}
@@ -192,13 +196,69 @@ function BarRow({ label, count, max }: { label: string; count: number; max: numb
   );
 }
 
-export function ResponsesSkeleton() {
+// ── loading ──────────────────────────────────────────────────────────
+
+/** Four answers to three questions and the time: the Responses half's bones. */
+const SAMPLE_RESPONSES: FormResponses = {
+  rev: 0,
+  columns: [
+    { id: "sample:name", label: "Name" },
+    { id: "sample:sport", label: "Sport" },
+    { id: "sample:nights", label: "Nights" },
+    { id: "submitted", label: "Submitted" },
+  ],
+  rows: [
+    ["Marcus Lee", "Volleyball", "Tuesday, Thursday", "Mon 2:14 PM"],
+    ["Priya Raman", "Basketball", "Wednesday", "Mon 1:52 PM"],
+    ["Jordan Ellis", "Soccer", "Monday, Friday", "Mon 11:08 AM"],
+    ["Ana Ortiz", "Volleyball", "Thursday", "Sun 9:30 PM"],
+  ],
+  count: 4,
+  cut: false,
+};
+
+/** The Responses half while its read is out: the table itself, drawn from a sample at rest. */
+export function ResponsesBones({ chipRef, shell }: Pick<ResponseTableProps, "chipRef" | "shell">) {
+  return <ResponseTable title="" got={SAMPLE_RESPONSES} chart={null} chipRef={chipRef} shell={shell} timeColumn={3} whole="" />;
+}
+
+/** A form's first page, its title, its line and its first questions, while the form is read: both form kinds' bones. */
+export function FormPageBones({ questions, mark }: { questions: number; mark: "data-form-loading" | "data-msform-loading" }) {
   return (
-    <div aria-busy="true" className="flex flex-col gap-3 p-4">
-      <Skeleton className="h-3 w-[40%]" />
-      <Skeleton className="h-3 w-[90%]" />
-      <Skeleton className="h-3 w-[90%]" />
-      <Skeleton className="h-3 w-[90%]" />
-    </div>
+    <Bones label="Loading the form">
+      <div {...{ [mark]: "" }} className="mx-auto w-full max-w-[560px] px-6 pt-6">
+        <p className="px-3 text-lg leading-[26px] font-semibold tracking-[-0.01em]">Spring intramurals sign-up</p>
+        <p className="mt-1 px-3 text-sm leading-[22px] text-muted-foreground">Pick your sport and the nights you can play.</p>
+        <div className="mt-5 flex flex-col gap-5">
+          {SAMPLE_QUESTIONS.slice(0, questions).map((label) => (
+            <div key={label} className="flex flex-col gap-1.5 px-3">
+              <span className="text-[13px] leading-5 font-medium">{label}</span>
+              <Bone className="h-8 max-w-[360px] rounded-md" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </Bones>
+  );
+}
+
+const SAMPLE_QUESTIONS = ["Your name", "Which sport?", "Nights you can play"];
+
+/** A form bar's switch while the form is read, so the body never moves under it when the bar fills. */
+export function HalfBones({ first, mark }: { first: "Questions" | "Form"; mark: "data-form-bar-bone" | "data-msform-bar-bone" }) {
+  return (
+    <Bones label="" className="mx-1 shrink-0">
+      <Tabs value="first" {...{ [mark]: "" }} className="gap-0">
+        <TabsList aria-label="Form view" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
+          <TabsIndicator />
+          <TabsTrigger value="first" className={`${TABS_PILL_TRIGGER} ${HALF_TAB}`}>
+            {first}
+          </TabsTrigger>
+          <TabsTrigger value="responses" className={`${TABS_PILL_TRIGGER} ${HALF_TAB}`}>
+            Responses
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+    </Bones>
   );
 }

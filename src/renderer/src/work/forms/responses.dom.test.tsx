@@ -6,7 +6,8 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasShell } from "../canvas/kind";
-import { HALF_TAB, ResponseTable, responseName } from "./responses";
+import { Bones } from "../../components/bones";
+import { HALF_TAB, ResponsesBones, ResponseTable, responseName } from "./responses";
 
 afterEach(() => {
   cleanup();
@@ -82,5 +83,20 @@ describe("the answers' table", () => {
     expect(names).toEqual(["Select Dana Lee", "Select response 2"]);
     // the time is never the name, even where it comes first
     expect(responseName(["2026-11-19T14:02:00.000Z", "Ava Thompson"], 0, 0)).toBe("Ava Thompson");
+  });
+});
+
+describe("the answers' bones", () => {
+  it("draw the table from a sample and publish no selection, so the pane's own is left alone", () => {
+    const selection = vi.fn();
+    render(
+      <Bones label="Loading the responses">
+        <ResponsesBones chipRef={{ kind: "item", itemId: "i1" } as never} shell={{ selection } as unknown as CanvasShell} />
+      </Bones>,
+    );
+    expect(document.querySelector("[skullet-loading]")?.textContent).toContain("Marcus Lee");
+    // Not the content's hook: a test or a press that finds the table finds the real one.
+    expect(document.querySelector("[data-form-responses]")).toBeNull();
+    expect(selection).not.toHaveBeenCalled();
   });
 });

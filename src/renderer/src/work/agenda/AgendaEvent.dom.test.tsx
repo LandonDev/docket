@@ -53,7 +53,7 @@ describe("an invitation's Open in Agenda", () => {
     // Nothing of the agenda drew, not even its read of a range: only the bones.
     expect(lifeos.drawn).toEqual([]);
     expect(view.container.querySelector("[data-week]")).toBeNull();
-    expect(view.container.querySelector("[aria-hidden] [data-slot=skeleton], [aria-hidden] .animate-pulse")).not.toBeNull();
+    expect(view.container.querySelector('[data-region][data-bones] [skullet-loading] [data-agenda-bones="week"]')).not.toBeNull();
     lifeos.loading = false;
     view.rerender(<View {...props} />);
     await act(async () => {});

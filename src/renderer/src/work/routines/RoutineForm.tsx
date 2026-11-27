@@ -11,7 +11,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { TimeField } from "../../components/ui/time-field";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { Textarea } from "../../components/ui/textarea";
 import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -232,13 +232,21 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
             ) : (
               <>
                 <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-3">
-                  <Field label="Read">
-                    {tools === null ? (
-                      <Skeleton aria-label="Loading the tools" className="h-8 w-full rounded-lg" />
-                    ) : (
-                      <ChoiceSelect label="Read" className="w-full" value={form.tool} options={[{ value: "", label: "Pick a tool" }, ...tools]} onChange={(tool) => patchTrigger({ tool })} />
+                  <Region
+                    loading={tools === null}
+                    label="Loading the tools"
+                    bones={() => (
+                      <Field label={<span skullet-own="">Read</span>}>
+                        <ChoiceSelect label="Read" className="w-full" value="" options={[{ value: "", label: "Pick a tool" }]} onChange={() => undefined} />
+                      </Field>
                     )}
-                  </Field>
+                  >
+                    {tools === null ? null : (
+                      <Field label="Read">
+                        <ChoiceSelect label="Read" className="w-full" value={form.tool} options={[{ value: "", label: "Pick a tool" }, ...tools]} onChange={(tool) => patchTrigger({ tool })} />
+                      </Field>
+                    )}
+                  </Region>
                   <Field label="Every">
                     <ChoiceSelect label="Every" className="w-full" value={form.every} options={EVERY_CHOICES} onChange={(every) => patchTrigger({ every })} />
                   </Field>
@@ -251,19 +259,27 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
           ) : (
             <>
               {forms?.length || form.form ? (
-                <Field label="File" hint={form.form ? "When someone answers it" : undefined}>
-                  {forms === null ? (
-                    <Skeleton aria-label="Loading the forms" className="h-8 w-full rounded-lg" />
-                  ) : (
-                    <ChoiceSelect
-                      label="File"
-                      className="w-full"
-                      value={form.form}
-                      options={[{ value: "", label: "A file by its path" }, ...forms, ...(form.form && !forms.some((f) => f.value === form.form) ? [{ value: form.form, label: "The form it watched" }] : [])]}
-                      onChange={(id) => patchTrigger({ form: id, ...(id ? {} : { job: "" }) })}
-                    />
+                <Region
+                  loading={forms === null}
+                  label="Loading the forms"
+                  bones={() => (
+                    <Field label={<span skullet-own="">File</span>} hint={form.form ? <span skullet-own="">When someone answers it</span> : undefined}>
+                      <ChoiceSelect label="File" className="w-full" value="" options={[{ value: "", label: "A file by its path" }]} onChange={() => undefined} />
+                    </Field>
                   )}
-                </Field>
+                >
+                  {forms === null ? null : (
+                    <Field label="File" hint={form.form ? "When someone answers it" : undefined}>
+                      <ChoiceSelect
+                        label="File"
+                        className="w-full"
+                        value={form.form}
+                        options={[{ value: "", label: "A file by its path" }, ...forms, ...(form.form && !forms.some((f) => f.value === form.form) ? [{ value: form.form, label: "The form it watched" }] : [])]}
+                        onChange={(id) => patchTrigger({ form: id, ...(id ? {} : { job: "" }) })}
+                      />
+                    </Field>
+                  )}
+                </Region>
               ) : null}
               {form.form ? null : (
                 <Field label={forms?.length ? "Path" : "File"} hint="When someone else changes it">

@@ -342,10 +342,11 @@ describe("a view's bones while its chunk is on its way", () => {
     const workspace = { id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" } as never;
     const mail = render(<>{WORK_VIEWS.mail.bones!(workspace)}</>);
     // The list at its kept width, beside the pane's bones.
-    expect(screen.getByRole("status", { name: "Loading Mail" }).firstElementChild!.getAttribute("style")).toContain("width: 296px");
+    expect(mail.container.querySelector("[style*='width: 296px']")).toBeTruthy();
     mail.unmount();
     const prep = render(<>{WORK_VIEWS.prep.bones!(workspace)}</>);
-    expect(prep.container.firstElementChild!.className).toContain("ps-7");
+    // The meeting's page drawn at its own insets, in bones.
+    expect(prep.container.querySelector("[data-region][data-bones] [skullet-loading] .ps-7")).toBeTruthy();
     // A one-column view keeps the frame's rows.
     expect(WORK_VIEWS.tasks.bones).toBeUndefined();
   });

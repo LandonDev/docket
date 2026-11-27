@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronDown, Copy, MessageSquarePlus, MoreHorizontal } from 
 import { RowsContextMenu, RowsMenu, tidy, type MenuRow } from "../../chrome/menuRows";
 import { Tip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { cn } from "../../lib/cn";
 import { mayMarkRevealRead, onRevealReadChange } from "../../lib/revealRead";
 import { anchorShift, RowLayout, type RowAnchor } from "../../lib/transcriptWindow";
@@ -14,6 +14,7 @@ import { useMessagesData, type Paged } from "./data";
 import { Composer } from "./Composer";
 import { keptWithin, useKeptKeys } from "./keptKeys";
 import { MessageBlock } from "./Message";
+import { SAMPLE_BLOCKS, SAMPLE_CHAT, SAMPLE_CHATS } from "./samples";
 import { blocksOf, chatFact, estimateOf, menuKey, newSince, wantsRead, type Block } from "./model";
 import { dropWanted, heldUnread, keptChatOf, noteShownOwn, patchPage, settleAside, useAside, keepPlace, keepVisitSince, markUnreadHeld, placeOf, releaseUnread, settleFile, useFileWants, useWanted, type FileWant, visitPlaceOf, visitSince } from "./page";
 import { chatChip, copyText, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
@@ -144,10 +145,10 @@ function ConversationBody({ workspaceId, chatId, narrow, onBack, retry, retrying
         <EmptyState title={failedTitle} action={{ label: "Retry", busy: pressed, onClick: () => retry(failedTitle) }} />
       ) : gone ? (
         <EmptyState title="This conversation is no longer here" action={{ label: "Back to Messages", onClick: onBack }} />
-      ) : messages.status === "loading" || !chat ? (
-        <ColumnBones />
       ) : (
-        <Column workspaceId={workspaceId} chat={chat} since={since} page={messages.value} onPlaced={onPlaced} />
+        <Region fill loading={messages.status === "loading" || !chat} label="Loading messages" bones={ColumnBones}>
+          {messages.status === "ready" && chat ? <Column workspaceId={workspaceId} chat={chat} since={since} page={messages.value} onPlaced={onPlaced} /> : null}
+        </Region>
       )}
       {away.map((want) => (
         <FileWatch key={`${want.messageId}:${want.fileId}`} workspaceId={workspaceId} chatId={chatId} want={want} />
@@ -172,6 +173,9 @@ function FileWatch({ workspaceId, chatId, want }: { workspaceId: string; chatId:
 }
 
 // ── The toolbar ──
+
+/** The conversation's name in the toolbar. */
+const NAME = "min-w-0 truncate text-[13px] leading-5 font-semibold text-foreground";
 
 function Toolbar({
   workspaceId,
@@ -270,18 +274,16 @@ function Toolbar({
         {/* Under 640px the name starts at 44px, where the line under it starts. */}
         <div className={cn("flex min-w-0 flex-1 items-baseline gap-2", narrow ? "ps-1.5" : "ps-2")}>
           {!chat ? (
-            name ? (
-              <h2 className="min-w-0 truncate text-[13px] leading-5 font-semibold text-foreground">{name}</h2>
-            ) : loading ? (
-              <Skeleton className="h-3 w-32 self-center" />
-            ) : null
+            <Region loading={!name && loading} label="" className="min-w-0" bones={<h2 className={NAME}>{SAMPLE_CHATS[0]!.name}</h2>}>
+              {name ? <h2 className={NAME}>{name}</h2> : null}
+            </Region>
           ) : person ? (
             // Its press reaches 2px past the 20px line each way, a 24px target, and the name does not move.
             <Button variant="link" className="h-auto min-w-0 shrink p-0 text-[13px] leading-5 font-semibold text-foreground after:absolute after:inset-x-0 after:-inset-y-0.5" onClick={() => openWorkView({ workspaceId, view: "people", person })}>
               <span className="truncate">{chat.name}</span>
             </Button>
           ) : (
-            <h2 className="min-w-0 truncate text-[13px] leading-5 font-semibold text-foreground">{chat.name}</h2>
+            <h2 className={NAME}>{chat.name}</h2>
           )}
           {chat ? <span className="min-w-0 shrink-[2] truncate text-xs text-muted-foreground">{chatFact(chat)}</span> : null}
         </div>
@@ -689,34 +691,14 @@ function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: str
 
 const NONE: ReadonlySet<string> = new Set();
 
-/** While the messages load: runs in their own shape, at the column's foot where they will land. */
-export function ColumnBones() {
-  const runs = [
-    [62, 40],
-    [48],
-    [70, 55, 30],
-  ];
+/** While the messages load: the column's foot drawn from a sample, where the messages will land. */
+function ColumnBones() {
   return (
     // The scroller's strip is kept here too, so the bones stand where the messages will.
-    <div role="status" aria-busy aria-label="Loading messages" className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden [scrollbar-gutter:stable]">
-      <div className={cn(COLUMN, "flex flex-col gap-4 pt-4 pb-5")}>
-        {runs.map((lines, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: fixed bones that never reorder
-          <div key={i} className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-3">
-            <Skeleton className="row-span-2 size-7 rounded-full" />
-            <div className="flex h-5 items-center gap-2">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-2.5 w-12" />
-            </div>
-            <div className="col-start-2 flex flex-col">
-              {lines.map((w, j) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: fixed bones that never reorder
-                <div key={j} className="flex h-[22px] items-center">
-                  <Skeleton className="h-3" style={{ width: `${w}%` }} />
-                </div>
-              ))}
-            </div>
-          </div>
+    <div data-column-bones className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden [scrollbar-gutter:stable]">
+      <div className={cn(COLUMN, "pb-5")}>
+        {SAMPLE_BLOCKS.map((block) => (
+          <MessageBlock key={block.id} block={block} workspaceId="sample:workspace" chatId="sample:chat" chat={SAMPLE_CHAT} />
         ))}
       </div>
     </div>

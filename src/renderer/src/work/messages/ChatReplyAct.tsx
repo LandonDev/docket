@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { SOURCE_NAME, type ChatDetail, type ChatMessage, type ChatRow, type ChatSource } from "@shared/work/messages";
 import { CornerDownRight } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { PlaceLine, PostedAs } from "../acts/ActParts";
 import type { ActViewProps } from "../acts/registry";
 import { useLifeosQuery, useLifeosSession, type LifeosQuery } from "../shell/lifeos";
@@ -170,31 +170,24 @@ export function ReplyBody({
           <div data-quote-slot role="group" aria-label="The message it answers" className="empty:hidden">
             {down ? (
               down
-            ) : answered === "loading" ? (
-              <div data-answers="loading" aria-hidden className="flex h-5 items-center gap-1.5">
-                <Skeleton className="size-3 rounded-sm" />
-                <Skeleton className="h-2.5 w-[60%]" />
-              </div>
-            ) : answered === "gone" || answered === "unreadable" ? (
-              <p data-answers={answered} className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                <CornerDownRight aria-hidden className="size-3 shrink-0" />
-                {answered === "gone" ? "The message it answers is no longer here" : "The message it answers could not be read"}
-                {answered === "unreadable" && onRetry ? (
-                  <Button variant="ghost" size="xs" className="ms-1" disabled={retrying} onClick={onRetry}>
-                    <BusyLabel busy={retrying} label="Retry" />
-                  </Button>
+            ) : answered === null ? null : (
+              // While it is read, the quote drawn from a sample holds its line.
+              <Region loading={answered === "loading"} label="" bones={<Quote state="loading" who={SAMPLE_QUOTE.who} text={SAMPLE_QUOTE.text} />}>
+                {answered === "gone" || answered === "unreadable" ? (
+                  <p data-answers={answered} className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                    <CornerDownRight aria-hidden className="size-3 shrink-0" />
+                    {answered === "gone" ? "The message it answers is no longer here" : "The message it answers could not be read"}
+                    {answered === "unreadable" && onRetry ? (
+                      <Button variant="ghost" size="xs" className="ms-1" disabled={retrying} onClick={onRetry}>
+                        <BusyLabel busy={retrying} label="Retry" />
+                      </Button>
+                    ) : null}
+                  </p>
+                ) : answered !== "loading" ? (
+                  <Quote who={named ? null : answered.who} text={answered.text} />
                 ) : null}
-              </p>
-            ) : answered ? (
-              <p data-answers className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                <CornerDownRight aria-hidden className="size-3 shrink-0" />
-                {/* "Dana Lee: words", cut where the line ends. */}
-                <span className="min-w-0 truncate">
-                  {named ? null : <span className="font-medium">{answered.who}: </span>}
-                  {answered.text.replace(/\s+/g, " ").trim()}
-                </span>
-              </p>
-            ) : null}
+              </Region>
+            )}
           </div>
         }
       >
@@ -203,5 +196,21 @@ export function ReplyBody({
     </div>
   );
 }
+
+/** The message it answers, one line: "Dana Lee: words", cut where the line ends; `who` null where the place line names the writer. */
+function Quote({ state, who, text }: { state?: "loading"; who: string | null; text: string }) {
+  return (
+    <p data-answers={state ?? true} className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+      <CornerDownRight aria-hidden className="size-3 shrink-0" />
+      <span className="min-w-0 truncate">
+        {who === null ? null : <span className="font-medium">{who}: </span>}
+        {text.replace(/\s+/g, " ").trim()}
+      </span>
+    </p>
+  );
+}
+
+/** What the quote's bones are drawn from. */
+const SAMPLE_QUOTE = { who: "Dana Lee", text: "Can you send me the crash numbers before the review?" };
 
 const ready = <T,>(query: LifeosQuery<T>): T | undefined => (query.status === "ready" ? query.value : undefined);

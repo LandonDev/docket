@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMailClient, type BatchAct, type ThreadSummary } from "work-kit/mail";
 import { TRIAGE_TICKED, type MailOffer } from "@shared/work/mailChat";
+import { Region } from "../../../components/bones";
 import { BusyLabel, Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
-import { Skeleton } from "../../../components/ui/skeleton";
 import { workErrorWords } from "../../../lib/workErrorWords";
 import { answerOf } from "../writeAnswer";
 import { localOf } from "./AddRow";
@@ -137,23 +137,26 @@ function RowOf({ id, ticked, locked, onThread, onTick }: { id: string; ticked: b
   const sender = thread?.senders[0] ?? "";
   // A mail the job's mail does not hold is said once, under the rows (`elsewhereLine`).
   if (loaded && !thread) return null;
-  // Still reading: the row's bones in its own shape (a tick, a subject, a date), never a blank 36px.
-  if (!loaded)
-    return (
-      <li data-row={id} data-row-bones="" className="flex h-9 items-center gap-2.5 px-3">
-        <Skeleton className="size-4 shrink-0 rounded-[4px]" />
-        <span className="flex min-w-0 flex-1">
-          <Skeleton className="h-3 w-2/5" />
-        </span>
-        <Skeleton className="h-3 w-10 shrink-0" />
-      </li>
-    );
+  // Still reading: the row itself, drawn from a sample (a tick, a subject, a sender, a date), never a blank 36px.
   return (
-    <li data-row={id} className="flex h-9 items-center gap-2.5 px-3">
-      <Checkbox checked={ticked} disabled={locked} aria-label={thread!.subject} onCheckedChange={(on) => onTick(!!on)} />
-      <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{thread!.subject}</span>
-      {sender ? <span className="max-w-[35%] shrink-0 truncate text-xs text-muted-foreground">{sender}</span> : null}
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{day(thread!.lastMessageAt)}</span>
+    <li data-row={id} data-row-bones={loaded ? undefined : ""} className="flex min-h-9 flex-col">
+      <Region loading={!loaded} label="" bones={<RowLine {...SAMPLE_ROW} ticked locked onTick={() => {}} />}>
+        {thread ? <RowLine subject={thread.subject} sender={sender} date={day(thread.lastMessageAt)} ticked={ticked} locked={locked} onTick={onTick} /> : null}
+      </Region>
     </li>
+  );
+}
+
+/** What a row is drawn with while its mail reads. */
+const SAMPLE_ROW = { subject: "Your November invoice is ready", sender: "Billing", date: "Nov 3" } as const;
+
+function RowLine({ subject, sender, date, ticked, locked, onTick }: { subject: string; sender: string; date: string; ticked: boolean; locked: boolean; onTick(on: boolean): void }) {
+  return (
+    <div className="flex h-9 items-center gap-2.5 px-3">
+      <Checkbox checked={ticked} disabled={locked} aria-label={subject} onCheckedChange={(on) => onTick(!!on)} />
+      <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{subject}</span>
+      {sender ? <span className="max-w-[35%] shrink-0 truncate text-xs text-muted-foreground">{sender}</span> : null}
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{date}</span>
+    </div>
   );
 }

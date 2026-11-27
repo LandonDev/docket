@@ -7,7 +7,7 @@ import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { FieldRow } from "../../chrome/DialogField";
 import { Modal, ModalBody } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { MoreEntry } from "../canvas/kind";
@@ -73,21 +73,28 @@ export function MakeMicrosoftFormDialog({ env, workspaceId, body, onClose }: { e
         }}
       >
         <ModalBody>
-          {places?.length ? (
-            <FieldRow label="Folder">
-              <ChoiceSelect label="Folder" value={place?.id ?? ""} options={places.map((p) => ({ value: p.id, label: placeLabel(p) }))} onChange={setPicked} disabled={making} />
-            </FieldRow>
-          ) : places ? (
-            <p className="text-[13px] leading-5 text-muted-foreground">No Teams or OneDrive folder is on this computer.</p>
-          ) : (
-            <div aria-busy aria-label="Loading the folders" className="flex h-8 items-center">
-              <Skeleton className="h-3 w-1/2" />
-            </div>
-          )}
+          <Region loading={!places} label="Loading the folders" bones={FolderBones}>
+            {places?.length ? (
+              <FieldRow label="Folder">
+                <ChoiceSelect label="Folder" value={place?.id ?? ""} options={places.map((p) => ({ value: p.id, label: placeLabel(p) }))} onChange={setPicked} disabled={making} />
+              </FieldRow>
+            ) : places ? (
+              <p className="text-[13px] leading-5 text-muted-foreground">No Teams or OneDrive folder is on this computer.</p>
+            ) : null}
+          </Region>
           <ErrorLine error={error} />
         </ModalBody>
         <DialogFooter onCancel={onClose} confirmLabel="Make" disabled={!place} pending={making} />
       </form>
     </Modal>
+  );
+}
+
+/** The folder's row at rest, with one folder in it: its bones while the places are read. */
+function FolderBones() {
+  return (
+    <FieldRow label="Folder">
+      <ChoiceSelect label="Folder" value="sample:place" options={[{ value: "sample:place", label: "Purdue RecWell, Esports" }]} onChange={() => undefined} />
+    </FieldRow>
   );
 }

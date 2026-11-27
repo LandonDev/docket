@@ -470,14 +470,14 @@ The look is docs/DESIGN.md "The Messages view".
   whatever its reason: it asks LifeOS again (`requestFiles` takes a failed
   row back to wanted and clears its error; the worker fetches only when
   asked), so the row draws as coming (the chip's spinner, the picture's
-  skeleton) once LifeOS marks it wanted, and a fetch that fails again shows
+  bone) once LifeOS marks it wanted, and a fetch that fails again shows
   its new reason. The automatic ask is for listed files alone; a failed file
   is asked again only on his press. A re-ask LifeOS refuses says that
   refusal on the file's own line until a fresh attempt or a change of state.
   Each attachment sits in its own wrapper that keeps the keys
   (keptKeys.tsx): a keyboard Try again, a worker's or a byte retry, a
   refused re-ask, a second failure, any number of swaps, the keys go to the
-  chip, the picture, the skeleton or the line's own Try again that takes the
+  chip, the picture, its bone or the line's own Try again that takes the
   place of the control that held them. A stored picture's bytes are read with
   `loadBytes` into a blob address, never put in the page as a web address,
   one read an address at a time, at most 120 held (the oldest no drawn
@@ -486,7 +486,7 @@ The look is docs/DESIGN.md "The Messages view".
   did not come or do not draw says so in a file's failure line, with Try
   again and Open in the app. A file LifeOS lists but has not stored yet
   (`listed`, `wanted`) is its own chip, pending: a spinner in its tile, the
-  name muted, `aria-busy`, and a picture in the same state is its skeleton,
+  name muted, `aria-busy`, and a picture in the same state is one `Bone` at its shape,
   `aria-busy`; a press asks the conversation to open it (`wantFile`, by
   message and file id in page.ts), which settles once, wherever the message
   has scrolled: it opens the file when it is stored, or lets the ask go when

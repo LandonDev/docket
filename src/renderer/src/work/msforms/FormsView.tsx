@@ -8,7 +8,7 @@ import { RowsContextMenu, RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { confirmAction } from "../../chrome/ConfirmDialog";
 import { ItemButton } from "../../components/ui/item";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { Spinner } from "../../components/ui/spinner";
 import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
@@ -138,11 +138,19 @@ export function NewFormPress({ making, stage, disabled = false, ...props }: { ma
 export function View({ env, workspace }: WorkViewProps) {
   const [load, retry, readAgain] = useForms(env, workspace.id);
   const linkDown = useHostLinkDown(env);
+  if (linkDown) return <HostLinkLine word={linkDown} retryHost={env} />;
+  return (
+    <Region loading={load.status === "loading"} label="Loading forms" className="h-full" bones={FormsBones}>
+      {load.status === "loading" ? null : <Forms env={env} workspace={workspace} load={load} retry={retry} readAgain={readAgain} />}
+    </Region>
+  );
+}
+
+/** The list once read: its failure, its empty line, or its rows. */
+function Forms({ env, workspace, load, retry, readAgain }: Pick<WorkViewProps, "env" | "workspace"> & { load: Exclude<Load, { status: "loading" }>; retry(): void; readAgain(): Promise<void> }) {
   // His Retry spins in place, the failure kept, until the read answers.
   const [retrying, setRetrying] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
-  if (linkDown) return <HostLinkLine word={linkDown} retryHost={env} />;
-  if (load.status === "loading") return <FormsSkeleton />;
   if (load.status === "error")
     return (
       <EmptyState
@@ -206,11 +214,7 @@ export function View({ env, workspace }: WorkViewProps) {
         </TruncateTip>
       ) : null}
       <RowsContextMenu label="Form actions" lazyMount rowsFor={(id) => (id && load.ms.some((f) => f.formId === id) ? [{ kind: "item", id: "forget", label: "Remove from List" }] : null)} onPick={(pick, id) => void (pick === "forget" && id && forget(id))}>
-        <ul aria-label="Forms" className="mx-auto flex max-w-[672px] flex-col gap-px px-4 py-4">
-          {load.rows.map((row) => (
-            <Row key={`${row.kind}:${row.id}`} row={row} busy={opening === row.id} onPress={() => open(row)} />
-          ))}
-        </ul>
+        <FormRows rows={load.rows} opening={opening} onPress={open} />
       </RowsContextMenu>
     </div>
   );
@@ -241,16 +245,24 @@ function Row({ row, busy, onPress }: { row: FormListRow; busy: boolean; onPress(
   );
 }
 
-function FormsSkeleton() {
+/** The forms, one row each. What else it is handed (the row menu's handlers) goes on the list. */
+function FormRows({ rows, opening, onPress, ...list }: Omit<ComponentProps<"ul">, "children"> & { rows: readonly FormListRow[]; opening: string | null; onPress(row: FormListRow): void }) {
   return (
-    <div aria-busy="true" aria-label="Loading forms" className="mx-auto flex max-w-[672px] flex-col gap-3 px-6 py-5">
-      {[44, 58, 36].map((w, i) => (
-        <div key={i} className="flex flex-col gap-1.5">
-          <Skeleton className="h-3.5" style={{ width: `${w}%` }} />
-          <Skeleton className="h-3" style={{ width: `${w - 14}%` }} />
-        </div>
+    <ul aria-label="Forms" {...list} className="mx-auto flex max-w-[672px] flex-col gap-px px-4 py-4">
+      {rows.map((row) => (
+        <Row key={`${row.kind}:${row.id}`} row={row} busy={opening === row.id} onPress={() => onPress(row)} />
       ))}
-    </div>
+    </ul>
   );
 }
 
+/** Three forms at rest, of both kinds, one with no answer yet: the list's bones. */
+const SAMPLE_FORMS: readonly FormListRow[] = [
+  { kind: "ms", id: "sample:ms-1", title: "Spring intramurals sign-up", state: "open", count: 42, lastAnswerAt: null, updatedAt: 0 },
+  { kind: "ours", id: "sample:ours-1", title: "Equipment checkout", state: "open", count: null, lastAnswerAt: null, updatedAt: 0 },
+  { kind: "ms", id: "sample:ms-2", title: "Staff availability, week of the tournament", state: "draft", count: 0, lastAnswerAt: null, updatedAt: 0 },
+];
+
+function FormsBones() {
+  return <FormRows rows={SAMPLE_FORMS} opening={null} onPress={() => undefined} />;
+}

@@ -312,9 +312,12 @@ describe("rows to act on", () => {
 
   it("draw a pending row's bones and keep the press's count until every row has read its mail", async () => {
     draw({ rows: { act: "archive", title: "Billing notices", threadIds: ["t1", "t-pending"] } });
-    // The mail still on its way: a tick, a subject and a date in bones, never a blank row.
+    // The mail still on its way: the row itself drawn from a sample (a tick, a subject, a sender, a date), never a blank row.
     const bones = document.querySelector('[data-row="t-pending"][data-row-bones]')!;
-    expect(bones.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(2);
+    const drawn = bones.querySelector("[skullet-loading]")!;
+    expect(drawn.getAttribute("aria-hidden")).toBe("true");
+    expect(drawn.textContent).toContain("Your November invoice is ready");
+    expect(drawn.querySelector('[role="checkbox"], input[type="checkbox"], button')).toBeTruthy();
     await waitFor(() => expect(screen.getAllByRole("checkbox")).toHaveLength(1));
     // The count is not known yet: the press says its verb alone and waits, never "Archive 1" of 2 or "Archive 0".
     const press = screen.getByRole("button", { name: "Archive" });

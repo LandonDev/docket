@@ -4,7 +4,7 @@ import { Check, ChevronDown, CircleDot, Copy, FileText, MoreHorizontal, Plus, Te
 import { BusyLabel, Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Input, INPUT_FIELD_CLASS } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { Switch } from "../../components/ui/switch";
 import { Textarea } from "../../components/ui/textarea";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
@@ -24,7 +24,7 @@ import { AddOption } from "./AddOption";
 import { AddQuestion } from "./AddQuestion";
 import { linkFormHost, type FormHost } from "./host";
 import { answerBars, chartQuestion, liveView, optionDiff, plural, resolvePick, shownQuestions, TYPE_WORDS, type Pick, type Shown } from "./model";
-import { HALF_TAB, ResponsesSkeleton, ResponseTable as SharedResponseTable } from "./responses";
+import { FormPageBones, HALF_TAB, HalfBones, ResponsesBones, ResponseTable as SharedResponseTable } from "./responses";
 import { forgetWithItems } from "../canvas/gone";
 export { responseKeys } from "./responses";
 
@@ -153,7 +153,7 @@ export function Body(props: Props) {
   }, [shell, host, store, error, saveError, responsesError]);
 
   if (error) return <OpenFailed kind="form" why={error} onRetry={retryOpen} />;
-  if (!view) return <FormSkeleton />;
+  if (!view) return <FormPageBones questions={3} mark="data-form-loading" />;
   return (
     <div data-form className="flex min-h-0 min-w-0 flex-1 flex-col">
       {msform.dialog}
@@ -260,7 +260,7 @@ export function Bar(props: Props) {
   const store = storeOf(props.item.id, props.state?.half);
   const { view, error, half, publishing, edits } = useSlot(store);
   // While the form loads the bar holds one bone where the switch will be, so the body never moves under it.
-  if (!view) return error ? null : <Skeleton data-form-bar-bone className="h-3 w-30" />;
+  if (!view) return error ? null : <HalfBones first="Questions" mark="data-form-bar-bone" />;
   const publish = (): void => {
     store.set({ publishing: true });
     void run(host.publish(view.rev), store, "Couldn't publish the form").finally(() => store.set({ publishing: false }));
@@ -919,9 +919,15 @@ function Responses({ view, host, store, item, shell }: { view: FormView; host: F
   }, [store, failed]);
   if (view.state === "draft") return <EmptyState title="Not published" />;
   if (failed) return null;
-  if (!got) return <ResponsesSkeleton />;
-  if (!got.count) return <EmptyState title="No responses yet" line={view.publishedAt ? `Published ${dayTime(view.publishedAt)}` : undefined} />;
-  return <ResponseTable view={view} got={got} item={item} shell={shell} />;
+  return (
+    <Region fill loading={!got} label="Loading the responses" bones={() => <ResponsesBones chipRef={view.sheet ?? item.source} shell={shell} />}>
+      {!got ? null : !got.count ? (
+        <EmptyState title="No responses yet" line={view.publishedAt ? `Published ${dayTime(view.publishedAt)}` : undefined} />
+      ) : (
+        <ResponseTable view={view} got={got} item={item} shell={shell} />
+      )}
+    </Region>
+  );
 }
 
 function ResponseTable({ view, got, item, shell }: { view: FormView; got: FormResponses; item: Props["item"]; shell: CanvasShell }) {
@@ -936,25 +942,5 @@ function ResponseTable({ view, got, item, shell }: { view: FormView; got: FormRe
       timeColumn={got.columns.length - 1}
       whole="the sheet has them all"
     />
-  );
-}
-
-// ── loading ──────────────────────────────────────────────────────────
-
-export function FormSkeleton() {
-  const pair = (
-    <>
-      <Skeleton className="mt-4 h-3 w-[30%]" />
-      <Skeleton className="h-8 max-w-[360px]" />
-    </>
-  );
-  return (
-    <div data-form-loading aria-busy="true" className="mx-auto flex w-full max-w-[560px] flex-col gap-2.5 px-6 pt-6">
-      <Skeleton className="h-5 w-[52%]" />
-      <Skeleton className="h-3 w-[80%]" />
-      {pair}
-      {pair}
-      {pair}
-    </div>
   );
 }

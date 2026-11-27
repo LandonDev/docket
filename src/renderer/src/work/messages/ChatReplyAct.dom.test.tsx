@@ -3,7 +3,7 @@
  * A thread's held chat reply in the Outbox (`chat.reply`): where it goes, the message it answers as
  * one quoted line, then its words exactly as they go, read from LifeOS on the item's own sector.
  */
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HeldItem } from "@shared/work";
 import { ACT_VIEWS } from "../acts/registry";
@@ -87,14 +87,15 @@ describe("the held reply's view", () => {
     expect(answeredOf({}, mine, [])).toBeNull();
   });
 
-  it("reads a message it answers past the newest page by its id, holding its place meanwhile", () => {
+  it("reads a message it answers past the newest page by its id, holding its place meanwhile", async () => {
     const payload = { chatId: "c_dana", replyTo: "old_1", source: "slack", chat: "Dana Lee", text: "Agreed." };
     const view = render(<View env="box" item={item(payload)} />);
     expect(lifeos.asked.some((q) => q.name === "rawMessages:get" && (q.args as { id: string }).id === "old_1")).toBe(true);
     expect(document.querySelector("[data-answers]")!.getAttribute("data-answers")).toBe("loading");
     lifeos.raw = { message: { author: { name: "Dana Lee" }, fromMe: false, text: "Can we move the review to Friday?" }, thread: null };
     view.rerender(<View env="box" item={item(payload)} />);
-    expect(document.querySelector("[data-answers]")!.textContent).toBe("Can we move the review to Friday?");
+    // The quote comes in over its bones, which go a tick later.
+    await waitFor(() => expect(document.querySelector("[data-answers]")!.textContent).toBe("Can we move the review to Friday?"));
   });
 
   it("says the message it answers is no longer here when it cannot be read", () => {

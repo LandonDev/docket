@@ -6,7 +6,7 @@
  * chooses the button; the read mark that waits for a wanted message; his unread mark across the
  * 640px crossing; Back to a hit in view; the sizes the column watches; and the smaller lines.
  */
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatRow } from "@shared/work/messages";
 import { MessagesDataProvider } from "./data";
@@ -306,21 +306,23 @@ describe("sizes the column watches", () => {
 });
 
 describe("the smaller lines", () => {
-  it("names a search's first bones as search results, and the reader's bones as a status", () => {
+  it("names a search's first bones as search results, and the reader's bones as a status", async () => {
+    const said = () => screen.getAllByRole("status").map((el) => el.textContent);
     mount({ searchPending: "controller" });
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "controller" } });
-    expect(screen.getByRole("status", { name: "Loading search results" })).toBeTruthy();
+    await waitFor(() => expect(said()).toContain("Loading search results"));
     cleanup();
     resetPages();
     mount({ messagesLoading: true }, "c_dana");
-    expect(screen.getByRole("status", { name: "Loading messages" }).getAttribute("aria-busy")).toBe("true");
+    await waitFor(() => expect(said()).toContain("Loading messages"));
+    expect(document.querySelector("[data-region][data-bones] [data-column-bones]")!.closest("[data-region]")!.getAttribute("aria-busy")).toBe("true");
   });
 
-  it("gives the name bones widths in pixels that differ row to row", () => {
+  it("draws the list's bones from its own rows, names that differ row to row", () => {
     mount({ loading: true });
-    const widths = [...screen.getByRole("status", { name: "Loading conversations" }).querySelectorAll<HTMLElement>(".h-3")].map((el) => el.style.width);
-    expect(widths.slice(0, 3)).toEqual(["120px", "88px", "148px"]);
-    expect(new Set(widths).size).toBe(widths.length);
+    const names = [...document.querySelectorAll<HTMLElement>("[data-region][data-bones] [skullet-loading] [data-row-bones] [role=option]")].map((el) => el.getAttribute("aria-label")!.split(", ")[0]);
+    expect(names).toHaveLength(8);
+    expect(new Set(names.map((name) => name.length)).size).toBeGreaterThan(4);
   });
 
   it("wraps a long unbroken file name inside the message", async () => {

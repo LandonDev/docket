@@ -333,10 +333,11 @@ describe("the Routines view", () => {
   it("loads in the view's own shape: under 640px the list's bones fill the pane and the detail's go", async () => {
     host.list = () => new Promise(() => {});
     render(<View {...props} />);
-    const bones = screen.getByLabelText("Loading routines");
+    // The bones are the list itself, drawn from a sample, beside the detail's shape.
+    const bones = document.querySelector("[skullet-loading] [data-routine-bones]") as HTMLElement;
     expect(bones.className).toContain("@container/routines");
-    expect(bones.querySelector('[data-bones="list"]')!.className).toContain("@max-[40rem]/routines:w-full");
-    expect(bones.querySelector('[data-bones="detail"]')!.className).toContain("@max-[40rem]/routines:hidden");
+    expect(bones.querySelector("[data-routine-list]")!.className).toContain("@max-[40rem]/routines:w-full");
+    expect(bones.querySelector("[data-routine-detail-bones]")!.className).toContain("@max-[40rem]/routines:hidden");
   });
 
   it("calls a proposal's dialog Add routine, confirmed by Add", async () => {

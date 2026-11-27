@@ -4,7 +4,7 @@ import type { FrameTable, MediaNote, MediaRegion, MediaVersion } from "@shared/c
 import { RowsMenu } from "../../chrome/menuRows";
 import { Minimize2, Pause, Play } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Bones } from "../../components/bones";
 import { Spinner } from "../../components/ui/spinner";
 import { STALL_SHOWN_MS } from "../../lib/ease";
 import { Tip } from "../../components/tip";
@@ -598,28 +598,37 @@ export function Player({
 /**
  * The player's place while the host reads the file: the frame at the file's own shape once the probe has read it (a
  * vertical short stands tall, never 16:9 then narrow), the track and the transport as bones, each in the box and at the
- * height the player gives it, so nothing under the player moves when it lands.
+ * height the player gives it, so nothing under the player moves when it lands. A wait with words in it (a copy being
+ * made to play) is the frame on the stage, those words in it, over the track's and the transport's bones.
  */
-export function PlayerSkeleton({ line, probe }: { line?: ReactNode; probe?: MediaVersion["probe"] }) {
-  return (
-    <div className="px-3 pt-3">
-      {/* A wait with words in it (a copy being made to play) is the frame on the stage, so its bar's track shows; else the bone. */}
-      <Skeleton
-        data-media-frame-bone
-        className={`relative mx-auto grid w-full place-items-center rounded-lg ${line && typeof line !== "string" ? "bg-(--stage) outline-1 -outline-offset-1 outline-(--image-outline)" : ""}`}
-        style={frameStyle(frameRatio(probe))}
-      >
-        {line ? typeof line === "string" ? <span className="text-xs text-muted-foreground">{line}</span> : line : null}
-      </Skeleton>
+export function PlayerBones({ line, probe }: { line?: ReactNode; probe?: MediaVersion["probe"] }) {
+  const frame = frameStyle(frameRatio(probe));
+  const controls = (
+    <>
       <div data-media-track-bone className="mt-1.5 flex h-6 items-center">
-        <Skeleton className="h-1 flex-1 rounded-[2px]" />
+        <Bone className="h-1 flex-1 rounded-[2px]" />
       </div>
       <div data-media-transport-bone className="-mx-1 flex h-8 items-center gap-0.5">
         <span className="grid size-7 place-items-center">
-          <Skeleton className="size-4 rounded" />
+          <Play className="size-4" />
         </span>
-        <Skeleton className="mx-1 h-3 w-[76px] rounded" />
+        <span className="mx-1 text-[13px] leading-5 whitespace-nowrap tabular-nums">0:00 / 2:14</span>
       </div>
-    </div>
+    </>
+  );
+  if (line)
+    return (
+      <div className="px-3 pt-3">
+        <div data-media-frame-bone className="relative mx-auto grid w-full place-items-center rounded-lg bg-(--stage) outline-1 -outline-offset-1 outline-(--image-outline)" style={frame}>
+          {line}
+        </div>
+        <Bones label="">{controls}</Bones>
+      </div>
+    );
+  return (
+    <Bones label="Loading the video" className="px-3 pt-3">
+      <Bone data-media-frame-bone className="relative mx-auto w-full rounded-lg" style={frame} />
+      {controls}
+    </Bones>
   );
 }

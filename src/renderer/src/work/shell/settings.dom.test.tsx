@@ -90,12 +90,12 @@ describe("Sign in to LifeOS", () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(() => new Promise((r) => (land = r))), onPush: () => () => {}, onOpen: () => () => {} } as never);
     render(<SignInDialog environmentId="env_box" state={{ state: "signed-out" } as never} onClose={() => {}} />);
     await act(() => Promise.resolve());
-    const bone = screen.getByRole("status", { name: "Asking for a code" });
-    expect(bone.className).toContain("h-6");
-    expect(bone.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    // The code's own line from a sample, at the code's 24px leading.
+    const bone = document.querySelector<HTMLElement>("[data-region][data-bones] [skullet-loading] [data-code-bone]")!;
+    expect(bone.className).toContain("leading-6");
     await act(async () => land({ code: "ABCD-1234", expiresAt: Date.now() + 60_000 }));
-    expect(screen.queryByRole("status", { name: "Asking for a code" })).toBeNull();
-    expect(screen.getByText("ABCD-1234")).toBeTruthy();
+    expect(document.querySelector("[data-region][data-bones=held], [data-region][data-bones=shown]")).toBeNull();
+    expect(screen.getAllByText("ABCD-1234").some((el) => !el.closest("[skullet-loading]"))).toBe(true);
   });
 
   /** Council round 8 (Sol, Settings 3): a code ask that timed out said its error under a bone still "Asking for a code". */
@@ -108,7 +108,7 @@ describe("Sign in to LifeOS", () => {
     const linkOf = vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request, onPush: () => () => {}, onOpen: () => () => {} } as never);
     render(<SignInDialog environmentId="env_box" state={{ state: "signed-out" } as never} onClose={() => {}} />);
     await act(() => Promise.resolve());
-    expect(screen.queryByRole("status", { name: "Asking for a code" })).toBeNull();
+    expect(document.querySelector("[data-region][aria-busy]")).toBeNull();
     expect(screen.getByRole("alert").textContent).toBe("The box did not answer");
     await act(async () => screen.getByRole("button", { name: "Retry" }).click());
     expect(request).toHaveBeenCalledTimes(2);
@@ -134,7 +134,7 @@ describe("Sign in to LifeOS", () => {
     const retry = screen.getByRole("button", { name: "Retry" });
     expect(retry.hasAttribute("disabled")).toBe(true);
     expect(retry.querySelector("[data-busy]")).toBeTruthy();
-    expect(screen.queryByRole("status", { name: "Asking for a code" })).toBeNull();
+    expect(document.querySelector("[data-region][aria-busy]")).toBeNull();
     await act(async () => answers.shift()!({ code: "ABCD-1234", expiresAt: Date.now() - 1_000 }));
     expect(screen.getByText("ABCD-1234")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();

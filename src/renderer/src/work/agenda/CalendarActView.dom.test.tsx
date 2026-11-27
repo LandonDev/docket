@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** A held LifeOS calendar act: a day read that failed says so with Retry, and Retry asks again; the act's rows stay put. */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const day = vi.hoisted(() => ({
@@ -86,19 +86,21 @@ describe("a held reply on a shared calendar", () => {
     expect(document.body.textContent).not.toContain("c_9f2k1");
   });
 
-  it("holds the Calendar row with a bone while the calendars are read, never the account's address in the name's place", () => {
+  it("holds the Calendar row with a bone while the calendars are read, never the account's address in the name's place", async () => {
     day.event = "ready";
     day.sourcesLoading = true;
     const item = { kind: "calendar.op", payload: { id: "op4", kind: "accept", eventId: "ev1", account: "landon@purdue.edu", calendarId: "c_9f2k1@group.calendar.google.com" }, sector: "purdue" } as never;
     try {
       const { rerender } = render(<View item={item} env="box" />);
       const value = () => [...document.querySelectorAll("dt")].find((dt) => dt.textContent === "Calendar")!.nextElementSibling!;
-      expect(value().querySelector("[data-slot=skeleton]")).not.toBeNull();
+      expect(value().querySelector("[skullet-loading]")!.textContent).toBe("Varsity schedule");
       expect(document.body.textContent).not.toContain("landon@purdue.edu");
       day.sourcesLoading = false;
       day.sources = [{ kind: "gcal", channel: "c_9f2k1@group.calendar.google.com", account: "landon@purdue.edu", label: "Esports Staff" }];
       rerender(<View item={item} env="box" />);
-      expect(value().textContent).toBe("Esports Staff");
+      // The name is in at once; the bone over it goes a tick later.
+      expect(value().textContent).toContain("Esports Staff");
+      await waitFor(() => expect(value().textContent).toBe("Esports Staff"));
     } finally {
       day.sourcesLoading = false;
     }
@@ -157,7 +159,8 @@ describe("a held calendar act's day on its way", () => {
     day.loading = true;
     render(<View item={{ kind: "calendar.op", payload: op, sector: "purdue" } as never} env="box" />);
     expect(screen.getByText("Review")).toBeTruthy();
-    expect(screen.getByRole("status", { name: "Reading that day" })).toBeTruthy();
+    // The day itself drawn from a sample, under the region that says what it waits on once the wait shows.
+    expect(document.querySelector("[data-region][data-bones] [skullet-loading] [data-day-bones]")).toBeTruthy();
     day.loading = false;
   });
 });

@@ -10,8 +10,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
-import { Skeleton } from "../../components/ui/skeleton";
-import { PrepSkeleton } from "./bones";
+import { PrepSkeleton, TextBones } from "./bones";
 import { HeldTip } from "../../components/heldTip";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
@@ -780,17 +779,6 @@ function Words({ lines, onOpen, land = false, bare = false }: { lines: readonly 
           </div>
         );
       })}
-    </div>
-  );
-}
-
-/** Three text bones where what a thread is writing will land, at the reading measure. */
-function TextBones({ label }: { label: string }) {
-  return (
-    <div aria-busy aria-label={label} className="mt-5 flex max-w-[65ch] flex-col gap-3">
-      {[92, 78, 58].map((w) => (
-        <Skeleton key={w} className="h-3.5" style={{ width: `${w}%` }} />
-      ))}
     </div>
   );
 }

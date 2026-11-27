@@ -8,13 +8,14 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { reveal, yields } from "../../components/ui/reveal";
-import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
+import { Region } from "../../components/bones";
 import { Face } from "../mail/face";
 import { Hash } from "../icons";
 import { openConnections } from "../shell/open";
 import { useMessagesData } from "./data";
 import { useKeptKeys } from "./keptKeys";
+import { SAMPLE_CHATS, SAMPLE_TIME } from "./samples";
 import { aroundMatch, CHAT_FILTERS, cutToFit, FILTER_EMPTY, FILTER_LABEL, FILTER_ROW, firstName, markWords, menuKey, rowLine, rowTime, type ChatFilter } from "./model";
 import { chatChip, linkRows, mentionTarget, pickThreadVerb, threadRows, useStartThread } from "./threads";
 import { keepListTop, listTopOf, markUnreadHeld, openedFrom, patchPage, peekReturn, returnToTop, takeReturn, usePage } from "./page";
@@ -31,8 +32,6 @@ import { keepListTop, listTopOf, markUnreadHeld, openedFrom, patchPage, peekRetu
 export const ROW_HEIGHT = 48;
 const ROW_GAP = 1;
 const SLOT = ROW_HEIGHT + ROW_GAP;
-/** Rows of bones while the list loads. */
-const BONES = 8;
 
 /** A row's columns, shared with its bones: the gutter for the unread dot, the face in a 24px slot with 8px after it, the words. */
 const ROW_GRID = "grid grid-cols-[20px_32px_minmax(0,1fr)] content-start py-1 ps-1 pe-2.5";
@@ -237,7 +236,7 @@ function ChatRows({
   if (retry.retrying && chats.status === "loading") return <ListEmpty title={retry.retrying} action={retryOf(retry, retry.retrying, true)} />;
   // A failure on his way back gives Retry the keys and keeps the way back for the list Retry brings.
   if (chats.status === "failed") return <ListEmpty title="Messages did not load" action={retryOf(retry, "Messages did not load")} returns={{ workspaceId, shown, keep: true }} />;
-  if (chats.status === "loading") return <RowBones />;
+  if (chats.status === "loading") return <ListRegion label="Loading conversations" />;
   const { rows } = chats.value;
   if (rows.length === 0) {
     // Come back to a list his reading emptied, the keys go to Clear filter.
@@ -245,12 +244,16 @@ function ChatRows({
     if (filter !== "all") return <ListEmpty title={FILTER_EMPTY[filter]} action={{ label: "Clear filter", onClick: () => (returnToTop(workspaceId), patchPage(workspaceId, { filter: "all" })) }} returns={{ workspaceId, shown }} takesKeys={heldKeys} />;
     // Held until the sources answer too, so an empty job says its true cause the first time; sources that did not load
     // leave the cause unknown, which is a list that did not load.
-    if (linked === null) return <RowBones />;
+    if (linked === null) return <ListRegion label="Loading conversations" />;
     if (linked === "failed") return <ListEmpty title="Messages did not load" action={retryOf(retry, "Messages did not load")} />;
     if (!linked) return <ListEmpty title={`No chat is linked to ${job}`} action={{ label: "Open Connections", onClick: openConnections }} />;
     return <ListEmpty title={`No messages in ${job} yet`} />;
   }
-  return <RowsWindow workspaceId={workspaceId} filter={filter} rows={rows} done={chats.value.done} more={chats.value.more} openId={openId} narrow={narrow} shown={shown} onOpen={onOpen} onKeys={onKeys} />;
+  return (
+    <ListRegion label="Loading conversations">
+      <RowsWindow workspaceId={workspaceId} filter={filter} rows={rows} done={chats.value.done} more={chats.value.more} openId={openId} narrow={narrow} shown={shown} onOpen={onOpen} onKeys={onKeys} />
+    </ListRegion>
+  );
 }
 
 function RowsWindow({
@@ -526,26 +529,30 @@ const ChatRowView = memo(function ChatRowView({
   );
 });
 
-/** Rows of bones in the row's own grid and height, so nothing moves when the list lands. */
-export function RowBones({ label = "Loading conversations" }: { label?: string }) {
+const STILL = (): void => {};
+
+/**
+ * The list's region: its bones while there are no rows to show, the rows once there are. Each way it is drawn is this
+ * one element in the same place, so the rows come in over the bones they follow. An empty or failed list is its own
+ * line, centred on the whole column, outside it.
+ */
+function ListRegion({ label, children }: { label: string; children?: ReactNode }) {
   return (
-    <div role="status" aria-busy aria-label={label} data-row-bones className="min-h-0 flex-1 overflow-hidden px-1.5">
-      {Array.from({ length: BONES }, (_, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: fixed bones that never reorder
-        <div key={i} aria-hidden style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }} className={ROW_GRID}>
-          <span className="row-span-2" />
-          <span className={FACE_CELL}>
-            <Skeleton className="size-6 rounded-full" />
-          </span>
-          <span className="flex h-5 items-center justify-between gap-6">
-            <Skeleton className="h-3" style={{ width: [120, 88, 148, 104, 136, 80, 112, 96][i] }} />
-            <Skeleton className="h-2.5 w-9" />
-          </span>
-          <span className="flex h-5 items-center">
-            <Skeleton className="h-2.5" style={{ width: `${[78, 64, 86, 70, 58, 82, 66, 74][i]}%` }} />
-          </span>
-        </div>
-      ))}
+    <Region fill loading={children === undefined} label={label} bones={RowBones}>
+      {children}
+    </Region>
+  );
+}
+
+/** The list drawn from a sample, at rest, in the rows' own window: the bones of the list and of a search's first answer. */
+function RowBones() {
+  return (
+    <div data-row-bones className="min-h-0 flex-1 overflow-hidden">
+      <div className="px-1.5 pb-1.5">
+        {SAMPLE_CHATS.map((row) => (
+          <ChatRowView key={row._id} row={row} open={false} active={false} drafted={false} time={SAMPLE_TIME} onOpen={STILL} onRead={STILL} onUnread={STILL} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -676,7 +683,7 @@ function SearchHits({
   }, [shown, list, hits.status, workspaceId]);
   if (retry.retrying && hits.status === "loading") return <ListEmpty title={retry.retrying} action={retryOf(retry, retry.retrying, true)} />;
   if (hits.status === "failed") return <ListEmpty title="The search did not run" action={retryOf(retry, "The search did not run")} returns={{ workspaceId, shown, keep: true }} />;
-  if (!list) return <RowBones label="Loading search results" />;
+  if (!list) return <ListRegion label="Loading search results" />;
   // Come back to no hits at all: the keys go to Clear search, which hands them to the search field.
   if (list.length === 0) return <ListEmpty title="No matches" action={{ label: "Clear search", onClick: onClear }} returns={{ workspaceId, shown }} />;
   const open = (hit: ChatHit): void => {
@@ -707,21 +714,23 @@ function SearchHits({
   const measure = room > 0 ? lineMeasure(family) : null;
   const chars = room > 0 ? Math.floor(room / 6.4) : 0;
   return (
-    <div ref={box} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-      <div
-        ref={listbox}
-        role="listbox"
-        tabIndex={0}
-        aria-label="Search results"
-        aria-activedescendant={standing ? hitId(active) : undefined}
-        onKeyDown={keys}
-        className={cn("group/list px-1.5 pb-1.5", standing ? "outline-none" : "focus-ring")}
-      >
-        {list.map((hit) => (
-          <HitRow key={hit.messageId} hit={hit} row={known.get(hit.chatId)} query={query} chars={chars} fits={measure ? (line) => measure(line) <= room : null} fitsLead={measure ? (line) => measure(line) <= room * LEAD_SHARE : null} open={hit.messageId === opened} active={hit.messageId === active} now={now} onOpen={() => open(hit)} />
-        ))}
+    <ListRegion label="Loading search results">
+      <div ref={box} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <div
+          ref={listbox}
+          role="listbox"
+          tabIndex={0}
+          aria-label="Search results"
+          aria-activedescendant={standing ? hitId(active) : undefined}
+          onKeyDown={keys}
+          className={cn("group/list px-1.5 pb-1.5", standing ? "outline-none" : "focus-ring")}
+        >
+          {list.map((hit) => (
+            <HitRow key={hit.messageId} hit={hit} row={known.get(hit.chatId)} query={query} chars={chars} fits={measure ? (line) => measure(line) <= room : null} fitsLead={measure ? (line) => measure(line) <= room * LEAD_SHARE : null} open={hit.messageId === opened} active={hit.messageId === active} now={now} onOpen={() => open(hit)} />
+          ))}
+        </div>
       </div>
-    </div>
+    </ListRegion>
   );
 }
 

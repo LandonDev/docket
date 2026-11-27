@@ -1,17 +1,19 @@
-import { Skeleton } from "../../../components/ui/skeleton";
+import { Bones } from "../../../components/bones";
 
-/** The card's shape while what it shows is on its way. */
+/** The card's shape while what it shows is on its way: its head's title over two lines of the mail, from sample words. */
 export function CardBones() {
   return (
-    <div role="status" aria-label="Loading" className={CARD}>
-      <div className="flex h-9 items-center px-3">
-        <Skeleton className="h-3 w-40" />
+    <Bones label="Loading">
+      <div className={CARD}>
+        <div className={HEAD}>
+          <p className="truncate text-[13px] leading-5 font-medium">Reply to Jordan Ellis</p>
+        </div>
+        <div className="flex flex-col gap-1 px-3 pt-1 pb-3 text-[13px] leading-5">
+          <p className="truncate">Thanks, Saturday works. We will be there by five to set up.</p>
+          <p className="truncate">I will bring the casters' desk and the spare cables.</p>
+        </div>
       </div>
-      <div className="flex flex-col gap-2 px-3 pt-1 pb-3">
-        <Skeleton className="h-3 w-[86%]" />
-        <Skeleton className="h-3 w-[64%]" />
-      </div>
-    </div>
+    </Bones>
   );
 }
 

@@ -4,7 +4,7 @@ import { DialogFooter } from "../../chrome/ConfirmDialog";
 import { Check, Copy } from "../../chrome/icons";
 import { Modal } from "../../chrome/Modal";
 import { Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Region } from "../../components/bones";
 import { sayError } from "../canvas/frame";
 
 /**
@@ -44,7 +44,9 @@ export function QrDialog({ link, title, onClose }: { link: string; title: string
   };
   return (
     <Modal title={title} description="People who scan it open the form." size="sm" onClose={onClose}>
-      <div className="flex justify-center py-2">{src ? <img data-msform-qr src={src} alt={`QR code for ${link}`} width={240} height={240} className="rounded-md" /> : <Skeleton className="size-60" />}</div>
+      <Region loading={!src} label="Drawing the QR code" className="items-center py-2" bones={<Bone className="size-60 rounded-md" />}>
+        {src ? <img data-msform-qr src={src} alt={`QR code for ${link}`} width={240} height={240} className="rounded-md" /> : null}
+      </Region>
       <DialogFooter>
         <Button variant="secondary" size="sm" disabled={!src} onClick={() => void copy()}>
           {copied ? <Check /> : <Copy />}

@@ -72,10 +72,12 @@ describe("a message's files", () => {
 
   it("holds a picture's shape with a skeleton while LifeOS fetches it", () => {
     mount({}, "c_art");
-    const waiting = within(block("c_art_m3")).getByLabelText("Loading launcher-banner.png");
+    const picture = within(block("c_art_m3")).getByRole("button", { name: "View launcher-banner.png" });
+    // A bone in the picture's own box while its bytes come.
+    expect(picture.querySelector("[data-region][data-bones] [skullet-loading] [data-bone]")).not.toBeNull();
     // Its own shape at most 360 wide, the height from its proportions, never wider than the message.
-    expect(waiting.closest("button")!.getAttribute("style")).toContain("width: 360px; aspect-ratio: 360 / 120");
-    expect(waiting.closest("button")!.className).toContain("max-w-full");
+    expect(picture.getAttribute("style")).toContain("width: 360px; aspect-ratio: 360 / 120");
+    expect(picture.className).toContain("max-w-full");
   });
 
   it("names each file's verb on its chip and opens it through the seam, a file still on its way once its address comes", () => {

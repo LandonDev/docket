@@ -4,7 +4,7 @@ import type { CanvasItem } from "@shared/work";
 import { CHECK_WORDS, isOther, MSFORM_CHECKS, type MsFormCheck } from "@shared/work/msforms";
 import { Check, Copy, ExternalLink, RefreshCw } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { Spinner } from "../../components/ui/spinner";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
@@ -15,7 +15,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps, CanvasShell, MoreEntry } from "../canvas/kind";
-import { HALF_TAB, ResponsesSkeleton, ResponseTable } from "../forms/responses";
+import { FormPageBones, HALF_TAB, HalfBones, ResponsesBones, ResponseTable } from "../forms/responses";
 import { LiveBody } from "../office/live/LiveBody";
 import { LiveCover } from "../office/live/cover";
 import { liveAskUrl, liveLayer } from "../office/live/layer";
@@ -140,7 +140,7 @@ export function Body(props: Props) {
   }, [shell, view]);
 
   if (error && !view) return <OpenFailed kind="msform" why={error} onRetry={() => host.get().then((v) => store.set({ view: v, error: null }), () => undefined)} />;
-  if (!view) return <FormBone />;
+  if (!view) return <FormPageBones questions={2} mark="data-msform-loading" />;
   if (half === "responses") return <Responses view={view} host={host} item={item} shell={shell} />;
   const waiting = view.suggestions[current];
   const why = waiting?.held ?? waiting?.reason;
@@ -316,7 +316,7 @@ export function Bar(props: Props) {
   const store = storeOf(props.item.id, props.state?.half);
   const { view, error, half, busy, dialog } = useSlot(store);
   // While the form loads the bar holds one bone where the switch will be, so the body never moves under it.
-  if (!view) return error ? null : <Skeleton data-msform-bar-bone className="h-3 w-30" />;
+  if (!view) return error ? null : <HalfBones first="Form" mark="data-msform-bar-bone" />;
   const press = (which: "collect" | "close" | "reopen", run: () => Promise<MsFormView>, failed: string): void => {
     store.set({ busy: which });
     void run().then(
@@ -449,40 +449,33 @@ function Responses({ view, host, item, shell }: { view: MsFormView; host: MsForm
   };
   if (view.state === "draft") return <EmptyState title="Not collecting responses" />;
   if (got === "failed") return <OpenFailed kind="msform" why="The workbook Forms keeps the answers in could not be read." onRetry={refresh} />;
-  if (!got) return <ResponsesSkeleton />;
-  if (got.none || !got.count) return <EmptyState title="No responses yet" action={{ label: refreshing ? "Reading…" : "Refresh", onClick: refresh }} />;
-  const old = got.at !== null && Date.now() - got.at > OLD_MS;
+  const old = got !== null && got.at !== null && Date.now() - got.at > OLD_MS;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <ResponseTable
-        title={view.title}
-        got={{ ...got, rows: got.rows }}
-        chart={chart ? { label: chart.label, bars: answerBarsOf(got, chart) } : null}
-        chipRef={item.source}
-        shell={shell}
-        timeColumn={timeColumnOf(got)}
-        whole="the workbook has them all"
-        asOf={got.stale || old ? `as of ${dayTime(got.at ?? Date.now())}` : null}
-        aside={
-          answered ? (
-            <Button data-msform-not-answered variant="ghost" size="xs" className="-my-0.5 shrink-0 text-muted-foreground" onClick={() => setAsking(true)}>
-              Who hasn't answered
-            </Button>
-          ) : null
-        }
-      />
-      {asking && answered ? <NotAnsweredDialog env={item.source.at === "msform" ? item.source.host : ""} workspaceId={view.workspaceId} answered={answered} onClose={() => setAsking(false)} /> : null}
-    </div>
-  );
-}
-
-function FormBone() {
-  return (
-    <div data-msform-loading aria-busy="true" className="mx-auto flex w-full max-w-[560px] flex-col gap-2.5 px-6 pt-6">
-      <Skeleton className="h-5 w-[52%]" />
-      <Skeleton className="h-3 w-[80%]" />
-      <Skeleton className="mt-4 h-8 max-w-[360px]" />
-      <Skeleton className="h-8 max-w-[360px]" />
-    </div>
+    <Region fill loading={!got} label="Loading the responses" bones={() => <ResponsesBones chipRef={item.source} shell={shell} />}>
+      {!got ? null : got.none || !got.count ? (
+        <EmptyState title="No responses yet" action={{ label: refreshing ? "Reading…" : "Refresh", onClick: refresh }} />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <ResponseTable
+            title={view.title}
+            got={{ ...got, rows: got.rows }}
+            chart={chart ? { label: chart.label, bars: answerBarsOf(got, chart) } : null}
+            chipRef={item.source}
+            shell={shell}
+            timeColumn={timeColumnOf(got)}
+            whole="the workbook has them all"
+            asOf={got.stale || old ? `as of ${dayTime(got.at ?? Date.now())}` : null}
+            aside={
+              answered ? (
+                <Button data-msform-not-answered variant="ghost" size="xs" className="-my-0.5 shrink-0 text-muted-foreground" onClick={() => setAsking(true)}>
+                  Who hasn't answered
+                </Button>
+              ) : null
+            }
+          />
+          {asking && answered ? <NotAnsweredDialog env={item.source.at === "msform" ? item.source.host : ""} workspaceId={view.workspaceId} answered={answered} onClose={() => setAsking(false)} /> : null}
+        </div>
+      )}
+    </Region>
   );
 }

@@ -5,7 +5,7 @@ import type { CanvasKind } from "@shared/work";
 import { fileMarkers, SOURCE_APP, type ChatFile, type ChatMessage, type ChatReplyState, type ChatRow } from "@shared/work/messages";
 import { CornerDownRight, MoreHorizontal, type IconComponent } from "../../chrome/icons";
 import { Tip } from "../../components/tip";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Region } from "../../components/bones";
 import { Spinner } from "../../components/ui/spinner";
 import { Doc, File as FileGlyph, Media, Pdf, Slides, Table } from "../icons";
 import { reveal } from "../../components/ui/reveal";
@@ -249,11 +249,9 @@ function Picture({ file, source, link, onOpen }: { file: ChatFile; source: ChatR
   const shape = { width: box.width, aspectRatio: `${box.width} / ${box.height}` };
   return (
     <Button variant="ghost" aria-label={`View ${file.name}`} aria-busy={url ? undefined : true} data-file={file._id} onClick={onOpen} style={shape} className="h-auto max-w-full self-start overflow-hidden rounded-lg p-0 hover:bg-transparent active:bg-transparent">
-      {src ? (
-        <img src={src} alt={file.name} width={box.width} height={box.height} draggable={false} onError={() => setBroken(src)} className="block size-full rounded-lg object-cover outline-1 -outline-offset-1 outline-(--image-outline)" />
-      ) : (
-        <Skeleton aria-label={`Loading ${file.name}`} className="size-full rounded-lg" />
-      )}
+      <Region loading={!src} label={`Loading ${file.name}`} className="size-full" bones={<Bone className="size-full rounded-lg" />}>
+        {src ? <img src={src} alt={file.name} width={box.width} height={box.height} draggable={false} onError={() => setBroken(src)} className="block size-full rounded-lg object-cover outline-1 -outline-offset-1 outline-(--image-outline)" /> : null}
+      </Region>
     </Button>
   );
 }

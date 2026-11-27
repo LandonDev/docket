@@ -223,6 +223,21 @@ describe("Plays that did not load", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
+  it("opens New play's dialog while the plays are still read, beside their bones", async () => {
+    host.read = () => new Promise(() => {});
+    render(
+      <>
+        <Head {...(props as object as Parameters<typeof Head>[0])} />
+        <View {...props} />
+      </>,
+    );
+    await settle();
+    expect(document.querySelector("[skullet-loading]")?.textContent).toContain("Weekly staff schedule");
+    fireEvent.click(screen.getByRole("button", { name: "New play" }));
+    await settle();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
   it("Run a play… keeps its failure with Retry spinning until the plays answer", async () => {
     const answer = failThenHold();
     render(<RunDialog env="box" workspaceId="ws" chip={mail} onClose={() => {}} />);
@@ -230,7 +245,7 @@ describe("Plays that did not load", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
     expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
-    expect(screen.queryByLabelText("Loading plays")).toBeNull();
+    expect(document.querySelector("[skullet-loading]")).toBeNull();
     await act(async () => answer());
     expect(screen.getByRole("list", { name: "Plays" })).toBeTruthy();
   });

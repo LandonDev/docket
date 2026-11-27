@@ -6,7 +6,7 @@
  * counted after an Undo; a picture that will not draw; Back's return to a hit or the nearest row;
  * a search that keeps its hits while the next words are asked; and the smaller lines.
  */
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "@shared/work/messages";
 import { MessagesDataProvider } from "./data";
@@ -151,7 +151,7 @@ describe("the conversation's read mark and its newest row", () => {
 
   it("keeps the bones on the column's measure", () => {
     mount({ messagesLoading: true }, "c_dana");
-    expect(screen.getByLabelText("Loading messages").className).toContain("[scrollbar-gutter:stable]");
+    expect(document.querySelector("[data-region][data-bones] [skullet-loading] [data-column-bones]")!.className).toContain("[scrollbar-gutter:stable]");
   });
 
   it("quotes 'Writer: words' whole, for the line to cut", () => {
@@ -235,9 +235,11 @@ describe("the list", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Clear filter" }));
   });
 
-  it("says its bones are loading conversations", () => {
+  it("says its bones are loading conversations", async () => {
     mount({ loading: true });
-    const bones = screen.getByRole("status", { name: "Loading conversations" });
+    const bones = document.querySelector("[data-region][data-bones]")!;
     expect(bones.getAttribute("aria-busy")).toBe("true");
+    // Past the bones' hold, the region says what it waits for.
+    await waitFor(() => expect(screen.getAllByRole("status").map((el) => el.textContent)).toContain("Loading conversations"));
   });
 });

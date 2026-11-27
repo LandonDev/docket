@@ -322,6 +322,6 @@ proposal shown as a card in the thread.
 
 ## When a read or link fails
 
-New routine works while the list is loading. The loading bones take the view's shape: the list and the detail, and under 640px the list alone. A known lost link holds it with one named line and Retry. A read that fails after one landed keeps the routines under the failed line with Retry (`failedOver` in plays/data.ts); with nothing read yet, the failure is the view. When the host reports why its LifeOS session is down, a waiting row uses those words, their head word lowered after the trigger's comma ("When mail comes from a sponsor, not signed in to LifeOS on the box").
+New routine and New play work while their lists are loading. The loading bones are the view's own rows and detail drawn from a sample (docs/agents/loading-bones.md): the list and the detail, and under 640px the list alone. A known lost link holds it with one named line and Retry. A read that fails after one landed keeps the routines under the failed line with Retry (`failedOver` in plays/data.ts); with nothing read yet, the failure is the view. When the host reports why its LifeOS session is down, a waiting row uses those words, their head word lowered after the trigger's comma ("When mail comes from a sponsor, not signed in to LifeOS on the box").
 
 Under 640px the list stands alone until he picks one: no row is marked open there before that (the wide view shows the first routine's detail, so its row keeps the open ground there).

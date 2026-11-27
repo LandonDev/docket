@@ -3,14 +3,14 @@ import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { cn } from "../../lib/cn";
 import { useEffect } from "react";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones, Region } from "../../components/bones";
 import { addDays, startOfDay } from "work-kit/views/lib/agenda";
 import { type LifeosSession, useLifeosQuery, useLifeosSession } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
 import { DownLine, HostLine } from "../shell/DownLine";
 import { useHostLive } from "../shell/lifeosLive";
 import { useAgainKept, type AgainKept } from "../shell/againKept";
-import { dayLines, opFields, opStart, type CalendarOp, type CalendarSource, type DayEvent } from "./calendarAct";
+import { dayLines, opFields, opStart, type CalendarOp, type CalendarSource, type DayEvent, type DayLine } from "./calendarAct";
 
 /**
  * A held calendar act in the Outbox (prototype outbox.html, a held invite):
@@ -50,6 +50,10 @@ function EventOf({ id, again, ...props }: Props & { id: string; again: AgainKept
   return <Body {...props} event={value} read={state} onRetry={again.retry} retrying={retrying} />;
 }
 
+/** What the facts the event gives are drawn with while it is read, and a shared calendar's name while the list is. */
+const SAMPLE_FIELDS = { Event: "Practice with Lafayette", When: "Thu, Nov 26, 3:00 – 4:30 PM" } as const;
+const SAMPLE_CALENDAR = "Varsity schedule";
+
 function Body({ op, event, session, sector, read = "none", onRetry, retrying = false }: Props & { event: DayEvent | null; read?: EventRead; onRetry?: () => void; retrying?: boolean }) {
   const start = opStart(op, event);
   const from = start === null ? null : startOfDay(start);
@@ -75,8 +79,10 @@ function Body({ op, event, session, sector, read = "none", onRetry, retrying = f
           ? missing.map((label) => (
               <div key={label} data-field-bones="" className="contents">
                 <dt className="truncate text-muted-foreground">{label}</dt>
-                <dd className="flex h-5 items-center">
-                  <Skeleton className={cn("h-3", label === "Event" ? "w-40" : "w-32")} />
+                <dd className="min-w-0 text-foreground">
+                  <Bones inline label="">
+                    {SAMPLE_FIELDS[label]}
+                  </Bones>
                 </dd>
               </div>
             ))
@@ -84,9 +90,11 @@ function Body({ op, event, session, sector, read = "none", onRetry, retrying = f
         {fields.map((field) => (
           <div key={field.label} className="contents">
             <dt className="truncate text-muted-foreground">{field.label}</dt>
-            {naming && field.label === "Calendar" ? (
-              <dd data-field-bones="" className="flex h-5 items-center">
-                <Skeleton className="h-3 w-36" />
+            {field.label === "Calendar" ? (
+              <dd data-field-bones={naming ? "" : undefined} className="min-w-0 break-words text-foreground">
+                <Region inline loading={naming} label="" bones={SAMPLE_CALENDAR}>
+                  {naming ? null : field.value}
+                </Region>
               </dd>
             ) : (
               <dd className="min-w-0 break-words text-foreground">{field.people ? <People people={field.people} /> : field.value}</dd>
@@ -167,13 +175,31 @@ function Day({ op, event, session, sector, from, again }: Props & { event: DayEv
         </Button>
       </p>
     );
-  if (day.status === "loading") return <DayBones />;
-  const lines = dayLines(op, day.value, event, sector);
+  const lines = day.status === "ready" ? dayLines(op, day.value, event, sector) : null;
   // A day of this event alone says nothing the fields above do not: drawn only when something else is on it.
-  if (!lines.some((line) => !line.own && line.key !== op.eventId)) return null;
+  const shown = lines?.some((line) => !line.own && line.key !== op.eventId) ? lines : null;
   return (
-    <section aria-label="That day" className="flex max-w-[440px] flex-col">
-      <h3 className="mb-1 text-xs font-medium text-muted-foreground">{new Date(from).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</h3>
+    <Region loading={day.status === "loading"} label="Reading that day" bones={<DayLines heading={SAMPLE_DAY.heading} lines={SAMPLE_DAY.lines} bones />}>
+      {shown ? <DayLines heading={new Date(from).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} lines={shown} /> : null}
+    </Region>
+  );
+}
+
+/** What the day is drawn with while LifeOS reads it: its heading and three rows. */
+const SAMPLE_DAY: { heading: string; lines: DayLine[] } = {
+  heading: "Thu, Nov 26",
+  lines: [
+    { key: "sample:1", at: "9:00 AM", sector: "purdue", title: "Staff stand-up", own: false, minute: 0 },
+    { key: "sample:2", at: "3:00 PM", sector: "purdue", title: "Practice with Lafayette", own: true, minute: 1 },
+    { key: "sample:3", at: "6:30 PM", sector: "life", title: "Dinner", own: false, minute: 2 },
+  ],
+};
+
+/** The day's events on its own grid: a time, the sector's dot, the title, the act's own in weight. */
+function DayLines({ heading, lines, bones = false }: { heading: string; lines: readonly DayLine[]; bones?: boolean }) {
+  return (
+    <section aria-label="That day" data-day-bones={bones ? "" : undefined} className="flex max-w-[440px] flex-col">
+      <h3 className="mb-1 text-xs font-medium text-muted-foreground">{heading}</h3>
       {lines.map((line) => (
         <div key={line.key} className="grid h-8 grid-cols-[64px_16px_minmax(0,1fr)] items-center gap-x-2 border-border text-[13px] not-first-of-type:border-t">
           <time className="text-xs text-muted-foreground tabular-nums">{line.at}</time>
@@ -182,25 +208,5 @@ function Day({ op, event, session, sector, from, again }: Props & { event: DayEv
         </div>
       ))}
     </section>
-  );
-}
-
-/** The day's shape while LifeOS reads it: its heading and three rows on the rows' own grid. */
-function DayBones() {
-  return (
-    <div role="status" aria-label="Reading that day" data-day-bones="" className="flex max-w-[440px] flex-col">
-      <div className="mb-1 flex h-4 items-center">
-        <Skeleton className="h-3 w-24" />
-      </div>
-      {["w-1/2", "w-2/3", "w-2/5"].map((w) => (
-        <div key={w} className="grid h-8 grid-cols-[64px_16px_minmax(0,1fr)] items-center gap-x-2">
-          <Skeleton className="h-3 w-12" />
-          <span className="grid size-4 place-items-center">
-            <Skeleton className="size-2 rounded-full" />
-          </span>
-          <Skeleton className={cn("h-3", w)} />
-        </div>
-      ))}
-    </div>
   );
 }

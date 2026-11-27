@@ -160,7 +160,7 @@ describe("a host that says its LifeOS is connecting", () => {
     const wait = await screen.findByText("LifeOS is still connecting on the box");
     expect(wait.closest("[data-lifeos-waits]")).toBeTruthy();
     expect(document.body.textContent!.split("LifeOS is still connecting on the box").length - 1).toBe(1);
-    expect(document.querySelector("[aria-label='Loading Mail']")).toBeNull();
+    expect(document.querySelector("[data-region][data-bones]")).toBeNull();
     expect(document.querySelector("[data-view-heading]")!.textContent).toBe("Mail");
     expect(framePresses()).toEqual([]);
     // Back: Mail draws, with its own head again.
@@ -221,7 +221,7 @@ describe("a thread's cards on one down session", () => {
     await waitFor(() => expect(document.querySelectorAll("[data-offer-session]")).toHaveLength(1), { timeout: 10_000 });
     expect(document.querySelector("[data-offer-session]")!.hasAttribute("data-lifeos-waits")).toBe(true);
     expect(document.body.textContent!.split("LifeOS is still connecting on the box").length - 1).toBe(1);
-    expect(document.querySelectorAll("div[aria-label=Loading]")).toHaveLength(0);
+    expect(document.querySelectorAll("[data-region][data-bones]")).toHaveLength(0);
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     // The wait turns down: the same first card says the new state with its press.
     act(() => setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] } as never));
@@ -235,7 +235,7 @@ describe("a thread's cards on one down session", () => {
   it("keep their bones while the host's status is not heard yet: no wait is named before it is known", async () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, onPush: () => () => {}, onOpen: () => () => {}, request: () => new Promise(() => {}) } as never);
     render(<Thread ids={["c-task", "c-event"]} />);
-    await waitFor(() => expect(document.querySelectorAll("div[aria-label=Loading]")).toHaveLength(2));
+    await waitFor(() => expect(document.querySelectorAll("[data-region][data-bones]")).toHaveLength(2));
     expect(document.querySelector("[data-lifeos-waits]")).toBeNull();
   });
 });

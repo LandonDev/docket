@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { cloneElement, useId, useMemo, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 import { ChevronRight } from "../../chrome/icons";
 import { makeFunctionReference } from "convex/server";
 import { TargetField } from "work-kit/projects";
@@ -9,7 +9,7 @@ import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Input } from "@renderer/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Region } from "@renderer/components/bones";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "@renderer/components/ui/collapsible";
 import { ChoiceSelect } from "../../components/choice-select";
 import { ConfirmDialog, DialogFooter as Footer, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -108,6 +108,42 @@ export function rulesLine(project: Pick<ProjectMeta, "preamble" | "preambleEnabl
 }
 
 /**
+ * A field that waits on LifeOS's read: while it is out, the field's 28px box holding a sample of its words (a border all
+ * round and one label, so Skullet draws it one block), and the row holds still when the field lands. The row's label is
+ * handed on to the field (`FieldRow` names its child).
+ */
+function WaitingField({
+  ready,
+  words,
+  className,
+  "aria-labelledby": labelledBy,
+  children,
+  ...data
+}: {
+  ready: boolean;
+  words: string;
+  className: string;
+  "aria-labelledby"?: string;
+  "data-state-loading"?: string;
+  "data-target-loading"?: string;
+  children: ReactElement<{ "aria-labelledby"?: string }> | null;
+}) {
+  return (
+    <Region
+      loading={!ready}
+      label=""
+      bones={
+        <span {...data} className={cn("flex h-7 items-center rounded-md border border-input px-2.5 text-[13px]", className)}>
+          {words}
+        </span>
+      }
+    >
+      {children ? cloneElement(children, { "aria-labelledby": labelledBy }) : null}
+    </Region>
+  );
+}
+
+/**
  * The sheet's fields, with no store behind them: what a preview and a test
  * draw. Name, State and Target are LifeOS's and come first; while LifeOS
  * cannot be reached they stand read-only and one line under them says why.
@@ -202,20 +238,15 @@ export function WorkProjectFields({
           {reach.status === "local" ? null : (
             <div className="-my-2 flex flex-col">
               <FieldRow label="State">
-                {state && reach.status === "ready" ? (
-                  <ChoiceSelect label="State" size="sm" value={state} options={PROJECT_STATES} onChange={onState} />
-                ) : (
-                  // The select's own box, so the row holds still when the state lands.
-                  <Skeleton data-state-loading className="h-7 w-24 rounded-md" />
-                )}
+                <WaitingField ready={!!state && reach.status === "ready"} words="Active" className="w-24" data-state-loading="">
+                  {state && reach.status === "ready" ? <ChoiceSelect label="State" size="sm" value={state} options={PROJECT_STATES} onChange={onState} /> : null}
+                </WaitingField>
               </FieldRow>
               <FieldRow label="Target">
-                {reach.status === "ready" ? (
-                  // The kit's own field, as the project's page and New project draw it: the calendar, and No target date to clear.
-                  <TargetField value={targetMs(target) ?? undefined} onChange={(ms) => onTarget?.(targetDay(ms))} className="h-7 w-36 text-[13px] tabular-nums" />
-                ) : (
-                  <Skeleton data-target-loading className="h-7 w-36 rounded-md" />
-                )}
+                <WaitingField ready={reach.status === "ready"} words="No target" className="w-36 tabular-nums" data-target-loading="">
+                  {/* The kit's own field, as the project's page and New project draw it: the calendar, and No target date to clear. */}
+                  {reach.status === "ready" ? <TargetField value={targetMs(target) ?? undefined} onChange={(ms) => onTarget?.(targetDay(ms))} className="h-7 w-36 text-[13px] tabular-nums" /> : null}
+                </WaitingField>
               </FieldRow>
             </div>
           )}

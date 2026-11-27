@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RowActions } from "../../chrome/WorkspaceSessions";
 import type { SessionMeta } from "../../lib/tcserver/types";
@@ -234,16 +234,16 @@ describe("the Projects section", () => {
     expect(workViewNow()).toBeNull();
   });
 
-  it("draws two rows' bones under the heading while LifeOS's first read is out, and the rows once they land (council R1-A2)", () => {
+  it("draws two rows' bones under the heading while LifeOS's first read is out, and the rows once they land (council R1-A2)", async () => {
     setColumnProjects("w-bones", []);
     act(() => setColumnProjectsReading("w-bones", true));
     const view = render(<WorkProjectsSection workspaceId="w-bones" linked groups={[]} onOpen={() => {}} />);
-    expect(view.container.querySelectorAll("[data-project-bones] > span")).toHaveLength(2);
+    expect(view.container.querySelectorAll("[data-region][data-bones] [skullet-loading] [data-project-bones] > div")).toHaveLength(2);
     act(() => {
       setColumnProjects("w-bones", [{ id: "lan", name: "Spring LAN", status: "active", targetDate: null }]);
       setColumnProjectsReading("w-bones", false);
     });
-    expect(view.container.querySelector("[data-project-bones]")).toBeNull();
+    await waitFor(() => expect(view.container.querySelector("[data-project-bones]")).toBeNull());
   });
 
   it("is a plain heading in a job with no LifeOS sector, and nothing there with no project", () => {
@@ -368,8 +368,8 @@ describe("the Threads section", () => {
     store.listed = [];
     const { container } = render(<WorkThreadsSection items={[]} actions={actions()} requested={30} onMore={() => {}} archived={scope} />);
     expect(screen.getByRole("heading", { name: "Threads" })).toBeTruthy();
-    expect(container.querySelector("[data-work-threads]")!.getAttribute("aria-busy")).toBe("true");
-    expect(container.querySelectorAll("[data-thread-bones] > span")).toHaveLength(2);
+    expect(container.querySelector("[data-work-threads] [data-region]")!.getAttribute("aria-busy")).toBe("true");
+    expect(container.querySelectorAll("[skullet-loading] [data-thread-bones] > div")).toHaveLength(2);
   });
 });
 

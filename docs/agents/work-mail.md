@@ -260,6 +260,15 @@ and under 640px of view the list and the open mail take turns (`narrow`):
 the reader's toolbar leads with the way back, and the keys move a row
 without opening it until Enter.
 
+While the view's chunk comes and while the session opens, Mail is its own
+frame in Skullet's bones (`MailBones`, mail/bones.tsx; docs/agents/loading-bones.md):
+the list's head, its field and eight rows in work-kit's row grid (the 20px
+gutter, the 32px face cell, 68px rows 1px apart) at the kept width, beside the
+reading pane's subject, header and lines, all from sample words. Once the
+mailbox mounts, work-kit draws its own waits (`ThreadListSkeleton`,
+`PaneSkeleton` and `BodySkeleton` in its mail folder, and its settings'): those
+are the package's, grey bars on the `skeleton` fill, not Skullet's.
+
 Keys, selection, bulk acts with one Undo, search operators, Snooze, Delete
 and Trash, Report spam, Unsubscribe and the invitation card are work-kit's
 (its mail README); an invitation is answered by LifeOS's own calendar act
@@ -674,7 +683,7 @@ docs/DESIGN.md "The Mail view"):
   Mail's own `write`, and a refusal gives the rows back with why, said on
   the card alone, no toast; the toast's Undo, once LifeOS took it, gives the
   rows back too (`undone` on the answer); a row the
-  job's mail does not hold has no tick; a row still reading draws its bones,
+  job's mail does not hold has no tick; a row still reading is the row itself drawn from a sample (a tick, a subject, a sender, a date) in its own region,
   and the press waits with no count until every row has answered), a task (New task filled in, filed by Mail's Make task
   when it names a mail) and an event (New event filled in,
   `NewEventDialog.initial`); the open form and what his Add came to are kept

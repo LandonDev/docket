@@ -6,6 +6,7 @@ import { AgendaMonth, AgendaWeek, type ViewsKit, ViewsKitProvider } from "work-k
 import { addDays, endOf, formatPeriod, groupByDay, leaveAt, localeWeekStart, shiftPeriod, startOfDay, viewRange } from "work-kit/views/lib/agenda";
 import { formatDayHeading, formatTime } from "work-kit/views/lib/format";
 import { ChevronLeft, ChevronRight, Plus } from "../../chrome/icons";
+import { Bones, Region } from "../../components/bones";
 import { ChoiceSelect } from "../../components/choice-select";
 import { ChoiceToggle } from "../../components/choice-toggle";
 import { Tip, useTruncated } from "../../components/tip";
@@ -16,7 +17,6 @@ import { Button } from "../../components/ui/button";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../../components/ui/press";
 import { reveal } from "../../components/ui/reveal";
-import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
 import { moveBetweenRows } from "../rowKeys";
 import { clockTime } from "../../lib/duration";
@@ -263,7 +263,42 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
   // The meeting's page (work/prep): before the event it prepares, after it follows up. Opening it starts nothing.
   const prepare = useMemo(() => (event: AgendaEvent) => void (workspaceId && openWorkView({ workspaceId, view: "prep", event: event._id })), [workspaceId]);
   const days = useMemo(() => (events && view === "list" ? groupByDay(events, from, to) : null), [events, view, from, to]);
-  if (!events) return <AgendaSkeleton view={view} />;
+  // The events are one read: its region's bones are the view he kept, drawn from a sample, and the events come in over them.
+  return (
+    <Region loading={!events} label="Loading Agenda" className={calendarRoom(view)} bones={() => <AgendaDrawing view={view} />}>
+      {events ? <Shown events={events} days={days} view={view} day={day} now={now} marked={marked} clashesOf={clashesOf} leaveOf={leaveOf} prepare={prepare} people={people} workspaceId={workspaceId} environmentId={environmentId} /> : null}
+    </Region>
+  );
+}
+
+/** The events once read: the Week's or the Month's grid, or the list's days. */
+function Shown({
+  events,
+  days,
+  view,
+  day,
+  now,
+  marked,
+  clashesOf,
+  leaveOf,
+  prepare,
+  people,
+  workspaceId,
+  environmentId,
+}: {
+  events: AgendaEvent[];
+  days: { day: number; events: AgendaEvent[] }[] | null;
+  view: AgendaShow;
+  day: number;
+  now: number;
+  marked: ReadonlySet<string>;
+  clashesOf: ReadonlyMap<string, readonly Clash[]>;
+  leaveOf: (event: AgendaEvent) => number | undefined;
+  prepare: (event: AgendaEvent) => void;
+  people: readonly DirectoryPerson[];
+  workspaceId: string | undefined;
+  environmentId: string;
+}) {
   // An event or a day picked in the week or month opens that day's list, where Prepare is.
   const toDay = (ms: number) => go({ view: "list", day: startOfDay(ms) });
   if (view !== "list")
@@ -460,30 +495,62 @@ function With({ people, workspaceId }: { people: readonly DirectoryPerson[]; wor
   );
 }
 
-/** The view's shape while its events are on their way: the list's rows, or the Week's or the Month's grid, by the view he kept. */
+/** The Week and the Month fill the body, as their grids do; the list is as tall as its days. */
+const calendarRoom = (view: AgendaShow): string | undefined => (view === "list" ? undefined : "h-full");
+
+/** The view's bones alone, while the session that reads its events is on its way. */
 function AgendaSkeleton({ view = "list" }: { view?: AgendaShow }) {
-  if (view !== "list") return <CalendarBones view={view} />;
-  // On the list's own grid: a day's heading over rows of the rows' height (a time; a title over a shorter place line), so
-  // nothing moves when the events land.
   return (
-    <div aria-hidden data-agenda-bones="list" className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-6 py-6">
-      {[3, 2].map((n, i) => (
-        <div key={i} className="flex flex-col">
-          <div className="mb-1 flex h-4 items-center px-3">
-            <Skeleton className="h-3 w-20" />
-          </div>
-          {Array.from({ length: n }, (_, j) => (
-            <div key={j} data-bone-row className="grid min-h-9 grid-cols-[88px_minmax(0,1fr)] gap-x-2 px-3 py-1.5">
-              <div className="flex h-5 items-center">
-                <Skeleton className="h-3 w-12" />
-              </div>
-              <div className="flex flex-col">
-                <div className="flex h-5 items-center">
-                  <Skeleton className={cn("h-3.5", j % 2 ? "w-1/3" : "w-1/2")} />
-                </div>
-                <div className="flex h-4 items-center">
-                  <Skeleton className="h-3 w-1/4" />
-                </div>
+    <Bones label="Loading Agenda" className={calendarRoom(view)}>
+      <AgendaDrawing view={view} />
+    </Bones>
+  );
+}
+
+/*
+ * The sample the bones are drawn from. Nobody reads it: its lengths give the list the shape of a real week, a time,
+ * a title and where it is, two days of them. Fixed literals, no clock.
+ */
+export const SAMPLE_AGENDA_DAYS = [
+  {
+    heading: "Today",
+    events: [
+      { time: "9:00 AM", title: "Staff stand-up", place: "Room 2140" },
+      { time: "11:30 AM", title: "Budget review with the director", place: "Conference room B" },
+      { time: "3:00 PM", title: "Varsity scrimmage", place: "Esports arena" },
+    ],
+  },
+  {
+    heading: "Tomorrow",
+    events: [
+      { time: "10:00 AM", title: "Caster tryouts", place: "Studio" },
+      { time: "2:30 PM", title: "One on one", place: "Office" },
+    ],
+  },
+] as const;
+const SAMPLE_WEEKDAYS = ["Mon 23", "Tue 24", "Wed 25", "Thu 26", "Fri 27", "Sat 28", "Sun 29"] as const;
+const SAMPLE_WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+/** A month's six weeks of day numbers: the last days of the month before, the month, the first of the next. */
+const SAMPLE_MONTH = [...[26, 27, 28, 29, 30, 31], ...Array.from({ length: 30 }, (_, i) => i + 1), ...[1, 2, 3, 4, 5, 6]];
+
+/**
+ * The view he kept, drawn from the sample: the list on its own rows' grid and height (a day's heading over a time, a
+ * title over the place), or the Week's or the Month's grid. Written out rather than drawn by `EventRow`, whose menu
+ * reads the job's name and the plays it may run.
+ */
+function AgendaDrawing({ view }: { view: AgendaShow }) {
+  if (view !== "list") return <CalendarDrawing view={view} />;
+  return (
+    <div data-agenda-bones="list" className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-6 py-6">
+      {SAMPLE_AGENDA_DAYS.map(({ heading, events }) => (
+        <div key={heading} className="flex flex-col">
+          <h2 className="mb-1 px-3 text-xs font-medium">{heading}</h2>
+          {events.map((event) => (
+            <div key={event.title} data-bone-row className="grid min-h-9 grid-cols-[88px_minmax(0,1fr)] gap-x-2 px-3 py-1.5 items-baseline">
+              <span className="text-xs leading-5 tabular-nums">{event.time}</span>
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate text-[13px] leading-5">{event.title}</span>
+                <span className="truncate text-xs">{event.place}</span>
               </div>
             </div>
           ))}
@@ -493,24 +560,27 @@ function AgendaSkeleton({ view = "list" }: { view?: AgendaShow }) {
   );
 }
 
-/** The Week's or the Month's bones: the weekdays over the grid's cells, on the grid's own inset. */
-function CalendarBones({ view }: { view: "week" | "month" }) {
-  const cells = view === "month" ? 42 : 7;
+/** The Week's or the Month's grid: the weekdays over the cells, on the grid's own inset; a month's cells hold their day. The
+ *  hairlines are drawn as they are (`skullet-own`): an empty cell is a leaf Skullet would hide. */
+function CalendarDrawing({ view }: { view: "week" | "month" }) {
+  const heads = view === "month" ? SAMPLE_WEEKDAY_NAMES : SAMPLE_WEEKDAYS;
   return (
-    <div aria-hidden data-agenda-bones={view} className="flex h-full min-h-[480px] flex-col px-6 pt-2 pb-6">
+    <div data-agenda-bones={view} className="flex h-full min-h-[480px] flex-col px-6 pt-2 pb-6">
       <div className={cn("grid grid-cols-7 pb-3", view === "week" && "ps-14")}>
-        {Array.from({ length: 7 }, (_, i) => (
-          <div key={i} className="px-2">
-            <Skeleton className="h-3 w-8" />
-          </div>
+        {heads.map((head) => (
+          <span key={head} className="truncate px-2 text-xs leading-4">
+            {head}
+          </span>
         ))}
       </div>
       <div className={cn("grid min-h-0 flex-1 grid-cols-7 border-s border-t border-border", view === "month" ? "grid-rows-6" : "ms-14")}>
-        {Array.from({ length: cells }, (_, i) => (
-          <div key={i} className="border-e border-b border-border p-2">
-            {view === "month" ? <Skeleton className="h-3 w-4" /> : null}
-          </div>
-        ))}
+        {view === "month"
+          ? SAMPLE_MONTH.map((n, i) => (
+              <div key={i} className="border-e border-b border-border p-2">
+                <span className="text-xs leading-4 tabular-nums">{n}</span>
+              </div>
+            ))
+          : SAMPLE_WEEKDAYS.map((head) => <div key={head} skullet-own="" className="border-e border-b border-border" />)}
       </div>
     </div>
   );

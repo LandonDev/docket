@@ -12,7 +12,7 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones } from "../../components/bones";
 import { loadToast } from "../../components/ui/toaster";
 import { useEnvironments } from "../../lib/connection";
 import { linkMay } from "../../lib/linkMay";
@@ -91,9 +91,18 @@ export function addMenuRows(state: AddMenuState, free: readonly string[], names?
         ? [{ kind: "note", id: "work:connecting", content: <span className="text-muted-foreground">{connectingWords(host)}</span> }]
         : state === null
           ? // No status heard yet: the host has said nothing, so a muted bone in the sectors' place, never a wait it did not say.
-            [{ kind: "note", id: "work:reading", content: <span role="status" aria-label="Reading LifeOS" className="flex h-4 items-center"><Skeleton className="h-3 w-28" /></span> }]
+            [{ kind: "note", id: "work:reading", content: <SectorsBones /> }]
           : down(state);
   return [...top, ...(top.length ? [{ kind: "sep" } as const] : []), { kind: "item", id: "work:add-unlinked", label: "Without a sector…", icon: dotIcon(null) }];
+}
+
+/** The sectors' place while the host has said nothing: one sector's row words, muted, drawn as bones. */
+function SectorsBones() {
+  return (
+    <Bones label="Reading LifeOS">
+      <span className="flex h-4 items-center text-muted-foreground">CosmicGames</span>
+    </Bones>
+  );
 }
 
 /**

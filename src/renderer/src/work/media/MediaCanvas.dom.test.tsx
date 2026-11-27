@@ -152,9 +152,10 @@ describe("the media canvas", () => {
     // Still making the copy this viewer plays: the bones, at the probe's shape.
     host.view = { itemId: "item1", kind: "video", versions: [{ ...tall, state: "preparing", plays: [] }], notes: [], mode: "writes", shared: false, rev: 1 };
     const loading = render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
+    // Before the view is read the frame is a bone at 16:9; once the probe is in, it stands at the short's own shape.
     const bone = await waitFor(() => {
       const el = loading.container.querySelector<HTMLElement>("[data-media-frame-bone]");
-      expect(el).not.toBeNull();
+      expect(el?.getAttribute("style")).toContain(`aspect-ratio: ${1080 / 1920}`);
       return el!;
     });
     const boneBox = bone.getAttribute("style");
@@ -425,14 +426,14 @@ describe("the media canvas", () => {
     expect(failed.textContent).toContain("Couldn't open this file");
     expect(shell.statusLine).not.toHaveBeenCalledWith(expect.objectContaining({ tone: "failed" }));
     expect(document.querySelector("[data-media-loading]")).toBeNull();
-    expect(document.querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(document.querySelector("[data-bone], [skullet-loading]")).toBeNull();
   });
 
   it("holds one bone in the bar while the host reads the file, so the body does not drop when it lands", async () => {
     host.hold = true;
     host.view = { itemId: "item1", kind: "video", versions: [V3], notes: [], mode: "writes", shared: false, rev: 1 };
     render(<Bar item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
-    expect(document.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+    expect(document.querySelector("[data-media-bar-bone]")).not.toBeNull();
   });
 
   it("puts Versions at the bar's end, labelled, with its tip, and two cuts one over the other in a narrow player", async () => {

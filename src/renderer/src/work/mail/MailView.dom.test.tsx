@@ -17,9 +17,12 @@ const props = (state: string) => ({ env: "box", workspace: { id: "ws", environme
 describe("the Mail view", () => {
   it("draws its own list and pane bones while the session opens, and nothing when LifeOS did not answer", () => {
     const { container, rerender } = render(<View {...props("connecting")} />);
-    const bones = screen.getByRole("status", { name: "Loading Mail" });
-    expect(bones.querySelector("[data-surface-skeleton=rows]")).toBeTruthy();
-    expect(container.querySelector("[data-surface-skeleton=page]")).toBeNull();
+    // The mailbox's own frame drawn from a sample: the list's head and rows beside the reading pane.
+    const drawn = container.querySelector("[data-region][data-bones] [skullet-loading]")!;
+    expect(drawn.getAttribute("aria-hidden")).toBe("true");
+    expect(drawn.textContent).toContain("Inbox");
+    expect(drawn.textContent).toContain("The venue for Saturday");
+    expect(container.querySelector("[data-surface-skeleton]")).toBeNull();
     rerender(<View {...props("unreachable")} />);
     expect(container.textContent).toBe("");
     expect(screen.queryByRole("status")).toBeNull();

@@ -5,7 +5,7 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "../../components/ui/sheet";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Loaded } from "../../components/bones";
 import { shell } from "../../stores/shell";
 import { useEnvironments } from "../../lib/connection";
 import { withDeadline } from "../../lib/connection/openRead";
@@ -69,14 +69,21 @@ export function GrantsRow({ id }: { id: "work.grants" | "mail.grants" }) {
   const workOn = useWorkHosts();
   const jobName = useGrantJobName();
   const [open, setOpen] = useState(false);
-  // The count stands only once every computer answered; part of a list says it is part, the others named below.
-  const description = view.complete
+  // The count stands only once every computer answered (bones while one is out); part of a list says it is part, the
+  // others named below.
+  const words = view.complete
     ? grantsWords(view.grants, jobName)
     : failed.length
       ? view.grants.length
         ? `${grantsWords(view.grants, jobName)} on the computers that answered`
         : undefined
-      : <Skeleton className="mt-0.5 h-3 w-28" />;
+      : null;
+  const description =
+    words === undefined ? undefined : (
+      <Loaded inline data={words} sample="6 across 3 jobs" label="">
+        {(said) => said}
+      </Loaded>
+    );
   // Nothing read at all: the row holds its name, with no way into a sheet that could show nothing.
   const nothing = failed.length > 0 && failed.length >= workOn.size;
   return (

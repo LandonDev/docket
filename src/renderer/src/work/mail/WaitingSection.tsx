@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { MailWaiting } from "@shared/contract-work-mail";
+import { Region } from "../../components/bones";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
 import { registry, TimeoutError } from "../../lib/connection";
 import { nameInLine } from "../../lib/hostWords";
 import { useLinkMay } from "../../lib/linkMay";
@@ -182,9 +181,28 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
       <BusyLabel busy={retrying} label="Retry" />
     </Button>
   );
+  // The days' row's control, once a value is read: the state's press, Retry, or the select.
+  const control = !value ? null : noDays && stated ? (
+    action ? (
+      <Button variant="ghost" size="sm" onClick={action.run}>
+        {action.label}
+      </Button>
+    ) : null
+  ) : noDays && !live.waits && (value.error || failed || down) ? (
+    // Asks the whole section again; the switch below stays as it was while it is out.
+    retry
+  ) : value.days !== null && !noDays ? (
+    <DaysSelect
+      days={value.days}
+      picked={pickedDays}
+      onChange={(days) => {
+        setPickedDays(days);
+        void change({ days: Number(days) }).then(() => setPickedDays(null));
+      }}
+    />
+  ) : null;
   return (
-    <>
-      {load.status === "loading" ? <PageRowsSkeleton rows={[{ control: "select" }, { description: true, control: "switch" }]} /> : null}
+    <Region loading={load.status === "loading"} label="" bones={<WaitingBones />}>
       {load.status === "error" ? (
         <ReadFailure computer={env} error={load.error} retry={() => setAttempt((n) => n + 1)} />
       ) : null}
@@ -203,28 +221,11 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
             }
             error={muted ? undefined : daysWords}
           >
-            {live.again ? (
-              <Skeleton data-days-again className="h-7 w-32" />
-            ) : noDays && stated ? (
-              action ? (
-                <Button variant="ghost" size="sm" onClick={action.run}>
-                  {action.label}
-                </Button>
-              ) : null
-            ) : noDays && !live.waits && (value.error || failed || down) ? (
-              // Asks the whole section again; the switch below stays as it was while it is out.
-              retry
-            ) : value.days !== null && !noDays ? (
-              <ChoiceSelect
-                label="Count sent mail as unanswered after"
-                size="sm"
-                value={pickedDays ?? String(value.days)}
-                options={DAY_CHOICES.some((c) => c.value === String(value.days)) ? DAY_CHOICES : [...DAY_CHOICES, { value: String(value.days), label: `${value.days} working days` }]}
-                onChange={(days) => {
-                  setPickedDays(days);
-                  void change({ days: Number(days) }).then(() => setPickedDays(null));
-                }}
-              />
+            {live.again || control ? (
+              // Read again now the host is back: the select itself, held, until the read lands.
+              <Region loading={!!live.again} label="" className="shrink-0" bones={<DaysSelect days={SAMPLE_DAYS} disabled again />}>
+                {live.again ? null : control}
+              </Region>
             ) : null}
           </SettingRow>
           <SettingRow id="job.nudges" saved={routineSaved} description="Starts a thread each time one comes due">
@@ -233,6 +234,38 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
           {dialog}
         </>
       ) : null}
+    </Region>
+  );
+}
+
+/** The days a row is drawn with while it waits: the setting's own default. */
+const SAMPLE_DAYS = 3;
+
+/** How long sent mail waits before it counts as unanswered, in working days. */
+function DaysSelect({ days, picked, disabled, again, onChange }: { days: number; picked?: string | null; disabled?: boolean; again?: boolean; onChange?: (days: string) => void }) {
+  const select = (
+    <ChoiceSelect
+      label="Count sent mail as unanswered after"
+      size="sm"
+      disabled={disabled}
+      value={picked ?? String(days)}
+      options={DAY_CHOICES.some((c) => c.value === String(days)) ? DAY_CHOICES : [...DAY_CHOICES, { value: String(days), label: `${days} working days` }]}
+      onChange={onChange ?? (() => {})}
+    />
+  );
+  return again ? <span data-days-again="">{select}</span> : select;
+}
+
+/** The section's two rows while it reads, at rest: the select at its default, the switch off. */
+function WaitingBones() {
+  return (
+    <>
+      <SettingRow id="job.unanswered">
+        <DaysSelect days={SAMPLE_DAYS} disabled />
+      </SettingRow>
+      <SettingRow id="job.nudges" description="Starts a thread each time one comes due">
+        <SettingSwitch label="Draft nudges by themselves" on={false} onChange={() => {}} />
+      </SettingRow>
     </>
   );
 }

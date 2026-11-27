@@ -6,17 +6,17 @@ import { RowsMenu } from "../../chrome/menuRows";
 import { ChevronDown, X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bone, Bones } from "../../components/bones";
 import { Tip } from "../../components/tip";
 import { dayTime } from "../../lib/duration";
 import { OpenFailed } from "../canvas/FetchState";
 import { forgetWithItems } from "../canvas/gone";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { Comment, History, ZoomIn, ZoomOut } from "../icons";
-import { Notes, NotesSkeleton } from "./Notes";
+import { Notes, NotesBones } from "./Notes";
 import { CommentPopover } from "./parts";
 import { Picture, type Zoom } from "./Picture";
-import { Player, PlayerSkeleton, type PlayerHandle, type Stretch } from "./Player";
+import { Player, PlayerBones, type PlayerHandle, type Stretch } from "./Player";
 import { shownPlay } from "./plays";
 import { loadMedia, mediaActions, useMedia, type MediaActions } from "./store";
 
@@ -306,13 +306,13 @@ function Loading({ kind, version }: { kind: "image" | "video"; version?: MediaVe
   if (kind === "image")
     return (
       <div data-media-loading className="grid size-full place-items-center bg-(--stage)">
-        {word ? <Preparing word={word} progress={version?.progress} /> : version && version.state !== "probing" ? null : <Skeleton className="aspect-[4/5] w-[40%] rounded-lg" />}
+        {word ? <Preparing word={word} progress={version?.progress} /> : version && version.state !== "probing" ? null : <Bone className="aspect-[4/5] w-[40%] rounded-lg" />}
       </div>
     );
   return (
     <div data-media-loading>
-      <PlayerSkeleton line={word ? <Preparing word={word} progress={version?.progress} /> : undefined} probe={version?.probe} />
-      {word || (version && version.state !== "probing") ? null : <NotesSkeleton />}
+      <PlayerBones line={word ? <Preparing word={word} progress={version?.progress} /> : undefined} probe={version?.probe} />
+      {word || (version && version.state !== "probing") ? null : <NotesBones />}
     </div>
   );
 }
@@ -335,7 +335,14 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
   const { view, error } = useMedia(env, item.id);
   const { shown, other } = shownOf(view, state);
   // While the host reads the file the bar holds one bone where the mode will be, so the body does not drop 32px when it lands.
-  if (!view) return error ? null : <Skeleton className="h-3 w-30" />;
+  if (!view)
+    return error ? null : (
+      <Bones label="">
+        <span data-media-bar-bone className="text-xs tabular-nums">
+          1920 × 1080, 4.2 MB
+        </span>
+      </Bones>
+    );
   if (!shown) return null;
   const versions = view.versions;
   const set = (patch: Partial<MediaState>): void => setState({ ...state, ...patch });

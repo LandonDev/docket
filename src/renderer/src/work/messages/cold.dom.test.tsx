@@ -54,7 +54,7 @@ describe("the view from a cold start", () => {
     const opening: LifeosSession = { environmentId: "box", sector: "cosmic", client: null, state: "connecting" };
     const view = render(<View {...props(opening)} />);
     expect(screen.queryAllByRole("option")).toHaveLength(0);
-    expect(document.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    expect(document.querySelector("[data-region][data-bones] [skullet-loading] [data-row-bones]")).not.toBeNull();
     const live: LifeosSession = {
       ...opening,
       state: "connected",

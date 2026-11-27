@@ -7,10 +7,10 @@ import { ThreadListPopover } from "../../chrome/ThreadListPopover";
 import { ProviderLead, TrailingType, markWords } from "../../chrome/RowMarks";
 import { InlineRename, MoreMenu, MoreRow, PlanReadyContext, type RowActions } from "../../chrome/WorkspaceSessions";
 import { useTruncated } from "../../components/tip";
+import { Bone, Region } from "../../components/bones";
 import { Button } from "../../components/ui/button";
 import { ItemButton } from "../../components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
-import { Skeleton } from "../../components/ui/skeleton";
 import { ROW_OPEN, ROW_SHOWS } from "../../components/ui/press";
 import { yields } from "../../components/ui/reveal";
 import { STATUS_WORD, StatusMark } from "../../components/ui/status";
@@ -105,6 +105,7 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
   };
   const now = Date.now();
   if (!linked && projects.rows.length === 0 && projects.quiet.length === 0) return null;
+  const waiting = reading && projects.rows.length === 0 && projects.quiet.length === 0;
   return (
     <section aria-label="Projects" data-work-projects className="flex flex-col gap-1">
       {linked ? (
@@ -130,10 +131,15 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
         <h3 className={HEADING}>Projects</h3>
       )}
       {/* LifeOS's first read still out: rows in their shape, never a bare heading that reads as none. */}
-      {reading && projects.rows.length === 0 && projects.quiet.length === 0 ? <RowBones rows={2} /> : null}
-      {projects.rows.map((row) => (
-        <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, current)} onOpen={openShown} />
-      ))}
+      {waiting || projects.rows.length ? (
+        <Region loading={waiting} label="Loading projects" bones={ProjectBones}>
+          <div className="flex flex-col gap-1">
+            {projects.rows.map((row) => (
+              <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, current)} onOpen={openShown} />
+            ))}
+          </div>
+        </Region>
+      ) : null}
       {projects.quiet.length > 0 ? (
         <>
           <Button variant="ghost" aria-expanded={quietOpen} onClick={() => setQuietOpen((was) => !was)} data-quiet-fold className={QUIET_ROW}>
@@ -146,15 +152,20 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
   );
 });
 
-/** A project row's shape while LifeOS's projects are on their way: the lead's dot and a name, 28px each. */
-function RowBones({ rows }: { rows: number }) {
+/** What the bones are drawn from: names of the lengths real ones run to. */
+const SAMPLE_PROJECTS = ["Spring league schedule", "Site refresh"];
+
+/** The projects while LifeOS's first read is out: `RailRow`'s box (28px, the lead's dot, 13px words), as the chunk's fallback draws it (chrome/WorkspaceSessions.tsx). */
+function ProjectBones() {
   return (
-    <div aria-hidden data-project-bones className="flex flex-col gap-1">
-      {Array.from({ length: rows }, (_, i) => (
-        <span key={i} className="flex h-7 items-center gap-2 px-3">
-          <Skeleton className="size-3 shrink-0 rounded-full" />
-          <Skeleton className={cn("h-3", i % 2 ? "w-16" : "w-24")} />
-        </span>
+    <div data-project-bones className="flex flex-col gap-1">
+      {SAMPLE_PROJECTS.map((name) => (
+        <div key={name} className="flex h-7 items-center gap-2 px-3 text-[13px]">
+          <span className="grid size-4 shrink-0 place-items-center">
+            <Bone className="size-3 rounded-full" />
+          </span>
+          <span className="min-w-0 truncate">{name}</span>
+        </div>
       ))}
     </div>
   );
@@ -210,24 +221,22 @@ export const WorkThreadsSection = memo(function WorkThreadsSection({
   const rows = items.map((item) => item.row);
   const { shown, hidden } = windowRows(rows, requested, actions.activeSessionId);
   const listing = useThreadsListing(archived.environmentIds);
-  // The job's host has not listed its threads yet (a cold start): the heading over two rows in their shape.
-  if (items.length === 0 && listing)
-    return (
-      <section aria-label="Threads" aria-busy data-work-threads className={SECTION}>
-        <h3 className={HEADING}>Threads</h3>
-        <ThreadBones />
-      </section>
-    );
   // With no live thread the heading stands over the archived row alone, and over nothing with none archived.
-  if (items.length === 0) return <ArchivedRow scope={archived} onOpen={actions.onOpen} headed />;
+  if (items.length === 0 && !listing) return <ArchivedRow scope={archived} onOpen={actions.onOpen} headed />;
+  // The job's host has not listed its threads yet (a cold start): the heading over two rows in their shape.
+  const waiting = items.length === 0;
   return (
     <section aria-label="Threads" data-work-threads className={SECTION}>
       <h3 className={HEADING}>Threads</h3>
-      {items.slice(0, shown.length).map((item) => (
-        <WorkThreadRow key={item.row.id} row={item.row} project={item.project} actions={actions} />
-      ))}
-      {hidden > 0 ? <MoreRow hidden={hidden} onMore={onMore} place="list" /> : null}
-      <ArchivedRow scope={archived} onOpen={actions.onOpen} />
+      <Region loading={waiting} label="Loading threads" bones={ThreadBones}>
+        <div className="flex flex-col gap-1">
+          {items.slice(0, shown.length).map((item) => (
+            <WorkThreadRow key={item.row.id} row={item.row} project={item.project} actions={actions} />
+          ))}
+          {hidden > 0 ? <MoreRow hidden={hidden} onMore={onMore} place="list" /> : null}
+        </div>
+      </Region>
+      {waiting ? null : <ArchivedRow scope={archived} onOpen={actions.onOpen} />}
     </section>
   );
 });
@@ -253,24 +262,29 @@ const listingChanges = (listener: () => void): (() => void) => {
   };
 };
 
-/** Two threads' shape, 48px each as a row is: the lead, the title's line and the line under it. */
+/** What the threads' bones are drawn from: a title and the line under it, of the lengths real ones run to. */
+const SAMPLE_THREADS = [
+  { title: "Draft the spring league schedule", line: "Spring LAN, 1 mail to send" },
+  { title: "Fix the sign-up form", line: "Site refresh" },
+];
+
+/** Two threads in `WorkThreadRow`'s box (48px: the lead, the title's line and the line under it), written out, since the row itself reads its hosts and the shell. */
 function ThreadBones() {
   return (
-    <div aria-hidden data-thread-bones className="flex flex-col gap-1">
-      {["w-3/4", "w-1/2"].map((width) => (
-        <span key={width} className="flex gap-2 px-3 py-1.5">
+    <div data-thread-bones className="flex flex-col gap-1">
+      {SAMPLE_THREADS.map((thread) => (
+        <div key={thread.title} className="flex gap-2 px-3 py-1.5">
           <span className="grid h-5 w-4 shrink-0 place-items-center">
-            <Skeleton className="size-3 rounded-full" />
+            <Bone className="size-3 rounded-full" />
           </span>
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="flex h-5 items-center">
-              <Skeleton className={cn("h-3", width)} />
+            <span className="flex h-5 min-w-0 items-baseline gap-2">
+              <span className="min-w-0 flex-1 truncate text-[13px] leading-5">{thread.title}</span>
+              <span className="shrink-0 text-xs tabular-nums">2h</span>
             </span>
-            <span className="flex h-4 items-center">
-              <Skeleton className="h-2.5 w-1/3" />
-            </span>
+            <span className="truncate text-xs leading-4">{thread.line}</span>
           </span>
-        </span>
+        </div>
       ))}
     </div>
   );

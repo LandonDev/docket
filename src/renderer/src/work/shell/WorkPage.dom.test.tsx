@@ -81,12 +81,12 @@ describe("Access for each job's new threads", () => {
     expect(document.querySelector('[data-job="j3"]')).toBeTruthy();
   });
 
-  it("waits as one bone under the heading, each row its name alone as when loaded, and a job still out has no way in", () => {
+  it("waits as one line of bones under the heading, each row its name alone as when loaded, and a job still out has no way in", () => {
     store.defaults.set("env_box:j1", { defaults: { permission: "edits" } });
     store.defaults.set("env_box:j2", { defaults: { permission: "auto" } });
     render(<JobsAccess />);
-    expect(document.querySelectorAll("[data-slot=skeleton]")).toHaveLength(1);
-    expect(document.querySelector("[data-job] [data-slot=skeleton]")).toBeNull();
+    expect(document.querySelectorAll("[data-region][data-bones]")).toHaveLength(1);
+    expect(document.querySelector("[data-job] [data-region]")).toBeNull();
     // No row says a line until all have answered: none jumps when the shared level lands.
     expect(document.querySelector('[data-job="j2"]')!.textContent).not.toContain("Full access");
     expect(document.querySelector('[data-job="j3"] [data-slot=open-cue]')).toBeNull();

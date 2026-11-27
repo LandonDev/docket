@@ -3,7 +3,7 @@ import type { LifeosState, LifeosStatus } from "@shared/contract-work-lifeos";
 import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { Field } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
@@ -25,6 +25,9 @@ function failureWords(err: unknown, host: string | undefined, act: string, write
 
 /** A link's name as the rail gives it, or nothing for a host this window does not know. */
 const hostOf = (environmentId: string): string | undefined => registry.environment(environmentId)?.name;
+
+/** A sign-in code's line: 16px on 24px, its figures even. */
+const CODE = "font-mono text-base font-medium leading-6 text-foreground tabular-nums";
 
 /**
  * Sign in by pairing (the host polls for its token itself), or, on this
@@ -118,18 +121,16 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
         <form onSubmit={(event) => void submit(event)}>
           <ModalBody>
             <div className="flex items-baseline justify-between gap-3">
-              {code ? (
-                <span className="font-mono text-base font-medium leading-6 text-foreground tabular-nums">{code.code}</span>
-              ) : codeError ? (
+              {code || !codeError ? (
+                // The code's own 24px line from a sample while it is asked for: nothing moves when it lands.
+                <Region loading={!code} label="Asking for a code" className="min-w-0" bones={<span data-code-bone className={CODE}>ABCD-1234</span>}>
+                  {code ? <span className={CODE}>{code.code}</span> : null}
+                </Region>
+              ) : (
                 // Bones are for an ask that is out: a failed one says so in the code's place, with Retry.
                 <p role="alert" data-code-failed className="min-w-0 text-xs leading-6 text-pretty text-destructive">
                   {codeError}
                 </p>
-              ) : (
-                // The code's own 24px line, a bone its width: nothing moves when it lands.
-                <div role="status" aria-label="Asking for a code" data-code-bone className="flex h-6 items-center">
-                  <Skeleton className="h-4 w-24" />
-                </div>
               )}
               {code && left > 0 ? (
                 <span className="text-xs text-muted-foreground tabular-nums">{`${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`}</span>

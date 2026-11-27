@@ -1,7 +1,7 @@
 import { clock, frameStart } from "@shared/mediaFrames";
 import type { FrameTable, MediaNote } from "@shared/contract-work-media";
 import { ROW_PRESS } from "../../components/ui/press";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones } from "../../components/bones";
 import { Author, authorOf } from "./parts";
 
 /**
@@ -64,17 +64,31 @@ export function Notes({
 /** A row that keeps its own fill (waiting, or the one playing): no hover wash over it, and the same step on a press. */
 const STEP_PRESS = "transition-[background-color] duration-(--dur-hover) ease-(--ease-out) active:bg-foreground/12 active:transition-none motion-reduce:transition-none";
 
-/** The list's three loading rows. */
-export function NotesSkeleton() {
+const SAMPLE_TABLE: FrameTable = { kind: "cfr", start: 0, rate: { num: 30, den: 1 }, count: 9000 };
+const sampleNote = (id: string, frame: number, body: string): MediaNote => ({
+  id,
+  itemId: "sample:item",
+  kind: "comment",
+  anchor: { versionId: "sample:v1", frame },
+  body,
+  by: "owner",
+  state: "kept",
+  resolved: false,
+  createdAt: 0,
+  updatedAt: 0,
+});
+/** Three comments at their moments: the list's bones. */
+const SAMPLE_NOTES: MediaNote[] = [
+  sampleNote("sample:1", 120, "Hold on the logo a beat longer"),
+  sampleNote("sample:2", 960, "Music comes in too early here"),
+  sampleNote("sample:3", 2400, "Swap this shot for the wide one from the finals"),
+];
+
+/** The list under the frame while the host reads the file: its rows, drawn from a sample at rest. */
+export function NotesBones() {
   return (
-    <div className="mt-2 flex flex-col gap-0.5 border-t border-border px-2 pt-2 pb-4">
-      {[62, 48, 70].map((w) => (
-        <div key={w} className="flex h-8 items-center gap-2 px-2">
-          <Skeleton className="h-3 w-7" />
-          <Skeleton className="size-5 rounded-full" />
-          <Skeleton className="h-3" style={{ width: `${w}%` }} />
-        </div>
-      ))}
-    </div>
+    <Bones label="">
+      <Notes notes={SAMPLE_NOTES} table={SAMPLE_TABLE} current={null} playing={null} onPick={() => undefined} />
+    </Bones>
   );
 }

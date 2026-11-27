@@ -195,7 +195,7 @@ describe("the grants' read", () => {
   it("holds bones while a computer is out, and says the count once all answered", () => {
     box.loaded = false;
     render(<GrantsRow id="work.grants" />);
-    expect(document.querySelector('[data-setting="work.grants"] [data-slot=skeleton]')).toBeTruthy();
+    expect(document.querySelector('[data-setting="work.grants"] [data-region][data-inline][data-bones]')).toBeTruthy();
   });
 
   it("opens the Outbox from the sheet, where a grant is made", async () => {

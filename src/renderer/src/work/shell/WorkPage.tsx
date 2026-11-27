@@ -4,7 +4,7 @@ import { ThreadDefaultsDialog } from "../../chrome/ThreadDefaultsDialog";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageError, PageRow } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Loaded } from "../../components/bones";
 import { awayStore, startAway, useAway } from "../../lib/away";
 import { useStore } from "zustand";
 import { registry, useEnvironments } from "../../lib/connection";
@@ -153,8 +153,8 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
   };
   return (
     <>
-      {/* While any set is out the line under the heading waits as one bone and no row says a line, as most will not. */}
-      <SettingSection of={computer === undefined ? "work.access" : "pc.jobs"} description={!settled ? <Skeleton className="inline-block h-3 w-64 align-middle" /> : common ? accessWords(common) : undefined}>
+      {/* While any set is out the line under the heading waits as its bones and no row says a line, as most will not. */}
+      <SettingSection of={computer === undefined ? "work.access" : "pc.jobs"} description={!settled || common ? <Loaded inline data={settled && common ? accessWords(common) : null} sample={accessWords("safe")} label="Loading access">{(words) => words}</Loaded> : undefined}>
         {failures}
         <ListFilter filter={filter} label="Find a job" />
         {missed.length ? (

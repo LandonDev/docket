@@ -4,10 +4,10 @@ import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { Check, Copy, Search } from "../../chrome/icons";
 import { Modal, ModalBody } from "../../chrome/Modal";
+import { Region } from "../../components/bones";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { GroupInput, InputGroup } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { Face } from "../mail/face";
@@ -103,19 +103,10 @@ export function NotAnsweredDialog({ env, workspaceId, answered, onClose }: { env
               </InputGroup>
               {/* A fixed height, so the dialog holds still while the list narrows. */}
               <div role="group" aria-label="People" className="-mx-2 h-48 overflow-x-hidden overflow-y-auto">
-                {shown.map((person) => (
-                  // The whole row takes the pointer; the box inside it takes the keyboard.
-                  <div key={person._id} data-pick-row={person._id} className="flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-[13px] transition-colors duration-(--dur-hover) hover:bg-foreground/5" onClick={() => toggle(person._id)}>
-                    <Checkbox aria-label={person.name} checked={picked.has(person._id)} onCheckedChange={() => toggle(person._id)} onClick={(e) => e.stopPropagation()} />
-                    <Face name={person.name} size="row" />
-                    <span className="flex min-w-0 flex-1 items-baseline gap-1">
-                      <span className="shrink-0 truncate text-foreground">{person.name}</span>
-                      {person.emails[0] ? <span className="min-w-0 truncate text-xs text-muted-foreground">{person.emails[0]}</span> : null}
-                    </span>
-                  </div>
-                ))}
-                {directory.status === "loading" ? <ListBones /> : null}
-                {rows && !shown.length ? <p className="px-2 py-1.5 text-[13px] text-muted-foreground">{query.trim() ? "No matches" : "No people in this job yet"}</p> : null}
+                <Region loading={directory.status === "loading"} label="Loading people" bones={() => <PersonRows people={SAMPLE_PEOPLE} picked={NONE} onToggle={() => undefined} />}>
+                  <PersonRows people={shown} picked={picked} onToggle={toggle} />
+                  {rows && !shown.length ? <p className="px-2 py-1.5 text-[13px] text-muted-foreground">{query.trim() ? "No matches" : "No people in this job yet"}</p> : null}
+                </Region>
               </div>
             </>
           ) : null}
@@ -131,16 +122,26 @@ export function NotAnsweredDialog({ env, workspaceId, answered, onClose }: { env
   );
 }
 
-function ListBones() {
-  return (
-    <div aria-busy className="flex flex-col px-2">
-      {[46, 34, 52, 40].map((w, i) => (
-        <div key={i} className="flex h-8 items-center gap-2">
-          <Skeleton className="size-4 rounded-[4px]" />
-          <Skeleton className="size-6 rounded-full" />
-          <Skeleton className="h-3" style={{ width: `${w}%` }} />
-        </div>
-      ))}
+/** The sector's people to tick: each row takes the pointer, the box inside it takes the keyboard. */
+function PersonRows({ people, picked, onToggle }: { people: readonly DirectoryPerson[]; picked: ReadonlySet<string>; onToggle(id: string): void }) {
+  return people.map((person) => (
+    <div key={person._id} data-pick-row={person._id} className="flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-[13px] transition-colors duration-(--dur-hover) hover:bg-foreground/5" onClick={() => onToggle(person._id)}>
+      <Checkbox aria-label={person.name} checked={picked.has(person._id)} onCheckedChange={() => onToggle(person._id)} onClick={(e) => e.stopPropagation()} />
+      <Face name={person.name} size="row" />
+      <span className="flex min-w-0 flex-1 items-baseline gap-1">
+        <span className="shrink-0 truncate text-foreground">{person.name}</span>
+        {person.emails[0] ? <span className="min-w-0 truncate text-xs text-muted-foreground">{person.emails[0]}</span> : null}
+      </span>
     </div>
-  );
+  ));
 }
+
+const NONE: ReadonlySet<string> = new Set();
+
+/** Four people, each with an address: the list's bones. */
+const SAMPLE_PEOPLE: readonly DirectoryPerson[] = [
+  { _id: "sample:1", name: "Marcus Lee", emails: ["mlee@example.edu"] },
+  { _id: "sample:2", name: "Priya Raman", emails: ["praman@example.edu"] },
+  { _id: "sample:3", name: "Jordan Ellis", emails: ["jellis@example.edu"] },
+  { _id: "sample:4", name: "Ana Ortiz", emails: ["aortiz@example.edu"] },
+];

@@ -236,6 +236,11 @@ the commit that mounts it.
    the same bundle at `/ui` at a phone's size, and in a tab hidden while its
    read lands. Frames and `walk.log` go to `.temp-code/findings/skullet/walk`
    (`--out`). Add your screen as a scene there, or film it the same way.
+   Work's views film through `bun scripts/journeys/bones-work-walk.ts
+   --views Mail,Agenda`: a pair with Work on, reading a LifeOS sandbox through
+   a hop that holds each request `--delay` ms, each view opened cold (the
+   window reloaded on it); frames and `walk.log` go to
+   `.temp-code/findings/skullet/work`.
 
 ## Speed
 

@@ -694,7 +694,7 @@ describe("Brief me", () => {
     host.page = facts({ rev: 2, state: "after", briefSessionId: "t-brief", briefUntil: NOW + 600_000, briefStartedAt: NOW - 60_000, doc: { ...emptyPrepDoc(), notes: { text: "Ask Dana about the van.", at: 1 } } });
     await mount();
     expect(head().getByRole("button", { name: "Follow up" })).toBeTruthy();
-    expect(screen.getByLabelText("The brief is being written")).toBeTruthy();
+    expect(document.querySelector('[data-writing="The brief is being written"]')).toBeTruthy();
     expect(await moreRows()).not.toContain("Brief me");
     expect(await moreRows()).toContain("Open thread");
   });
@@ -711,7 +711,7 @@ describe("Brief me", () => {
     const opened: string[] = [];
     workOpenPort.set((id) => void opened.push(id));
     await mount();
-    expect(screen.queryByLabelText("The brief is being written")).toBeNull();
+    expect(document.querySelector('[data-writing="The brief is being written"]')).toBeNull();
     host.page = facts({ rev: 1, state: "working", briefSessionId: "t-brief", briefUntil: NOW + 600_000 });
     await act(async () => fireEvent.click(head().getByRole("button", { name: "Brief me" })));
     expect(host.asked.map((a) => a.method)).toEqual(["work.prep.page", "work.prep.brief", "work.prep.page"]);
@@ -719,7 +719,7 @@ describe("Brief me", () => {
     expect(workViewNow()).toEqual({ workspaceId: "ws", view: "prep", event: "ev1" });
     expect(opened).toEqual([]);
     expect(head().queryByRole("button", { name: "Brief me" })).toBeNull();
-    expect(screen.getByLabelText("The brief is being written")).toBeTruthy();
+    expect(document.querySelector('[data-writing="The brief is being written"]')).toBeTruthy();
     // Preparing opens the thread
     fireEvent.click(head().getByRole("button", { name: "Preparing" }));
     expect(opened).toEqual(["t-brief"]);
@@ -732,7 +732,7 @@ describe("Brief me", () => {
     host.page = briefed();
     await push({ push: "work.prep", workspaceId: "ws", eventId: "ev1", rev: 2 });
     const brief = within(screen.getByRole("region", { name: "What matters" }));
-    expect(screen.queryByLabelText("The brief is being written")).toBeNull();
+    expect(document.querySelector('[data-writing="The brief is being written"]')).toBeNull();
     expect(brief.queryByRole("heading")).toBeNull();
     expect(brief.getByText("Tom declined; someone else carries the venue form.").tagName).toBe("P");
     // lines that land on an open page rise in a step apart; a page opened with its brief does not replay it
@@ -770,7 +770,7 @@ describe("Brief me", () => {
     host.page = facts({ rev: 1, state: "working", briefSessionId: "t-brief", briefUntil: NOW + 600_000 });
     threads.status = { "t-brief": "error" };
     await mount();
-    expect(screen.queryByLabelText("The brief is being written")).toBeNull();
+    expect(document.querySelector('[data-writing="The brief is being written"]')).toBeNull();
     await act(async () => fireEvent.click(head().getByRole("button", { name: "Brief me" })));
     expect(host.asked.find((a) => a.method === "work.prep.brief")!.params).toEqual({ workspaceId: "ws", eventId: "ev1", restart: true });
   });
@@ -1089,10 +1089,10 @@ describe("after the meeting", () => {
     threads.status = { "t-follow": "running" };
     await mount();
     expect(head().getByRole("button", { name: "Following up" })).toBeTruthy();
-    expect(screen.getByLabelText("The outcome is being written")).toBeTruthy();
+    expect(document.querySelector('[data-writing="The outcome is being written"]')).toBeTruthy();
     host.page = outcome();
     await push({ push: "work.prep", workspaceId: "ws", eventId: "ev1", rev: 5 });
-    expect(screen.queryByLabelText("The outcome is being written")).toBeNull();
+    expect(document.querySelector('[data-writing="The outcome is being written"]')).toBeNull();
   });
 
   it("stops saying Following up once the outcome has landed, though the thread is still drafting the mail", async () => {
