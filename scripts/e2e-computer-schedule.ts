@@ -16,8 +16,9 @@
  *  4. the clipboard: a copy, then at once a paste on A: the paste waits for a
  *     quiet clipboard, runs again, and the person's pasteboard comes back
  *  5. pause and Stop on a held step, and Stop during a session step
- *  6. the card: Run now, the lease ending on the next input, Skip, skipped
- *     earlier, and in Ask me the call's own card naming the session tier
+ *  6. the card, for a thread below Full access: Run now, the lease ending on
+ *     the next input, Skip, skipped earlier, and in Ask me the call's own
+ *     card naming the session tier; a Full-access thread runs now unasked
  *
  * It runs when asked, whether or not the person is using the Mac (the person
  * accepts the scratch windows coming forward), but never on a locked or dark
@@ -597,7 +598,9 @@ console.log(`\n[${leg}]`)
   scheduler.dispose()
   scheduler = makeScheduler(5_000)
   gate = scheduler
-  const t = thread('t6')
+  // Below Full access the tier card asks (src/shared/away.ts decideAsk). The thread is in edits; each call here
+  // runs with Full access's own rule for the act (no card of its own), so the one card is the tier's.
+  const t = thread('t6', 'edits')
   const cardsOf = () => registry.eventsAfter(t, 0).flatMap((r) => (r.event.type === 'approval-request' ? [r.event] : []))
   const untilCards = async (n: number, ms = 15_000): Promise<boolean> => {
     const end = Date.now() + ms
@@ -606,7 +609,7 @@ console.log(`\n[${leg}]`)
   }
   let typing = startTypist('w', 300, 60_000)
   await sleep(1_000)
-  const first = run(t, 'computer_act', { app: 'TextEdit', window: A.title, action: 'left_click', element: areaA })
+  const first = run(t, 'computer_act', { app: 'TextEdit', window: A.title, action: 'left_click', element: areaA }, 'auto')
   check('after 5 s one card', await untilCards(1))
   const card = cardsOf()[0]
   check(
@@ -628,7 +631,7 @@ console.log(`\n[${leg}]`)
   oneKey('w') // the person's next input ends the lease
   typing = startTypist('w', 300, 60_000)
   await sleep(1_000)
-  const second = run(t, 'computer_act', { app: 'TextEdit', window: A.title, action: 'left_click', element: areaA })
+  const second = run(t, 'computer_act', { app: 'TextEdit', window: A.title, action: 'left_click', element: areaA }, 'auto')
   check('a second card once the lease ended', await untilCards(2))
   const skipCard = cardsOf()[1]
   if (!skipCard) {
@@ -639,7 +642,7 @@ console.log(`\n[${leg}]`)
   await registry.approve(t, skipCard.requestId, false)
   const so = await second
   check('Skip: refused skipped', /the person did not choose Run now$/.test(so.steps[0] ?? ''), so.steps[0] ?? '')
-  const third = await run(t, 'computer_act', { app: 'TextEdit', window: A.title, action: 'left_click', element: areaA })
+  const third = await run(t, 'computer_act', { app: 'TextEdit', window: A.title, action: 'left_click', element: areaA }, 'auto')
   check('then skipped earlier with no card', /earlier in this turn/.test(third.steps[0] ?? '') && cardsOf().length === 2, third.steps[0] ?? '')
   stopTypist()
   await typing
@@ -656,6 +659,21 @@ console.log(`\n[${leg}]`)
   await registry.approve(t, own.requestId, true)
   const ao = await within(safe, 60_000, t)
   check('Allow: the click ran at the session tier with no second card', / · session · /.test(ao.steps.join('\n')) && cardsOf().length === 3, ao.steps.join(' | '))
+
+  // Full access allows the tier card unasked, as Away does: Run now with no card.
+  const full = thread('t6full')
+  await scheduler.settle(t, 'turn-end')
+  typing = startTypist('w', 300, 60_000)
+  await sleep(1_000)
+  const fullOut = await within(run(full, 'computer_act', { app: 'TextEdit', window: A.title, action: 'left_click', element: areaA }), 60_000, full)
+  stopTypist()
+  await typing
+  check(
+    'Full access: the click ran at the session tier with no card',
+    / · session · /.test(fullOut.steps.join('\n')) && !registry.eventsAfter(full, 0).some((r) => r.event.type === 'approval-request'),
+    fullOut.steps.join(' | ')
+  )
+  await scheduler.settle(full, 'turn-end')
 }
 
 for (const name of touchedLegs) {

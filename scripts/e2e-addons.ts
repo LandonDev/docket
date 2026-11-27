@@ -6,9 +6,10 @@
  *
  *  Paired, both isolated (own HOME, own vault, a dead provider), "mac"
  *  (darwin by the seam) linked to "box" (linux, the settings home):
- *   1. a mac thread calls app.addonAdd as the bridge does: the admin card on
- *      mac, allowed there; the row lands on the box written by the thread,
- *      and mac follows it
+ *   1. a mac thread in edits calls app.addonAdd as the bridge does: the admin
+ *      card on mac, denied (nothing added), then allowed; the row lands on the
+ *      box written by the thread, and mac follows it; a Full-access thread's
+ *      add raises no card and lands, and its remove asks nothing
  *   2. no FAKE_TOKEN in the grants file: needs-grant on both hosts; the value
  *      written: ready on both, and fake__whoami answers its sha256 prefix
  *   3. a person adds fakehttp on the box: needs-grant without the header's
@@ -363,9 +364,15 @@ try {
   check("mac routes the linked workspace's add-ons to the box", await until('the home is the box', 60_000, async () => (await rpc<{ home: { name: string } | null }>(mac, 'addons.list', { workspaceId: macWs.id })).home?.name === 'box'))
 
   // ── 1. a mac thread adds fake: the admin card, the row on the box ────
-  const macThread = await rpc<Meta>(mac, 'session.create', { provider: 'claude', projectId: macProject.id, title: 'Adds the fake add-on', threadType: 'chat', permission: 'auto' })
+  // Below Full access the add asks (src/shared/away.ts decideAsk); Full access allows it unasked, the half after this one.
+  const macThread = await rpc<Meta>(mac, 'session.create', { provider: 'claude', projectId: macProject.id, title: 'Adds the fake add-on', threadType: 'chat', permission: 'edits' })
+  const refusing = rpc<string>(mac, 'app.addonAdd', { sessionId: macThread.id, name: 'fake', description: 'A fake add-on for the proof', ...stdioSpec() }, 120_000)
+  const deniedCard = await answerCard(mac, macThread.id, false)
+  const refusedAnswer = await refusing
+  check('an edits thread\'s add asks, and Deny adds nothing', deniedCard?.toolName === 'addon_add' && refusedAnswer.startsWith('refused: the person did not allow it') && !(await list(box)).addons.some((a) => a.name === 'fake'), JSON.stringify({ deniedCard, refusedAnswer }))
+  const askedAfter = await lastSeq(mac, macThread.id)
   const adding = rpc<string>(mac, 'app.addonAdd', { sessionId: macThread.id, name: 'fake', description: 'A fake add-on for the proof', ...stdioSpec() }, 120_000)
-  const card = await answerCard(mac, macThread.id, true)
+  const card = await answerCard(mac, macThread.id, true, askedAfter)
   const input = (card?.input ?? {}) as Record<string, string>
   check('the card is on mac with the schema\'s title and input', card?.toolName === 'addon_add' && card.title === 'Add the add-on fake' && input.where === 'proj' && input.needs === 'Values for FAKE_TOKEN' && input.runs?.includes('fakeMcpServer.ts'), JSON.stringify(card))
   const added = JSON.parse(await adding) as { id: string; state: string; detail?: string }
@@ -375,6 +382,15 @@ try {
     throw new Error('no row on the box')
   check("mac's list has it after the follow", await until('mac follows', 30_000, async () => (await list(mac)).addons.some((a) => a.id === onBox?.id)))
   const fakeId = onBox!.id
+
+  // A Full-access thread's add raises no card and goes through; it removes its own row unasked too.
+  const fullThread = await rpc<Meta>(mac, 'session.create', { provider: 'claude', projectId: macProject.id, title: 'Adds with full access', threadType: 'chat', permission: 'auto' })
+  const fullAdded = JSON.parse(await rpc<string>(mac, 'app.addonAdd', { sessionId: fullThread.id, name: 'fakefull', description: 'Added with full access', ...stdioSpec() }, 120_000)) as { id?: string; state?: string }
+  const fullCards = (await events(mac, fullThread.id)).filter((r) => r.event.type === 'approval-request')
+  const fullRow = (await list(box)).addons.find((a) => a.name === 'fakefull')
+  check('a full-access thread\'s add raises no card and lands on the box', !!fullAdded.id && fullCards.length === 0 && fullRow?.writtenBy.sessionId === fullThread.id, JSON.stringify({ fullAdded, fullCards, fullRow }))
+  const fullRemoved = JSON.parse(await rpc<string>(mac, 'app.addonRemove', { sessionId: fullThread.id, name: 'fakefull' })) as { removed?: string }
+  check('and removes it again with no card', fullRemoved.removed === 'fakefull' && (await events(mac, fullThread.id)).every((r) => r.event.type !== 'approval-request'), JSON.stringify(fullRemoved))
 
   // ── 2. the grant: needs-grant on both, then ready on both ─────────────
   const needs = await until('needs-grant on both', 30_000, async () => (await statusOf(mac, 'fake'))?.state === 'needs-grant' && (await statusOf(box, 'fake'))?.state === 'needs-grant')

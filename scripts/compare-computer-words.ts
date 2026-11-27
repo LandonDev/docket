@@ -4,7 +4,8 @@
  * GPT-6.1 Sol and Muse Wonder 1.0, plus one tool per verb on Opus, three
  * tasks, two runs a cell, then the policy check on each model's kept words.
  * Every thread runs at medium effort in full access, so a card comes only
- * from a flag or the password rule; the runner answers Allow and counts it.
+ * from a money flag (src/shared/away.ts decideAsk); the runner answers Allow
+ * and counts it.
  *
  * Each scratch app is its own process (`open -n -g`), every query pinned to
  * its pid, so the person's own TextEdit and Chrome are never a target; the

@@ -29,7 +29,8 @@ import { hasAddons, visibleAddons, visibleTools, workspaceIdOf } from './scope'
 /**
  * The add-on tools threads get (plan section 7), one function each, called
  * by the claude handlers in apptools.ts and the bridge's `app.addon*` cases
- * in index.ts. addon_add always asks a person with an admin key first;
+ * in index.ts. addon_add asks a person with an admin key first, unless
+ * the thread has Full access (in a Work thread it always asks; decideAsk);
  * addon_remove asks unless a thread wrote the row last; addon_call follows
  * the thread's permission. Writes go through the store's RPC handler as the
  * local principal, so a Mac forwards them to the box.

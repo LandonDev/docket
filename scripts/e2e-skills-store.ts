@@ -14,8 +14,9 @@
  *  4. a box thread writes a new skill with no card; both hosts write it out
  *  5. a rewrite swaps the view atomically under a reader polling every 2 ms;
  *     the unchanged skills keep their inodes
- *  6. rewriting the imported skill raises the card with what changed: a
- *     denial leaves it, an allow writes v2 on both hosts
+ *  6. an edits thread rewriting the imported skill raises the card with
+ *     what changed: a denial leaves it, an allow writes v2 on both hosts; a
+ *     Full-access thread rewrites another imported skill with no card
  *  7. the slash menu lists the store's skill from its written-out folder
  *  8. a removal leaves both hosts' rows and generations
  *  9. mac restarted imports nothing again and reuses its generations
@@ -324,6 +325,8 @@ try {
   check('the unchanged alpha shares its inode across the two generations', !!old.dir && !!now.dir && old.dir !== now.dir && statSync(join(old.dir, 'skills/alpha/SKILL.md')).ino === statSync(join(now.dir!, 'skills/alpha/SKILL.md')).ino)
 
   // ── 6. the card over the imported alpha ───────────────────────────────
+  // Below Full access the rewrite asks (src/shared/away.ts decideAsk); Full access writes it unasked, the half after this one.
+  const asker = await rpc<{ id: string }>(box, 'session.create', { provider: 'claude', title: 'asks to change alpha', threadType: 'chat', permission: 'edits' })
   const alphaBefore = await byName(box, 'alpha')
   const next = [
     { path: 'SKILL.md', text: md('alpha', 'Rewritten by the box thread.\n') },
@@ -331,14 +334,14 @@ try {
   ]
   const seen = new Set<string>()
   const ask = async (allow: boolean): Promise<string> => {
-    const answer = rpc<string>(box, 'app.skillWrite', { sessionId: thread.id, name: 'alpha', scope: 'global', files: next }, 360_000)
+    const answer = rpc<string>(box, 'app.skillWrite', { sessionId: asker.id, name: 'alpha', scope: 'global', files: next }, 360_000)
     let card: Row['event'] | null = null
-    await until('the card', 30_000, async () => !!(card = await cardOn(box, thread.id, 'Change the skill alpha', seen)))
+    await until('the card', 30_000, async () => !!(card = await cardOn(box, asker.id, 'Change the skill alpha', seen)))
     if (!card) return '(no card)'
     const shown = card as Row['event']
     seen.add(String(shown.requestId))
     check(`the card carries what changed (${allow ? 'allow' : 'deny'})`, typeof shown.input?.changes === 'string' && String(shown.input.changes).includes('SKILL.md changed'), JSON.stringify(shown.input))
-    await rpc(box, 'session.approve', { sessionId: thread.id, requestId: shown.requestId, allow })
+    await rpc(box, 'session.approve', { sessionId: asker.id, requestId: shown.requestId, allow })
     return answer
   }
   const denied = await ask(false)
@@ -347,6 +350,9 @@ try {
   const allowed = await ask(true)
   check('an allow writes alpha v2', allowed.startsWith('wrote alpha v2'), allowed)
   check('mac follows alpha to v2', await until('mac at v2', 60_000, async () => (await byName(mac, 'alpha'))?.version === 2))
+  const full = await rpc<string>(box, 'app.skillWrite', { sessionId: thread.id, name: 'beta', scope: 'global', files: [{ path: 'SKILL.md', text: md('beta', 'Rewritten with full access.\n') }] })
+  check('a full-access thread rewrites the imported beta with no card', full.startsWith('wrote beta v2') && !(await rowsOf(box, thread.id)).some((r) => r.event.type === 'approval-request'), full)
+  check('mac follows beta to v2', await until('mac at beta v2', 60_000, async () => (await byName(mac, 'beta'))?.version === 2))
 
   // ── 7. the slash menu ─────────────────────────────────────────────────
   const commands = await rpc<{ name: string; path?: string }[]>(box, 'commands.list', { provider: 'claude', cwd: box.work })
