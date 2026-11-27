@@ -424,14 +424,17 @@ export function Effect({ item, compact = false }: { item: Pick<HostItem, "effect
 /** The kinds whose view draws From and To: their sentence leaves those out and says what the fields cannot. */
 const FIELDS_SHOW_WHO = new Set<string>(["mail.send", "office.mail.send"]);
 
+/** A time in two zones reads as words do: this window's clock in parentheses after the zone he named, never a middle dot between them. */
+const twoClocks = (line: string): string => (line.includes(" · ") ? `${line.replace(" · ", " (")})` : line);
+
 /**
  * The one sentence of what the press does, saying only what the thing below does not: a mail's From and To are in
  * its fields, so "Goes from landon@purdue.edu to Dana Lee after your 30-second undo." reads "Goes after your 30-second
- * undo."; a send he timed says when it goes, in the zone he named first and this window's after where they differ ("Goes Wed 7:04 PM Central · 8:04 PM Eastern. Sends as you."); an item out of date says nothing.
+ * undo."; a send he timed says when it goes, in the zone he named first and this window's after where they differ ("Goes Wed 7:04 PM Central (8:04 PM Eastern). Sends as you."); an item out of date says nothing.
  */
 export function effectWords(item: Pick<HostItem, "effect" | "state" | "kind" | "scheduledFor" | "scheduledZone">): string | null {
   // The time leads; the host's sentence then says only as whom ("Sends as you.").
-  if (isScheduled(item) && item.scheduledFor != null) return `Goes ${scheduleLine(item.scheduledFor, item.scheduledZone ?? ownZone(), ownZone())}.${item.effect ? ` ${item.effect}` : ""}`;
+  if (isScheduled(item) && item.scheduledFor != null) return `Goes ${twoClocks(scheduleLine(item.scheduledFor, item.scheduledZone ?? ownZone(), ownZone()))}.${item.effect ? ` ${item.effect}` : ""}`;
   if (!item.effect || item.state === "stale") return null;
   if (FIELDS_SHOW_WHO.has(item.kind)) {
     const said = /^Goes from \S+ to .+? (after .+)$/.exec(item.effect);
@@ -985,7 +988,7 @@ export function HeldDetail({
         // His press already timed it: the verbs left are to take it back, or to send it now.
         <VerbBar>
           <Button variant="ghost" size="sm" disabled={busy !== null || hostOff} onClick={() => void cancel()}>
-            <BusyLabel busy={busy === "cancel"} label="Cancel send" />
+            <BusyLabel busy={busy === "cancel"} label="Cancel send" align="start" />
           </Button>
           <span className="flex-1" />
           {item.state === "scheduled" ? (
