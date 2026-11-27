@@ -718,7 +718,9 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
   R.pins.bind(id, lane.name)
   // Every card is answered Allow, but the tier scheduler's own (Run now or Skip): Skip, since Run now would take the
   // person's pointer and keyboard while they are there. Its kind and title are in the rows. The card's row is
-  // emitted before requestApproval sets its resolver, so the answer goes after this job.
+  // emitted before requestApproval sets its resolver, so the answer goes after this job. A Full-access lane meets
+  // few cards: Full access allows what Away allows unasked (src/shared/away.ts decideAsk), the tier card too, so
+  // under --session a held step takes Run now; the gate's run refuses the session tier and never meets it.
   const offCards = registry.subscribe(id, (row: EventRow) => {
     if (row.event.type !== 'approval-request') return
     const requestId = row.event.requestId
