@@ -180,4 +180,11 @@ import TempCodeContract
         #expect(MessagesRules.nextPages([(waiting: false, failed: false)]) == nil)
         #expect(MessagesRules.nextPages([]) == nil)
     }
+
+    @Test func `a refused mark says it did not change and why, in Work's words`() {
+        #expect(MessagesRules.markFailed(unread: false, error: "no answer in 30s", host: "the box") == "Not marked read: The box did not answer. Try again once it is connected.")
+        #expect(MessagesRules.markFailed(unread: true, error: "LifeOS said no", host: "Mac") == "Not marked unread: LifeOS said no")
+        // Raw text has no words of Work's: the lead alone.
+        #expect(MessagesRules.markFailed(unread: true, error: "failed at work.messages.mark", host: "Mac") == "Not marked unread")
+    }
 }

@@ -51,7 +51,7 @@ struct ComputersScreen: View {
             // A connected host whose read failed: its words and Try Again, over whatever it said last.
             ForEach(failed, id: \.environment.id) { client in
                 Section {
-                    FailedRead(words: "Computers on \(WorkSearch.nameInLine(client.environment.name)) did not load: \(client.computersFailure ?? "")",
+                    FailedRead(words: ComputersState.failedLine(WorkSearch.nameInLine(client.environment.name), failure: client.computersFailure ?? ""),
                                retry: { await client.readComputers() }, identifier: "computers-failed", tint: Tint.destructiveText)
                 }
             }

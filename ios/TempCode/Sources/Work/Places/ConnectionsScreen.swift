@@ -3,8 +3,8 @@ import TempCodeClient
 import TempCodeContract
 
 /// Every linked host's Connections (`work.health`, `work.lapses`), read when the Work list shows and at most once a
-/// few minutes unless he asks again: the Work list's foot shows Connections while one does not work or an end is
-/// near (`Connections.needsHim`).
+/// few minutes unless he asks again: the Work list's foot shows Connections while one does not work, an end is near
+/// or a check failed (`Connections.needsHim`).
 @MainActor @Observable
 final class ConnectionsFeed {
     static let shared = ConnectionsFeed()
@@ -23,7 +23,7 @@ final class ConnectionsFeed {
     /// How long a read stands before the Work list asks again: each check runs every pillar's own.
     @ObservationIgnored private let stands: TimeInterval = 5 * 60
 
-    var needsHim: Bool { Connections.needsHim(hosts) }
+    var needsHim: Bool { Connections.needsHim(hosts, missed: Array(missed.values)) }
 
     /// Each host with Work on whose key may read it; `fresh` is his own Check Again, which the hosts check anew. A host
     /// not connected is missed, never left out: the place names it and keeps what it said last.

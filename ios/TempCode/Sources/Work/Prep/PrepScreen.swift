@@ -94,7 +94,8 @@ private struct PrepPageView: View {
             } description: {
                 Text(readError)
             } actions: {
-                Button("Try Again") { Task { await read() } }
+                // The spinner in the error's place while it reads, then the page or the new reason.
+                Button("Try Again") { readError = nil; Task { await read() } }
             }
         } else {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)

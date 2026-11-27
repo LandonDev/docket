@@ -42,6 +42,15 @@ enum MessagesReads {
         _ = try await store.mutate("chats:markUnread", ["id": json(chatId)])
     }
 
+    /// His Mark Read or Mark Unread: a refusal keeps the mark as it was and says so in the house toast, with why.
+    static func mark(_ store: LifeStore, chatId: String, unread: Bool, host: String) async {
+        do {
+            if unread { try await markUnread(store, chatId: chatId) } else { try await markRead(store, chatId: chatId) }
+        } catch {
+            FleetToastCenter.shared.post(message: MessagesRules.markFailed(unread: unread, error: ActionError.wrap(error).message, host: host))
+        }
+    }
+
     /// LifeOS fetches a message's files only once a client asks (`chats:requestFiles`); the files' rows then move.
     static func requestFiles(_ store: LifeStore, messageId: String) async throws {
         _ = try await store.mutate("chats:requestFiles", ["messageId": json(messageId)])

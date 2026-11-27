@@ -94,8 +94,15 @@ struct WorkspaceScreen: View {
                     QuietNote(text: "No threads here yet.", action: ("New thread", { presenter.compose(lead.client, lead.workspace, nil) }))
                         .padding(.horizontal, Layout.textEdge)
                 } else if key == HomeSections.workChatsKey {
-                    // The system's empty state, with no button: New Work Chat is the toolbar's.
-                    ContentUnavailableView("No Work Chats", systemImage: "bubble.left.and.bubble.right")
+                    // A Work computer still connecting or listing is waited for; then the system's empty state, with
+                    // no button (New Work Chat is the toolbar's), naming the computers that cannot answer.
+                    switch HomeSections.workChatsEmpty(workChatsHosts) {
+                    case .reading:
+                        ProgressView()
+                    case .empty(let away):
+                        ContentUnavailableView("No Work Chats", systemImage: "bubble.left.and.bubble.right",
+                                               description: away.isEmpty ? nil : Text("Not connected to \(WorkSearch.nameInLine(ComputersState.names(away)))."))
+                    }
                 } else if screen == nil {
                     ContentUnavailableView("Workspace Not Found", systemImage: "folder")
                 }
@@ -145,6 +152,17 @@ struct WorkspaceScreen: View {
             case .needsYou(let t), .failed(let t): .thread(environmentId: t.environmentId, ThreadItem(meta: t.meta), depth: 0)
             default: nil
             }
+        }
+    }
+
+    /// The Work computers as Work Chats waits on them: listed once its first thread list landed, away while it
+    /// cannot answer (Home's trouble rule, or a relayed computer asleep or out of reach).
+    private var workChatsHosts: [(name: String, listed: Bool, away: Bool)] {
+        let now = Date()
+        return model.registry.ordered.filter { $0.work.isOn }.map { client in
+            let relay = client.environment.isRelayed ? client.relayState : nil
+            let troubled = HomeSections.troubled(client.status, awayMs: now.timeIntervalSince(client.transportSince) * 1000, relay: relay)
+            return (name: client.environment.name, listed: client.hasShell, away: troubled || relay == .asleep || relay == .unreachable)
         }
     }
 

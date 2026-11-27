@@ -5,7 +5,7 @@ import TempCodeContract
 /// The Work list: the Work tab's root, and the left column on the open Duo.
 /// The places for every job at once, then a row a job, Work Chats, and the
 /// foot (Review, the Digest, Computers while something is driven or a host keeps
-/// the Windows VM, Connections while one does not work). A place pushes its
+/// the Windows VM, Connections while one does not work or a check failed). A place pushes its
 /// list in this column; what he picks there opens in the detail. The rows and
 /// their order are the client package's `WorkList.sections`; a place has a row
 /// only once this build draws it (`WorkPlace.shipped`).
@@ -18,7 +18,7 @@ struct WorkListView: View {
     var body: some View {
         let clients = model.registry.ordered
         let work = HomeSections.home(hosts: HomeRows.inputs(clients)).work
-        // Computers while something is driven or a host keeps the Windows VM; Connections while one does not work (M5b).
+        // Computers while something is driven or a host keeps the Windows VM; Connections while one does not work or a check failed (M5b).
         let computers = !ComputerEntries.tiles(clients).isEmpty || clients.contains { $0.work.isOn && WinvmWords.shows($0.work.winvm) }
         let list = WorkList.sections(work: work, driving: computers, broken: ConnectionsFeed.shared.needsHim)
         List {

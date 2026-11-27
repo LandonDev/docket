@@ -110,6 +110,9 @@ private func suggestion(_ id: String, _ state: String = "proposed") -> String {
         ticks.tickAll(tasks)
         #expect(!ticks.isTicked("b"))
         #expect(ticks.retrying == ["b"])
+        // Add counts and files only what he ticked since, never the refused task Try Again files.
+        #expect(!ticks.toFile(tasks).contains("b"))
+        #expect(ticks.toFile(tasks) == ["a"])
         #expect(PrepRules.failedWords(ticks.failed, tasks: tasks) == "“Task b” was not added")
         // The page read again: a task no longer proposed leaves.
         ticks.keep([])

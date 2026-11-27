@@ -59,7 +59,7 @@ import TempCodeContract
         let (client, fake) = try await open()
         try await read(client, fake) { $0.refuse(id: $1, error: "the computer service did not answer") }
         #expect(client.computersRead)
-        #expect(client.computersFailure == "the computer service did not answer")
+        #expect(client.computersFailure == "The computer service did not answer")
         let host = ComputersState.Host(name: "box", linked: true, read: client.computersRead, failure: client.computersFailure)
         #expect(ComputersState.of([host]) == .failed)
 
@@ -67,6 +67,38 @@ import TempCodeContract
         try await read(client, fake, count: 2) { $0.answer(id: $1, result: Self.none) }
         #expect(client.computersFailure == nil)
         #expect(ComputersState.of([.init(name: "box", linked: true, read: client.computersRead, failure: client.computersFailure)]) == .idle(away: []))
+    }
+
+    @Test func `a failure is kept in Work's words, never the host's raw text`() async throws {
+        let (client, fake) = try await open()
+        try await read(client, fake) { $0.refuse(id: $1, error: "no answer in 30s") }
+        #expect(client.computersFailure == "Box did not answer. Try again once it is connected.")
+        #expect(ComputersState.failedLine("box", failure: client.computersFailure!) == "Computers did not load. Box did not answer. Try again once it is connected.")
+        // A raw line with nothing of Work's says the host could not read it.
+        try await read(client, fake, count: 2) { $0.refuse(id: $1, error: "bad thing at work.computer.read") }
+        #expect(client.computersFailure == "Box could not read this.")
+    }
+
+    @Test func `a host without the call has none in use, not a failure`() async throws {
+        let (client, fake) = try await open()
+        try await read(client, fake) { $0.refuse(id: $1, error: "unknown method computer.sessions") }
+        #expect(client.computersRead)
+        #expect(client.computersFailure == nil)
+    }
+
+    @Test func `a cancelled call is no answer: neither read nor failed`() async throws {
+        let (client, fake) = try await open()
+        let run = Task { await client.readComputers() }
+        _ = try #require(await request(fake, count: 1))
+        run.cancel()
+        await run.value
+        #expect(!client.computersRead)
+        #expect(client.computersFailure == nil)
+    }
+
+    @Test func `the failed line names the host once`() {
+        #expect(ComputersState.failedLine("Mac", failure: "The computer service did not answer") == "Computers on Mac did not load. The computer service did not answer")
+        #expect(ComputersState.failedLine("the box", failure: "The box could not read this.") == "Computers did not load. The box could not read this.")
     }
 
     @Test func `a key that may not read them has none in use, not a failure`() async throws {

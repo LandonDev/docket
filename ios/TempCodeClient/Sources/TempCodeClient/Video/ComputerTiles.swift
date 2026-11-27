@@ -137,6 +137,14 @@ public enum ComputersState: Equatable, Sendable {
         hosts.filter { !$0.linked }.map(\.name)
     }
 
+    /// A failed host's row: what did not load, then why in Work's words (`readComputers`), the host named once
+    /// ("Computers did not load. The box did not answer. …"), and by the lead where the words do not name it.
+    public static func failedLine(_ host: String, failure: String) -> String {
+        failure.localizedCaseInsensitiveContains(host)
+            ? "Computers did not load. \(failure)"
+            : "Computers on \(host) did not load. \(failure)"
+    }
+
     /// "The box", "The box and Mac": the hosts named in one line.
     public static func names(_ hosts: [String]) -> String {
         guard let last = hosts.last else { return "" }

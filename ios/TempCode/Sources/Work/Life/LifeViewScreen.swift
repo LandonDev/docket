@@ -314,14 +314,15 @@ struct LifeosDownPress {
     }
 
     /// A list's failed row (`WorkPlaceScreen`): the words with where to sign in, and its press. `retry` also answers a
-    /// page that failed under a session that reads, as before; a connect and a sign-in this key may not open get none.
-    func row(_ failure: String?, retry: @escaping () async -> Void) -> (words: String?, retry: (() async -> Void)?, press: String) {
-        guard let failure else { return (nil, nil, "Try Again") }
+    /// page that failed under a session that reads, as before; a sign-in this key may not open gets none, and a
+    /// connect the spinner in the press's place (`waits`), as `actions` gives a page.
+    func row(_ failure: String?, retry: @escaping () async -> Void) -> (words: String?, retry: (() async -> Void)?, press: String, waits: Bool) {
+        guard let failure else { return (nil, nil, "Try Again", false) }
         switch press {
-        case .wait: return (failure, nil, "Try Again")
-        case .tryAgain: return (failure, retry, "Try Again")
-        case .open(let label): return (failure, { await openSignIn() }, label)
-        case .none: return (line(failure), host.down == nil ? retry : nil, "Try Again")
+        case .wait: return (failure, nil, "Try Again", true)
+        case .tryAgain: return (failure, retry, "Try Again", false)
+        case .open(let label): return (failure, { await openSignIn() }, label, false)
+        case .none: return (line(failure), host.down == nil ? retry : nil, "Try Again", false)
         }
     }
 }

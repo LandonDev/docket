@@ -84,6 +84,7 @@ private struct PeopleList: View {
             // Try Again only where asking again can help; a sign-in opens Connections on the job's computer, as Mail's does.
             retry: failed.retry,
             press: failed.press,
+            waits: failed.waits,
             jobs: filter,
             filter: filter.isEmpty ? nil : pick,
             search: $query,

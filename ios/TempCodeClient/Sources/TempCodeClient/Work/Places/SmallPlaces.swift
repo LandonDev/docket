@@ -330,10 +330,11 @@ public enum Connections {
             .map { Section(group: $0.element, rows: byGroup[$0.element] ?? []) }
     }
 
-    /// Whether the Work list's foot shows Connections: a row that is not working, or a known end inside the first
-    /// notice's days.
-    public static func needsHim(_ hosts: [Host], now: Date = Date()) -> Bool {
-        hosts.contains { host in
+    /// Whether the Work list's foot shows Connections: a row that is not working, a known end inside the first
+    /// notice's days, or a health or ending-soon check that failed (`missed`), whose Try Again lives there. A host
+    /// away alone keeps no row.
+    public static func needsHim(_ hosts: [Host], missed: [Missed] = [], now: Date = Date()) -> Bool {
+        missed.contains { $0 != .away } || hosts.contains { host in
             (host.report?.rows ?? []).contains { $0.state != .working }
                 || host.lapses.contains { $0.until / 1000 - now.timeIntervalSince1970 <= lapseNoticeDays * 86_400 }
         }

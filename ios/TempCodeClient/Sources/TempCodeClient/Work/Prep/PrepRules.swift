@@ -238,9 +238,10 @@ public struct PrepTicks: Sendable, Hashable {
         ticked = Set(Self.open(tasks).map(\.id).filter { failed[$0] == nil })
     }
 
-    /// What one press files: the ticked tasks still proposed, in the page's order.
+    /// What Add files and counts: the ticked tasks still proposed, in the page's order, never one refused (Try
+    /// Again is its press), so the two never file the same task.
     public func toFile(_ tasks: [PrepSuggestion]) -> [String] {
-        Self.open(tasks).map(\.id).filter(ticked.contains)
+        Self.open(tasks).map(\.id).filter { ticked.contains($0) && failed[$0] == nil }
     }
 
     public mutating func begin() { filing = true }

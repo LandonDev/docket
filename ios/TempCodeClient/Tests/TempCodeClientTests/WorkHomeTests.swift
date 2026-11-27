@@ -66,4 +66,14 @@ import TempCodeContract
         #expect(home.entries == HomeSections.home(hosts: [host(workOn: false)]).entries)
         #expect(home.work.first?.id == HomeSections.workChatsKey)
     }
+
+    @Test func `Work Chats waits for a Work computer's first list, then names the ones that cannot answer`() {
+        // One still connecting or listing: never "No Work Chats" before its list.
+        #expect(HomeSections.workChatsEmpty([("the box", true, false), ("Mac", false, false)]) == .reading)
+        // Every computer that answers listed none.
+        #expect(HomeSections.workChatsEmpty([("the box", true, false)]) == .empty(away: []))
+        // One that cannot answer is no wait, and it is named as why the list may be empty.
+        #expect(HomeSections.workChatsEmpty([("the box", true, false), ("Mac", false, true)]) == .empty(away: ["Mac"]))
+        #expect(HomeSections.workChatsEmpty([]) == .empty(away: []))
+    }
 }

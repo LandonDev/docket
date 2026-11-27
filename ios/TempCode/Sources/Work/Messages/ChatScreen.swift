@@ -178,7 +178,7 @@ private struct ChatConversation: View {
         Menu {
             if let store {
                 Button("Mark Unread", systemImage: "envelope.badge") {
-                    Task { try? await MessagesReads.markUnread(store, chatId: chatId) }
+                    Task { await MessagesReads.mark(store, chatId: chatId, unread: true, host: client.environment.name) }
                 }
             }
             if let link = (detail.link ?? detail.chat.link).flatMap(URL.init(string:)) {

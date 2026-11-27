@@ -166,6 +166,10 @@ import TempCodeContract
         let broken = try report("box", #"{"id":"a","group":"Tools","title":"ffmpeg","state":"needs-you"}"#)
         #expect(Connections.needsHim([.init(id: "box", name: "box", report: broken)], now: now))
         #expect(!Connections.needsHim([.init(id: "box", name: "box", report: nil)], now: now))
+        // A failed health or ending-soon check keeps the row, its Try Again inside; a host away alone does not.
+        #expect(Connections.needsHim([], missed: [.failed("The box did not answer.")], now: now))
+        #expect(Connections.needsHim([.init(id: "box", name: "box", report: fine)], missed: [.lapses], now: now))
+        #expect(!Connections.needsHim([.init(id: "box", name: "box", report: fine)], missed: [.away], now: now))
         #expect(Connections.ending([.init(id: "box", name: "box", report: fine, lapses: [far, near])], now: now).map(\.lapse.until) == [near.until])
         // Two hosts that name the same end keep a row each, apart by key.
         let both = Connections.ending([.init(id: "box", name: "box", report: fine, lapses: [near]), .init(id: "mac", name: "Mac", report: fine, lapses: [near])], now: now)

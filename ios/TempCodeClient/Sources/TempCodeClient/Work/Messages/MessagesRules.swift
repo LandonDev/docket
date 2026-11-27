@@ -24,6 +24,14 @@ public enum MessagesRules {
         olderPage(waiting: pages.contains { $0.waiting }, failed: pages.contains { $0.failed })
     }
 
+    /// A refused Mark Read or Mark Unread in the house toast: the mark kept as it was, and why in Work's words
+    /// ("Not marked read: The box did not answer. …"), never the host's raw text.
+    public static func markFailed(unread: Bool, error: String, host: String) -> String {
+        let lead = unread ? "Not marked unread" : "Not marked read"
+        let words = WorkErrorWords.say(error, host: host)
+        return words.isEmpty ? lead : "\(lead): \(words)"
+    }
+
     /// A reply's outcome said off its conversation (the sticky toast when he has left it), named: "Not sent to Dana Lee:
     /// TempCode left the screen". Nil while the conversation is on screen: its own field and line say it there.
     /// What a reply read back late says off its conversation: nil when it went, or nothing is known yet.

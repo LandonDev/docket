@@ -1341,18 +1341,21 @@ public final class EnvironmentClient {
         }
     }
 
-    /// `computer.sessions` at open and on Computers' Try Again; a key that may not read them keeps none. Any other
-    /// failure is kept as `computersFailure`, the rows from the last read kept with it.
+    /// `computer.sessions` at open and on Computers' Try Again; a key that may not read them, or a host without the
+    /// call, keeps none. Any other failure is kept as `computersFailure` in Work's words, never the host's raw text,
+    /// the rows from the last read kept with it. A cancelled call changes nothing: it is no answer either way.
     public func readComputers() async {
-        // Read either way: a first read that fails is a failed read on screen, never a read that never ends.
-        defer { computersRead = true }
         do {
             computerRows = try await request(Methods.ComputerSessions.self, .init()).sessions
             computersFailure = nil
         } catch {
+            if Task.isCancelled || error is CancellationError || (error as? TransportError) == .cancelled { return }
             let failure = ActionError.wrap(error)
-            computersFailure = failure.isForbidden ? nil : failure.message
+            computersFailure = failure.isForbidden || HostCan.saysUnknown(error)
+                ? nil : WorkErrorWords.readFailure(failure.message, host: environment.name)
         }
+        // Read either way: a first read that fails is a failed read on screen, never a read that never ends.
+        computersRead = true
     }
 
     static let bootResumeKind = "boot-resume"

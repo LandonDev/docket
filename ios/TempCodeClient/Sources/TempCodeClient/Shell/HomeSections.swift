@@ -395,6 +395,23 @@ public enum HomeSections {
         return WorkspaceScreen(workspace: workspace, projects: cards, chats: rows(mixed(chats)), archivedProjects: archived)
     }
 
+    /// What Work Chats says while it has no chat: empty only once every Work computer
+    /// that can answer has listed its threads.
+    public enum WorkChatsEmpty: Sendable, Hashable {
+        /// A Work computer still connecting or listing: a spinner, never "No Work Chats" before its list.
+        case reading
+        /// Every Work computer that answers listed none; `away` names the ones that cannot answer, why the list may
+        /// be empty.
+        case empty(away: [String])
+    }
+
+    /// `hosts`: the Work computers (`workOn`), each `listed` once its first thread list landed this run and
+    /// `away` while it cannot answer (troubled, or a relayed computer asleep or out of reach).
+    public nonisolated static func workChatsEmpty(_ hosts: [(name: String, listed: Bool, away: Bool)]) -> WorkChatsEmpty {
+        if hosts.contains(where: { !$0.listed && !$0.away }) { return .reading }
+        return .empty(away: hosts.filter { $0.away }.map { $0.name })
+    }
+
     // MARK: Level 3, a project: every thread
 
     /// The "n archived" row of one host's copy.

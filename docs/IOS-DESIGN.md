@@ -2834,7 +2834,11 @@ milestone 46 built, where it lives now:
 - **New Job** (a Work workspace): the "Jobs" band's + opens a form sheet titled "New Job" (Name,
   Sector with its dot, Host when several have Work); the workspace opens
   when it lands. **New Chat**: Work Chats' compose button opens a
-  sheet with the first message and Start; the thread opens.
+  sheet with the first message and Start; the thread opens. With no chat,
+  Work Chats is a spinner while a Work computer is still connecting or
+  listing, and "No Work Chats" only once every one that can answer has
+  listed, its line naming any that cannot ("Not connected to Mac.";
+  `HomeSections.workChatsEmpty`).
 - **The held line in a thread**: under a Work thread's call the host held,
   one muted line, the Outbox glyph in the glyph column, "Held" and the act.
   A tap opens it in place: the act's fields and body in a hairline frame
@@ -2993,9 +2997,10 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   "You are driving") then where it runs at medium weight, never joined with a dot. No buttons on a tile: Take Over,
   Hand Back and Stop are on its full screen. A connected host whose read
   failed heads the list with its failed-read row in the destructive ink
-  ("Computers on the box did not load: …", Try Again), over what it said
-  last, and the list never calls it idle; a key that may not read them has
-  none. With nothing driven the list tells three states apart
+  ("Computers did not load. The box did not answer. …", Try Again), in
+  Work's words and never the host's raw text, over what it said last, and
+  the list never calls it idle; a key that may not read them, or a host
+  without the call, has none, and a cancelled call is no answer. With nothing driven the list tells three states apart
   (`ComputersState`): a spinner while a connected host has not said; "Not
   Connected to the box" when no host is connected; else "No Computer in
   Use", its line naming any host away ("Not connected to Mac.").
@@ -3328,7 +3333,9 @@ Teams) as LifeOS holds it, the desktop's Messages view on the phone (docs/agents
   (All Jobs only), the route's glyph in the glyph slot (`number` for Slack, `gamecontroller` Discord, `message`
   iMessage, `person.3` Teams; no brand marks), the name (semibold while unread), the last words under it ("You:"
   for his own, a group's writer by first name) and the time as the stamp, in the tint while unread. No count, no
-  badge: unread is the weight and the stamp's ink. A leading swipe marks it read or unread (LifeOS's own mark).
+  badge: unread is the weight and the stamp's ink. A leading swipe marks it read or unread (LifeOS's own mark); a
+  refusal keeps the mark and says so in the house toast with why ("Not marked read: …", `MessagesRules.markFailed`),
+  as More's Mark Unread in a conversation does.
   Empty: "No Messages". The foot reads the next page under a spinner; one that fails is "More conversations did not
   load" with Try Again, which asks each failed page again. The reads are LifeKit's live `chats:list`, one a sector, on the whole LifeOS session
   (`LifeReach`), else the picked job's; held only while the list is on screen.
@@ -3406,7 +3413,8 @@ no event.
   so, and Keep Mine saves them.
 - **To Do**: suggested tasks start unticked. Tick All, and "Add 3 Tasks" while any is ticked, sit at the section's
   foot. A task LifeOS did not take keeps why on its own row, said there alone; Try Again, in Tick All's place, files
-  those again. A first read that fails: "Can’t Read This Meeting" with the host's words and Try Again.
+  those again, and Add counts and files only tasks ticked since (`PrepTicks.toFile`). A first read that fails: "Can’t
+  Read This Meeting" with the host's words and Try Again, which puts the spinner in their place while it reads.
 
 ### A clash
 
@@ -3438,7 +3446,8 @@ led by its job's dot, the job filter in the bar, the whole width and its two pag
   or waiting offers "Open on <computer>" (Settings → Connections there) where this key may, else says "Sign in from
   a computer that manages the box"; a LifeOS still connecting is a spinner ("LifeOS is still connecting on the
   box"). One press rule for all seven (`LifeosPress`, `LifeosDownPress` in LifeViewScreen.swift); a list says it in
-  its failed row, the press its pill ("Open on the box").
+  its failed row, the press its pill ("Open on the box"), a connect the spinner in the pill's place
+  (`FailedRead.waits`).
 
 - **Waiting on** is one bar item, the hourglass, filled while it shows: the place swaps to LifeKitUI's Waiting on
   list and back, with no motion, and a fold keeps which one shows. Its rows' Nudge opens the thread that drafts
@@ -3516,7 +3525,9 @@ A job's page holds the small places below the views (M5b): Plays and Routines af
 plain list of house rows (the name at the title step, one meta line, one trailing stamp), its first read a spinner,
 empty its `ContentUnavailableView`, a failed read with Try Again; pull reads again. Its presses are the system's
 swipes, context menu and accessibility actions; a press answers with a light impact and one toast line. None is a
-card. Connections and Computers sit in the Work list's foot.
+card. Connections and Computers sit in the Work list's foot: Connections while a row does not work, an end is
+near, or a health or ending-soon check failed (its Try Again is inside; a computer away alone keeps no row,
+`Connections.needsHim`).
 
 - **Plays**: the name, then "Takes a line of text and a date" in meta. A play the phone can run opens the run sheet
   (`tcSheet(.form)`): the instructions muted at six lines, the Text field ("Paste or type what it works from") and the

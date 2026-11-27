@@ -103,6 +103,7 @@ private struct MessagesList: View {
             // Try Again only where asking again can help; a sign-in opens Connections on the job's computer, as Mail's does.
             retry: failed.retry,
             press: failed.press,
+            waits: failed.waits,
             jobs: filter,
             filter: filter.isEmpty ? nil : pick,
             refresh: { pages.forEach { $0.retryNow() } },
@@ -119,9 +120,7 @@ private struct MessagesList: View {
                     if let store {
                         Button(row.unread ? "Mark Read" : "Mark Unread", systemImage: row.unread ? "envelope.open" : "envelope.badge") {
                             let unread = row.unread
-                            Task {
-                                if unread { try? await MessagesReads.markRead(store, chatId: row.id) } else { try? await MessagesReads.markUnread(store, chatId: row.id) }
-                            }
+                            Task { await MessagesReads.mark(store, chatId: row.id, unread: !unread, host: host.client.environment.name) }
                         }
                         .tint(Color.accentColor)
                     }
