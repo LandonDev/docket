@@ -48,7 +48,7 @@ struct LifeViewScreen: View {
                     // A sign-in this key may not open on the host is mended on a computer that manages it.
                     if let elsewhere = down.elsewhere { Text(elsewhere) }
                 } actions: {
-                    down.actions { await host.prepare() }
+                    down.actions(retry: { await host.prepare() })
                 }
             case .ready:
                 if let store = host.store, let scene = host.scene {

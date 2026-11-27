@@ -170,7 +170,7 @@ private struct PersonPageView: View {
                     Text(LifeosDownPress(host: host).line(why))
                 } actions: {
                     // Try Again only for silence; a sign-in opens Connections on the job's computer, as Mail's does (the shared rule).
-                    LifeosDownPress(host: host).actions { retry() }
+                    LifeosDownPress(host: host).actions(retry: { retry() })
                 }
             case .failed:
                 ContentUnavailableView {

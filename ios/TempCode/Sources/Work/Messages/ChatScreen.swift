@@ -110,7 +110,7 @@ private struct ChatConversation: View {
                 Text(LifeosDownPress(host: host).line(why))
             } actions: {
                 // Try Again only for silence; a sign-in opens Connections on the job's computer, as Mail's does (the shared rule).
-                LifeosDownPress(host: host).actions { await host.prepare() }
+                LifeosDownPress(host: host).actions(retry: { await host.prepare() })
             }
         } else if messages.isEmpty {
             ContentUnavailableView("No Messages Yet", systemImage: WorkPlace.messages.glyph)
