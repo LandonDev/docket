@@ -396,20 +396,36 @@ public enum HomeSections {
     }
 
     /// What Work Chats says while it has no chat: empty only once every Work computer
-    /// that can answer has listed its threads.
+    /// that can answer has listed its threads whole.
     public enum WorkChatsEmpty: Sendable, Hashable {
         /// A Work computer still connecting or listing: a spinner, never "No Work Chats" before its list.
         case reading
+        /// A Work computer that answers could not list its threads: its failed row says so (`workChatsFailed`), and
+        /// nothing says the list is empty.
+        case failed
         /// Every Work computer that answers listed none; `away` names the ones that cannot answer, why the list may
         /// be empty.
         case empty(away: [String])
     }
 
-    /// `hosts`: the Work computers (`workOn`), each `listed` once its first thread list landed this run and
-    /// `away` while it cannot answer (troubled, or a relayed computer asleep or out of reach).
-    public nonisolated static func workChatsEmpty(_ hosts: [(name: String, listed: Bool, away: Bool)]) -> WorkChatsEmpty {
+    /// A Work computer as Work Chats waits on it: `listed` once its first thread list landed this run, `failed`
+    /// while its last list did not finish (`EnvironmentClient.shellListFailed`), `away` while it cannot answer
+    /// (troubled, or a relayed computer asleep or out of reach).
+    public typealias WorkChatsHost = (name: String, listed: Bool, failed: Bool, away: Bool)
+
+    /// `hosts`: the Work computers (`workOn`).
+    public nonisolated static func workChatsEmpty(_ hosts: [WorkChatsHost]) -> WorkChatsEmpty {
         if hosts.contains(where: { !$0.listed && !$0.away }) { return .reading }
+        if workChatsFailed(hosts) != nil { return .failed }
         return .empty(away: hosts.filter { $0.away }.map { $0.name })
+    }
+
+    /// The failed row over Work Chats, above any chats already on the phone: the computers that answer but could
+    /// not list ("Couldn’t list chats on the box."), or nil. One that cannot answer is the empty line's, not this.
+    public nonisolated static func workChatsFailed(_ hosts: [WorkChatsHost]) -> String? {
+        let failed = hosts.filter { $0.listed && $0.failed && !$0.away }.map { $0.name }
+        guard !failed.isEmpty else { return nil }
+        return "Couldn’t list chats on \(WorkSearch.nameInLine(ComputersState.names(failed)))."
     }
 
     // MARK: Level 3, a project: every thread

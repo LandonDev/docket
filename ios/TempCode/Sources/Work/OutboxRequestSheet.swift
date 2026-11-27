@@ -164,17 +164,10 @@ struct OutboxRequestSheet: View {
             }
             .navigationBarTitleDisplayMode(.inline)
         }
-        // Every countdown's Undo over this sheet, outside its stack: this request's own (so a row he opens during the
-        // wait never covers it), another request's (Send, Close, then this one opened), a reply's or the Outbox's own,
-        // since the sheet covers the tab's foot. One copy of each.
-        // While a row's page covers the list: his press on its way, then its sum or refusal, over the page, as its Undo
-        // was. Back on the list, each row's result is there and this goes.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if rowsOpen > 0, let line = wait.sending.contains(requestId) ? "Sending…" : coveredLine {
-                UndoCapsule(line: line, identifier: "outbox-request-covered", undo: nil)
-                    .transition(.opacity)
-            }
-        }
+        // The sheet's one foot, outside its stack, so a row he opens never covers it: the presses, then this request's
+        // countdown with Undo, then what comes after it. Below it, every other countdown's Undo (another request's, a
+        // reply's or the Outbox's own), since the sheet covers the tab's foot. One copy of each.
+        .safeAreaInset(edge: .bottom, spacing: 0) { slot }
         .onChange(of: rowsOpen) { if rowsOpen == 0 { coveredLine = nil } }
         .outboxUndoOverSheet(own: requestId)
         .tcSheet(.editor)
@@ -321,7 +314,6 @@ struct OutboxRequestSheet: View {
         }
         .listStyle(.plain)
         .animation(reduceMotion ? nil : Motion.base, value: phase)
-        .safeAreaInset(edge: .bottom, spacing: 0) { foot(request, held: held) }
     }
 
     /// A row's tick and phase: his ticks while he chooses; once he pressed, exactly the receipts the press froze.
@@ -343,11 +335,35 @@ struct OutboxRequestSheet: View {
 
     // MARK: - the foot
 
+    /// One slot for each phase's foot. A phase's foot takes the last one's place in the same frame, never fading
+    /// over it: Not Now and Send, the countdown's Undo, then Sending… and Done. While a row's page covers the list the
+    /// countdown stays, then his press on its way and its sum or refusal take its place; back on the list each row's
+    /// result is there.
+    private var slot: some View {
+        // A stack, not a Group: the transaction below must hold for what comes and goes inside it.
+        VStack(spacing: 0) {
+            if revoked {
+                EmptyView()
+            } else if case .waiting(let press) = phase {
+                UndoCapsule(line: press.waitingLine, identifier: "outbox-request-undo") { wait.undo(requestId) }
+            } else if rowsOpen > 0 {
+                if let line = wait.sending.contains(requestId) ? "Sending…" : coveredLine {
+                    UndoCapsule(line: line, identifier: "outbox-request-covered", undo: nil)
+                }
+            } else if let request {
+                let shown = drawn(request)
+                foot(shown, held: RequestSheetModel.reconcile(ticks, with: shown))
+            }
+        }
+        // Every countdown over the sheet animates its own capsule: none of that reaches this slot.
+        .transaction { $0.animation = nil }
+    }
+
     @ViewBuilder
     private func foot(_ request: OutboxRequest, held: Set<String>) -> some View {
         switch phase {
         case .waiting:
-            // Its Undo is the sheet's outer foot's (`outboxUndoOverSheet(own:)`), over any row he pushes, one copy.
+            // The slot draws the countdown in the foot's place.
             EmptyView()
         case .done:
             wide("Done", prominent: true, identifier: "outbox-request-done") { dismiss() }

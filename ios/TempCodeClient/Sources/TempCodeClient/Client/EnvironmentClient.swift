@@ -364,6 +364,9 @@ public final class EnvironmentClient {
     public internal(set) var batches: [String: BatchState] = [:]
     /// The shell has been listed at least once in this process.
     public private(set) var hasShell = false
+    /// The last thread list did not finish: its first request failed, or a page was lost. `hasShell` is set all the
+    /// same, so Work Chats names the computer with Try Again (`relistShell`), never "No Work Chats".
+    public private(set) var shellListFailed = false
     /// How many complete lists the shell has had in this process: a change-log
     /// answer, or a `session.list` walk that reached its end (one cut short
     /// counts nothing). A bare thread waits on it (`ShellPaths.awaitsListing`).
@@ -1196,6 +1199,7 @@ public final class EnvironmentClient {
             let removed = unheard(answer.removed ?? [], since: begun)
             if !removed.isEmpty { removeSessions(removed) }
             hasShell = true
+            shellListFailed = false
             completeLists += 1
             shellSource = .changes
             _ = await coldPage
@@ -1215,10 +1219,16 @@ public final class EnvironmentClient {
             setListCursor(nil)
         }
         hasShell = true
+        shellListFailed = !complete
         shellSource = .list
         // The archived threads come after the live shell is up, off the open
         // handler, so a long archive never delays the subscriptions.
         Task { [weak self] in await self?.refreshArchived() }
+    }
+
+    /// His Try Again over a list that did not finish (`shellListFailed`): the shell's lists, asked again.
+    public func relistShell() async {
+        await refreshShell()
     }
 
     /// The first `session.list` page, asked only when there is no cursor to

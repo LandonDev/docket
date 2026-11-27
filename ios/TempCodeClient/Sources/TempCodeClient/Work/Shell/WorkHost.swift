@@ -48,6 +48,9 @@ public final class WorkHost: CaptureHost {
     public private(set) var requestsError: String?
     /// `work.outbox.list` answered at least once on this socket.
     public private(set) var listed = false
+    /// The first `work.outbox.requests` read on this socket has ended, however: until then an empty list is no
+    /// "Nothing Held" (`OutboxModel.stillReading`).
+    public private(set) var requestsRead = false
     public private(set) var listError: String?
     public private(set) var lifeos: LifeosStatus?
     public private(set) var away: AwaySnapshot?
@@ -281,6 +284,7 @@ public final class WorkHost: CaptureHost {
     public func refreshRequests() async {
         guard may(.outboxRequests) else {
             requestsError = nil
+            requestsRead = true
             return requests = []
         }
         let asked = cleared
@@ -291,8 +295,10 @@ public final class WorkHost: CaptureHost {
             requestsError = nil
         } catch {
             guard !keyRevoked, asked == cleared else { return }
+            // An older host's unknown method leaves no error: it has no requests, and the read has ended all the same.
             requestsError = OutboxModel.requestsError(error)
         }
+        requestsRead = true
     }
 
     /// The shows running now; a host from before the clicker's wire, or a key that may not read them, has none.
@@ -473,6 +479,7 @@ public final class WorkHost: CaptureHost {
         waiting = 0
         unreviewed = 0
         listed = false
+        requestsRead = false
         listError = nil
         requestsError = nil
         lifeos = nil

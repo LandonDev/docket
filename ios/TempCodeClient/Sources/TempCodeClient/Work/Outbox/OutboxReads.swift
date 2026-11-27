@@ -31,6 +31,13 @@ public extension OutboxModel {
         HostCan.saysUnknown(error) ? nil : ActionError.wrap(error).message
     }
 
+    /// A host whose first read is still out: its list, or, once an empty list landed, its first requests read (a key
+    /// that may not list requests, and a host from before them, settle that read at once). Never one whose list failed
+    /// (its row names it) or whose link is down past its first try.
+    nonisolated static func stillReading(listed: Bool, listError: String?, requestsRead: Bool, open: Bool) -> Bool {
+        open && listError == nil && (!listed || !requestsRead)
+    }
+
     enum EmptyOutbox: Sendable, Hashable { case reading, nothingHeld }
 
     /// Nil while any row shows. With no rows: still reading whenever any host reads, even under another host's

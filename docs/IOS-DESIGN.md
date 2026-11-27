@@ -2582,7 +2582,10 @@ milestone 46 built, where it lives now:
   Swipe trailing and the context menu offer Send (Send Again) and Discard
   on what waits on a plain press, for a key that may press them. On the
   open Duo the first held item fills an empty detail, in the order the
-  sections draw (a request is never picked). Empty: "Nothing Held". Every
+  sections draw (a request is never picked). Empty: "Nothing Held", once
+  both first reads ended: an empty list keeps the spinner through the first
+  requests read (`OutboxModel.stillReading`; a key that may not list
+  requests, or a host from before them, ends that read at once). Every
   Outbox count on the phone (the Work list's Outbox row, Today's line) is
   one function, `OutboxModel.waitingCount`: the shared `needsHim` (held,
   live, failed, and out of date until put away; never sending or
@@ -2726,7 +2729,9 @@ milestone 46 built, where it lives now:
   covers it (nor, after it, what became of the press: "Sending…", then the
   sum or the refusal, over the row's page until he is back on the list),
   becomes the undo capsule naming what goes ("Sending 2 mails to 2
-  people", Undo), each ticked row keeps its own words (its act, and when a
+  people", Undo). The foot is one slot: each phase's foot (the presses,
+  the capsule, Sending…, Done) takes the last one's place in the same
+  frame, never fading over it. Each ticked row keeps its own words (its act, and when a
   later one goes), and the rows left out dim. Closing the sheet never sends it early: the frozen press waits
   out its five seconds (`RequestPresses`) with its Undo at the tab's foot (or over another request's sheet that
   covers it), and a sheet opened again shows it waiting, then its answer; an answer that lands with the sheet closed
@@ -2839,8 +2844,11 @@ milestone 46 built, where it lives now:
   sheet with the first message and Start; the thread opens. With no chat,
   Work Chats is a spinner while a Work computer is still connecting or
   listing, and "No Work Chats" only once every one that can answer has
-  listed, its line naming any that cannot ("Not connected to Mac.";
-  `HomeSections.workChatsEmpty`).
+  listed whole, its line naming any that cannot ("Not connected to Mac.";
+  `HomeSections.workChatsEmpty`). One that answers but could not list is
+  the house failed-read row above any chats already on the phone
+  ("Couldn’t list chats on the box." with Try Again;
+  `HomeSections.workChatsFailed`).
 - **The held line in a thread**: under a Work thread's call the host held,
   one muted line, the Outbox glyph in the glyph column, "Held" and the act.
   A tap opens it in place: the act's fields and body in a hairline frame
@@ -4987,9 +4995,9 @@ it. What Work adds (the plan "All of Work on the iPhone", M0d):
   fold or a pose change that rebuilds a list comes back at its row. The list scrolls
   by `ScrollPosition` over its rows' ids (`placeTop`). The memory is not kept across
   launches. A list with no row to come back to goes to its top edge once its first rows
-  land. Connections can still open scrolled past its large title when its rows arrive
-  while the push still moves (2 of 5 simulator opens kept the title with this, 1 of 5
-  without, Nov 26): not yet fixed; holding the rows until the push ends is the next try.
+  land. That scroll does not hold its large title when the rows arrive while the push
+  still moves (Connections lost its title so in three opens of five), so Connections
+  takes an inline title in every pose (`WorkPlaceScreen`'s `inlineTitle`).
 - **A place's frame.** `WorkPlaceScreen` is the one frame a place's list uses: the
   place's title, a job filter in the bar (All Jobs, then each job with its sector's
   dot), search when the place has it, the rows' shape redacted on the first load,

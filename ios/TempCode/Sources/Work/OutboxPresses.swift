@@ -508,8 +508,8 @@ struct OutboxUndoInset: ViewModifier {
     /// A sheet that covers the tab (a request's): every other countdown's Undo, the Outbox's own included, over it,
     /// since the tab's foot is under it. It says no notice and spends none: the tab's foot keeps those.
     var covering = false
-    /// The request a covering sheet is for: its own countdown is drawn here too, the one copy of it, so a row pushed
-    /// over the sheet's list never hides its Undo.
+    /// The request a covering sheet is for: its own countdown is the sheet's own foot's, the one copy of it, so it is
+    /// left out here.
     var own: String? = nil
 
     func body(content: Content) -> some View {
@@ -530,9 +530,6 @@ struct OutboxUndoInset: ViewModifier {
                     ForEach(elsewhere) { other in
                         UndoCapsule(line: other.line, identifier: "elsewhere-undo") { other.undo() }
                     }
-                    if covering, let own, let press = RequestPresses.wait.pending[own] {
-                        UndoCapsule(line: press.waitingLine, identifier: "outbox-request-undo") { RequestPresses.wait.undo(own) }
-                    }
                     if enabled, let pending = presses.pending {
                         let id = pending.id
                         UndoCapsule(line: pending.line) { presses.undo(id) }
@@ -546,7 +543,6 @@ struct OutboxUndoInset: ViewModifier {
             }
             .animation(Motion.base, value: presses.pending)
             .animation(Motion.base, value: elsewhere.map(\.id))
-            .animation(Motion.base, value: own.flatMap { RequestPresses.wait.pending[$0] })
             .animation(Motion.base, value: notice)
             // Seen once it has shown for a toast's time, in front, with no countdown over it: a countdown hides it and
             // the clock starts again when it is back. Only that line goes (by its id); the next waiting one shows.

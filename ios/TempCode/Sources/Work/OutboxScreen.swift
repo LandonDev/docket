@@ -103,7 +103,7 @@ struct OutboxScreen: View {
         }
         .listStyle(.plain)
         .overlay {
-            switch OutboxModel.emptyState(bandsEmpty: sections.isEmpty && kept.isEmpty, anyReading: workHosts.contains { !$0.work.listed && $0.work.listError == nil && TodayFeed.open($0) }, anyFailed: !failed.isEmpty) {
+            switch OutboxModel.emptyState(bandsEmpty: sections.isEmpty && kept.isEmpty, anyReading: workHosts.contains { OutboxModel.stillReading(listed: $0.work.listed, listError: $0.work.listError, requestsRead: $0.work.requestsRead, open: TodayFeed.open($0)) }, anyFailed: !failed.isEmpty) {
             case .reading?: ProgressView()
             case .nothingHeld?: ContentUnavailableView("Nothing Held", systemImage: WorkGlyph.outbox)
             case nil: EmptyView()

@@ -11,6 +11,7 @@ import UIKit
 /// empty is `ContentUnavailableView` with the caller's words; a read that failed keeps what shows and adds
 /// one line with Try Again above it.
 struct WorkPlaceScreen<Rows: View>: View {
+    @Environment(\.shellPose) private var pose
     let place: WorkPlace
     /// The job the route narrows the place to; with the place, it names the list's memory.
     var job: String?
@@ -37,6 +38,9 @@ struct WorkPlaceScreen<Rows: View>: View {
     var refresh: (() async -> Void)?
     /// What the open Duo picks for the detail when nothing is picked; nil for a list that picks nothing.
     var pick: PlacePick?
+    /// The title inline in every pose: a place whose rows can land while its push still moves (Connections) would
+    /// otherwise lose a large title scrolled past it.
+    var inlineTitle = false
     @ViewBuilder let rows: () -> Rows
 
     var body: some View {
@@ -67,7 +71,7 @@ struct WorkPlaceScreen<Rows: View>: View {
             }
         }
         .navigationTitle(place.title)
-        .shellTitleDisplay()
+        .navigationBarTitleDisplayMode(inlineTitle ? .inline : pose.titleDisplay.mode)
         .placeTop(route, ids: tops ?? ids)
         .placePick(route, ids: ids, pick: pick)
         .listOnScreen("place.\(place.rawValue)")

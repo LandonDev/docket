@@ -69,11 +69,30 @@ import TempCodeContract
 
     @Test func `Work Chats waits for a Work computer's first list, then names the ones that cannot answer`() {
         // One still connecting or listing: never "No Work Chats" before its list.
-        #expect(HomeSections.workChatsEmpty([("the box", true, false), ("Mac", false, false)]) == .reading)
+        #expect(HomeSections.workChatsEmpty([("the box", true, false, false), ("Mac", false, false, false)]) == .reading)
         // Every computer that answers listed none.
-        #expect(HomeSections.workChatsEmpty([("the box", true, false)]) == .empty(away: []))
+        #expect(HomeSections.workChatsEmpty([("the box", true, false, false)]) == .empty(away: []))
         // One that cannot answer is no wait, and it is named as why the list may be empty.
-        #expect(HomeSections.workChatsEmpty([("the box", true, false), ("Mac", false, true)]) == .empty(away: ["Mac"]))
+        #expect(HomeSections.workChatsEmpty([("the box", true, false, false), ("Mac", false, false, true)]) == .empty(away: ["Mac"]))
         #expect(HomeSections.workChatsEmpty([]) == .empty(away: []))
+    }
+
+    @Test func `a list that did not finish is named with Try Again, never No Work Chats`() {
+        // The first thread-list request failed: hasShell is set, the list was never read whole.
+        let failed: [HomeSections.WorkChatsHost] = [("The box", true, true, false)]
+        #expect(HomeSections.workChatsEmpty(failed) == .failed)
+        #expect(HomeSections.workChatsFailed(failed) == "Couldn’t list chats on the box.")
+        // Named above any chats already on the phone, whatever the others listed; two failures in one line.
+        let two: [HomeSections.WorkChatsHost] = [("The box", true, true, false), ("Mac", true, true, false), ("PC", true, false, false)]
+        #expect(HomeSections.workChatsFailed(two) == "Couldn’t list chats on the box and Mac.")
+        #expect(HomeSections.workChatsEmpty(two) == .failed)
+        // Another still listing keeps the spinner under the failed row.
+        #expect(HomeSections.workChatsEmpty([("The box", true, true, false), ("Mac", false, false, false)]) == .reading)
+        // One that cannot answer is the empty line's "Not connected", not a failed list.
+        let away: [HomeSections.WorkChatsHost] = [("The box", true, true, true)]
+        #expect(HomeSections.workChatsFailed(away) == nil)
+        #expect(HomeSections.workChatsEmpty(away) == .empty(away: ["The box"]))
+        // A list that finished says nothing.
+        #expect(HomeSections.workChatsFailed([("The box", true, false, false)]) == nil)
     }
 }

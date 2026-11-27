@@ -564,6 +564,19 @@ import TempCodeContract
         #expect(OutboxModel.emptyState(bandsEmpty: false, anyReading: true, anyFailed: false) == nil)
     }
 
+    @Test func `an empty list keeps the spinner through the first requests read`() {
+        // The items reply came back empty before the requests read began: still reading, never "Nothing Held".
+        #expect(OutboxModel.stillReading(listed: true, listError: nil, requestsRead: false, open: true))
+        #expect(OutboxModel.emptyState(bandsEmpty: true, anyReading: true, anyFailed: false) == .reading)
+        // Both reads ended (a key that may not list requests and an older host's unknown method end it at once).
+        #expect(!OutboxModel.stillReading(listed: true, listError: nil, requestsRead: true, open: true))
+        // The list itself still out.
+        #expect(OutboxModel.stillReading(listed: false, listError: nil, requestsRead: false, open: true))
+        // A failed list is its row's, and a link down past its first try is Not connected: no spinner for either.
+        #expect(!OutboxModel.stillReading(listed: false, listError: "List failed", requestsRead: false, open: true))
+        #expect(!OutboxModel.stillReading(listed: true, listError: nil, requestsRead: false, open: false))
+    }
+
     @Test func `a host row names its failed requests read and a dropped link, not an older host's unknown method`() {
         // Waiting is both reads: an empty list over requests that did not answer is no "Nothing Held".
         #expect(OutboxModel.readError(list: nil, requests: "The host did not answer", open: true) == "The host did not answer")

@@ -109,7 +109,12 @@ private struct ClashPage: View {
             } description: {
                 Text(readError)
             } actions: {
-                Button("Try Again") { Task { await load() } }
+                // The spinner in the failure's place while it reads, then the clash or the new reason.
+                Button("Try Again") {
+                    readError = nil
+                    read = false
+                    Task { await load() }
+                }
             }
         } else if read {
             ContentUnavailableView("No Longer a Clash", systemImage: "checkmark.circle")

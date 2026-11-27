@@ -27,6 +27,10 @@ struct WorkspaceScreen: View {
         // The needs-you and failed lines read their cue ("Approve: run bun test") as the rows did.
         let rows = (screen?.projects ?? []).flatMap(cueRows) + (screen?.chats ?? [])
         List {
+            // A Work computer that answers but could not list: named with Try Again above the chats already here.
+            if key == HomeSections.workChatsKey, let failed = HomeSections.workChatsFailed(workChatsHosts) {
+                Section { FailedRead(words: failed, retry: { await relistWorkChats() }, identifier: "work-chats-failed") }
+            }
             if let note = lifeosNote {
                 QuietNote(text: note)
                     .listRowInsets(Layout.rowInsets)
@@ -99,6 +103,9 @@ struct WorkspaceScreen: View {
                     switch HomeSections.workChatsEmpty(workChatsHosts) {
                     case .reading:
                         ProgressView()
+                    case .failed:
+                        // The failed row is all there is to say.
+                        EmptyView()
                     case .empty(let away):
                         ContentUnavailableView("No Work Chats", systemImage: "bubble.left.and.bubble.right",
                                                description: away.isEmpty ? nil : Text("Not connected to \(WorkSearch.nameInLine(ComputersState.names(away)))."))
@@ -155,14 +162,23 @@ struct WorkspaceScreen: View {
         }
     }
 
-    /// The Work computers as Work Chats waits on them: listed once its first thread list landed, away while it
-    /// cannot answer (Home's trouble rule, or a relayed computer asleep or out of reach).
-    private var workChatsHosts: [(name: String, listed: Bool, away: Bool)] {
+    /// The Work computers as Work Chats waits on them: listed once its first thread list landed, failed while its
+    /// last list did not finish, away while it cannot answer (Home's trouble rule, or a relayed computer asleep or
+    /// out of reach).
+    private var workChatsHosts: [HomeSections.WorkChatsHost] {
         let now = Date()
         return model.registry.ordered.filter { $0.work.isOn }.map { client in
             let relay = client.environment.isRelayed ? client.relayState : nil
             let troubled = HomeSections.troubled(client.status, awayMs: now.timeIntervalSince(client.transportSince) * 1000, relay: relay)
-            return (name: client.environment.name, listed: client.hasShell, away: troubled || relay == .asleep || relay == .unreachable)
+            return (name: client.environment.name, listed: client.hasShell, failed: client.shellListFailed,
+                    away: troubled || relay == .asleep || relay == .unreachable)
+        }
+    }
+
+    /// Try Again: each Work computer whose list did not finish lists again.
+    private func relistWorkChats() async {
+        for client in model.registry.ordered where client.work.isOn && client.shellListFailed {
+            await client.relistShell()
         }
     }
 

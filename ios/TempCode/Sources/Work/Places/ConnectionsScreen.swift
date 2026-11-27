@@ -94,7 +94,9 @@ struct ConnectionsScreen: View {
             empty: PlaceEmpty(title: "Nothing to Check", line: nil),
             failure: failure,
             retry: { await feed.read(clients, fresh: true) },
-            refresh: { await feed.read(clients, fresh: true) }
+            refresh: { await feed.read(clients, fresh: true) },
+            // Its hosts can answer while the push still moves, which scrolled a large title away (three opens in five).
+            inlineTitle: true
         ) {
             if !ending.isEmpty {
                 Section {
