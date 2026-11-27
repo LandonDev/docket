@@ -57,7 +57,7 @@ export function countLabel({
   capped: boolean;
 }): { text: string; state: CountState } {
   if (!value) return { text: "", state: "idle" };
-  if (!valid) return { text: "Invalid regex", state: "invalid" };
+  if (!valid) return { text: "Not a valid pattern", state: "invalid" };
   if (total === 0) return { text: "No results", state: "empty" };
   const suffix = capped ? "+" : "";
   return { text: current > 0 ? `${current} of ${total}${suffix}` : `${total}${suffix}`, state: "ok" };
@@ -110,7 +110,7 @@ export function FindBar(props: FindBarProps) {
         />
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-1">
-            {/* The input's 112px floor leaves the count room inside 240px, so "Invalid regex" never widens the field or drops the toggles to a second line; the group fits around the floor and the count. */}
+            {/* The input's 112px floor leaves the count room inside 240px, so "Not a valid pattern" never widens the field or drops the toggles to a second line; the group fits around the floor and the count. */}
             <InputGroup className={cn("h-7 w-60 min-w-fit gap-1 pe-2", invalid && "border-destructive", missed && "border-find-miss-edge")}>
               <GroupInput
                 ref={props.searchRef}

@@ -5,6 +5,7 @@
 import { useEffect, useRef } from "react";
 import { setHarnessModels } from "../../../lib/models";
 import { RowBoundary } from "./RowBoundary";
+import { nameInLine } from "../../../lib/hostWords";
 import type { BatchState } from "@server/shared/contract-batch";
 import { HostGlyph } from "../../../chrome/HostGlyph";
 import { MoreHorizontal, Plus } from "../../../chrome/icons";
@@ -47,7 +48,7 @@ export function BoardPreview({
             </h3>
             {group.rows.map((row, index) => failed && i === 0 && index === 0 ? (
               <div key={row.meta.id} data-preview-expected-error>
-                <RowBoundary threadId="guide-batch" rowId={row.meta.id}><BrokenRow /></RowBoundary>
+                <RowBoundary threadId="guide-batch" rowId={row.meta.id} titleOf={() => row.meta.title}><BrokenRow /></RowBoundary>
               </div>
             ) : (
               <MasterRowView
@@ -68,7 +69,7 @@ export function BoardPreview({
         ))}
       </div>
       </div>
-      {foot ? <BatchFoot batch={batch} clock={BOARD_FIXTURE_CLOCK} titleOf={(id) => rows.find((row) => row.meta.id === id)?.meta.title} hostName={() => "This Mac"} onSave={access === "read" ? undefined : async () => {}} onStop={access === "read" ? undefined : async () => {}} held={access === "held" ? "This Mac is not connected" : null} /> : null}
+      {foot ? <BatchFoot batch={batch} clock={BOARD_FIXTURE_CLOCK} titleOf={(id) => rows.find((row) => row.meta.id === id)?.meta.title} hostName={() => nameInLine("This Mac")} onSave={access === "read" ? undefined : async () => {}} onStop={access === "read" ? undefined : async () => {}} held={access === "held" ? "This Mac is not connected" : null} /> : null}
     </div>
   );
 }

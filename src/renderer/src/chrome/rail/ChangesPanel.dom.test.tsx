@@ -15,7 +15,8 @@ const h = vi.hoisted(() => ({
   revertChunkText: vi.fn((_head: string, _index: string, _pos: number) => "unstaged text"),
   project: false,
   pr: null as GitPr | null,
-  confirm: vi.fn(() => Promise.resolve(true)),
+  /** The host's answer: a request's own step runs inside it, and its refusal rejects (the dialog's red line). */
+  confirm: vi.fn((req: { run?: () => Promise<void> }) => (req.run ? req.run().then(() => true) : Promise.resolve(true))),
   review: vi.fn(),
   openUrl: vi.fn(() => Promise.resolve()),
   generate: vi.fn(() => Promise.resolve("Tidy the panel")),
@@ -188,7 +189,7 @@ beforeEach(() => {
   h.project = false;
   h.against = againstOf();
   vi.clearAllMocks();
-  h.confirm.mockImplementation(() => Promise.resolve(true));
+  h.confirm.mockImplementation((req: { run?: () => Promise<void> }) => (req.run ? req.run().then(() => true) : Promise.resolve(true)));
 });
 afterEach(() => {
   cleanup();
@@ -330,6 +331,23 @@ describe("ChangesPanel", () => {
     await flush();
     expect(h.confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Discard changes in a.ts?", danger: true }));
     expect(h.git.gitDiscardFile).toHaveBeenCalledWith("local", "/p", "a.ts");
+  });
+
+  it("Discard runs inside its confirm: a refusal is said in the confirm, in plain words, never at the top of Changes", async () => {
+    h.index = indexOf({ files: [file("a.ts")] });
+    mount();
+    await flush();
+    h.git.gitDiscardFile.mockImplementationOnce(() => Promise.reject(new Error("fatal: Unable to create '/p/.git/index.lock': File exists.")));
+    let refusal: unknown = null;
+    h.confirm.mockImplementationOnce((req: { run?: () => Promise<void> }) => req.run!().then(() => true, (e: unknown) => ((refusal = e), false)));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    await flush();
+    await flush();
+    expect(h.git.gitDiscardFile).toHaveBeenCalledWith("local", "/p", "a.ts");
+    expect((refusal as Error).message).toBe("Git is busy in this checkout. Try again.");
+    expect(screen.queryByRole("alert")).toBeNull();
+    // The section was read again after the refused step, as after any other.
+    expect(h.refresh).toHaveBeenCalled();
   });
 
   it("the right-click menu offers the row's verbs", async () => {

@@ -194,7 +194,17 @@ export function ConfirmDialog({
   );
 }
 
-export type ConfirmRequest = { title: string; body?: string; action: string; danger?: boolean; /** the second answer takes the first focus (Keep Both over Replace) */ focusOther?: boolean };
+export type ConfirmRequest = {
+  title: string;
+  body?: string;
+  action: string;
+  danger?: boolean;
+  /** the second answer takes the first focus (Keep Both over Replace) */
+  focusOther?: boolean;
+  /** The step itself, run inside the confirm: the verb spins until it lands, and a refusal is the confirm's red line
+   *  with the dialog kept (a refused Delete stays in its confirm). The answer resolves true once it has landed. */
+  run?: () => Promise<void>;
+};
 
 type Pending = ConfirmRequest & { id: number; other?: string; resolve: (answer: boolean | "other") => void };
 
@@ -246,7 +256,10 @@ export function ConfirmHost() {
         drop();
         head.resolve(false);
       }}
-      onConfirm={() => head.resolve(true)}
+      onConfirm={async () => {
+        if (head.run) await head.run();
+        head.resolve(true);
+      }}
       onDone={drop}
     />
   );

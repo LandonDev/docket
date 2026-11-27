@@ -115,6 +115,35 @@ describe("a dialog's exit", () => {
     await waitFor(() => expect(document.querySelector('[role="alertdialog"]')).toBeNull());
   });
 
+  it("ConfirmHost runs a request's step inside the confirm: the verb spins until it lands, a refusal is its red line and the dialog stays", async () => {
+    render(<ConfirmHost />);
+    let refuse: (err: Error) => void = () => {};
+    const run = vi
+      .fn<() => Promise<void>>()
+      .mockImplementationOnce(() => new Promise<void>((_, reject) => (refuse = reject)))
+      .mockImplementationOnce(() => Promise.resolve());
+    let answer: boolean | undefined;
+    await act(async () => {
+      void confirmAction({ title: "Discard changes in a.ts?", action: "Discard", danger: true, run }).then((ok) => (answer = ok));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
+    });
+    const verb = screen.getByRole("button", { name: "Discard" }) as HTMLButtonElement;
+    expect(verb.disabled).toBe(true);
+    expect(verb.querySelector("[data-slot=busy-label]")!.hasAttribute("data-busy")).toBe(true);
+    await act(async () => refuse(new Error("Git is busy in this checkout. Try again.")));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(screen.getByText("Git is busy in this checkout. Try again.").className).toContain("text-destructive");
+    expect(answer).toBeUndefined();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    });
+    await waitFor(() => expect(answer).toBe(true));
+    expect(run).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  });
+
   it("ConfirmHost answers Cancel with false after the exit", async () => {
     render(<ConfirmHost />);
     let answer: boolean | undefined;

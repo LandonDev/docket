@@ -5,15 +5,13 @@ import type { ServiceId } from "aliax-core/shared/types";
 import { isRoutedProvider, PROVIDER_OF, SIGN_IN_NAME, type AccountProvider } from "@shared/accounts";
 import type { StatsBundle, StatsStatus } from "@shared/aliaxStats";
 import { CANCELLED, SIGN_IN_REFRESHED } from "@shared/signInWords";
-import { RefreshCw } from "@renderer/chrome/icons";
-import { Page } from "@renderer/components/page";
+import { Page, PageError } from "@renderer/components/page";
 import { Alert, AlertAction, AlertDescription } from "@renderer/components/ui/alert";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Dialog } from "@renderer/components/ui/dialog";
 import { ConfirmDialog, DialogFooter, ErrorLine } from "@renderer/chrome/ConfirmDialog";
 import { ModalBody, ModalPanel } from "@renderer/chrome/Modal";
 import { Spinner } from "@renderer/components/ui/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { displayName } from "@aliax/lib/accounts";
 import { compact } from "@aliax/lib/viz";
 import { dayTime } from "@renderer/lib/duration";
@@ -32,9 +30,10 @@ type Removing = { serviceId: ServiceId; name: string; label: string; keyed: bool
 type Login = { serviceId: ServiceId; hint?: string; error: string | null };
 
 export function AccountsPage(): React.JSX.Element {
-  const { views, usage, layout, headroom, refresh, snapshot } = useAliax();
+  const { views, error, usage, layout, headroom, refresh, snapshot } = useAliax();
   const [busy, setBusy] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [login, setLogin] = useState<Login | null>(null);
   /** The key service whose Add key… dialog is open. */
   const [keyFor, setKeyFor] = useState<ServiceId | null>(null);
@@ -154,12 +153,9 @@ export function AccountsPage(): React.JSX.Element {
       title="Accounts"
       width="table"
       actions={
-        <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Refresh usage" disabled={refreshing} onClick={() => void reload()} />}>
-            {refreshing ? <BusyLabel busy label="" /> : <RefreshCw />}
-          </TooltipTrigger>
-          <TooltipContent>Refresh usage</TooltipContent>
-        </Tooltip>
+        <Button variant="ghost" size="sm" disabled={refreshing} onClick={() => void reload()}>
+          <BusyLabel busy={refreshing} label="Refresh" />
+        </Button>
       }
     >
       {snapshot.vaultLock ? (
@@ -194,8 +190,30 @@ export function AccountsPage(): React.JSX.Element {
           onDone={() => setFreshing(false)}
         />
       ) : null}
+      {/* A failed read is one red line with Retry: in the bones' place before any list, over the rows it keeps after. */}
+      {error !== null ? (
+        <PageError
+          action={
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={retrying}
+              onClick={() => {
+                setRetrying(true);
+                void refresh(true).finally(() => setRetrying(false));
+              }}
+            >
+              <BusyLabel busy={retrying} label="Retry" />
+            </Button>
+          }
+        >
+          <Tip label={<span className="min-w-0 break-words">{error}</span>}>
+            <span>Couldn't load accounts</span>
+          </Tip>
+        </PageError>
+      ) : null}
       {views === null ? (
-        <AccountsSkeleton />
+        error === null ? <AccountsSkeleton /> : null
       ) : (
         <AccountsView
           views={views}
@@ -351,8 +369,7 @@ export function StatsPage(): React.JSX.Element {
       description={description}
       actions={
         <Button variant="ghost" size="sm" disabled={reindexing} onClick={() => void reindex()}>
-          {reindexing ? <BusyLabel busy label="" /> : <RefreshCw />}
-          Reindex
+          <BusyLabel busy={reindexing} label="Reindex" />
         </Button>
       }
     >

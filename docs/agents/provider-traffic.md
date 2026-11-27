@@ -359,7 +359,7 @@ routed to (aliax-core's `forward`). Two listeners:
   Anthropic: one account throttled, ten turns spread over the other ten).
 
 - **Usage reset recovery** (accounts.ts, headroom.ts, remote/accountSync.ts):
-  the Accounts page's existing Refresh usage button asks `accounts.refresh`.
+  the Accounts page's Refresh button asks `accounts.refresh`.
   The host forces its own provider sweep and calls `accounts.refreshLocal`
   (admin, no fanout) on every connected peer, then exchanges headroom in both
   directions. A failed host produces one toast with its name and reason;

@@ -111,11 +111,12 @@ function RulesForm({
           <h3 id="rules-steps" className="text-xs font-medium text-muted-foreground">
             Steps, in order
           </h3>
-          <ol className="flex flex-col" aria-label="Steps">
+          {/* Under 26rem the detail takes a line of its own under the name; move and remove stay on the first. */}
+          <ol className="@container/steps flex flex-col" aria-label="Steps">
             {steps.map((step, i) => {
               const name = step.name || "step";
               return (
-                <Item key={step.id} size="xs" render={<li />} className="flex-nowrap px-0" data-rule-step={step.id} data-rule-kind={step.kind}>
+                <Item key={step.id} size="xs" render={<li />} className="flex-nowrap px-0 @max-[26rem]/steps:flex-wrap @max-[26rem]/steps:gap-y-1" data-rule-step={step.id} data-rule-kind={step.kind}>
                   <span className="w-4 shrink-0 text-end text-xs tabular-nums text-muted-foreground">{i + 1}</span>
                   <Input
                     aria-label={`Step ${i + 1} name`}
@@ -124,16 +125,16 @@ function RulesForm({
                     placeholder="Name"
                     className="h-7 w-40 shrink-0"
                   />
-                  <ItemContent className="min-w-0">
+                  <ItemContent className="min-w-0 @max-[26rem]/steps:order-last @max-[26rem]/steps:basis-full @max-[26rem]/steps:ps-6 @max-[26rem]/steps:empty:hidden">
                     {/* What the step does, unless its name already says it word for word. */}
                     {sameWords(step.name, stepLine(step)) ? null : (
-                      <span className={cn("truncate text-xs text-muted-foreground", step.kind === "shell" && "font-mono text-xs")} data-rule-line>
+                      <span className={cn("truncate text-xs text-muted-foreground @max-[26rem]/steps:whitespace-normal @max-[26rem]/steps:break-words", step.kind === "shell" && "font-mono text-xs")} data-rule-line>
                         {stepLine(step)}
                       </span>
                     )}
                   </ItemContent>
                   {pinned(step) ? null : (
-                    <ItemActions className="gap-0">
+                    <ItemActions className="gap-0 @max-[26rem]/steps:ms-auto">
                       <Tip label="Move up">
                         <Button
                           type="button"
@@ -177,7 +178,7 @@ function RulesForm({
                 </Field>
                 <Field label="Folder" className="flex-1">
                   {/* Empty runs in the project's folder: the placeholder is that default. */}
-                  <Input value={shell.cwd ?? ""} onChange={(e) => setShell({ ...shell, cwd: e.target.value })} placeholder="The project" className="font-mono text-xs" />
+                  <Input value={shell.cwd ?? ""} onChange={(e) => setShell({ ...shell, cwd: e.target.value })} placeholder="The project" className={shell.cwd ? "font-mono text-xs" : undefined} />
                 </Field>
               </div>
               <Field label="Command" hint="Passes when it exits with 0">
@@ -185,7 +186,7 @@ function RulesForm({
               </Field>
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="ghost" size="sm" onClick={() => setShell(null)}>
-                  Cancel
+                  Discard
                 </Button>
                 <Button type="button" variant="secondary" size="sm" onClick={addShell} disabled={!shellDraftValid(shell)}>
                   Add step

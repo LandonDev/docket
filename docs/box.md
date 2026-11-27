@@ -589,7 +589,7 @@ WorkingStrip.dom.test.tsx.
 
 ### Accounts: sign in on the Mac once
 
-After resetting provider usage, click **Refresh usage** on Accounts once.
+After resetting provider usage, click **Refresh** on Accounts once.
 The Mac and every connected box fetch the provider's usage for their accounts
 and share fresh window evidence over their peer links. Room in the exhausted
 window (or its reset time passing) lifts the saved quota cooldown and cap

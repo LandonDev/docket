@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PaceSeries } from "@shared/aliaxStats";
 import { readFileSync } from "node:fs";
 import { TICK } from "@aliax/charts/chart";
-import { dayTickInterval, paceLine, PLOT_MARGIN, timeLeft, VALUE_AXIS } from "./stats";
+import { dayTickInterval, paceData, paceLine, PLOT_MARGIN, timeLeft, VALUE_AXIS } from "./stats";
 
 const HOUR = 3_600_000;
 /** A 5-hour window `left` hours from its end, heading for `projected` percent. */
@@ -69,5 +69,39 @@ describe("a value plot's room for its ticks", () => {
     // The one category axis (the bar lists' names) keeps its own width; every other y axis is a value axis.
     expect(source.match(/<YAxis \{\.\.\.AXIS\}/g)?.length ?? 0).toBe(1);
     expect(source.match(/<YAxis \{\.\.\.VALUE_AXIS\}/g)?.length).toBe(4);
+  });
+});
+
+describe("Stats pace chart's points", () => {
+  /** A 5-hour window in 5 one-hour marks, this cycle sampled to 2.5 hours at 40%, the query's latest reading carried past it. */
+  const series = (): PaceSeries =>
+    ({
+      service: "claude-code",
+      label: "5h",
+      periodMs: 5 * HOUR,
+      nowFrac: 0.5,
+      nowPercent: 40,
+      points: [0, 0.2, 0.4, 0.6, 0.8, 1].map((frac) => ({ frac, hours: frac * 5, p25: 10, median: 20, p75: 30, current: frac <= 0.4 ? frac * 80 : 40 })),
+    }) as unknown as PaceSeries;
+
+  it("ends this cycle at its latest sample, blank in every hour after it", () => {
+    const data = paceData(series());
+    const future = data.filter((p) => p.hours > 2.5);
+    expect(future.length).toBe(3);
+    expect(future.every((p) => p.current === null)).toBe(true);
+    // The usual band and line still run the whole window.
+    expect(future.every((p) => p.median === 20 && p.usual !== null)).toBe(true);
+  });
+
+  it("reaches the latest sample itself, between two hour marks", () => {
+    const data = paceData(series());
+    expect(data.find((p) => p.hours === 2.5)).toEqual({ hours: 2.5, usual: null, median: null, current: 40 });
+    expect(data.map((p) => p.hours)).toEqual([0, 1, 2, 2.5, 3, 4, 5]);
+  });
+
+  it("draws no line, and adds no point, for a window with no live cycle", () => {
+    const s = { ...series(), nowFrac: 0, nowPercent: 0, points: series().points.map((p) => ({ ...p, current: null })) } as PaceSeries;
+    expect(paceData(s).map((p) => p.hours)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(paceData(s).every((p) => p.current === null)).toBe(true);
   });
 });

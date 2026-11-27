@@ -2144,6 +2144,19 @@ describe("the batch across hosts", () => {
     expect(again.querySelector("[data-row-title] + [data-host-glyph]")?.getAttribute("aria-label")).toBe("The box");
   });
 
+  it("a child out of reach blocks the batch on the box, the host's name lower case mid-line on its row and in the foot", async () => {
+    seed([meta({ id: "c-home", title: "Home", status: "running" })]);
+    seedBox([boxMeta({ id: "c-box", title: "Inbox", status: "idle" })]);
+    renderView();
+    await flush();
+    act(() => {
+      link.push({ push: "batch", state: { ...batch, children: [{ environmentId: "box", sessionId: "c-box", title: "Inbox" }], blocked: { sessionId: "box:c-box", why: "unreachable", environmentId: "box" } } } as unknown as ServerPush);
+    });
+    await flush();
+    expect(screen.getByRole("button", { name: /Inbox/ }).querySelector("[data-row-status]")!.textContent).toBe("Is out of reach on the box");
+    expect(document.querySelector("[data-batch-foot] [data-blocked]")!.textContent).toBe("Blocked: Inbox is out of reach on the box");
+  });
+
   it("a child on another host lists its subagents from that host's rows, with the host's glyph", async () => {
     seed([meta({ id: "c-home", title: "Home", status: "running" })]);
     seedBox(

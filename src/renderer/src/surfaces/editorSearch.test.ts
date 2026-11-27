@@ -37,7 +37,7 @@ describe("countLabel", () => {
   });
 
   it("names a broken regex and a query with no match", () => {
-    expect(at({ valid: false })).toEqual({ text: "Invalid regex", state: "invalid" });
+    expect(at({ valid: false })).toEqual({ text: "Not a valid pattern", state: "invalid" });
     expect(at({ total: 0 })).toEqual({ text: "No results", state: "empty" });
   });
 

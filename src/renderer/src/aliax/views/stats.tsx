@@ -71,16 +71,37 @@ export const PLOT_MARGIN = { top: 8, right: 12, bottom: 0, left: 0 } as const;
  *  no line drawn, so its length is 0: "100%" has the whole 36px, room on a wider fallback font too. */
 export const VALUE_AXIS = { ...AXIS, width: 44, tickSize: 0 } as const;
 
+/** One hour mark of the pace chart: the usual band and line, and this cycle's reading where it was measured. */
+export type PacePoint = { hours: number; usual: [number, number] | null; median: number | null; current: number | null };
+
+/**
+ * The pace chart's points. This cycle's line ends at its latest sample
+ * (`nowFrac`, `nowPercent`): the hours after it are blank in the line and
+ * its readout, never the last reading carried on as if measured then.
+ */
+export function paceData(series: PaceSeries): PacePoint[] {
+  const tenths = (hours: number): number => Math.round(hours * 10) / 10;
+  const out: PacePoint[] = series.points.map((p) => ({
+    hours: tenths(p.hours),
+    usual: p.p25 !== null && p.p75 !== null ? [p.p25, p.p75] : null,
+    median: p.median,
+    current: p.frac <= series.nowFrac ? p.current : null,
+  }));
+  // The latest sample between two hour marks is a point of its own, so the line reaches it.
+  const live = out.some((p) => p.current !== null);
+  const now = tenths((series.nowFrac * series.periodMs) / 3_600_000);
+  if (live && !out.some((p) => p.hours === now)) {
+    const i = out.findIndex((p) => p.hours > now);
+    out.splice(i < 0 ? out.length : i, 0, { hours: now, usual: null, median: null, current: series.nowPercent });
+  }
+  return out;
+}
+
 function PaceChart({ series }: { series: PaceSeries }) {
   // The cycle is drawn in its provider's colour, as on every other chart.
   const color = SERVICE_SERIES[series.service as keyof typeof SERVICE_SERIES] ?? SERIES[0];
   const weekly = series.periodMs > 86_400_000;
-  const data = series.points.map((p) => ({
-    hours: Math.round(p.hours * 10) / 10,
-    usual: p.p25 !== null && p.p75 !== null ? [p.p25, p.p75] : null,
-    median: p.median,
-    current: p.current,
-  }));
+  const data = paceData(series);
   return (
     <>
       <ChartFrame label={paceTitle(series)}>

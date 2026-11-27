@@ -445,10 +445,11 @@ function PastPass({
   return (
     <Collapsible data-pass={passNum}>
       <CollapsibleTrigger className={cn("group/pass flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left", ROW_PRESS)}>
-        <span className="flex w-full items-baseline gap-2">
+        {/* "Pass 1" and its request 4px apart, as a word and its detail sit on every line; the tally keeps 8px. */}
+        <span className="flex w-full items-baseline gap-1" data-pass-line>
           <span className="shrink-0 text-[13px] font-medium text-foreground">Pass {passNum}</span>
           <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{firstLine(data.header)}</span>
-          <span className="flex shrink-0 items-center gap-1 self-center text-[13px] tabular-nums">
+          <span className="ms-1 flex shrink-0 items-center gap-1 self-center text-[13px] tabular-nums">
             {data.todos.length > 0 ? (
               <span className="text-muted-foreground">
                 {done}/{data.todos.length}

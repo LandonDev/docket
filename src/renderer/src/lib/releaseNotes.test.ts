@@ -132,7 +132,8 @@ describe("presentReleaseNotes", () => {
 
 describe("formatReleaseDate", () => {
   it("formats a changelog ISO date", () => {
-    expect(formatReleaseDate("2026-09-01")).toBe("1 Sep 2026");
+    expect(formatReleaseDate("2026-09-01")).toBe("Sep 1, 2026");
+    expect(formatReleaseDate("2026-11-26")).toBe("Nov 26, 2026");
   });
 
   it.each(["soon", "2026-13-01", "2026-09-1"])(

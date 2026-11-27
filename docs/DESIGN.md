@@ -5069,7 +5069,8 @@ under a hairline, 16px in as the field is: the job as a `ChoiceToggle` named
 and the others cut at 72px where the row is short), and at the end Start thread (secondary, its key cap in
 muted ink: the one key not plain) and File (primary). Job gives way first; in a window under 672px (a
 display too narrow for 680), where seven whole short names and the two presses no longer fit, the presses take a
-second row at its end (a container query on the foot), so nothing overlaps and the window grows with its page. A capture on
+second row at its end (a container query on the foot) and the Job track wraps onto a second line inside its border,
+each choice still 26px, so nothing overlaps and the window grows with its page. A capture on
 its way shows nothing, since the window is already gone and the next draft
 starts empty. While the host says LifeOS cannot take a capture, the line
 says why in the rule's words, this computer named ("Not signed in to LifeOS

@@ -48,8 +48,8 @@ describe("FindBar", () => {
     expect(byLabel(container, "Find").getAttribute("aria-invalid")).toBeNull();
     expect(group().className).toContain("border-find-miss-edge");
     expect(group().className.split(" ")).not.toContain("border-destructive");
-    rerender(<FindBar {...props({ count: { text: "Invalid regex", state: "invalid" } })} />);
-    expect(count().textContent).toBe("Invalid regex");
+    rerender(<FindBar {...props({ count: { text: "Not a valid pattern", state: "invalid" } })} />);
+    expect(count().textContent).toBe("Not a valid pattern");
     expect(count().className).toContain("text-destructive");
     expect(byLabel(container, "Find").getAttribute("aria-invalid")).toBe("true");
     expect(group().className.split(" ")).toContain("border-destructive");
@@ -119,7 +119,7 @@ describe("FindBar", () => {
       expect(field.className.split(" ")).toContain("w-60");
       expect(field.parentElement!.className).toContain("flex-wrap");
     }
-    // Find has no width of its own (an input's intrinsic 20 characters would set the floor) and a 112px floor, so its widest count ("Invalid regex", about 80px) still fits the 240px field: it never
+    // Find has no width of its own (an input's intrinsic 20 characters would set the floor) and a 112px floor, so its widest count ("Not a valid pattern", about 80px) still fits the 240px field: it never
     // widens and the toggles never drop. Replace has no count and keeps 144px.
     expect(findField.querySelector("input")!.className.split(" ")).toEqual(expect.arrayContaining(["w-0", "min-w-28"]));
     expect(replaceField.querySelector("input")!.className.split(" ")).toContain("min-w-36");

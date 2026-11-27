@@ -69,6 +69,11 @@ describe("ChoiceToggle", () => {
     expect(button("Alpha").querySelector("span.truncate")).toBeNull();
   });
 
+  it("takes the track's own classes last, so a container query can wrap it where its row is narrow", () => {
+    render(<ChoiceToggle label="Pick" fit className="@max-[40rem]/foot:flex-wrap" value="a" options={OPTIONS} onChange={() => {}} />);
+    expect(group().className.split(/\s+/)).toEqual(expect.arrayContaining(["h-8", "@max-[40rem]/foot:flex-wrap"]));
+  });
+
   it("without fit, draws its labels as they are", () => {
     render(<ChoiceToggle label="Pick" value="a" options={OPTIONS} onChange={() => {}} />);
     expect(button("Alpha").querySelector("span.truncate")).toBeNull();

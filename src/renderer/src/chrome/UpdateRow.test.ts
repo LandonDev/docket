@@ -2,9 +2,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { APP_NAME } from "@shared/appName";
 import { updateStore } from "../lib/updateStore";
 import type { UpdaterSnapshot } from "../lib/updater";
-import { RETRY_TIP, UpdateRow, updateRowState, useUpdateRowState, type UpdateRowState } from "./UpdateRow";
+import { RETRY_TIP, retryTip, UpdateRow, updateRowState, useUpdateRowState, type UpdateRowState } from "./UpdateRow";
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 
 const web = vi.hoisted(() => ({ on: false }));
@@ -139,7 +140,7 @@ describe("UpdateRow", () => {
     mount({ kind: "available", version: "1.0.11", retry: true, error: "net::ERR_CONNECTION_RESET at https://github.com/x" });
     expect(screen.getByRole("button", { name: "Retry update" })).toBeTruthy();
     // The tooltip says it plainly; the updater's raw text is never on screen.
-    expect(RETRY_TIP).toBe("The last download failed");
+    expect(RETRY_TIP).toBe("The update didn't finish");
     expect(document.body.textContent).not.toContain("ERR_CONNECTION_RESET");
   });
 
@@ -151,9 +152,19 @@ describe("UpdateRow", () => {
     fireEvent.pointerEnter(row, { pointerType: "mouse" });
     fireEvent.mouseEnter(row);
     fireEvent.mouseMove(row);
-    await waitFor(() => expect(screen.getByText(RETRY_TIP)).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(`${APP_NAME} could not reach the update feed`)).toBeTruthy(), { timeout: 1500 });
     expect(document.body.textContent).not.toContain("ERR_CONNECTION_RESET");
     expect(screen.queryByRole("button", { name: "What's new" })).toBeNull();
+  });
+
+  it("a retry's tooltip says what failed: the installer's own words, a damaged download, else the update didn't finish", () => {
+    // main says an installer failure in its own words (update.ts DID_NOT_INSTALL, NEVER_INSTALLED).
+    expect(retryTip("The update did not install.")).toBe("The update did not install");
+    expect(retryTip("The update never installed.")).toBe("The update never installed");
+    expect(retryTip("sha512 checksum mismatch")).toBe("The download was damaged");
+    expect(retryTip("Error: EPERM: operation not permitted")).toBe("The update didn't finish");
+    expect(retryTip(undefined)).toBe("The update didn't finish");
+    expect(retryTip("whatever")).not.toBe("The last download failed");
   });
 
   it("downloading shows its percentage; ready restarts", () => {

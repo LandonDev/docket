@@ -65,4 +65,37 @@ describe("RulesDialog", () => {
     expect(screen.getByLabelText("Command").getAttribute("placeholder")).not.toMatch(/exit|,/);
     expect(screen.getByText("Passes when it exits with 0")).toBeTruthy();
   });
+
+  it("a draft shell step is dropped by Discard, so the dialog keeps one Cancel; its Folder is in the code font only once it holds a path", () => {
+    render(<RulesDialog rules={rules([{ id: "land", name: "Land", kind: "land" }])} onClose={() => {}} onSave={async () => {}} />);
+    fireEvent.change(screen.getByLabelText("Add a step"), { target: { value: "shell" } });
+    expect(screen.getAllByRole("button", { name: "Cancel" })).toHaveLength(1);
+    const folder = screen.getByLabelText("Folder");
+    expect(folder.className).not.toContain("font-mono");
+    fireEvent.change(folder, { target: { value: "ios" } });
+    expect(screen.getByLabelText("Folder").className).toContain("font-mono");
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(document.querySelector("[data-shell-draft]")).toBeNull();
+  });
+
+  it("under 26rem a step's detail takes its own line under the name, move and remove kept on the first", () => {
+    render(
+      <RulesDialog
+        rules={rules([
+          { id: "land", name: "Land", kind: "land" },
+          { id: "gate", name: "Gate", kind: "gate" },
+        ])}
+        onClose={() => {}}
+        onSave={async () => {}}
+      />,
+    );
+    expect(screen.getByRole("list", { name: "Steps" }).className).toContain("@container/steps");
+    const gate = document.querySelector('[data-rule-step="gate"]')!;
+    expect(gate.className).toContain("@max-[26rem]/steps:flex-wrap");
+    const detail = gate.querySelector("[data-slot=item-content]")!;
+    expect(detail.className).toContain("@max-[26rem]/steps:order-last");
+    expect(detail.className).toContain("@max-[26rem]/steps:basis-full");
+    expect(detail.querySelector("[data-rule-line]")!.className).toContain("@max-[26rem]/steps:whitespace-normal");
+    expect(gate.querySelector("[data-slot=item-actions]")!.className).toContain("@max-[26rem]/steps:ms-auto");
+  });
 });

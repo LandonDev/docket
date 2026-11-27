@@ -67,5 +67,10 @@ export default [
       status: { indexing: false, filesDone: 40, filesTotal: 40, rows: 1200 },
     },
   },
+  {
+    // The host's query carries a live cycle's latest reading to the window's end; the chart ends the line at the sample.
+    name: "A live cycle as the host sends it, its latest reading carried past the sample",
+    props: { data: { ...STATS, pace: STATS.pace.map((p) => ({ ...p, points: p.points.map((q) => ({ ...q, current: q.frac <= p.nowFrac ? q.current : p.nowPercent })) })) }, status: null },
+  },
   { name: "Loading", props: { data: null, status: null } },
 ];

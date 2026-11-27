@@ -125,10 +125,11 @@ export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(fun
         <p className="px-4 pb-2 text-xs text-muted-foreground">{down.words}</p>
       ) : null}
       {/* One 48px row, Job giving way first (its long names cut), in the 680px window; under 640px, where seven
-          whole short names and the presses no longer fit, the presses take a row of their own at its end. */}
+          whole short names and the presses no longer fit, the presses take a row of their own at its end, and the
+          Job track wraps onto a second line inside its border rather than run past it, each choice still 26px. */}
       <div data-capture-foot className="@container/foot border-t border-border px-4 py-2">
         <div className="flex min-h-8 items-center gap-2 @max-[40rem]/foot:flex-wrap">
-          <ChoiceToggle label="Job" fit value={p.sector} options={SECTOR_CHOICES.map((value) => ({ value, label: choiceLabel(value, p.jobs) }))} onChange={p.onSector} />
+          <ChoiceToggle label="Job" fit className="@max-[40rem]/foot:h-auto @max-[40rem]/foot:flex-wrap @max-[40rem]/foot:[&>[data-slot=toggle-group-item]]:h-6.5" value={p.sector} options={SECTOR_CHOICES.map((value) => ({ value, label: choiceLabel(value, p.jobs) }))} onChange={p.onSector} />
           <div className="ms-auto flex shrink-0 items-center justify-end gap-2 @max-[40rem]/foot:w-full">
             <Button variant="secondary" size="sm" disabled={off} onClick={() => p.onFile(true)}>
               Start thread

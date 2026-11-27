@@ -1,7 +1,7 @@
 import { ArrowDownCircle, CircleCheck, FileText, RefreshCw, X } from "./icons";
 import { Spinner } from "../components/ui/spinner";
 import { isWebMode } from "../lib/nativeWeb";
-import { canRetry, type UpdaterSnapshot } from "../lib/updater";
+import { canRetry, updateFailureWords, type UpdaterSnapshot } from "../lib/updater";
 import { updateStore, useUpdateSnapshot } from "../lib/updateStore";
 import type { InstalledUpdate } from "../lib/updateNotice";
 import { useShell, shell } from "../stores/shell";
@@ -45,8 +45,10 @@ export function useUpdateRowState(): UpdateRowState | null {
   return updateRowState(snapshot, notice, updateStore.manualCheck);
 }
 
-/** Why the row says Retry update. */
-export const RETRY_TIP = "The last download failed";
+/** Why the row says Retry update when the failure says nothing plainer. */
+export const RETRY_TIP = "The update didn't finish";
+/** Why the row says Retry update: the failure in plain words (a download, the feed, the installer), one line with no period. */
+export const retryTip = (error?: string): string => updateFailureWords(error, RETRY_TIP).replace(/\.$/, "");
 
 const versioned = (label: string, version?: string) => (version ? `${label}, ${version}` : label);
 
@@ -134,7 +136,7 @@ export function UpdateRow({
           label={state.retry ? label("Retry update") : toVersion("Update", state.version)}
           ariaLabel={state.retry ? undefined : `Update to ${state.version}`}
           // Plain words on hover; the updater's own text stays in its snapshot, never on screen.
-          tooltip={state.retry ? RETRY_TIP : undefined}
+          tooltip={state.retry ? retryTip(state.error) : undefined}
           onClick={onInstall}
           hoverActions={
             state.notes && onOpenWhatsNew

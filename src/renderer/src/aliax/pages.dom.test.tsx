@@ -195,10 +195,51 @@ describe('AccountsPage', () => {
     const refresh = vi.spyOn(accountsStore, 'refresh').mockRejectedValue(new Error('Box: key revoked\nMac: timeout\nBox: key revoked'))
     render(<AccountsPage />)
     await act(flush)
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh usage' })); await flush() })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh' })); await flush() })
     expect(refresh).toHaveBeenCalledWith('local', 'claude')
     expect(toasts.error.mock.calls.map(c => c[0])).toEqual(['Box: key revoked', 'Mac: timeout'])
-    expect(screen.getByRole('button', { name: 'Refresh usage' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Refresh' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it("the title line holds one ghost small button, its verb alone with no icon, and the button pressed is the one that spins", async () => {
+    let release: () => void = () => {}
+    vi.spyOn(accountsStore, 'refresh').mockImplementation(() => new Promise<void>((resolve) => (release = resolve)) as never)
+    render(<AccountsPage />)
+    await act(flush)
+    const actions = document.querySelector('[data-slot=page-actions]')!
+    const button = within(actions as HTMLElement).getByRole('button', { name: 'Refresh' })
+    expect(actions.children).toHaveLength(1)
+    expect(button.getAttribute('data-variant')).toBe('ghost')
+    expect(button.className).toContain('h-7')
+    expect(button.querySelector('svg')).toBeNull()
+    await act(async () => { fireEvent.click(button); await flush() })
+    expect(button.querySelector('[data-slot=busy-label]')!.hasAttribute('data-busy')).toBe(true)
+    await act(async () => { release(); await flush() })
+    expect(button.querySelector('[data-slot=busy-label]')!.hasAttribute('data-busy')).toBe(false)
+  })
+
+  it("a first read that fails says Couldn't load accounts with Retry, never the loading bones, and Retry loads the rows", async () => {
+    aliax.listServices.mockRejectedValueOnce(new Error('vault: EACCES'))
+    render(<AccountsPage />)
+    await act(flush)
+    const line = screen.getByText("Couldn't load accounts")
+    expect(line.closest('[role=alert]')!.className).toContain('text-destructive')
+    expect(document.body.textContent).not.toContain('EACCES')
+    expect(screen.queryByLabelText('Loading')).toBeNull()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry' })); await flush(); await flush() })
+    expect(screen.queryByText("Couldn't load accounts")).toBeNull()
+    expect(screen.getByRole('region', { name: 'Claude Code' })).toBeTruthy()
+  })
+
+  it('a later read that fails keeps the rows on screen and says so, with Retry', async () => {
+    render(<AccountsPage />)
+    await act(flush)
+    expect(screen.getByRole('region', { name: 'Claude Code' })).toBeTruthy()
+    aliax.listServices.mockRejectedValueOnce(new Error('timeout'))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh' })); await flush() })
+    expect(screen.getByText("Couldn't load accounts")).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Claude Code' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
   it('the five-minute poll only reads views and never clears cooldowns through a manual refresh', async () => {
@@ -410,6 +451,18 @@ describe('StatsPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Stats' })).toBeTruthy()
     expect(screen.getByText('Nothing to show yet')).toBeTruthy()
     expect(screen.getByText(/^No Claude Code or Codex session logs on this (computer|Mac)\.$/)).toBeTruthy()
+  })
+
+  it('the title line holds Reindex alone, a ghost small button with no icon', async () => {
+    render(<StatsPage />)
+    await act(flush)
+    const actions = document.querySelector('[data-slot=page-actions]')!
+    expect(actions.children).toHaveLength(1)
+    const button = within(actions as HTMLElement).getByRole('button', { name: 'Reindex' })
+    expect(button.getAttribute('data-variant')).toBe('ghost')
+    expect(button.className).toContain('h-7')
+    expect(button.querySelector('svg')).toBeNull()
+    expect(button.textContent).toBe('Reindex')
   })
 
   it('counts a Reindex as it runs, and says a refused one in red with its reason on hover alone', async () => {

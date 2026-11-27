@@ -53,6 +53,7 @@ import { useChatFold } from "../../lib/chatFold";
 import { ChunkBoundary } from "../../lib/lazyChunk";
 import { tagRendererError } from "../../lib/rendererErrors";
 import { blockedReason } from "@shared/batchWords";
+import { nameInLine } from "../../lib/hostWords";
 
 /**
  * A master thread (CLAUDE.md "Master threads", docs/LAYOUT.md "Master"):
@@ -102,7 +103,7 @@ const BoardRow = memo(function BoardRow({
   ...row
 }: { masterId: string } & Omit<ComponentProps<typeof MasterRow>, "masterId">) {
   return (
-    <RowBoundary threadId={masterId} rowId={row.rowRef.id}>
+    <RowBoundary threadId={masterId} rowId={row.rowRef.id} titleOf={() => sessionStore.metaOf(row.rowRef.id)?.title ?? row.rowRef.fallback?.title}>
       <MasterRow masterId={masterId} {...row} />
     </RowBoundary>
   );
@@ -319,6 +320,8 @@ function MasterBoardView(props: ThreadViewProps) {
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
   const hostNames = useMemo(() => new Map(environments.map((e) => [e.id, e.name])), [environments]);
+  // A host named mid-line reads "on this Mac", "on the box" (nameInLine): the blocked row's detail and the foot's line.
+  const hostInLine = useCallback((id: string) => { const name = hostNames.get(id); return name && nameInLine(name); }, [hostNames]);
   // One host object per host, so a row's props stay the same while its host does.
   const masterHost = session.environmentId;
   // D5 (boards-03): the foot's Edit… and Stop go to the master's host; a key that may not has neither.
@@ -407,9 +410,9 @@ function MasterBoardView(props: ThreadViewProps) {
   const blockedOf = useCallback(
     (row: BoardRowRef): string | null => {
       if (!blocked || (blocked.sessionId !== row.id && blocked.sessionId !== `${row.environmentId}:${row.id}`)) return null;
-      return blockedReason(blocked.why, blocked.environmentId ? hostNames.get(blocked.environmentId) : null);
+      return blockedReason(blocked.why, blocked.environmentId ? hostInLine(blocked.environmentId) : null);
     },
-    [blocked, hostNames],
+    [blocked, hostInLine],
   );
 
   // A row with its task bar is a line taller, and its open list a row a
@@ -585,7 +588,6 @@ function MasterBoardView(props: ThreadViewProps) {
 
   // The foot's callbacks, stable across board renders: it re-renders for the batch alone.
   const titleOf = useCallback((id: string) => rowModels(layoutRef.current).find((r) => r.meta.id === id)?.title, []);
-  const hostName = useCallback((id: string) => hostNames.get(id), [hostNames]);
   const masterEnv = session.environmentId;
   const masterId = session.id;
   const saveRules = useCallback((next: Parameters<typeof setBatchRules>[2]) => setBatchRules(masterEnv, masterId, next), [masterEnv, masterId]);
@@ -634,7 +636,7 @@ function MasterBoardView(props: ThreadViewProps) {
             />
         </AgentSummaryContext.Provider>
       </BoardDigestContext.Provider>
-      <LiveBatchFoot holder={batch} loaded={loaded} titleOf={titleOf} hostName={hostName} onSave={maySetRules ? saveRules : undefined} onStop={mayStopStep ? stopStep : undefined} held={footHeld} toastAnchor={!chatOpen} />
+      <LiveBatchFoot holder={batch} loaded={loaded} titleOf={titleOf} hostName={hostInLine} onSave={maySetRules ? saveRules : undefined} onStop={mayStopStep ? stopStep : undefined} held={footHeld} toastAnchor={!chatOpen} />
     </div>
   );
 

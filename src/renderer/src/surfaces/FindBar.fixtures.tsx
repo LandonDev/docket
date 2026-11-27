@@ -5,5 +5,5 @@ const base = { ...handlers, searchRef: { current: null }, replaceRef: { current:
 export default [
   { name: "matches", props: { ...base, caseSensitive: true, count: { text: "2 of 7", state: "ok" } } },
   { name: "replace open, no results", props: { ...base, search: "useEfect", replaceVisible: true, replace: "useLayoutEffect", count: { text: "No results", state: "empty" } } },
-  { name: "invalid regex", props: { ...base, search: "foo(", regexp: true, count: { text: "Invalid regex", state: "invalid" } } },
+  { name: "invalid regex", props: { ...base, search: "foo(", regexp: true, count: { text: "Not a valid pattern", state: "invalid" } } },
 ];

@@ -295,7 +295,7 @@
   --outline-field-edge: var(--border);
   /* A search with no match (the code editor's Find): red ink and edge here,
      as it was; in light, where red is kept for a search that cannot run
-     (Invalid regex), the count's muted ink and the field's own edge. */
+     (Not a valid pattern), the count's muted ink and the field's own edge. */
   --find-miss: var(--destructive);
   --find-miss-edge: var(--destructive);
   /* What a pressable part with an edge of its own hovers to: an outline

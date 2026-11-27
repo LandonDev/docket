@@ -146,13 +146,19 @@ export function ResearchView(props: ThreadViewProps) {
   const [openAgentId, setOpenAgentId] = useState<string | null>(null);
 
   // Coverage counts spawned angles only, never the root's own group.
+  const found = board.sources > 0 || board.searches > 0;
   const facts = [
     agents.length ? `${done} of ${agents.length} angle${agents.length === 1 ? "" : "s"}` : null,
-    board.sources > 0 || board.searches > 0 ? `${board.sources} source${board.sources === 1 ? "" : "s"}` : null,
-    board.sources > 0 || board.searches > 0 ? `${board.searches} search${board.searches === 1 ? "" : "es"}` : null,
+    found ? `${board.sources} source${board.sources === 1 ? "" : "s"}` : null,
   ].filter((f): f is string => f !== null);
-  // One comma run: "2 of 3 angles, 12 sources, 4 searches".
-  const detail = facts.length ? facts.join(", ") : null;
+  // One comma run: "2 of 3 angles, 12 sources, 4 searches". A fact gives way whole, never cut: under a 30rem
+  // header the searches leave first (the whole line leaves under 22rem, SplitShell).
+  const detail = facts.length ? (
+    <>
+      {facts.join(", ")}
+      {found ? <span data-fact="searches" className="@max-[30rem]/header:hidden">, {board.searches} search{board.searches === 1 ? "" : "es"}</span> : null}
+    </>
+  ) : null;
   const reportPath = hasDoc ? session.planPath : null;
   const actions = reportPath ? (
     <Tooltip>

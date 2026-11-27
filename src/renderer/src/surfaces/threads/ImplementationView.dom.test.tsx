@@ -315,6 +315,10 @@ describe("the implementation board", () => {
     for (const c of ["hover:bg-foreground/5", "duration-(--dur-hover)", "active:bg-foreground/12", "active:transition-none"]) expect(pass.className).toContain(c);
     expect(pass.className).not.toContain("hover:bg-muted");
     expect(pass.textContent).toContain("Build the thing");
+    // "Pass 1" sits 4px from its request (a word and its detail), the tally 8px from the request.
+    const line = pass.querySelector("[data-pass-line]")!;
+    expect(line.className.split(/\s+/)).toContain("gap-1");
+    expect((line.lastElementChild as HTMLElement).className.split(/\s+/)).toContain("ms-1");
     expect(pass.textContent).toContain("1/1");
     expect(pass.querySelector("[data-slot=counts]")?.textContent).toBe("+4−1");
     expect(screen.getByText("Now test it")).toBeTruthy();

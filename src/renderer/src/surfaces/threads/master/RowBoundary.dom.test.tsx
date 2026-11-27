@@ -5,7 +5,7 @@ import { reportRendererError } from "../../../lib/rendererErrors";
 import { RowBoundary } from "./RowBoundary";
 
 /**
- * A board row whose record throws paints as "Couldn't load" with Retry,
+ * A board row whose record throws paints as "Couldn't load <its title>" in red with Retry,
  * its siblings paint, and stalls.log gets one caught line naming the
  * master thread and the row. The root is React's own (createRoot with
  * onCaughtError, as main.tsx mounts it), so the line goes the way it does
@@ -35,7 +35,7 @@ describe("RowBoundary", () => {
       <ul>
         {["good", "bad", "other"].map((id) => (
           <li key={id}>
-            <RowBoundary threadId="m1" rowId={id}>
+            <RowBoundary threadId="m1" rowId={id} titleOf={id === "bad" ? () => "Inbox swipe" : undefined}>
               <Row id={id} />
             </RowBoundary>
           </li>
@@ -47,7 +47,13 @@ describe("RowBoundary", () => {
     expect([...container.querySelectorAll("[data-row]")].map((r) => r.getAttribute("data-row"))).toEqual(["good", "other"]);
     const failed = container.querySelector("[data-chunk-failed='board-row.bad']")!;
     expect(failed).not.toBeNull();
-    expect(failed.querySelector("[role='alert']")?.textContent).toBe("Couldn't loadRetry");
+    // The house's one red line, naming the thread the row was, with Retry, in the row's 48px.
+    expect(failed.getAttribute("role")).toBe("alert");
+    expect(failed.className).toContain("h-12");
+    const line = failed.querySelector("span")!;
+    expect(line.textContent).toBe("Couldn't load Inbox swipe");
+    expect(line.className).toContain("text-destructive");
+    expect(failed.querySelector("button")?.textContent).toBe("Retry");
     expect(lines).toEqual(["caught TypeError: Cannot read properties of undefined (reading 'replace') thread=m1 row=bad"]);
 
     broken = false;

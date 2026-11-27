@@ -111,6 +111,10 @@ describe("the research view", () => {
     const onOpenFile = vi.fn();
     render(<ResearchView {...props(session(), onOpenFile)} />);
     expect(document.querySelector("[data-detail]")?.textContent).toBe("1 of 2 angles, 18 sources, 6 searches");
+    // A fact gives way whole: under a 30rem header the searches leave, comma and all, never cut mid-word.
+    const searches = document.querySelector("[data-detail] [data-fact=searches]")!;
+    expect(searches.textContent).toBe(", 6 searches");
+    expect(searches.className).toBe("@max-[30rem]/header:hidden");
     expect((document.querySelector("[data-view-header]") as HTMLElement).textContent).not.toContain("·");
     fireEvent.click(screen.getByRole("button", { name: "Open the report" }));
     expect(onOpenFile).toHaveBeenCalledWith(REPORT);

@@ -266,17 +266,20 @@ export function ChangesPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [environmentId, cwd, index]);
 
-  /** Runs one git step with the section busy on `key`, then refreshes what it touched. */
-  const run = async (key: string, op: () => Promise<void>, touched?: string[]): Promise<boolean> => {
+  /** Runs one git step with the section busy on `key`, then refreshes what it touched. A refusal is the section's red
+   *  line, or with `inConfirm` the confirm's: it throws, in the section's words, once the refresh has run. */
+  const run = async (key: string, op: () => Promise<void>, touched?: string[], inConfirm = false): Promise<boolean> => {
     if (busy) return false;
     setBusy(key);
     setError(null);
     let ok = true;
+    let refusal: string | null = null;
     try {
       await op();
     } catch (e) {
       ok = false;
-      setError(dialogErrorWords(e));
+      if (inConfirm) refusal = gitErrorWords(dialogErrorWords(e));
+      else setError(dialogErrorWords(e));
     } finally {
       notifyGitChanged();
       if (touched) {
@@ -286,6 +289,7 @@ export function ChangesPanel({
       await refreshGitSnapshot(cwd);
       setBusy(null);
     }
+    if (refusal !== null) throw new Error(refusal);
     return ok;
   };
 
@@ -313,14 +317,15 @@ export function ChangesPanel({
     openInEditor: onOpenFile ? (file) => void openInEditor({ path: file.path, cwd }, onOpenFile) : undefined,
     stage: (file) => void run(file.relative, () => gitStageFile(environmentId, cwd, file.relative)),
     unstage: (file) => void run(file.relative, () => gitUnstageFile(environmentId, cwd, file.relative)),
+    // The confirm waits for git: a refusal stays in it as its red line.
     discard: async (file) => {
       const name = basename(file.relative);
-      const ok = await confirmAction(
+      const step = async () => void (await run(file.relative, () => gitDiscardFile(environmentId, cwd, file.relative), [file.path], true));
+      await confirmAction(
         file.status === "untracked"
-          ? { title: `Delete ${name}?`, body: "The untracked file is deleted for good.", action: "Delete", danger: true }
-          : { title: `Discard changes in ${name}?`, body: "The edits are gone for good.", action: "Discard", danger: true },
+          ? { title: `Delete ${name}?`, body: "The untracked file is deleted for good.", action: "Delete", danger: true, run: step }
+          : { title: `Discard changes in ${name}?`, body: "The edits are gone for good.", action: "Discard", danger: true, run: step },
       );
-      if (ok) await run(file.relative, () => gitDiscardFile(environmentId, cwd, file.relative), [file.path]);
     },
     toggleHunks: (file, side) => {
       const key = foldKey(side, file.relative);

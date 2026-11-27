@@ -419,6 +419,10 @@ describe("the draft", () => {
     const presses = screen.getByRole("button", { name: /Start thread/ }).parentElement!;
     expect(presses.contains(screen.getByRole("button", { name: "File" }))).toBe(true);
     expect(presses.className.split(/\s+/)).toEqual(expect.arrayContaining(["ms-auto", "shrink-0", "justify-end", "@max-[40rem]/foot:w-full"]));
+    // Under 640px the Job track wraps inside its border rather than run past it, each choice 26px; over it, one line that cuts.
+    const job = screen.getByRole("group", { name: "Job" }).className.split(/\s+/);
+    expect(job).toEqual(expect.arrayContaining(["h-8", "@max-[40rem]/foot:h-auto", "@max-[40rem]/foot:flex-wrap", "@max-[40rem]/foot:[&>[data-slot=toggle-group-item]]:h-6.5"]));
+    expect(job).not.toContain("flex-wrap");
   });
 });
 

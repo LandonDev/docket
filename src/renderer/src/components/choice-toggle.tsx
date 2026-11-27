@@ -24,6 +24,7 @@ function ChoiceToggle<T extends string>({
   disabled,
   fit,
   wrap,
+  className,
   "aria-labelledby": labelledBy,
 }: {
   label: string;
@@ -37,6 +38,8 @@ function ChoiceToggle<T extends string>({
   /** Wrap onto a second line where the row is too narrow for every choice, each label whole (a dialog's Type at
    *  400px); on one line it draws as it would without. */
   wrap?: boolean;
+  /** The track's own classes last: a container query that wraps it only where its row is narrow (capture's foot). */
+  className?: string;
   "aria-labelledby"?: string;
 }) {
   return (
@@ -52,7 +55,7 @@ function ChoiceToggle<T extends string>({
       size="xs"
       spacing={0.5}
       // 32px, a select's height, the choices filling it inside the 2px inset (26px, as a segmented tab fills its list).
-      className={cn("h-8 rounded-lg border border-input p-0.5", fit && "min-w-0 max-w-full", wrap && "h-auto min-h-8 max-w-full flex-wrap")}
+      className={cn("h-8 rounded-lg border border-input p-0.5", fit && "min-w-0 max-w-full", wrap && "h-auto min-h-8 max-w-full flex-wrap", className)}
     >
       {options.map((option) => {
         const item = (

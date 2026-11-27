@@ -43,5 +43,6 @@ export function formatReleaseDate(iso: string): string {
   if (!match) return iso;
   const month = MONTHS[Number(match[2]) - 1];
   if (!month) return iso;
-  return `${Number(match[3])} ${month} ${match[1]}`;
+  // Month first, as every other date in the window: "Nov 26, 2026".
+  return `${month} ${Number(match[3])}, ${match[1]}`;
 }

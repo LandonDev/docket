@@ -50,13 +50,25 @@ export function useAliax() {
     return out
   }, [snapshot])
 
+  // The newest read's failure, its own words; null once a read lands. A failed
+  // read keeps the rows the page has: the page says so over them.
+  const [error, setError] = useState<string | null>(null)
+
   // Responses can land out of order; only the newest list is kept.
   const seq = useRef(0)
-  const loadViews = useCallback(async () => {
+  const loadViews = useCallback(async (): Promise<ServiceView[] | null> => {
     const n = ++seq.current
-    const services = await window.aliax.listServices()
-    if (n === seq.current) setViews(services)
-    return services
+    try {
+      const services = await window.aliax.listServices()
+      if (n === seq.current) {
+        setViews(services)
+        setError(null)
+      }
+      return services
+    } catch (err) {
+      if (n === seq.current) setError(err instanceof Error ? err.message : String(err))
+      return null
+    }
   }, [])
 
   const refreshing = useRef(false)
@@ -94,7 +106,8 @@ export function useAliax() {
       }
       refreshing.current = true
       try {
-        await refreshUsage(await loadViews())
+        const services = await loadViews()
+        if (services) await refreshUsage(services)
       } finally {
         refreshing.current = false
       }
@@ -138,5 +151,5 @@ export function useAliax() {
     if (!refreshing.current) void loadViews()
   }, [identity, loadViews])
 
-  return { views, usage, layout, headroom, refresh, snapshot }
+  return { views, error, usage, layout, headroom, refresh, snapshot }
 }
