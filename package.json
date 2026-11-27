@@ -304,7 +304,7 @@
     "unified": "^11.0.5",
     "vite": "^7.2.6",
     "vitest": "^3.2.4",
-    "work-kit": "git+https://www.github.com/LandonDev/work-kit.git#85358752a7b9e18b3f669493935c16b1d3f1ad0a",
+    "work-kit": "git+https://www.github.com/LandonDev/work-kit.git#4edecefd1f03a81c14b53776c705460a080e8766",
     "y-prosemirror": "1.3.7",
     "y-protocols": "1.0.7",
     "zustand": "^5.0.15"

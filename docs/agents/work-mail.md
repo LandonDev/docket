@@ -216,6 +216,10 @@ nothing.
 
 ## The Mail view
 
+On the phone, Waiting on keeps bare addresses on one line at accessibility
+sizes, with middle truncation where needed. A failed next page has its own
+Try Again under the rows already read.
+
 `Mailbox` under `MailClientProvider` and TempCode's `MailKit`, on the
 workspace's session narrowed to its sector, so it lists that sector's mail
 and no other. The frame draws no 40px header over it (`ownHead` on the
