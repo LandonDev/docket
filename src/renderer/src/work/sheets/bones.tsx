@@ -60,8 +60,8 @@ export function SheetBones({ row = false, formula = null }: { row?: boolean; for
         <div className="relative flex flex-col">
           {/* The column hairlines, drawn once over the whole grid as they are: a cell with words is walked, and its own
               edge would go with it. */}
-          {SAMPLE_COLUMNS.map((w, c) => (
-            <span key={c} skullet-own="" aria-hidden className="absolute inset-y-0 w-px bg-border" style={{ left: COLUMN_EDGES[c] }} />
+          {COLUMN_EDGES.map((left, c) => (
+            <span key={c} skullet-own="" aria-hidden className="absolute inset-y-0 w-px bg-border" style={{ left }} />
           ))}
           <div className="flex h-6 border-b border-border bg-sidebar" skullet-own="">
             <span className="w-10 flex-none border-r border-border" />
