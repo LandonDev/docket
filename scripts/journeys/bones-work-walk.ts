@@ -67,14 +67,16 @@ type Frame = { at: number; bones: Bones; landed: boolean }
 /** Words of the view's own outside any drawing: what says a view has landed. */
 const shows = (selector: string, words?: string) =>
   `[...document.querySelectorAll(${js(selector)})].some((el) => el.getClientRects().length && !el.closest('[skullet-loading]')${words ? ` && el.innerText.includes(${js(words)})` : ''})`
-/** No region of the window waits, and work-kit draws none of its own bars. */
-const NOTHING_WAITS = `!document.querySelector('[data-region][data-bones="held"], [data-region][data-bones="shown"], [data-bones="leaving"], [data-slot="skeleton"]')`
+/** No region the window draws waits, and work-kit draws none of its own bars. Only what is drawn counts: a tab parked
+ *  behind the one on screen may hold a wait of its own. */
+const NOTHING_WAITS = `![...document.querySelectorAll('[data-region][data-bones="held"], [data-region][data-bones="shown"], [data-bones="leaving"], [data-slot="skeleton"]')].some((el) => el.checkVisibility())`
 
 const LANDED: Record<string, string> = {
   Mail: `${shows('[data-mail-list]', FIRST_MAIL)} && ${NOTHING_WAITS}`,
   Agenda: `(${shows('[role="listitem"]')} || ${shows('[data-week]')} || ${shows('[data-slot="empty"]')}) && ${NOTHING_WAITS}`,
   Messages: `(${shows('[role="option"]')} || ${shows('[data-slot="empty"]')}) && ${NOTHING_WAITS}`,
   Routines: `(${shows('[data-routine-row]')} || ${shows('[data-slot="empty"]')}) && ${NOTHING_WAITS}`,
+  Files: `${shows('[data-files-view]')} && ${NOTHING_WAITS}`,
 }
 /** A place above the workspaces, landed: its page drawn with nothing waiting. */
 const placeLanded = (place: string): string =>
@@ -85,7 +87,8 @@ const placeLanded = (place: string): string =>
 const FILE_LANDED: Record<'sheet' | 'pdf' | 'deck', string> = {
   sheet: `${shows('[data-sheet-item]')} && ${NOTHING_WAITS}`,
   pdf: `${shows('[data-pdf-pager]')} && ${NOTHING_WAITS}`,
-  deck: `${shows('[data-slides-main]')} && ${NOTHING_WAITS}`,
+  // A box without the conversion tools (a pair started without them) says it cannot open the deck: an error is content.
+  deck: `(${shows('[data-slides-main]')} || ${shows('[data-canvas-failed]')}) && ${NOTHING_WAITS}`,
 }
 /** A view with no landing of its own: its heading drawn, with nothing waiting. */
 const landedOf = (view: string): string => LANDED[view] ?? `${shows('[data-view-heading]', view)} && ${NOTHING_WAITS}`
@@ -148,9 +151,12 @@ async function main(): Promise<void> {
         judge(`${theme} ${view}`, await film(page, `${theme}-${i + 1}-${view.toLowerCase()}`, () => page.eval<boolean>(landedOf(view))))
       }
       for (const [i, place] of PLACES.entries()) {
-        await page.clickOn('nav button', place)
+        // The window reloads on the workspace's own view (a Work workspace reopens where it was): the place is pressed
+        // after the reload, and its chunk and every read come cold from that press.
         await page.reload()
         await page.resize(1280, 800)
+        await page.until('the window back on the host', 60_000, () => page.eval(`!!document.querySelector('nav button')`))
+        void page.clickOn('nav button', place)
         judge(`${theme} ${place}`, await film(page, `${theme}-p${i + 1}-${place.toLowerCase()}`, () => page.eval<boolean>(placeLanded(place))))
       }
       if (FILES.length) {
@@ -159,9 +165,16 @@ async function main(): Promise<void> {
         await pair.showWork(workspace, 'Files')
         await page.reload()
         await page.resize(1280, 800)
+        const folderShown = () => page.eval<boolean>(`document.querySelector('[data-files-bar] [aria-current]')?.textContent.trim() === ${js(workspace.name)}`)
         for (const [i, kind] of FILES.entries()) {
-          await page.clickOn('[data-files-sidebar] button', workspace.name)
-          await page.until('the workspace folder', 15_000, () => page.eval(`document.querySelector('[data-files-bar] [aria-current]')?.textContent.trim() === ${js(workspace.name)}`))
+          // Back to the folder: its own tab where one stands (an opened file's tab hides it), else the sidebar's place.
+          await page.until('the workspace folder', 30_000, async () => {
+            if (await folderShown()) return true
+            const tab = await page.centre('[data-files-tab][data-tab-kind="page"]', workspace.name)
+            const place = tab ?? (await page.centre('[data-files-sidebar] button', workspace.name))
+            if (place) await page.click(place)
+            return false
+          })
           void openRow(page, made[kind].split('/').at(-1)!)
           judge(`${theme} ${kind}`, await film(page, `${theme}-f${i + 1}-${kind}`, () => page.eval<boolean>(FILE_LANDED[kind]), { most: 30_000 }))
         }

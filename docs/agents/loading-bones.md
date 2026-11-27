@@ -279,9 +279,11 @@ the commit that mounts it.
    read lands. Frames and `walk.log` go to `.temp-code/findings/skullet/walk`
    (`--out`). Add your screen as a scene there, or film it the same way.
    Work's views film through `bun scripts/journeys/bones-work-walk.ts
-   --views Mail,Agenda`: a pair with Work on, reading a LifeOS sandbox through
-   a hop that holds each request `--delay` ms, each view opened cold (the
-   window reloaded on it); frames and `walk.log` go to
+   --views Mail,Agenda --places Today,Outbox --files sheet,pdf,deck`: a pair
+   with Work on, reading a LifeOS sandbox through a hop that holds each
+   request `--delay` ms and a host that answers the window as late, each view
+   and place opened cold (the window reloaded on it), each file kind opened
+   from Files for the first time; frames and `walk.log` go to
    `.temp-code/findings/skullet/work`. It fails when a bar of work-kit's own
    stands on screen, or a frame between the first bones and the landing shows
    none.

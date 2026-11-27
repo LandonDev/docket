@@ -1152,6 +1152,28 @@ describe("a thread the live lists lack", () => {
     expect(sessionStore.isDraft("old")).toBe(false);
   });
 
+  it("a provisional entry a pane asked for before its host listed loads when the list fills its meta, never slow with nothing on its way", async () => {
+    // A thread opened by id (a link, a notice, an open right after a reload) before the window's list has come back.
+    sessionStore.provisional("early", "local");
+    void sessionStore.ensureLoaded("early", "pane");
+    link.metas = [wireMeta({ id: "early", title: "Early" })];
+    link.events.set("early", [row("early", 1, { type: "user-text", text: "count the cones" })]);
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await vi.waitFor(() => expect(sessionStore.get("early")?.load?.phase).toBe("loaded"));
+    expect(sessionStore.get("early")?.blocks.map((b) => b.text)).toEqual(["count the cones"]);
+  });
+
+  it("a provisional entry no pane asked for is filled by the list and left unloaded", async () => {
+    sessionStore.provisional("parked", "local");
+    link.metas = [wireMeta({ id: "parked", title: "Parked" })];
+    link.events.set("parked", [row("parked", 1, { type: "user-text", text: "later" })]);
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    await vi.waitFor(() => expect(sessionStore.get("parked")?.title).toBe("Parked"));
+    expect(link.calls.some((call) => call.method === "session.events" && (call.params as { sessionId: string }).sessionId === "parked")).toBe(false);
+  });
+
   it("a provisional entry no host knows reads gone once its host listed and answered its archived set", async () => {
     sessionStore.provisional("ghost", "local");
     sessionStore.attach(link);

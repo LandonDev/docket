@@ -1671,7 +1671,12 @@ class SessionStore {
    *  names the caller for the burst report. */
   ensureLoaded(id: string, why = "unknown"): Promise<void> {
     const entry = this.entries.get(id);
-    if (!entry || !entry.meta) return Promise.resolve();
+    if (!entry) return Promise.resolve();
+    // A tab opened on the id alone keeps the ask: its load starts when the meta fills it (`mergeMeta`).
+    if (!entry.meta) {
+      if (entry.provisional) entry.wanted = true;
+      return Promise.resolve();
+    }
     // Loaded but held behind a gap a replay never closed: opening it replays now.
     if (entry.loaded && entry.held && entry.resyncHold) return this.replayHeld(entry);
     if (entry.loaded) return Promise.resolve();
@@ -2651,6 +2656,13 @@ class SessionStore {
       entry.meta = meta;
       entry.session = { ...sessionFromMeta(meta), loaded: false, load: entry.load };
       if (entry.load.phase === "loading" && !entry.slowTimer) this.armSlow(entry);
+      // A pane asked for it before its meta came: the load it asked for starts now, out of the merge. Left alone it
+      // read slow forever, with nothing on its way and no Retry that could start it (the pane asks only on mount).
+      if (entry.wanted && !entry.loading && !entry.loaded) {
+        queueMicrotask(() => {
+          if (this.entries.get(meta.id) === entry && entry.wanted && !entry.loading && !entry.loaded) void this.startLoad(entry, "meta").catch(() => undefined);
+        });
+      }
       return true;
     }
     if (!entry.meta) {

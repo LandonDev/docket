@@ -1694,8 +1694,8 @@ Sheet tabs and Add sheet have 24px targets. The grid keeps its hidden caret inpu
   its place, and a book of more than one piece shows a 4px bar with "2.1 of
   8.4 MB" in the skeleton's formula bar (`SheetSkeleton`). Where the sheet
   will have a format row (the view names its controls before the grid's
-  code and fonts are ready) the skeleton holds its 36px with one bone
-  (`FormatRowBone`, sheets/bones.tsx, with the grid's bones `SheetBones` that the guest's page draws too), and the loaded body keeps that bone until the grid
+  code and fonts are ready) the skeleton holds its 36px with its row in bones
+  (`FormatRowBone`, sheets/bones.tsx, with the grid's bones `SheetBones` that the guest's page draws too: the grid's frame, its hairlines, letters and row numbers drawn as they are, and a budget's sample words in bones), and the loaded body keeps that bone until the grid
   hands its handle and work-kit's row takes its place: the grid never drops. The sync keeps
   the book it read, never handed to a grid: each grid draws a copy
   (`structuredClone`), since Univer changes the workbook it draws in place.

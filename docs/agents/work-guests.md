@@ -522,7 +522,8 @@ document's name, nothing else). The other states: too many tries, cannot be
 reached (Retry), loading bones (a sheet's are the app's own sheet bones,
 `SheetBones` in work/sheets/bones.tsx: the format row an Edit link will
 have, the formula bar, the lettered grid and the tabs, so the page does not
-jump from bars to a grid). A host that is starting (503) is neither: the
+jump from bars to a grid; a page on its way draws a document's title and
+first lines from sample words, `PageBones`; guest.css reads the bones' classes). A host that is starting (503) is neither: the
 first open asks again every 2 s for 2 minutes under the bones before it says
 the page cannot be reached (`openWhenUp`).
 

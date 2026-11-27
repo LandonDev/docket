@@ -347,7 +347,7 @@ one day). `TodayView.tsx` draws it; `TodayRow.tsx` is the one row grid.
 
 | State | What the page shows |
 |---|---|
-| A section has never answered, or a read some job needs is still out | its heading and three bones in its rows' shape |
+| A section has never answered, or a read some job needs is still out | its heading over its own rows drawn from a sample in its rows' shape (`SampleRows`, a region a section), three of them, or one under the rows that came |
 | A section is empty | its heading and one muted line |
 | Every source answered, nothing left (ended meetings are not left, folded or open) | "All clear", over "Nothing needs you today." or what tomorrow starts with |
 | A host with jobs is offline, or a read failed because a host's link is not open | one muted line at the foot for each, in the link's one wording (`linkDownWords`: "Mac is offline", "Reconnecting to the box…"), on the titles' edge, and no failed line for it in any section |
