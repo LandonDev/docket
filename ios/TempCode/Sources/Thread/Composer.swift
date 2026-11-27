@@ -656,9 +656,10 @@ private struct ComposerField: View {
     }
 
     var body: some View {
+        let large = typeSize.isAccessibilitySize
         TextField(prompt, text: text, axis: .vertical)
-            .transcriptType(TranscriptType.prose)
-            .lineLimit(1...ComposerHeight.maxLines(accessibilityText: typeSize.isAccessibilitySize))
+            .modifier(FieldType(lineBox: ComposerHeight.fieldLineBox(accessibilityText: large)))
+            .lineLimit(1...ComposerHeight.maxLines(accessibilityText: large))
             .focused(focused)
             .disabled(off)
             .accessibilityLabel(label)
@@ -666,5 +667,20 @@ private struct ComposerField: View {
             // The Duo proof's fold run holds the typed draft (UTF-16 units) unchanged through every fold.
             .onChange(of: draft.text, initial: true) { LayoutProbe.note("draftChars", String(draft.text.utf16.count)) }
             #endif
+    }
+}
+
+/// The field's type: the prose token with its line box, or at the
+/// accessibility sizes its scaled font alone, so the two lines the cap counts
+/// are the two lines drawn (`ComposerHeight.fieldLineBox`).
+private struct FieldType: ViewModifier {
+    let lineBox: Bool
+
+    func body(content: Content) -> some View {
+        if lineBox {
+            content.transcriptType(TranscriptType.prose)
+        } else {
+            content.transcriptFont(TranscriptType.prose)
+        }
     }
 }

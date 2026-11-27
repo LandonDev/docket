@@ -76,6 +76,8 @@ private func paired(_ id: String, name: String) -> PairedEnvironment {
         #expect(ResourceWords.waitingLine(row("a", removeRequestedAt: 1), host: "box", hostOpen: false) == "Waiting for box")
         #expect(ResourceWords.waitingLine(row("a", removeRequestedAt: 1), host: "box", hostOpen: true) == nil)
         #expect(ResourceWords.rowState(row("a", removeRequestedAt: 1), waiting: true) == nil)
+        // The host's offline note is the waiting line said twice: it goes while the row says "Waiting for box".
+        #expect(ResourceWords.rowState(row("a", removeRequestedAt: 1, note: "host offline, waiting for its link"), waiting: true) == nil)
         #expect(ResourceWords.rowState(row("a", removeRequestedAt: 1)) == "removing…")
     }
 

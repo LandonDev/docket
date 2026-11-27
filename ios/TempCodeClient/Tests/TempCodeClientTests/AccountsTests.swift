@@ -229,15 +229,15 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
 
     @Test func `at This thread the route's account is checked`() {
         let rows = rows(.thread, session: session(account: spare))
-        #expect(rows.map(\.checked) == [false, false, true])
+        #expect(rows.map(\.checked) == [false, true])
     }
 
-    @Test func `Automatic says what it follows at each scope`() {
+    @Test func `Automatic says what it follows at each pin scope`() {
         let pinnedWorkspace = workspace(pins: ["claude": work])
-        #expect(rows(.thread, workspace: pinnedWorkspace)[0].kind == .automatic(detail: "Follows the workspace: work"))
         #expect(rows(.project, workspace: pinnedWorkspace)[0].kind == .automatic(detail: "Follows the workspace: work"))
         #expect(rows(.workspace, workspace: pinnedWorkspace)[0].kind == .automatic(detail: "Best account for the model"))
-        #expect(rows(.thread, project: project(pins: ["claude": spare]), workspace: pinnedWorkspace)[0].kind == .automatic(detail: "Follows the project: spare"))
+        // At This thread a followed pin is the checked row, so Automatic is left out (the sheet's source line says it).
+        #expect(rows(.thread, project: project(pins: ["claude": spare]), workspace: pinnedWorkspace).map(\.id) == [work, spare])
         #expect(rows(.workspace, project: project(pins: ["claude": spare]))[0].kind == .automatic(detail: "Best account for the model"))
     }
 
@@ -258,20 +258,33 @@ private func snapshot(claude accounts: ProviderAccounts = claude(), updatedAt: I
         #expect(pinned[0].checked == false)
         let routed = rows(.thread, session: session(account: "old@example.com"))
         #expect(routed.last?.kind == .gone(name: "old@example.com"))
-        #expect(rows(.thread, session: session(account: work)).map(\.id) == ["auto", work, spare])
+        #expect(rows(.thread, session: session(account: work)).map(\.id) == [work, spare])
     }
 
     @Test func `an empty snapshot makes the checked name gone; no snapshot yet shows it as a row with an empty bar`() {
         let empty = ProviderAccounts(pinned: nil, profiles: [], reports: [], note: nil, headroom: nil)
         let gone = rows(.thread, session: session(account: work), accounts: empty)
-        #expect(gone.map(\.id) == ["auto", work])
+        #expect(gone.map(\.id) == [work])
         #expect(gone.last?.kind == .gone(name: work))
         let scope = AccountScope.of(session(account: work), projects: [], workspaces: [], catalog: nil)!
         let loading = AccountMenuModel.rows(scope: scope, kind: .thread, session: session(account: work), project: nil, workspace: nil, accounts: nil, now: now)
-        #expect(loading.map(\.id) == ["auto", work])
+        #expect(loading.map(\.id) == [work])
         #expect(loading.last?.kind == .account(name: work, shortName: "work", color: nil, look: HeadroomLook(fraction: 0, tone: .none, stamp: nil, accessibility: "work")))
         #expect(loading.last?.checked == true)
         #expect(AccountMenuModel.rows(scope: AccountScope.of(session(), projects: [], workspaces: [], catalog: nil)!, kind: .thread, session: session(), project: nil, workspace: nil, accounts: nil, now: now).map(\.id) == ["auto"])
+    }
+
+    @Test func `at This thread Automatic shows only when it is the checked row`() {
+        // A routed thread: the sheet's "From project" line says where the account comes from, once.
+        let routed = rows(.thread, session: session(account: work), project: project(pins: ["claude": work]))
+        #expect(routed.map(\.id) == [work, spare])
+        #expect(routed.contains { $0.kind == .automatic(detail: "Follows the project: work") } == false)
+        // Nothing routed yet: Automatic is the checked row and stays.
+        #expect(rows(.thread).first?.checked == true)
+        #expect(rows(.thread).first?.id == "auto")
+        // The pin scopes always offer Automatic, a press there.
+        #expect(rows(.project, project: project(pins: ["claude": spare])).first?.id == "auto")
+        #expect(rows(.workspace, workspace: workspace(pins: ["claude": work])).first?.id == "auto")
     }
 
     @Test func `the scopes a thread has`() {
@@ -595,7 +608,7 @@ private func metaAccounts(expired: Bool? = nil, headroom: [String: AccountHeadro
         let meta = session(model: wonder, account: metaKey)
         let scope = AccountScope(provider: .meta, inherited: nil, current: metaKey)
         let rows = AccountMenuModel.rows(scope: scope, kind: .thread, session: meta, project: project(), workspace: workspace(), accounts: metaAccounts(), now: now)
-        #expect(rows.map(\.id) == ["auto", metaKey])
+        #expect(rows.map(\.id) == [metaKey])
         #expect(rows.last?.checked == true)
         #expect(AccountMenuModel.pins(after: ["claude": work], provider: .meta, name: metaKey) == ["claude": work, "meta": metaKey])
     }

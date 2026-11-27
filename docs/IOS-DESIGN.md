@@ -588,8 +588,10 @@ Resources sheet (ios/TempCode/Sources/Thread/ResourcesSheet.swift): one
 group per host the rows live on, each row the label, its path or UDID in
 mono, the state word, and Remove (a spinner while the removal is out,
 "Waiting for box", the row's host by name, only while that host is away,
-and then no "removing…" beside it); the row leaves when the host's push
-says it is gone. Until the list answers the sheet shows the spinner; then
+and then no state word beside it, neither "removing…" nor the host's
+"host offline" note); the row leaves when the host's push says it is gone.
+A key that may not remove sees no Remove and no Remove all, as the
+desktop's dialog shows it none; the sheet's top line says why. Until the list answers the sheet shows the spinner; then
 `ContentUnavailableView` "No Resources", or "Couldn't Load Resources" with
 Retry when the ask failed. Archiving a thread that holds resources, from
 a swipe, a context menu or the thread menu, asks first: "Archive <title>?"
@@ -845,7 +847,9 @@ and the field are what the 150 pt body shows with the keyboard up; a swipe
 still switches segments while the bar is away. At the accessibility text
 sizes the bar leaves with focus in any pose, and the field scrolls past two
 lines (`ComposerHeight.maxLines(accessibilityText:)`), so Steer and the add
-button stay above the keyboard. Focus, not a keyboard frame,
+button stay above the keyboard. There the field draws its font's own line,
+not the prose line box (`ComposerHeight.fieldLineBox`): the cap counts the
+font's lines, so both lines show whole before it scrolls. Focus, not a keyboard frame,
 is the signal: UIKit reports zero-height keyboards around a fold.
 
 **The vertical bar** (the inner display in landscape, the outer display) is
@@ -1640,7 +1644,9 @@ automatically" pill under the rows asks the host to re-pick, and "Already
 on the best account" is the one word back when nothing moved); **Project**
 and **Workspace** pin over `project.setAccounts` and `workspace.setAccounts`
 (admin). Rows: "Automatic" first, with what it follows ("Best account for
-the model", "Follows the workspace: work"), then the provider's accounts in
+the model", "Follows the workspace: work"; on This thread only while it is
+the checked row, since the sheet's "From project" line already says where
+the account comes from), then the provider's accounts in
 the snapshot's order, a check on the one that applies at that scope, and
 one "gone from this host" row in tertiary when the pin or the route names
 an account the snapshot no longer knows. A pin shows at once and reverts
@@ -1797,7 +1803,8 @@ Writer set one:
   the context menu. Tables are `subheadline` with tabular digits, header
   semibold over a hairline, hairlines at 60 % between rows, none under the
   last, no vertical rules, 16 pt between columns, the first column on the
-  text edge, a cell over 40 characters wrapped at 280 pt, the grid scrolling
+  text edge, a cell over 40 characters wrapped at 280 pt, each cell filling
+  its column so the rules meet and run the table's width, the grid scrolling
   sideways when wider than the page. A quote is body secondary behind a
   2 pt `tertiaryLabel` bar; a rule is a `Hairline` with 6 pt each side.
 - **Lists** hang: the marker sits in a 26 pt column (scaled with the
@@ -2095,10 +2102,11 @@ package's `Rendering/Batch.swift` (`MasterBoard`, `BatchSteps`, `RulesEdit`,
   then scrolls inside; it follows the tail until the person scrolls up, and
   a line arriving never animates. Stop sits on a running shell or publish
   step (`batch.stopStep`); a gate or release runs to its end.
-- **The sheets**, all system sheets at `Radius.sheet`: Rules (large: how
-  branches land, the steps renamed in place, reordered behind Edit, swiped
-  away, a built-in kind or a shell command added, what happens after, the
-  summary; the footer reads the sentence back and says what the contract
+- **The sheets**, all system sheets at `Radius.sheet`: Rules (large, titled
+  "Rules": how branches land, the steps renamed in place, each over what it
+  does unless that is its name again, reordered behind Edit, swiped away, a
+  built-in kind or a shell command added, what happens after ("Notify you"
+  or "Archive the threads"), the summary; the footer reads the sentence back and says what the contract
   refuses), Add a thread (large: the brief first, type, model and effort,
   1M where offered, After), Add existing threads (medium, one flat list of
   the project's free roots), Archive done or all (medium: what leaves, what

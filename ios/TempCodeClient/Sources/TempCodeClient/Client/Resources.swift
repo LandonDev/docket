@@ -132,11 +132,12 @@ public enum ResourceWords {
     }
 
     /// One row's state word, when it has one: the note or "removed" once
-    /// removed, the note or "removing…" while requested (nothing more while
-    /// it waits for its host: the trailing line says that), else the note.
+    /// removed, the note or "removing…" while requested, else the note.
+    /// Nothing while it waits for its host: the trailing "Waiting for box"
+    /// says that, so the host's own "host offline, waiting for its link" goes.
     public static func rowState(_ row: ThreadResource, waiting: Bool = false) -> String? {
         if row.removedAt != nil { return row.note ?? "removed" }
-        if row.removeRequestedAt != nil { return row.note ?? (waiting ? nil : "removing…") }
+        if row.removeRequestedAt != nil { return waiting ? nil : (row.note ?? "removing…") }
         return row.note
     }
 

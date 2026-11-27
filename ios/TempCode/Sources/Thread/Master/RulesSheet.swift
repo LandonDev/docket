@@ -108,7 +108,7 @@ struct RulesSheet: View {
                 }
                 Section("When the threads are done") {
                     Picker("Then", selection: $then) {
-                        Text("Notify me").tag(BatchThen.notify)
+                        Text("Notify you").tag(BatchThen.notify)
                         Text("Archive the threads").tag(BatchThen.archiveChildren)
                     }
                     .pickerStyle(.menu)
@@ -133,7 +133,7 @@ struct RulesSheet: View {
                 }
             }
             .environment(\.editMode, $editing)
-            .navigationTitle("When the threads are done")
+            .navigationTitle("Rules")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -178,7 +178,8 @@ struct RulesSheet: View {
     }
 }
 
-/// A step in the editor: its place, its name as a field, and under it what it does.
+/// A step in the editor: its place, its name as a field, and under it what
+/// it does, unless that is the name again.
 private struct StepEditRow: View {
     let number: Int
     let step: BatchStepSpec
@@ -191,10 +192,12 @@ private struct StepEditRow: View {
                 .frame(minWidth: 14, alignment: .trailing)
             VStack(alignment: .leading, spacing: 2) {
                 TextField("Name", text: $name)
-                Text(RulesEdit.stepLine(step))
-                    .font(step.kind == .shell ? .system(.caption2, design: .monospaced) : .caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                if let line = RulesEdit.stepLine(step, under: name) {
+                    Text(line)
+                        .font(step.kind == .shell ? .system(.caption2, design: .monospaced) : .caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
         }
         .accessibilityElement(children: .contain)

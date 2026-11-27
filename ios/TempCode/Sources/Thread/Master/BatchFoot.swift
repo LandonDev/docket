@@ -2,8 +2,9 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// The board's last section, under "When the threads are done": the
-/// master's summary line, the rules as one sentence, what blocks the end,
+/// The board's last section, under "When the threads are done": one line,
+/// the master's summary when it has one, else the rules as one sentence
+/// (`MasterBoard.footLine`), what blocks the end,
 /// then the steps as the master wrote them, each with its mark, name, a
 /// shell step's command, its time, and on the step the console shows, Stop
 /// (a running shell or publish step) or Hide (a failed one). The console

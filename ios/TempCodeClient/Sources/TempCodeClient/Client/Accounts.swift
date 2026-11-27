@@ -310,7 +310,10 @@ public enum AccountMenuModel {
     /// snapshot's order, then one gone row when the checked name is not a
     /// profile. `checked` at .thread is the route's reading (`scope.shown`);
     /// at .project the project's pin for the provider (Automatic when none);
-    /// at .workspace the workspace's pin.
+    /// at .workspace the workspace's pin. At .thread no row is pressed (Route
+    /// automatically is), so Automatic shows only when it is the checked row:
+    /// otherwise it says again where the account comes from, under the
+    /// sheet's own "From project" line.
     public static func rows(scope: AccountScope, kind: AccountScopeKind, session: SessionMeta, project: ProjectMeta?, workspace: WorkspaceMeta?, accounts: ProviderAccounts?, now: Int) -> [AccountRowModel] {
         let provider = scope.provider
         let projectPin = project?.accountPins?[provider.rawValue]
@@ -330,7 +333,7 @@ public enum AccountMenuModel {
         }
         let detail = follows.map { "Follows the \($0.level.rawValue): \(AccountName.short($0.name, in: accounts))" }
             ?? "Best account for the model"
-        var rows = [AccountRowModel(kind: .automatic(detail: detail), checked: checked == nil)]
+        var rows: [AccountRowModel] = kind == .thread && checked != nil ? [] : [AccountRowModel(kind: .automatic(detail: detail), checked: checked == nil)]
         for profile in accounts?.profiles ?? [] {
             let look = accounts.map { HeadroomLook.of(profile: profile.name, model: session.model, provider: provider, accounts: $0, now: now) }
                 ?? HeadroomLook(fraction: 0, tone: .none, stamp: nil, accessibility: AccountName.short(profile))

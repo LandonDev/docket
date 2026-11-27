@@ -124,6 +124,16 @@ public enum ComposerHeight {
         accessibilityText ? min(maxLines, 2) : maxLines
     }
 
+    /// Whether the field draws the prose token's line box (22 on 15). The
+    /// field's line cap is counted in the font's own lines, so at the
+    /// accessibility sizes, where the box is a fifth taller than the font's
+    /// line, two boxes overflow the two-line viewport and the first line is
+    /// cut at the top; there the field keeps the font's line and both whole
+    /// lines fit before it scrolls.
+    public static func fieldLineBox(accessibilityText: Bool) -> Bool {
+        !accessibilityText
+    }
+
     public static func scrolls(lines: Int) -> Bool {
         lines > maxLines
     }

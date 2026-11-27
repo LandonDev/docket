@@ -682,6 +682,15 @@ public enum RulesEdit {
         return kindLabel[spec.kind] ?? spec.kind.rawValue
     }
 
+    /// The line under a step named `name`, or nil when it would say the name
+    /// again ("Release" over "Release"): the same words, case and the ends'
+    /// spaces aside, as the desktop's `sameWords`.
+    public static func stepLine(_ spec: BatchStepSpec, under name: String) -> String? {
+        let line = stepLine(spec)
+        let words = { (text: String) in text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        return words(line) == words(name) ? nil : line
+    }
+
     /// An id no step in the list has: the kind, then kind-2, kind-3.
     public static func newStepId(_ kind: BatchStepKind, in steps: [BatchStepSpec]) -> String {
         let taken = Set(steps.map(\.id))

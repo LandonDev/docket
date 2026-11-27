@@ -62,7 +62,8 @@ struct ResourcesSheet: View {
                             .groupCard()
                             .padding(.horizontal, Layout.textEdge)
                         }
-                        if live.count > 1 {
+                        // A key that may not remove sees no Remove all (the desktop's dialog has no Remove for it).
+                        if live.count > 1, client.operateBlock == nil {
                             HStack {
                                 Spacer()
                                 Button("Remove all") { confirmingAll = true }
@@ -70,7 +71,6 @@ struct ResourcesSheet: View {
                                     .foregroundStyle(Tint.destructive)
                                     .frame(minWidth: 44, minHeight: 44)
                                     .buttonStyle(.pressable)
-                                    .disabled(client.operateBlock != nil)
                             }
                             .padding(.horizontal, Layout.textEdge)
                             .padding(.top, 4)
@@ -152,7 +152,8 @@ struct ResourcesSheet: View {
 
 /// One resource: the kind's glyph, the label, the identifier in mono, the
 /// state word, and the trailing slot that is Remove, a spinner while a
-/// removal is out, or "Waiting for box" while the row's host is away.
+/// removal is out, or "Waiting for box" while the row's host is away. A key
+/// that may not remove sees the slot empty, never a Remove that does nothing.
 struct ResourceRow: View {
     let row: ThreadResource
     let removing: Bool
@@ -162,14 +163,14 @@ struct ResourceRow: View {
     let remove: () -> Void
 
     private enum Trailing: Hashable {
-        case remove, removing, waiting, removed
+        case remove, removing, waiting, removed, none
     }
 
     private var trailing: Trailing {
         if row.removedAt != nil { return .removed }
         if removing { return .removing }
         if ResourceWords.waitingLine(row, host: host, hostOpen: hostOpen) != nil { return .waiting }
-        return .remove
+        return canRemove ? .remove : .none
     }
 
     var body: some View {
@@ -201,7 +202,6 @@ struct ResourceRow: View {
                         .foregroundStyle(Tint.destructive)
                         .frame(minWidth: 44, minHeight: 44)
                         .buttonStyle(.pressable)
-                        .disabled(!canRemove)
                         .transition(.opacity)
                 case .removing:
                     ProgressView()
@@ -211,7 +211,7 @@ struct ResourceRow: View {
                     Text(ResourceWords.waitingLine(row, host: host, hostOpen: hostOpen) ?? "")
                         .textStep(.stamp)
                         .transition(.opacity)
-                case .removed:
+                case .removed, .none:
                     EmptyView()
                 }
             }

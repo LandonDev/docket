@@ -346,8 +346,8 @@ private struct PlanListView: View {
 /// A pipe table one step down from body, as wide as its content and
 /// scrolling sideways past the page: the header semibold over a hairline,
 /// a dimmer hairline between rows, none under the last, no vertical rules,
-/// the first column on the text edge. Each cell draws the rule under
-/// itself, so the rules run exactly the table's width.
+/// the first column on the text edge. Each cell fills its column and draws
+/// the rule under itself, so the rules run exactly the table's width.
 private struct PlanTableView: View {
     let table: PlanTable
 
@@ -401,7 +401,9 @@ private struct PlanCell: View {
             .padding(.vertical, 8)
             .padding(.leading, first ? 0 : 16)
             .padding(.trailing, 16)
-            .frame(maxHeight: .infinity, alignment: .top)
+            // The cell fills its column and its row, so the rule under it
+            // meets its neighbours' and runs the whole column wide.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: Alignment(horizontal: horizontal, vertical: .top))
             .overlay(alignment: .bottom) {
                 if rule > 0 { Hairline().opacity(rule) }
             }
