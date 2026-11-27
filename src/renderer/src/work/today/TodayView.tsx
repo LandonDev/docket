@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent,
 import { linkDownWords, useHostLinkDown } from "../shell/hostLinkDown";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { ItemButton } from "../../components/ui/item";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones, Region } from "../../components/bones";
 import { StatusMark } from "../../components/ui/status";
 import { useRovingList } from "../../hooks/useRovingList";
 import type { SectorKey } from "@shared/work";
@@ -25,8 +25,8 @@ import { HeldSheet } from "./HeldSheet";
 import { foldKey, foldOf, page, type ShownSection, type TodayPage } from "./model";
 import { openAddWorkspace } from "./open";
 import { fedOf, focusOfToday, keepFocus, keepScroll, scrollOfToday, unfold, useTodayState } from "./store";
-import { ROW_GRID, ROW_SLOT, TITLE_EDGE, TODAY_COLUMN, TODAY_INSET, TodayRowSlot, type RowPhase } from "./TodayRow";
-import type { TodayFailure, TodaySection } from "./types";
+import { ROW_GRID, ROW_SLOT, TITLE_EDGE, TODAY_COLUMN, TODAY_INSET, TodayRowSlot, TodayRowView, type RowPhase } from "./TodayRow";
+import type { TodayFailure, TodayRow, TodaySection } from "./types";
 import { noteOpened, pageOpen, SourceRuns } from "./warm";
 
 /**
@@ -323,26 +323,29 @@ function Section({
       {section.failed.map((failure) => (
         <HostLine key={`${failure.environmentId}:${failure.said ?? ""}:${failure.error}`} failure={failure} name={hostName(failure.environmentId)} />
       ))}
-      {section.state === "bones" ? (
-        <Bones label={section.title} shape={section.bones} />
-      ) : section.state === "empty" ? (
-        unknown || !section.empty ? null : <p className={cn("flex h-8 items-center pe-3 text-[13px] text-muted-foreground", TITLE_EDGE)}>{section.empty}</p>
-      ) : (
-        // Each row carries the 2px under it, and the list gives the last one's back.
-        <div role="list" className="-mb-0.5 flex flex-col">
-          {section.earlier > 0 ? <FoldLine which="earlier" section={section.id} label={`${section.earlier} earlier`} stop={stop} /> : null}
-          {section.rows.map((row) => (
-            <TodayRowSlot key={row.key} row={row} tickHeld={row.lead?.kind === "tick" && offline.has(row.workspace?.environmentId ?? "")} job={row.job ?? (row.sector ? jobName(row.sector) : null)} phase={phaseOf(row.key)} lands={lands(row.key)} current={row.key === stop} />
-          ))}
-          {section.more > 0 ? <FoldLine which="more" section={section.id} label={`${section.more} more`} stop={stop} /> : null}
-          {/* A read some job needs is still out: the rows that came are usable, and one bone says more may come. */}
-          {section.partial ? (
-            <div role="listitem">
-              <Bones label={`more of ${section.title}`} shape={section.bones} rows={1} />
-            </div>
-          ) : null}
-        </div>
-      )}
+      {/* Bones while the section has never answered: its own rows drawn from a sample, in the shape its rows take. */}
+      <Region loading={section.state === "bones"} label={`Loading ${section.title}`} bones={() => <SampleRows shape={section.bones} className="-mb-0.5" />}>
+        {section.state === "empty" ? (
+          unknown || !section.empty ? null : <p className={cn("flex h-8 items-center pe-3 text-[13px] text-muted-foreground", TITLE_EDGE)}>{section.empty}</p>
+        ) : section.state === "rows" ? (
+          // Each row carries the 2px under it, and the list gives the last one's back.
+          <div role="list" className="-mb-0.5 flex flex-col">
+            {section.earlier > 0 ? <FoldLine which="earlier" section={section.id} label={`${section.earlier} earlier`} stop={stop} /> : null}
+            {section.rows.map((row) => (
+              <TodayRowSlot key={row.key} row={row} tickHeld={row.lead?.kind === "tick" && offline.has(row.workspace?.environmentId ?? "")} job={row.job ?? (row.sector ? jobName(row.sector) : null)} phase={phaseOf(row.key)} lands={lands(row.key)} current={row.key === stop} />
+            ))}
+            {section.more > 0 ? <FoldLine which="more" section={section.id} label={`${section.more} more`} stop={stop} /> : null}
+            {/* A read some job needs is still out: the rows that came are usable, and one row's bones say more may come. */}
+            {section.partial ? (
+              <div role="listitem">
+                <Bones label={`Loading more of ${section.title}`}>
+                  <SampleRows shape={section.bones} rows={1} />
+                </Bones>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Region>
       {section.note ? <p className={cn("flex min-h-8 items-center pe-3 text-[13px] text-muted-foreground", TITLE_EDGE)}>{section.note}</p> : null}
     </section>
   );
@@ -371,31 +374,33 @@ function FoldLine({ which, section, label, stop }: { which: "more" | "earlier"; 
   );
 }
 
-/** A section that has never answered: three rows in the shape of what is coming, so nothing under it moves when it answers. */
-function Bones({ label, shape, rows = 3 }: { label: string; shape?: TodaySection["bones"]; rows?: number }) {
+/** What a section's bones are drawn from: three rows of the shape its rows take (`TodaySection.bones`), a job's name and a time on each. */
+const SAMPLE_TITLES = ["Confirm Friday's court booking", "Send the crew schedule", "Review the spring league bracket with Dana"];
+const NO_PRESS = () => {};
+const sampleRows = (shape: TodaySection["bones"]): TodayRow[] =>
+  SAMPLE_TITLES.map((title, i) => ({
+    key: `sample:${i}`,
+    section: "sample",
+    sector: "purdue",
+    job: "RecWell",
+    title,
+    when: "2:00 PM",
+    ...(shape === "lines" ? { detail: "CoRec 2212, with Dana Reyes" } : {}),
+    ...(shape === "tick" ? { lead: { kind: "tick" as const, label: "Done", run: async () => {} } } : {}),
+    open: NO_PRESS,
+  }));
+
+/** A section's rows drawn from the sample, at rest, each in its slot as the list holds it, so nothing under them moves when it answers. */
+function SampleRows({ shape, rows = 3, className }: { shape?: TodaySection["bones"]; rows?: number; className?: string }) {
   return (
-    <div role="status" aria-label={`Loading ${label}`} aria-busy className={cn("flex flex-col", rows > 1 && "-mb-0.5")}>
-      {["w-1/2", "w-2/5", "w-3/5"].slice(0, rows).map((width) => (
-        <div key={width} data-today-bone={shape ?? "line"} className={cn("mb-0.5 items-start px-3 py-1.5", ROW_GRID)}>
-          <span className="flex h-5 items-center justify-center">{shape === "tick" ? <Skeleton className="size-4 rounded-full" /> : null}</span>
-          <span className="flex min-w-0 flex-col">
-            <span className="flex h-5 items-center">
-              <Skeleton className={cn("h-3.5", width)} />
-            </span>
-            {shape === "lines" ? (
-              <span className="flex h-4 items-center">
-                <Skeleton className="h-3 w-1/3" />
-              </span>
-            ) : null}
-          </span>
-          <span className="flex h-5 items-center">
-            <Skeleton className="h-3 w-14" />
-          </span>
-          <span className="flex h-5 items-center justify-end">
-            <Skeleton className="h-3 w-12" />
-          </span>
-        </div>
-      ))}
+    <div className={cn("flex flex-col", className)}>
+      {sampleRows(shape)
+        .slice(0, rows)
+        .map((row) => (
+          <div key={row.key} data-today-bone={shape ?? "line"} className={ROW_SLOT}>
+            <TodayRowView row={row} job={row.job ?? null} />
+          </div>
+        ))}
     </div>
   );
 }

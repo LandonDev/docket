@@ -23,15 +23,12 @@ const SKELETON = "renderer/src/components/ui/skeleton.tsx";
 
 /** Folders whose files may still import `Skeleton` or write `bg-skeleton`. */
 export const HELD: readonly string[] = [
-  "hosted/guest",
   "renderer/src/work/browser",
   "renderer/src/work/canvas",
   "renderer/src/work/docs",
   "renderer/src/work/formats",
   "renderer/src/work/history",
   "renderer/src/work/pdf",
-  "renderer/src/work/sheets",
-  "renderer/src/work/today",
 ];
 
 /** Files inside a held folder that are converted already and must stay so. */

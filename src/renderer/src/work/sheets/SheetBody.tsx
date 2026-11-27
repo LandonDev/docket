@@ -10,7 +10,7 @@ import { loadToast } from "../../components/ui/toaster";
 import { BusyLabel } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
 import { FormatRowBone, SheetBones } from "./bones";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones } from "../../components/bones";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { dayTime } from "../../lib/duration";
 import { confirmAction, DialogFooter } from "../../chrome/ConfirmDialog";
@@ -766,7 +766,7 @@ function shareWayOf(sync: SheetSync): ShareWay {
   return way;
 }
 
-/** While the sheet loads the bar holds one bone where the mode will be; after, the pane's own parts fill it, and Share on a LifeOS sheet (milestone 31). */
+/** While the sheet loads the bar holds bones where the mode will be; after, the pane's own parts fill it, and Share on a LifeOS sheet (milestone 31). */
 export function Bar(props: Props) {
   const sync = syncFor(props);
   const { view, book, failed } = useSheetSync(sync);
@@ -781,7 +781,12 @@ export function Bar(props: Props) {
         <BarShare {...props} way={shareWayOf(sync)} />
       </>
     );
-  return <Skeleton className="h-3 w-30" />;
+  // The mode's place in the bar while the sheet comes, as words of its length.
+  return (
+    <Bones label="" inline>
+      <span className="text-xs">Opening the sheet</span>
+    </Bones>
+  );
 }
 
 /**

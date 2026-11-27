@@ -6,6 +6,8 @@
 @source "../../renderer/src/components/ui";
 @source "../../renderer/src/work/icons.tsx";
 @source "../../renderer/src/work/sheets/bones.tsx";
+@source "../../renderer/src/components/bones.tsx";
+@source "../../renderer/src/components/bonesEngine.tsx";
 
 html,
 body,

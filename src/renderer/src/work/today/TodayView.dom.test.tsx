@@ -174,7 +174,10 @@ const hostRead = (sectionDef: TodaySource["section"] & object): TodaySource => (
   },
 });
 
-const rowTitles = (root: ParentNode = document) => [...root.querySelectorAll("[data-today-row] [data-row-title]")].map((el) => el.textContent);
+// A section's bones are its own rows drawn from a sample, inert under `[skullet-loading]`: they are not its rows.
+const rowTitles = (root: ParentNode = document) => [...root.querySelectorAll("[data-today-row] [data-row-title]")].filter((el) => !el.closest("[skullet-loading]")).map((el) => el.textContent);
+/** The first element `selector` finds outside every section's bones. */
+const live = (selector: string) => [...document.querySelectorAll<HTMLElement>(selector)].find((el) => !el.closest("[skullet-loading]"))!;
 const section = (id: string) => document.querySelector<HTMLElement>(`[data-today-section="${id}"]`)!;
 const moved = () => (registry as unknown as { moved(): void }).moved();
 
@@ -215,7 +218,7 @@ describe("Today", () => {
     render(<View onClose={() => {}} />);
     // No wait: the Outbox's store already holds them, and the source puts them in before paint.
     expect(rowTitles()).toEqual(["Send to Marcus Bell", "Send to Dana Reyes", "Send to Northfield Parks"]);
-    const first = document.querySelector<HTMLElement>("[data-today-row]")!;
+    const first = live("[data-today-row]");
     expect(first.textContent).toContain("Sponsor deck");
     // The job is named as the rail names it: its workspace, never the sector's own word.
     expect(first.textContent).toContain("Purdue Esports");
@@ -233,7 +236,7 @@ describe("Today", () => {
     world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
     await loadOutbox();
     render(<View onClose={() => {}} />);
-    const row = document.querySelector<HTMLElement>("[data-today-row]")!;
+    const row = live("[data-today-row]");
     // The job's track is the dot's 16px there, its name gone from the column.
     expect(ROW_GRID).toContain("@max-[30rem]/today:grid-cols-[16px_minmax(0,1fr)_16px_72px]");
     const column = row.querySelector('[data-sector="purdue"]')!.nextElementSibling!;
@@ -261,7 +264,7 @@ describe("Today", () => {
     render(<View onClose={() => {}} />);
     // Nothing waits for the whole page: the other section's row is there with the first frame.
     expect(rowTitles()).toEqual(["Northfield Parks owes 420"]);
-    expect(section("held").querySelector('[role="status"][aria-busy]')).not.toBeNull();
+    expect(section("held").querySelector("[data-region][aria-busy] [data-today-bone]")).not.toBeNull();
     expect(section("held").textContent).not.toContain("Nothing waits on your press");
     await act(async () => release());
     await waitFor(() => expect(section("held").textContent).toContain("Nothing waits on your press"));
@@ -533,9 +536,13 @@ describe("Today", () => {
     render(<View onClose={() => {}} />);
     const bone = (id: string) => section(id).querySelector<HTMLElement>("[data-today-bone]")!;
     expect(bone("a").getAttribute("data-today-bone")).toBe("lines");
-    expect(bone("a").querySelectorAll('[data-slot="skeleton"]')).toHaveLength(4);
-    expect(bone("b").querySelector(".rounded-full")).not.toBeNull();
-    expect(bone("c").querySelectorAll('[data-slot="skeleton"]')).toHaveLength(3);
+    // Each is a row of the section drawn from the sample: a second line, a tick, or the title alone, with a job and a time.
+    expect(bone("a").closest("[skullet-loading]")).not.toBeNull();
+    expect(bone("a").querySelector("[data-row-detail]")).not.toBeNull();
+    expect(bone("b").querySelector('[data-slot="checkbox"]')).not.toBeNull();
+    expect(bone("c").querySelector("[data-row-detail]")!.className).toContain("hidden");
+    expect(bone("c").querySelector('[data-slot="checkbox"]')).toBeNull();
+    expect(bone("c").querySelector("[data-row-title]")).not.toBeNull();
   });
 
   it("is all clear once only ended meetings are left, and says what tomorrow starts with", async () => {
@@ -622,7 +629,7 @@ describe("Today", () => {
     world.items.set("mac", [mail("o3", "Northfield Parks", "Invoice 1042", { workspaceId: "ws9" })]);
     await loadOutbox();
     render(<View onClose={() => {}} />);
-    const job = document.querySelector<HTMLElement>('[data-today-row] [data-sector="purdue"]')!.parentElement!;
+    const job = live('[data-today-row] [data-sector="purdue"]').parentElement!;
     expect(job.textContent).toBe("Purdue");
   });
 
@@ -970,11 +977,11 @@ describe("a source", () => {
     render(<View onClose={() => {}} />);
     // The fresh read has asked no host yet: the rows it had stand, with no bones over them.
     expect(rowTitles()).toHaveLength(4);
-    expect(section("money").querySelector('[role="status"][aria-busy]')).toBeNull();
+    expect(section("money").querySelector("[aria-busy]")).toBeNull();
     // Each job starts with its last value, read again: still none, once the hosts are asked.
     await act(async () => {});
     expect(rowTitles()).toHaveLength(4);
-    expect(section("money").querySelector('[role="status"][aria-busy]')).toBeNull();
+    expect(section("money").querySelector("[aria-busy]")).toBeNull();
   });
 
   it("that reads hosts, reopened after a job left and another came, shows no row of the job that left while the new one is out", async () => {
@@ -1038,12 +1045,11 @@ describe("a source", () => {
     const money: TodaySource = { id: "money", section: { id: "money", title: "Money", order: 60, empty: "Nothing owed", bones: "lines" }, use: () => answer };
     resetToday([held, money]);
     render(<View onClose={() => {}} />);
-    const bones = () => section("money").querySelectorAll("[data-today-bone]");
+    const bones = () => [...section("money").querySelectorAll("[data-today-bone]")].filter((el) => el.closest("[data-region]")!.getAttribute("data-bones") !== "leaving");
     expect(rowTitles()).toEqual(["Northfield Parks owes 420"]);
     expect(bones()).toHaveLength(1);
-    expect(section("money").querySelector('[role="status"][aria-busy]')!.getAttribute("aria-label")).toBe("Loading more of Money");
     // The bone is an item of the list it stands in.
-    expect(section("money").querySelector('[role="status"][aria-busy]')!.parentElement!.getAttribute("role")).toBe("listitem");
+    expect(section("money").querySelector("[data-region][aria-busy]")!.parentElement!.getAttribute("role")).toBe("listitem");
     fireEvent.click(screen.getByRole("button", { name: "Northfield Parks owes 420" }));
     expect(opened).toHaveBeenCalledTimes(1);
     // The read is back: the bone goes, the row stays.

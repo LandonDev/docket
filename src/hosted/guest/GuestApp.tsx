@@ -1,7 +1,7 @@
 import { createElement, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
-import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Bones } from "@renderer/components/bones";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { ArrowLeft, RefreshCw } from "@renderer/chrome/icons";
 import { Doc, Project, Table } from "@renderer/work/icons";
@@ -194,14 +194,20 @@ export function GuestApp() {
               ) : null}
             </>
           ) : (
-            <Skeleton className="h-4 w-48" />
+            // The title's place while the link is read: a glyph and a name of a title's length.
+            <Bones label="" inline>
+              <span className="flex items-center gap-2">
+                <span className="shrink-0 text-muted-foreground">{createElement(GLYPH.doc, { className: "size-3.5" })}</span>
+                <span className="text-sm font-semibold">Spring league schedule</span>
+              </span>
+            </Bones>
           )}
         </header>
       ) : null}
       {/* Where a document is drawn as sheets (DocPage.tsx), the page under the header is their stage, to its edges and its foot. */}
       <main className="relative flex min-h-0 flex-1 flex-col overflow-auto has-[.te-pages-stage]:bg-(--stage)">
         {opened ? (
-          <Suspense fallback={<Bones />}>
+          <Suspense fallback={<PageBones />}>
             {opened.kind === "project" ? (
               <>
                 <ProjectPage session={session!} opened={opened} slot={slot} lead={lead} hidden={!!child} onOpen={open} onShown={shown} onGone={gone} />
@@ -214,7 +220,7 @@ export function GuestApp() {
             )}
           </Suspense>
         ) : (
-          <Bones />
+          <PageBones />
         )}
       </main>
     </div>
@@ -279,7 +285,7 @@ function ChildPage({ session, item, onBack, onGone }: { session: Session; item: 
       window.removeEventListener("focus", again);
     };
   }, [isDoc, load]);
-  if (!got) return <Bones />;
+  if (!got) return <PageBones />;
   if ("failed" in got)
     return (
       <div className="grid flex-1 place-items-center px-6">
@@ -300,15 +306,18 @@ function ChildPage({ session, item, onBack, onGone }: { session: Session; item: 
   return <DocText id={item.id} title={got.opened.title} markdown={got.opened.markdown ?? ""} />;
 }
 
-function Bones() {
+/** A page on its way (its kind's code, or the read of a child): a document's title and first lines, in sample words. */
+function PageBones() {
   return (
-    <div className="mx-auto flex w-full max-w-[672px] flex-col gap-3 px-4 pt-6 sm:px-8" aria-busy="true">
-      <Skeleton className="h-5 w-[46%]" />
-      <Skeleton className="mt-3 h-4 w-[20%]" />
-      <Skeleton className="h-4 w-[86%]" />
-      <Skeleton className="h-4 w-[78%]" />
-      <Skeleton className="h-4 w-[60%]" />
-    </div>
+    <Bones label="Loading">
+      <div className="mx-auto flex w-full max-w-[672px] flex-col gap-3 px-4 pt-6 sm:px-8">
+        <h1 className="text-lg font-semibold">Spring league schedule</h1>
+        <p className="mt-3 text-sm">Week one</p>
+        <p className="text-sm">Games start at six on the north courts, with check-in from a quarter past five at the front desk.</p>
+        <p className="text-sm">Bring your own water; the fountains on the second floor are closed this month for repairs.</p>
+        <p className="text-sm">Captains confirm their rosters by Thursday.</p>
+      </div>
+    </Bones>
   );
 }
 

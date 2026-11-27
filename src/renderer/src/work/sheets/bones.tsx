@@ -1,39 +1,46 @@
 import type { ReactNode } from "react";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones } from "../../components/bones";
 
-/** Column widths of the loading grid, as an opened budget's first columns. */
-const BONE_COLUMNS = [132, 52, 52, 68, 88, 72];
-/** Each row's bones: the first column's width in percent (0 for an empty row), and whether the figures columns have one. */
-const BONE_ROWS: Array<[number, boolean]> = [
-  [70, false],
-  [0, false],
-  [44, false],
-  [52, true],
-  [60, true],
-  [48, true],
-  [56, true],
-  [66, true],
-  [64, false],
-  [50, true],
-  [58, true],
-  [46, true],
-  [40, true],
+/**
+ * The sample a sheet's bones are drawn from: an opened budget's first columns (their widths) and rows, each row its
+ * first column's words and the figures it has. A row of no words is an empty row. Skullet draws a bar for each word.
+ */
+const SAMPLE_COLUMNS = [132, 52, 52, 68, 88, 72];
+const SAMPLE_ROWS: Array<[string, string?, string?]> = [
+  ["Spring league budget"],
+  [""],
+  ["Line"],
+  ["Court rental", "1,240", "1,240"],
+  ["Referees", "860", "910"],
+  ["Shirts", "430", "455"],
+  ["Trophies", "210", "210"],
+  ["Streaming", "1,050", "980"],
+  ["Subtotal", undefined, "3,795"],
+  ["Food", "320", "345"],
+  ["Prizes", "500", "500"],
+  ["Travel", "275", "290"],
+  ["Misc", undefined, "120"],
 ];
+const SAMPLE_TABS = ["Budget", "Spring", "Notes"];
+const LETTERS = "ABCDEF";
 
-/** The format row's place while it comes: work-kit's 36px row (format/FormatRow.tsx) with one bone, as the bar's. */
+/** The format row's place while it comes: work-kit's 36px row (format/FormatRow.tsx), its frame drawn and its controls in bones. */
 export function FormatRowBone() {
   return (
     <div data-format-row-bone aria-hidden className="flex h-9 flex-none items-center border-b border-border bg-background px-3">
-      <Skeleton className="h-3 w-40" />
+      <Bones label="" inline>
+        <span className="text-xs">Calibri, 11 pt, General</span>
+      </Bones>
     </div>
   );
 }
 
 /**
- * A sheet's own shape while it comes: the format row where it will have one (`row`), the formula bar (its bone, or what
- * the caller puts there: `formula`), the lettered grid and the sheet tabs, with bones where the words will be. The app's
- * sheet (`SheetSkeleton`) and the guest's page draw it, so neither jumps from a list of bars to a grid. Small and
- * leaf-only, so the guest's page takes it without the sheet's body.
+ * A sheet's own shape while it comes: the format row where it will have one (`row`), the formula bar (its bones, or what
+ * the caller puts there: `formula`), the lettered grid and the sheet tabs. The frame is drawn as it is (the hairlines,
+ * the letters and the row numbers are the grid's own) and the words are bones from the sample. The app's sheet
+ * (`SheetSkeleton`) and the guest's page draw it, so neither jumps from a list of bars to a grid. Small and leaf-only,
+ * so the guest's page takes it without the sheet's body.
  */
 export function SheetBones({ row = false, formula = null }: { row?: boolean; formula?: ReactNode } = {}) {
   return (
@@ -41,31 +48,48 @@ export function SheetBones({ row = false, formula = null }: { row?: boolean; for
       {row ? <FormatRowBone /> : null}
       <div className="flex h-8 flex-none items-center gap-2 border-b border-border pr-3 pl-2">
         <span className="h-6 w-18 flex-none rounded-md border border-input" />
-        {formula ?? <Skeleton className="h-3 w-24" />}
+        {formula ?? (
+          <Bones label="" inline>
+            <span className="text-xs">=SUM(C4:C8)</span>
+          </Bones>
+        )}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="flex h-6 border-b border-border bg-sidebar">
-          <span className="w-10 flex-none border-r border-border" />
-          {BONE_COLUMNS.map((w, c) => (
-            <span key={c} className="flex-none border-r border-border" style={{ width: w }} />
-          ))}
-        </div>
-        {BONE_ROWS.map(([first, figures], r) => (
-          <div key={r} className="flex h-7 border-b border-border">
-            <span className="w-10 flex-none border-r border-border bg-sidebar" />
-            {BONE_COLUMNS.map((w, c) => (
-              <span key={c} className={c === 0 ? "flex flex-none items-center border-r border-border px-2" : "flex flex-none items-center justify-end border-r border-border px-2"} style={{ width: w }}>
-                {c === 0 && first ? <Skeleton className="h-3" style={{ width: `${first}%` }} /> : null}
-                {c >= 3 && c <= 4 && figures && (c === 4 || r < 8) ? <Skeleton className="h-3" style={{ width: `${50 + ((r * 7) % 30)}%` }} /> : null}
+      <Bones label="" fill className="overflow-hidden">
+        <div className="flex flex-col">
+          <div className="flex h-6 border-b border-border bg-sidebar" skullet-own="">
+            <span className="w-10 flex-none border-r border-border" />
+            {SAMPLE_COLUMNS.map((w, c) => (
+              <span key={c} className="flex flex-none items-center justify-center border-r border-border text-xs text-muted-foreground" style={{ width: w }}>
+                {LETTERS[c]}
               </span>
             ))}
           </div>
-        ))}
-      </div>
+          {SAMPLE_ROWS.map(([words, was, now], r) => (
+            <div key={r} className="flex h-7 border-b border-border">
+              <span skullet-own="" className="flex w-10 flex-none items-center justify-center border-r border-border bg-sidebar text-xs text-muted-foreground">
+                {r + 1}
+              </span>
+              {SAMPLE_COLUMNS.map((w, c) => {
+                const value = c === 0 ? words : c === 3 ? was : c === 4 ? now : undefined;
+                // A cell of no words keeps its hairline as it is; one with words is walked, and its words are a bar.
+                return (
+                  <span key={c} skullet-own={value ? undefined : ""} className={c === 0 ? "flex flex-none items-center border-r border-border px-2 text-xs" : "flex flex-none items-center justify-end border-r border-border px-2 text-xs tabular-nums"} style={{ width: w }}>
+                    {value || null}
+                  </span>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </Bones>
       <div className="flex h-7 flex-none items-center gap-4 border-t border-border bg-sidebar px-4">
-        <Skeleton className="h-3 w-12" />
-        <Skeleton className="h-3 w-12" />
-        <Skeleton className="h-3 w-12" />
+        <Bones label="" inline>
+          <span className="inline-flex gap-4 text-xs">
+            {SAMPLE_TABS.map((tab) => (
+              <span key={tab}>{tab}</span>
+            ))}
+          </span>
+        </Bones>
       </div>
     </div>
   );
