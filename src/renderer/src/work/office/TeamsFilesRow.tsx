@@ -3,13 +3,13 @@ import type { TeamsLibrary, TeamsPlace, TeamsRoot } from "@shared/contract-work-
 import { Field } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
-import { PageEmpty, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { Region } from "../../components/bones";
+import { PageEmpty, PageRow, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { ChoiceSelect } from "../../components/choice-select";
 import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import type { Link } from "../../lib/connection/link";
@@ -186,8 +186,9 @@ export function TeamsFilesRow({
     return kept.error ? (
       <ReadFailure computer={link?.environmentId ?? ""} error={kept.error === NO_ANSWER ? NO_ANSWER : folderFailure(new Error(kept.error), host, "could not list its folders")} retry={() => retryKept(kept, read.retry)} />
     ) : (
+      // The same section and region the rows land in, so they come in over these bones.
       <PageSection title={title} data-setting={setting}>
-        <PageRowsSkeleton rows={3} description control="switch" />
+        <Region loading label="Loading folders" bones={() => <FolderRowsSample editable={editable} />} />
       </PageSection>
     );
   // A computer with no Windows VM set up has no VM section at all.
@@ -225,6 +226,7 @@ export function TeamsFilesRow({
   };
   return (
     <PageSection title={title} action={add} data-setting={setting} description={sectionLine(shown.length > 0, explain, common, pageSays)}>
+      <Region loading={false} bones={null}>
       <ListFilter filter={filter} label="Find a folder" />
       {shown.length ? null : <PageEmpty>{noneLine(value.places, vm)}</PageEmpty>}
       {filter.shown.map((row) => (
@@ -241,6 +243,7 @@ export function TeamsFilesRow({
         />
       ))}
       {!editable && elsewhere ? <PageEmpty data-managed="">{elsewhere}</PageEmpty> : null}
+      </Region>
       {dialog?.kind === "add" ? <FolderDialog onClose={closed} onSave={(text) => saveDialog(withRoot(value.roots, text, {}))} error={dialogError} /> : null}
       {dialog?.kind === "library" ? (
         <LibraryDialog
@@ -255,6 +258,18 @@ export function TeamsFilesRow({
       ) : null}
     </PageSection>
   );
+}
+
+const STILL = async (): Promise<void> => undefined;
+const SAMPLE_FOLDERS: FolderRowValue[] = [
+  { folder: "sample:1", title: "Esports staff, General", library: null, on: true },
+  { folder: "sample:2", title: "My OneDrive", library: null, on: true },
+  { folder: "sample:3", title: "Events, Shared Documents", library: null, on: true },
+];
+
+/** The section's rows while its computer is asked: three folders, each `FolderRow` at rest. */
+function FolderRowsSample({ editable }: { editable: boolean }) {
+  return SAMPLE_FOLDERS.map((row) => <FolderRow key={row.folder} row={row} opens={null} common={null} editable={editable} onSwitch={STILL} onStop={STILL} />);
 }
 
 /** One folder: its name (a found library's path in a tip), where its Office files open, and its one control. */
@@ -406,11 +421,7 @@ function LibraryDialog({
         >
           <ModalBody>
             <Field label="Office files open in">
-              {chosen ? (
-                <ChoiceSelect label="Office files open in" value={chosen} options={[...OPENS_IN]} disabled={pending} onChange={(next) => setMode(next)} />
-              ) : (
-                <Skeleton className="h-8 w-full" />
-              )}
+              <OpensInChoice value={chosen} disabled={pending} onChange={setMode} />
             </Field>
             <Field label="Web link" hint="The library folder's address, from the browser's address bar in SharePoint.">
               <Input value={web} placeholder="https://…sharepoint.com/…" spellCheck={false} disabled={pending} onChange={(event) => setWeb(event.target.value)} />
@@ -421,6 +432,15 @@ function LibraryDialog({
         </form>
       </ModalPanel>
     </Dialog>
+  );
+}
+
+/** Where a library's Office files open, as its dialog's field: until its host says, the same select at rest as its bones. */
+function OpensInChoice({ value, disabled, onChange, ...field }: { value: OpensIn | null; disabled: boolean; onChange: (next: OpensIn) => void; id?: string; "aria-describedby"?: string }) {
+  return (
+    <Region loading={!value} label="" bones={<ChoiceSelect label="Office files open in" value="live" options={[...OPENS_IN]} disabled onChange={() => undefined} />}>
+      {value ? <ChoiceSelect {...field} label="Office files open in" value={value} options={[...OPENS_IN]} disabled={disabled} onChange={onChange} /> : null}
+    </Region>
   );
 }
 

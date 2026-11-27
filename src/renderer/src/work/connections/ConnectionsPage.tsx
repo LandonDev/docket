@@ -19,7 +19,7 @@ import { AddinRow } from "../office/AddinRow";
 import { SignInFor } from "../shell/DownSignIn";
 import { useLifeosStatusHeard } from "../shell/lifeos";
 import { signInOnVm } from "../winvm/signIn";
-import { FirstCheckBones } from "./FirstCheckBones";
+import { FirstCheckBones, STATE_LINE } from "./FirstCheckBones";
 import { checkFailure, commandOf, fixVariant, markOf, sectionsOf, signOutAsk, signsOut, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
 import { confirmAction } from "../../chrome/ConfirmDialog";
 import { computerInLine, useComputerNames } from "../../lib/settings/computerName";
@@ -160,11 +160,6 @@ function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/**
- * A row's state line as a block in the description, its detail wrapping: a narrow window cuts none of the fix's words.
- * The glyph keeps the word's first 16px line (1px over its 14px), never the middle of a wrapped block.
- */
-const STATE_LINE = "flex [&>[data-slot=status-detail]]:whitespace-normal [&>[data-slot=status-glyph]]:mt-px [&>[data-slot=status-glyph]]:self-start";
 
 /** The page as the hosts' answers leave it: what the preview and the test draw. */
 export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts: readonly HostView[]; onRecheck: (hostId: string, by?: string) => void; now?: number }) {
@@ -213,7 +208,7 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
           ))}
         </PageSection>
       ))}
-      {/* A heading's bone over the rows, as the first section lands. */}
+      {/* A section's bones, as the first section lands. */}
       {waiting.length && !sections.length ? <FirstCheckBones /> : null}
     </>
   );

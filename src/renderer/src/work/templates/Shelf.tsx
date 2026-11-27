@@ -6,7 +6,6 @@ import { useTruncated } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { ROW_HOLDS, ROW_OPEN } from "../../components/ui/press";
 import { reveal } from "../../components/ui/reveal";
-import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
@@ -283,22 +282,20 @@ export function Shelf({
   );
 }
 
-/** The shelf on its way: still tiles in the grid's shape, one group of them. */
-export function ShelfSkeleton({ layout, count = 6 }: { layout: ShelfLayout; count?: number }) {
-  return (
-    <div aria-busy="true" aria-label="Loading templates" className="flex flex-col gap-2">
-      <Skeleton className="h-4 w-24" />
-      <div className={GRID[layout]}>
-        {Array.from({ length: count }, (_, i) => (
-          // The loaded tile's shape: the plate, then the name's bar on its 20px line.
-          <div key={i} data-bone-tile="" className="flex min-w-0 flex-col gap-1.5">
-            <Skeleton className="aspect-[4/3] w-full rounded-md" />
-            <span className="flex h-5 min-w-0 items-center">
-              <Skeleton className="h-3 rounded-sm" style={{ width: `${[64, 48, 72, 56, 40, 60][i % 6]}%` }} />
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+const SAMPLE_NAMES = ["Crew memo", "Game report", "Season log", "Meeting notes", "Budget", "Pitch deck", "Weekly update", "Run of show"];
+const SAMPLE_KINDS: readonly TemplateKind[] = ["document", "document", "sheet", "document", "sheet", "deck", "document", "deck"];
+const NO_PRESS = (): void => undefined;
+
+/** One group of `count` tiles, as the shelf draws them while it loads: names of a name's length, no clock, no host. */
+export function sampleShelf(count: number): ShelfGroup[] {
+  const templates = Array.from({ length: count }, (_, i): Template => {
+    const name = SAMPLE_NAMES[i % SAMPLE_NAMES.length]!;
+    return { id: `sample:${i}`, name, kind: SAMPLE_KINDS[i % SAMPLE_KINDS.length]!, form: "docx", where: "job", fields: [], source: { at: "file", host: "sample", path: `sample:${i}` } };
+  });
+  return [{ key: "job", label: "This job", templates }];
+}
+
+/** The shelf on its way: the shelf itself, drawn at rest from `sampleShelf`, as a region's bones. */
+export function ShelfSample({ layout, count = 6 }: { layout: ShelfLayout; count?: number }) {
+  return <Shelf groups={sampleShelf(count)} layout={layout} making={null} onPress={NO_PRESS} />;
 }

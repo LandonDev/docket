@@ -122,7 +122,7 @@ describe("Share", () => {
     // Asked of the Mac, answered by the box.
     expect(calls.list.map((c) => `${c.env}:${c.method}`)).toEqual(["mac:work.guests.forItem", "box:work.guests.forItem"]);
     expect(screen.getByRole("button", { name: "Create link" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.change(screen.getByPlaceholderText("Name"), { target: { value: "Dana Lee" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "For" }), { target: { value: "Dana Lee" } });
     fireEvent.click(screen.getByRole("button", { name: "Comment" }));
     fireEvent.click(screen.getByRole("button", { name: "Create link" }));
     await screen.findByText("https://tempcode.landonhale.com/g/abc#k=secret");
@@ -134,7 +134,7 @@ describe("Share", () => {
     // The list is read again with the new link; New link brings the form back.
     await waitFor(() => expect(calls.list.filter((c) => c.method === "work.guests.forItem").length).toBeGreaterThan(2));
     fireEvent.click(screen.getByRole("button", { name: "New link" }));
-    expect(await screen.findByPlaceholderText("Name")).toBeTruthy();
+    expect(await screen.findByRole("textbox", { name: "For" })).toBeTruthy();
   });
 
   /** Polish 2 council round 1 (R1-C22): in a 400px sheet a row's facts were cut, its end date with them. */
@@ -176,7 +176,7 @@ describe("Share", () => {
     const { ShareButton } = await import("./Share");
     render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    await screen.findByPlaceholderText("Name");
+    await screen.findByRole("textbox", { name: "For" });
     for (const can of ["View", "Comment", "Edit"]) expect(screen.getByRole("button", { name: can })).toBeTruthy();
     expect(calls.list[0]).toMatchObject({ method: "work.guests.forItem", params: { source: { at: "file", host: "box", path: "/w/Plan.tcdoc" } } });
   });
@@ -189,12 +189,12 @@ describe("Share", () => {
     const word = render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/x/Letter.docx" }} kind="document" title="Letter" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     expect(await screen.findByText("Guest links open Docket documents. Share this file from where it lives.")).toBeTruthy();
-    expect(screen.queryByPlaceholderText("Name")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "For" })).toBeNull();
     expect(calls.list).toEqual([]);
     word.unmount();
     render(<ShareButton env="box" source={{ at: "lifeos", table: "sheets", id: "ks1" }} kind="sheet" title="Budget" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    await screen.findByPlaceholderText("Name");
+    await screen.findByRole("textbox", { name: "For" });
     expect(screen.queryByRole("button", { name: "Comment" })).toBeNull();
     expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
   });
@@ -207,13 +207,14 @@ describe("Share", () => {
     calls.downWords = { box: "This file is in a place others open. Share it from there." };
     render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    await waitFor(() => expect(document.querySelector("[data-share-bones]")).toBeTruthy());
-    expect(screen.queryByPlaceholderText("Name")).toBeNull();
+    // The bones are the form itself at rest, unseen and inert: no field he can type in.
+    await waitFor(() => expect(document.querySelector("[skullet-loading] [data-share-bones]")).toBeTruthy());
+    expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.getByRole("button", { name: "Create link" }).hasAttribute("disabled")).toBe(true);
     await act(async () => answer());
     expect(await screen.findByText("This file is in a place others open. Share it from there.")).toBeTruthy();
-    expect(screen.queryByPlaceholderText("Name")).toBeNull();
-    expect(document.querySelector("[data-share-bones]")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    await waitFor(() => expect(document.querySelector("[data-share-bones]")).toBeNull());
   });
 
   it("reads Share in Teams on a library's file whose page the host knows, and opens that page; no guest link is asked", async () => {
@@ -377,14 +378,14 @@ describe("Share", () => {
     calls.links = [];
     render(<ShareButton env="box" source={{ at: "lifeos", table: "docs", id: "kd1" }} kind="document" title="Run of show" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    fireEvent.change(await screen.findByPlaceholderText("Name"), { target: { value: "Sam Ortiz" } });
+    fireEvent.change(await screen.findByRole("textbox", { name: "For" }), { target: { value: "Sam Ortiz" } });
     calls.links = [LINK];
     fireEvent.click(screen.getByRole("button", { name: "Create link" }));
     await screen.findByText("https://tempcode.landonhale.com/g/abc#k=secret");
     fireEvent.click(await screen.findByRole("button", { name: "Sam Ortiz's link" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Revoke…" }));
     await waitFor(() => expect(screen.queryByText("https://tempcode.landonhale.com/g/abc#k=secret")).toBeNull());
-    expect(await screen.findByPlaceholderText("Name")).toBeTruthy();
+    expect(await screen.findByRole("textbox", { name: "For" })).toBeTruthy();
   });
 
   it("calls a document kept for a Teams file the Teams file opened here, never a copy", async () => {
@@ -400,7 +401,7 @@ describe("Share", () => {
     render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     expect(await screen.findByText("Guests reach files on the box only. Keep this file in a workspace on the box to share it.")).toBeTruthy();
-    expect(screen.queryByPlaceholderText("Name")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "For" })).toBeNull();
     expect(screen.getByRole("button", { name: "Done" })).toBeTruthy();
   });
 
@@ -409,7 +410,7 @@ describe("Share", () => {
     const { PURDUE_LINE } = await import("./ShareSheet");
     render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" purdue />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    await screen.findByPlaceholderText("Name");
+    await screen.findByRole("textbox", { name: "For" });
     expect(screen.getByText(PURDUE_LINE).closest("[data-slot=dialog-footer]")).toBeTruthy();
   });
 
@@ -502,7 +503,7 @@ describe("a project's Share", () => {
     // Every guest of a project views: the row says nothing of what they can do.
     expect(screen.getByText(/^made .*, not opened yet, until /)).toBeTruthy();
     expect(calls.list[0]).toMatchObject({ method: "work.guests.forItem", params: { source: { at: "lifeos", table: "projects", id: "kp1" } } });
-    fireEvent.change(screen.getByPlaceholderText("Name"), { target: { value: "Marcus Reed" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "For" }), { target: { value: "Marcus Reed" } });
     // A project's guest views: there is nothing to pick, so no Can row is drawn.
     expect(screen.queryByText("Can")).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();

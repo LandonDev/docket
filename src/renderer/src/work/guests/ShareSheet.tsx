@@ -3,12 +3,12 @@ import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field, FieldRow } from "../../chrome/DialogField";
 import { MoreHorizontal } from "../../chrome/icons";
 import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
+import { Region, useInBones } from "../../components/bones";
 import { ChoiceSelect } from "../../components/choice-select";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Input } from "../../components/ui/input";
-import { Skeleton } from "../../components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { hostFailure } from "../../lib/hostFailure";
 import { registry } from "../../lib/connection";
@@ -123,69 +123,89 @@ function Sharing({
     }
   };
 
-  // Until the host answers for this item the sheet is its bones: a form it would then refuse is never shown.
-  if (rows === null && !listError && !made)
-    return (
-      <>
-        <div data-share-bones="" aria-busy="true" aria-label="Loading" className="flex flex-col gap-4 px-5 py-4">
-          <div className="flex flex-col gap-1">
-            <Skeleton className="h-4 w-8" />
-            <Skeleton className="h-8 w-full rounded-lg" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-6 w-40" />
-          </div>
-        </div>
-        <DialogFooter onCancel={onClose} confirmLabel="Create link" disabled onConfirm={() => undefined} />
-      </>
-    );
+  // Until the host answers for this item the form is its bones: a form it would then refuse is never shown live.
+  const loading = rows === null && !listError && !made;
   return (
     <>
-      {made ? (
-        <MadeAddress url={made.url} link={made.link} />
-      ) : (
-        <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-4 px-5 py-4">
-          <Field label="For">
-            <Input autoFocus value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="Name" autoComplete="off" />
-          </Field>
-          <div className="flex flex-col">
-            {roles.length > 1 ? (
-              <FieldRow label="Can">
-                <ToggleGroup
-                  size="xs"
-                  value={[role]}
-                  onValueChange={(value) => {
-                    if (value[0]) setRole(value[0] as GuestRole);
-                  }}
-                >
-                  {roles.map((r) => (
-                    <ToggleGroupItem key={r} value={r}>
-                      {ROLE_WORDS[r]}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
-              </FieldRow>
-            ) : null}
-            <FieldRow label="Ends">
-              <ChoiceSelect size="sm" label="Ends" value={days} options={ENDS.map((d) => ({ value: String(d), label: dayOf(at(d)) }))} onChange={setDays} />
-            </FieldRow>
-          </div>
-          <ErrorLine error={error} />
-        </form>
-      )}
-      <LiveLinks env={home} rows={rows} error={listError} onRetry={() => load()} onChanged={() => void load()} onAddress={onMade} onRevoked={(id) => made?.link.id === id && onMade(null)} />
+      <Region loading={loading} label="Loading" bones={() => <ShareForm roles={roles} name="" role="view" days="30" error={null} bones />}>
+        {made ? (
+          <MadeAddress url={made.url} link={made.link} />
+        ) : (
+          <ShareForm roles={roles} name={name} onName={setName} role={role} onRole={setRole} days={days} onDays={setDays} error={error} onSubmit={(event) => void submit(event)} />
+        )}
+        <LiveLinks env={home} rows={rows} error={listError} onRetry={() => load()} onChanged={() => void load()} onAddress={onMade} onRevoked={(id) => made?.link.id === id && onMade(null)} />
+      </Region>
       {made ? (
         <DialogFooter start={<Button variant="ghost" size="sm" onClick={() => onMade(null)}>New link</Button>} confirmLabel="Done" onConfirm={onClose} />
       ) : (
         // A Purdue workspace's file is university data: said once, beside the press that shares it.
-        <DialogFooter note={purdue ? PURDUE_LINE : undefined} onCancel={onClose} confirmLabel="Create link" pending={pending} disabled={!name.trim()} onConfirm={() => void submit()} />
+        <DialogFooter note={purdue ? PURDUE_LINE : undefined} onCancel={onClose} confirmLabel="Create link" pending={pending} disabled={loading || !name.trim()} onConfirm={() => void submit()} />
       )}
     </>
   );
 }
 
-/** The item's live links under the form: a hairline, then one row each; nothing at all while there are none. */
+const NO_CHANGE = (): void => undefined;
+
+/** A new link's form: who it is for, what they can do, the day it ends. At rest, with no handlers, it is the sheet's bones. */
+function ShareForm({
+  roles,
+  name,
+  onName = NO_CHANGE,
+  role,
+  onRole = NO_CHANGE,
+  days,
+  onDays = NO_CHANGE,
+  error,
+  onSubmit,
+  bones = false,
+}: {
+  roles: readonly GuestRole[];
+  name: string;
+  onName?(name: string): void;
+  role: GuestRole;
+  onRole?(role: GuestRole): void;
+  days: string;
+  onDays?(days: string): void;
+  error: string | null;
+  onSubmit?(event: FormEvent): void;
+  bones?: boolean;
+}) {
+  const inBones = useInBones();
+  const at = (d: number): number => Date.now() + d * 24 * 60 * 60_000;
+  return (
+    <form data-share-bones={bones ? "" : undefined} onSubmit={onSubmit ?? ((event) => event.preventDefault())} className="flex flex-col gap-4 px-5 py-4">
+      <Field label="For">
+        <Input autoFocus={!inBones} value={name} maxLength={80} onChange={(event) => onName(event.target.value)} placeholder="Name" autoComplete="off" />
+      </Field>
+      <div className="flex flex-col">
+        {roles.length > 1 ? (
+          <FieldRow label="Can">
+            <ToggleGroup
+              size="xs"
+              value={[role]}
+              onValueChange={(value) => {
+                if (value[0]) onRole(value[0] as GuestRole);
+              }}
+            >
+              {roles.map((r) => (
+                <ToggleGroupItem key={r} value={r}>
+                  {ROLE_WORDS[r]}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </FieldRow>
+        ) : null}
+        <FieldRow label="Ends">
+          <ChoiceSelect size="sm" label="Ends" value={days} options={ENDS.map((d) => ({ value: String(d), label: dayOf(at(d)) }))} onChange={onDays} />
+        </FieldRow>
+      </div>
+      <ErrorLine error={error} />
+    </form>
+  );
+}
+
+/** The item's live links under the form: a hairline, then one row each; nothing at all while there are none or none are read yet. */
 function LiveLinks({
   env,
   rows,
@@ -205,15 +225,9 @@ function LiveLinks({
   onRevoked(linkId: string): void;
 }) {
   const [retrying, setRetrying] = useState(false);
-  if (rows?.length === 0 && !error) return null;
+  if ((rows === null || rows.length === 0) && !error) return null;
   return (
     <div data-share-links="" className="flex flex-col border-t border-border px-3 py-2">
-      {rows === null && !error ? (
-        <div className="flex h-11 items-center gap-2 px-2">
-          <Skeleton className="size-6 rounded-full" />
-          <Skeleton className="h-3 w-40" />
-        </div>
-      ) : null}
       {rows?.map((l) => <LinkRow key={l.id} env={env} link={l} onChanged={onChanged} onAddress={onAddress} onRevoked={onRevoked} />)}
       {error ? (
         <div className="flex min-h-11 items-center gap-2 px-2">

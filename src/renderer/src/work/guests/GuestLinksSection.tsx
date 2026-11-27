@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { Loaded, Region } from "../../components/bones";
+import { PageEmpty, PageError, PageRow, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { registry } from "../../lib/connection";
 import { hostFailure } from "../../lib/hostFailure";
@@ -8,7 +9,6 @@ import { confirmReplace, confirmRevoke, MadeLinkDialog } from "./Share";
 import { guestsCall, isLive, linkFacts, shortDay, type GuestLinkRow } from "./api";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { NO_ANSWER } from "../../lib/connection/openRead";
-import { Skeleton } from "../../components/ui/skeleton";
 import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
 import { MoreHorizontal } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
@@ -35,7 +35,13 @@ export function GuestLinksRow({ hosts, open: startOpen = false }: { hosts: reado
       {guests.failedOn.length && !guests.rows?.length ? null : (
         <SettingRow
           id="files.guests"
-          description={guests.rows === null ? <Skeleton className="mt-0.5 h-3 w-40" /> : guests.failed.length === 0 ? guestsWords(guests.rows.map((r) => r.link)) : undefined}
+          description={
+            guests.rows !== null && guests.failed.length > 0 ? undefined : (
+              <Loaded inline data={guests.rows === null ? null : guestsWords(guests.rows.map((r) => r.link))} sample="2 links. The next ends Dec 2" label="">
+                {(words) => words}
+              </Loaded>
+            )
+          }
           onOpen={() => setOpen(true)}
           openLabel="Shared with guests"
         />
@@ -183,30 +189,44 @@ function GuestLinksList({ guests }: { guests: GuestLinks }) {
         </PageError>
       ))}
       {error ? <PageError>{error}</PageError> : null}
-      {rows === null ? <PageRowsSkeleton rows={2} description control="button" media /> : null}
-      {rows?.length === 0 && failed.length === 0 ? <PageEmpty>No guest links</PageEmpty> : null}
-      {filter.shown.map(({ env, link }) => {
-        const live = isLive(link);
-        return (
-          <PageRow key={link.id} data-guest-link={link.id} media={<Face name={link.name} size="row" />} title={link.name} description={linkFacts(link, { item: true })}>
-            {live ? (
-              // Both acts ask first and sit in the row's menu, there at rest, never on hover alone.
-              <RowsMenu
-                label={`${link.name}'s link`}
-                trigger={
-                  <Button data-guest-actions="" variant="ghost" size="icon-sm" aria-label={`${link.name}'s link`} disabled={revoking !== null} className="text-muted-foreground">
-                    {revoking?.endsWith(link.id) ? <BusyLabel busy label="" /> : <MoreHorizontal />}
-                  </Button>
-                }
-                rows={LINK_MENU}
-                onPick={(id) => void (id === "replace" ? replace(env, link) : revoke(env, link))}
-                align="end"
-              />
-            ) : null}
-          </PageRow>
-        );
-      })}
+      <Region loading={rows === null} label="Loading guest links" bones={() => <LinkRows rows={SAMPLE_LINKS} revoking={null} onPick={NO_PICK} />}>
+        {rows?.length === 0 && failed.length === 0 ? <PageEmpty>No guest links</PageEmpty> : null}
+        <LinkRows rows={filter.shown} revoking={revoking} onPick={(id, env, link) => void (id === "replace" ? replace(env, link) : revoke(env, link))} />
+      </Region>
       {made ? <MadeLinkDialog url={made.url} link={made.link} title={made.link.title} onClose={() => setMade(null)} /> : null}
     </>
   );
 }
+
+type LinkPick = (id: string, env: string, link: GuestLinkRow) => void;
+const NO_PICK: LinkPick = () => undefined;
+
+/** Every link a row: who, to what, its facts, and a live one's menu. Given the sample, it is the list's bones. */
+function LinkRows({ rows, revoking, onPick }: { rows: readonly { env: string; link: GuestLinkRow }[]; revoking: string | null; onPick: LinkPick }) {
+  return rows.map(({ env, link }) => (
+    <PageRow key={link.id} data-guest-link={link.id} media={<Face name={link.name} size="row" />} title={link.name} description={linkFacts(link, { item: true })}>
+      {isLive(link) ? (
+        // Both acts ask first and sit in the row's menu, there at rest, never on hover alone.
+        <RowsMenu
+          label={`${link.name}'s link`}
+          trigger={
+            <Button data-guest-actions="" variant="ghost" size="icon-sm" aria-label={`${link.name}'s link`} disabled={revoking !== null} className="text-muted-foreground">
+              {revoking?.endsWith(link.id) ? <BusyLabel busy label="" /> : <MoreHorizontal />}
+            </Button>
+          }
+          rows={LINK_MENU}
+          onPick={(id) => onPick(id, env, link)}
+          align="end"
+        />
+      ) : null}
+    </PageRow>
+  ));
+}
+
+const sampleLink = (id: string, name: string, title: string, role: GuestLinkRow["role"]): { env: string; link: GuestLinkRow } => ({
+  env: "sample",
+  link: { id: `sample:${id}`, name, source: { at: "lifeos", table: "docs", id: `sample:${id}` }, title, role, createdAt: Date.UTC(2026, 9, 2), expiresAt: Date.UTC(2099, 11, 2), revokedAt: null, by: "owner", lastOpenedAt: null, open: 0 },
+});
+
+/** Two live links, as the list draws them while the hosts are asked. */
+const SAMPLE_LINKS = [sampleLink("1", "Maya Chen", "Spring LAN run of show", "comment"), sampleLink("2", "Events office", "Seat plan", "view")];

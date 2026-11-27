@@ -65,11 +65,14 @@ Work is on for some computer).
   push: a sign-in approved, LifeOS back), so a LifeOS row is true again with
   no press; never on a timer. While a host checks again its rows stay where they are.
   With no host linked it is off, and each host's row says Offline.
-- The first check draws a heading's bone over six row bones with no
-  press, so the first section lands where they stood; the page's chunk
-  draws the same bones while it loads (`FirstCheckBones`).
-- The Office add-in's pairing dialog holds the code's 24px line with a
-  bone while the code is asked for. Its failures, and the Teams copy
+- The first check draws a section in bones: its heading over six rows
+  from a sample, each a title and its state line, with no press, so the
+  first section lands where they stood; the page's chunk draws the same
+  bones while it loads (`FirstCheckBones`, which also holds the rows'
+  `STATE_LINE`).
+- The Office add-in's row is drawn unpaired at rest while its list is
+  read; its pairing dialog holds the code's 24px line with a sample code in
+  bones while the code is asked for. Its failures, and the Teams copy
   switch's, are said through `hostFailure`, never the link's text.
 - The fix is the button at the row's end: raised on a row that needs a
   press, ghost on a row that works (Sign out). What he must do by hand is

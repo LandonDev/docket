@@ -51,9 +51,11 @@ describe("ActView's readiness", () => {
     const ready: boolean[] = [];
     const { container } = render(<ActView item={{ kind: "frameio.comment", payload: {} } as never} env="box" onReady={(r) => ready.push(r)} />);
     await flush();
-    expect(screen.getByRole("status", { name: "Loading" })).toBeTruthy();
-    // Three header rows and three lines of body, the act's own shape.
-    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBe(9);
+    expect(container.querySelector("[data-region][data-bones]")).toBeTruthy();
+    // The act's own parts drawn from a sample: three fields on the label column, then the words.
+    const drawing = container.querySelector("[skullet-loading]")!;
+    expect(drawing.querySelectorAll("dt")).toHaveLength(3);
+    expect(drawing.querySelector('[data-slot="act-payload"]')).toBeNull();
     expect(screen.queryByText(/Loading the act/)).toBeNull();
     expect(ready).not.toContain(true);
   });

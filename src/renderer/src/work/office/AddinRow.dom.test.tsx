@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const NOW = Date.UTC(2026, 10, 23, 17);
 import type { OfficeAddinKey } from "@shared/contract-work-office";
@@ -86,12 +86,14 @@ describe("AddinRow", () => {
     (link as { request: unknown }).request = (method: string, params: unknown) => (method === "work.office.addin.pair" ? new Promise((r) => (land = r)) : base(method, params as never));
     await act(async () => void render(<AddinRow link={link} title="Office add-in" />));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Pair…" })));
-    const bone = screen.getByRole("status", { name: "Asking for a code" });
-    expect(bone.className).toContain("h-6");
+    // The bones are a sample code on the code's own 24px line, unseen and inert.
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.querySelector("[data-region][data-bones]")).toBeTruthy();
+    expect(dialog.querySelector("[skullet-loading] .leading-6")!.textContent).toBe("R4T8W2NB");
     expect(screen.queryByText("Asking for a code…")).toBeNull();
     await act(async () => land({ code: "K7M2Q9XP", expiresAt: NOW + 60_000 }));
-    expect(screen.queryByRole("status", { name: "Asking for a code" })).toBeNull();
     expect(screen.getByText("K7M2Q9XP")).toBeTruthy();
+    await waitFor(() => expect(dialog.querySelector("[data-region][data-bones]")).toBeNull());
   });
 
   it("says a failed list and a failed Remove in his words, never the link's text", async () => {

@@ -3,12 +3,11 @@ import { useAccountReach } from "./accountReach";
 import { useEffect, useState } from "react";
 import type { GoogleAccounts, GooglePicked } from "@shared/contract-work-google";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
-import { FieldRow } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
-import { ChoiceSelect } from "../../components/choice-select";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { registry } from "../../lib/connection";
 import { sayError } from "../canvas/frame";
+import { AccountRow, AccountRowSample } from "./AccountRow";
 
 /**
  * Open from Google (docs/agents/work-google.md "Picking a file"): a dialog
@@ -90,17 +89,13 @@ function Body({ env, sessionId, onClose }: { env: string; sessionId: string; onC
     >
       <ModalBody>
         {/* With no account to pick from, one muted line says what is missing, never an empty select. */}
-        {accountsReach.held ? accountsReach.line : destinationDown ? <HostLinkLine word={destinationDown} retryHost={env} /> : blocked ? (
-          <p className="text-[13px] leading-5 text-muted-foreground">{blocked}</p>
-        ) : accounts && !checkingEmpty ? (
-          <FieldRow label="Account">
-            <ChoiceSelect label="Account" value={account} options={ready.map((a) => ({ value: a.account, label: a.account }))} onChange={setAccount} />
-          </FieldRow>
-        ) : error ? null : (
-          <div aria-busy className="flex h-8 items-center">
-            <Skeleton className="h-3 w-1/2" />
-          </div>
-        )}
+        <Region loading={!accountsReach.held && !destinationDown && !blocked && !(accounts && !checkingEmpty) && !error} label="Loading accounts" bones={<AccountRowSample />}>
+          {accountsReach.held ? accountsReach.line : destinationDown ? <HostLinkLine word={destinationDown} retryHost={env} /> : blocked ? (
+            <p className="text-[13px] leading-5 text-muted-foreground">{blocked}</p>
+          ) : accounts && !checkingEmpty ? (
+            <AccountRow accounts={ready.map((a) => a.account)} value={account} onChange={setAccount} />
+          ) : null}
+        </Region>
         <ErrorLine error={accountsReach.held || destinationDown ? null : error} />
       </ModalBody>
       <DialogFooter onCancel={onClose} {...(blocked ? {} : { confirmLabel: "Choose files", disabled: !account || accountsReach.held || !!destinationDown })} />

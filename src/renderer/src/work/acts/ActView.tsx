@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNod
 import type { Chunk } from "../../lib/lazyChunk";
 import { ACT_VIEWS, type ActViewProps } from "./registry";
 import { GenericActView } from "./GenericActView";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Bones } from "../../components/bones";
+import { ActFields, Words } from "./ActParts";
 import { BusyLabel, Button } from "../../components/ui/button";
 
 type ViewChunk = Chunk<{ View: (props: ActViewProps) => ReactNode }>;
@@ -95,33 +96,26 @@ function ActWaiting({ kind }: { kind: string }) {
   return on ? <ActFailed kind={kind} retry={() => undefined} busy /> : <ActSkeleton />;
 }
 
+/** A held act of a typical kind, as its fields and words are drawn: lengths alone, no one's payload. */
+const SAMPLE_FIELDS = [
+  { label: "To", value: "Maya Chen" },
+  { label: "Subject", value: "Spring LAN run of show" },
+  { label: "When", value: "Friday at 9:00 AM" },
+];
+const SAMPLE_BODY = "Here is the run of show for Friday, with the doors at nine and the first match at ten. The seat plan is attached, and the crew list follows once it is set.";
+
 /**
- * While a kind's view loads: bones in the payload's shape (GenericActView, MailAct), each on the 20px or 22px line
- * of the words that take its place, so nothing moves when they land. Three header rows on the 72px label column,
- * the hairline, three lines of body.
+ * While a kind's view loads: bones in the payload's shape, drawn by the parts the kind views are drawn with
+ * (ActParts.tsx) from a sample, so nothing moves when they land. Fields on the 72px label column, the hairline, the
+ * words. It draws no `act-payload`, so Send waits.
  */
 export function ActSkeleton() {
   return (
-    <div role="status" aria-label="Loading" aria-busy className="flex min-w-0 flex-col gap-4">
-      <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5">
-        {[40, 64, 52].map((width) => (
-          <div key={width} className="contents">
-            <span className="flex h-5 items-center">
-              <Skeleton className="h-3 w-12" />
-            </span>
-            <span className="flex h-5 items-center">
-              <Skeleton className="h-3" style={{ width: `${width}%` }} />
-            </span>
-          </div>
-        ))}
+    <Bones label="Loading">
+      <div className="flex min-w-0 flex-col gap-4">
+        <ActFields fields={SAMPLE_FIELDS} />
+        <Words className="border-t border-border pt-4">{SAMPLE_BODY}</Words>
       </div>
-      <div className="flex flex-col border-t border-border pt-4">
-        {[88, 72, 80].map((width) => (
-          <span key={width} className="flex h-[22px] items-center">
-            <Skeleton className="h-3.5" style={{ width: `${width}%` }} />
-          </span>
-        ))}
-      </div>
-    </div>
+    </Bones>
   );
 }

@@ -4,6 +4,7 @@ import type { FolderRef } from "@shared/work/files";
 import type { Template } from "@shared/work/templates";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
+import { Region } from "../../components/bones";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { loadToast } from "../../components/ui/toaster";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
@@ -11,7 +12,7 @@ import { makeFrom, unhideStarters, useTemplates } from "./data";
 import { FieldsForm } from "./FieldsForm";
 import { folderName, hiddenLine, sentence, shelfGroups, unfilledLine } from "./model";
 import { openMade } from "./open";
-import { Shelf, ShelfSkeleton } from "./Shelf";
+import { Shelf, ShelfSample } from "./Shelf";
 
 /** The dialog's title: the words of New's press, From a Template…, with the menu it lives in. */
 export const NEW_TITLE = "New from a Template";
@@ -226,9 +227,8 @@ export function TemplateSteps({
         <div role="alert" className="contents">
           <ErrorLine error={error} />
         </div>
-        {load.status === "loading" ? (
-          <ShelfSkeleton layout="dialog" />
-        ) : load.status === "error" ? (
+        <Region fill loading={load.status === "loading"} label="Loading templates" bones={() => <ShelfSample layout="dialog" />}>
+        {load.status === "loading" ? null : load.status === "error" ? (
           <EmptyState
             title="Templates did not load"
             line={load.error}
@@ -263,6 +263,7 @@ export function TemplateSteps({
             />
           </div>
         )}
+        </Region>
       </ModalBody>
       {/* A picker of tiles: × and Escape close it, so a footer stands only to say where the file is kept, with its
           Cancel. While a tile's file is made, Cancel waits with ×, Escape and the backdrop. A long folder name wraps. */}

@@ -456,9 +456,11 @@ describe("Connections", () => {
     // The settings page's fallback for the chunk is the page's own first-check bones.
     expect(readFileSync(join(import.meta.dirname, "../../surfaces/SettingsView.tsx"), "utf8")).toContain('connectionsChunk.surface("ConnectionsPage", <FirstCheckBones />)');
     const page = render(<ConnectionsView hosts={[{ id: "box", name: "the box", status: "checking" }]} onRecheck={() => {}} />);
-    const first = page.container.innerHTML;
+    // The same markup, but for the ids each render makes (a section's heading names it by `useId`).
+    const shape = (html: string) => html.replace(/ (id|aria-labelledby)="[^"]*"/g, "");
+    const first = shape(page.container.innerHTML);
     page.unmount();
-    expect(render(<FirstCheckBones />).container.innerHTML).toBe(first);
+    expect(shape(render(<FirstCheckBones />).container.innerHTML)).toBe(first);
   });
 });
 

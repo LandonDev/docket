@@ -102,10 +102,12 @@ describe("the Templates view", () => {
   it("shows still tiles in the grid's shape while the shelf loads", () => {
     host.answer = () => new Promise(() => {});
     render(<View {...props} />);
-    const bones = screen.getByLabelText("Loading templates");
-    expect(bones.getAttribute("aria-busy")).toBe("true");
+    // The bones are the shelf itself drawn from a sample, unseen and inert, in the page's grid.
+    expect(document.querySelector("[data-region][data-bones]")).toBeTruthy();
+    const bones = document.querySelector("[skullet-loading]")!;
     expect(bones.querySelector(".grid")!.className).toContain("grid-cols-[repeat(auto-fill,minmax(148px,1fr))]");
-    expect(bones.querySelectorAll(".aspect-\\[4\\/3\\]")).toHaveLength(8);
+    expect(bones.querySelectorAll("[data-plate]")).toHaveLength(8);
+    expect(screen.queryByRole("button", { name: "Crew memo" })).toBeNull();
   });
 
   it("says the shelf did not load, with Retry", async () => {

@@ -2,13 +2,12 @@ import { useEffect, useState } from "react";
 import type { GoogleAccounts } from "@shared/contract-work-google";
 import { useAccountReach } from "./accountReach";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
-import { FieldRow } from "../../chrome/DialogField";
 import { Modal, ModalBody } from "../../chrome/Modal";
-import { ChoiceSelect } from "../../components/choice-select";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Region } from "../../components/bones";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { openUrl } from "../../lib/native";
+import { AccountRow, AccountRowSample } from "./AccountRow";
 
 export function UploadGoogleDialog({ env, itemId, kind, onClose }: { env: string; itemId: string; kind: "Slides" | "Sheets"; onClose(): void }) {
   const accountsReach = useAccountReach(env);
@@ -56,15 +55,13 @@ export function UploadGoogleDialog({ env, itemId, kind, onClose }: { env: string
         void save();
       }}>
         <ModalBody>
-          {accountsReach.held ? accountsReach.line : accounts?.length ? (
-            <FieldRow label="Account">
-              <ChoiceSelect label="Account" value={account} options={accounts.map((value) => ({ value, label: value }))} onChange={setAccount} disabled={saving} />
-            </FieldRow>
-          ) : accounts && !accountsReach.checking ? (
-            <p className="text-[13px] leading-5 text-muted-foreground">No Google account has allowed Drive files. Reconnect one in LifeOS.</p>
-          ) : error ? null : (
-            <div aria-busy className="flex h-8 items-center"><Skeleton className="h-3 w-1/2" /></div>
-          )}
+          <Region loading={!accountsReach.held && !accounts?.length && !(accounts && !accountsReach.checking) && !error} label="Loading accounts" bones={<AccountRowSample />}>
+            {accountsReach.held ? accountsReach.line : accounts?.length ? (
+              <AccountRow accounts={accounts} value={account} onChange={setAccount} disabled={saving} />
+            ) : accounts && !accountsReach.checking ? (
+              <p className="text-[13px] leading-5 text-muted-foreground">No Google account has allowed Drive files. Reconnect one in LifeOS.</p>
+            ) : null}
+          </Region>
           <ErrorLine error={accountsReach.held ? null : error} />
         </ModalBody>
         <DialogFooter onCancel={onClose} confirmLabel="Save" disabled={!account || accountsReach.held} pending={saving} />

@@ -728,8 +728,9 @@ main frame alone (ios HostedItemView.swift).
   the form's place, with Copy), Can view / comment / edit, Revoke… (asked
   first, `confirmRevoke` in Share.tsx; no Undo, since an old address must
   never open again: decision 21 of the files pass). Until
-  `work.guests.forItem` answers the sheet is the form's bones
-  (`data-share-bones`), so a form is never shown and then refused. A
+  `work.guests.forItem` answers the sheet is its bones: the form itself
+  drawn at rest, unseen and inert (`ShareForm`, `data-share-bones`), with
+  Create link off, so a form is never shown and then refused. A
   document or sheet no link can take opens on one line saying what to do
   instead (`shareTargetOf`, guests/api.ts, and the host's `SHARE_REFUSALS`):
   a Word file or a workbook says "Share this file from where it lives", never

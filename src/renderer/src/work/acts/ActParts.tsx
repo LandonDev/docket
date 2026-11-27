@@ -6,8 +6,8 @@ import type { ActViewProps } from "./registry";
 
 /**
  * The parts a kind's own view of a held act is drawn with (docs/agents/work-outbox.md "Kind views"), imported only by
- * those views, each its own lazy chunk: the fields on the 72px label column, the line that says where a post lands,
- * a message as it will show once posted, and the words that go as one block.
+ * those views, each its own lazy chunk, and by ActView's bones while one loads: the fields on the 72px label column,
+ * the line that says where a post lands, a message as it will show once posted, and the words that go as one block.
  */
 
 /** Fields as a person reads them, on the 72px label column; a row that starts a group of its own has 16px above it. */

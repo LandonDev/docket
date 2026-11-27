@@ -1,6 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
+import { Region } from "../../components/bones";
 import { Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
 import { acceleratorHint, acceleratorOf, bareKey, keyCaps } from "../../lib/keys";
 import { Keys } from "../../surfaces/settings/keys";
 import { SettingRow } from "../../surfaces/settings/parts/SettingRow";
@@ -67,40 +67,59 @@ export function CaptureKeyRow({ api }: { api: CaptureKeyApi }) {
     if (key) save(key);
   };
 
-  if (!state)
-    return (
-      <SettingRow id="keys.capture" error={failed}>
-        {failed ? (
-          <Button variant="ghost" size="sm" onClick={() => setAsked((n) => n + 1)}>
-            Retry
-          </Button>
-        ) : (
-          <Skeleton data-capture-key="loading" className="h-7 w-28 rounded-md" />
-        )}
-      </SettingRow>
-    );
-  const hint = state.key ? acceleratorHint(state.key) : "Off";
+  // Until main answers, the key's button at rest with a sample chord, as its bones: never "Off".
   return (
     <SettingRow
       id="keys.capture"
       saved={saved}
       description={recording ? "Escape to keep it, Delete to turn it off" : undefined}
-      error={saved.error ?? (!recording && state.error ? state.error : undefined)}
+      error={state ? (saved.error ?? (!recording && state.error ? state.error : undefined)) : failed}
     >
-      <Button
-        variant="secondary"
-        size="sm"
-        aria-label={recording ? "Press the keys" : hint}
-        aria-pressed={recording}
-        onClick={() => setRecording((r) => !r)}
-        onKeyDown={onKeyDown}
-        onBlur={() => setRecording(false)}
-        className="min-w-28 tabular-nums"
-      >
-        {/* The chord in the same key caps as every other shortcut on the page. */}
-        {recording ? "Press the keys" : state.key ? <Keys keys={keyCaps(chordOf(state.key))} className="" /> : "Off"}
-      </Button>
+      {!state && failed ? (
+        <Button variant="ghost" size="sm" onClick={() => setAsked((n) => n + 1)}>
+          Retry
+        </Button>
+      ) : (
+        <Region loading={!state} label="" bones={<KeyButton data-capture-key="loading" chord="CommandOrControl+Shift+Space" recording={false} />}>
+          {state ? <KeyButton chord={state.key} recording={recording} onClick={() => setRecording((r) => !r)} onKeyDown={onKeyDown} onBlur={() => setRecording(false)} /> : null}
+        </Region>
+      )}
     </SettingRow>
+  );
+}
+
+/** The capture key's button: the chord in key caps, "Off" with none, "Press the keys" while it records the next. */
+function KeyButton({
+  chord,
+  recording,
+  onClick,
+  onKeyDown,
+  onBlur,
+  ...rest
+}: {
+  chord: string | null;
+  recording: boolean;
+  onClick?: () => void;
+  onKeyDown?: (e: KeyboardEvent<HTMLButtonElement>) => void;
+  onBlur?: () => void;
+  "data-capture-key"?: string;
+}) {
+  const hint = chord ? acceleratorHint(chord) : "Off";
+  return (
+    <Button
+      {...rest}
+      variant="secondary"
+      size="sm"
+      aria-label={recording ? "Press the keys" : hint}
+      aria-pressed={recording}
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+      onBlur={onBlur}
+      className="min-w-28 tabular-nums"
+    >
+      {/* The chord in the same key caps as every other shortcut on the page. */}
+      {recording ? "Press the keys" : chord ? <Keys keys={keyCaps(chordOf(chord))} className="" /> : "Off"}
+    </Button>
   );
 }
 

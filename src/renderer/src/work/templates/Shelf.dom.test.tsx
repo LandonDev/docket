@@ -11,7 +11,7 @@ import type { Template } from "@shared/work/templates";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { shelfGroups, tileMenu } from "./model";
 import { ROW_HOLDS } from "../../components/ui/press";
-import { nextTile, Shelf, ShelfSkeleton, SPIN_AFTER_MS } from "./Shelf";
+import { nextTile, Shelf, ShelfSample, SPIN_AFTER_MS } from "./Shelf";
 
 const tpl = (id: string, name: string, over: Partial<Template> = {}): Template => ({
   id,
@@ -65,17 +65,17 @@ describe("the shelf", () => {
     expect(tile.className).not.toMatch(/scale/);
   });
 
-  it("holds the loaded tile's shape while the shelf loads: the plate, then the name's bar on its 20px line", () => {
-    render(<ShelfSkeleton layout="page" />);
-    const bone = document.querySelector("[data-bone-tile]")!;
-    const line = bone.lastElementChild!;
-    expect(line.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "items-center"]));
-    expect(line.children).toHaveLength(1);
-    // The real tile's line: the same height, so nothing shifts when it lands.
-    cleanup();
-    render(<Shelf groups={groups} layout="page" making={null} onPress={() => {}} />);
-    const real = document.querySelector('[data-tile="job:Crew memo.docx"] [data-tile-name]')!.parentElement!;
-    expect(real.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "items-center"]));
+  it("draws its bones as the shelf itself, from a sample at rest: tiles of the loaded shape, none of them a real template", () => {
+    render(<ShelfSample layout="page" />);
+    const sample = [...document.querySelectorAll<HTMLElement>("[data-tile]")];
+    expect(sample).toHaveLength(6);
+    expect(sample.every((tile) => tile.dataset.tile!.startsWith("sample:"))).toBe(true);
+    // The real tile's parts: the plate, then the name on its 20px line, so nothing shifts when the shelf lands.
+    expect(sample[0]!.querySelector("[data-plate]")).toBeTruthy();
+    expect(sample[0]!.querySelector("[data-tile-name]")!.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "items-center"]));
+    // At rest: no menu, nothing spinning.
+    expect(document.querySelector("[data-tile-more]")).toBeNull();
+    expect(document.querySelector("[aria-busy]")).toBeNull();
   });
 
   it("draws a tile at rest as a Files tile with no picture, never as loading bones: the kind's glyph large on the stage, no bars", () => {

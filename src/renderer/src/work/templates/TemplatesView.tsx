@@ -5,6 +5,7 @@ import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
 import { Briefcase, Copy, Eye, FilePlus, Globe, Minus, MoreHorizontal, Pencil, TextCursor, Trash2 } from "../../chrome/icons";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
+import { Region } from "../../components/bones";
 import { Tip, useTruncated } from "../../components/tip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -20,7 +21,7 @@ import { copyTemplate, MadeUnsure, makeFrom, moveTemplate, removeTemplate, resto
 import { baseName, editsACopy, hiddenLine, refusedLine, shelfGroups, tileMenu, unfilledLine, type TileAction, type TileRow } from "./model";
 import { askTemplateFields, openMade } from "./open";
 import { RenameDialog } from "./RenameDialog";
-import { Shelf, ShelfSkeleton } from "./Shelf";
+import { Shelf, ShelfSample } from "./Shelf";
 
 /**
  * A Work workspace's Templates (docs/agents/work-templates.md "The Templates
@@ -301,11 +302,17 @@ export function View({ env, workspace }: WorkViewProps) {
   return (
     <div data-templates-view="" className="relative min-h-full" {...drop}>
       {linkDown ? <HostLinkLine word={linkDown} retryHost={env} /> : null}
-      {linkDown && groups.length === 0 ? null : load.status === "loading" ? (
-        <div className="px-4 pt-3 pb-6">
-          <ShelfSkeleton layout="page" count={8} />
-        </div>
-      ) : load.status === "error" ? (
+      {linkDown && groups.length === 0 ? null : (
+        <Region
+          loading={load.status === "loading"}
+          label="Loading templates"
+          bones={() => (
+            <div className="px-4 pt-3 pb-6">
+              <ShelfSample layout="page" count={8} />
+            </div>
+          )}
+        >
+      {load.status === "loading" ? null : load.status === "error" ? (
         <FailedLine error={load.error} onRetry={retry} />
       ) : groups.length === 0 ? (
         // Add… is the header's; an empty shelf he narrowed says so and offers the way back.
@@ -317,6 +324,8 @@ export function View({ env, workspace }: WorkViewProps) {
         <div className="px-4 pt-3 pb-6">
           <Shelf groups={groups} layout="page" making={making} disabled={!!linkDown} onPress={make} menuFor={(t) => menuRows(tileMenu(t, workspace.name))} onMenu={act} />
         </div>
+      )}
+        </Region>
       )}
       {over > 0 && !refuses ? (
         <div

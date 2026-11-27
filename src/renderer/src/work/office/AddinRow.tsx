@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import type { OfficeAddinCode, OfficeAddinKey } from "@shared/contract-work-office";
 import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { confirmAction, DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
-import { PageRow, PageRowsSkeleton } from "../../components/page";
+import { Region } from "../../components/bones";
+import { PageRow } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
-import { Skeleton } from "../../components/ui/skeleton";
 import { hostFailure } from "../../lib/hostFailure";
 import type { Link } from "../../lib/connection/link";
 import { useHostRead } from "../../lib/connection/hostRead";
@@ -36,16 +36,6 @@ export function AddinRow({ link, title }: { link: Link | null | undefined; title
   const kept = useKeptRetry(read.error, read.value === undefined && read.error === null);
   const reload = (): void => setRound((n) => n + 1);
 
-  if (!keys) {
-    if (!kept.error) return <PageRowsSkeleton rows={1} description control="button" />;
-    return (
-      <PageRow title={title} error={hostFailure(link!.environmentId, kept.error, "could not list the paired add-ins")}>
-        <Button variant="ghost" size="sm" disabled={kept.retrying} onClick={() => kept.press(read.retry)}>
-          <BusyLabel busy={kept.retrying} label="Retry" />
-        </Button>
-      </PageRow>
-    );
-  }
   const remove = async (id: string, name: string): Promise<void> => {
     const sure = await confirmAction({ title: `Remove ${name}?`, body: "This add-in stops reaching Work until you pair it again.", action: "Remove", danger: true });
     if (!sure) return;
@@ -61,20 +51,57 @@ export function AddinRow({ link, title }: { link: Link | null | undefined; title
     }
   };
   return (
+    // Until the list answers, its rows drawn with none paired: the head row's shape, the title and Pair… at rest.
+    <Region loading={!keys && !kept.error} label="Loading" bones={() => <AddinRows title={title} keys={NONE} error={null} removing={null} onPair={STILL} onRemove={STILL} />}>
+      {keys ? (
+        <>
+          <AddinRows title={title} keys={keys} error={error} removing={removing} onPair={() => setPairing(true)} onRemove={(key) => void remove(key.id, key.name)} />
+          {pairing && link ? <PairDialog link={link} known={keys.map((k) => k.id)} onPaired={reload} onClose={() => setPairing(false)} /> : null}
+        </>
+      ) : kept.error ? (
+        <PageRow title={title} error={hostFailure(link!.environmentId, kept.error, "could not list the paired add-ins")}>
+          <Button variant="ghost" size="sm" disabled={kept.retrying} onClick={() => kept.press(read.retry)}>
+            <BusyLabel busy={kept.retrying} label="Retry" />
+          </Button>
+        </PageRow>
+      ) : null}
+    </Region>
+  );
+}
+
+const NONE: OfficeAddinKey[] = [];
+const STILL = (): void => undefined;
+
+/** The add-in's head row with Pair…, then each paired add-in with Remove…; with no keys and no handlers, the list's bones. */
+function AddinRows({
+  title,
+  keys,
+  error,
+  removing,
+  onPair,
+  onRemove,
+}: {
+  title: string;
+  keys: readonly OfficeAddinKey[];
+  error: string | null;
+  removing: string | null;
+  onPair: () => void;
+  onRemove: (key: OfficeAddinKey) => void;
+}) {
+  return (
     <>
       <PageRow title={title} description={keys.length ? undefined : "Not paired"} error={error ?? undefined}>
-        <Button variant="secondary" size="sm" onClick={() => setPairing(true)}>
+        <Button variant="secondary" size="sm" onClick={onPair}>
           Pair…
         </Button>
       </PageRow>
       {keys.map((key) => (
         <PageRow key={key.id} title={key.name} description={addinLine(key)}>
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" disabled={removing === key.id} onClick={() => void remove(key.id, key.name)}>
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" disabled={removing === key.id} onClick={() => onRemove(key)}>
             <BusyLabel busy={removing === key.id} label="Remove…" />
           </Button>
         </PageRow>
       ))}
-      {pairing && link ? <PairDialog link={link} known={keys.map((k) => k.id)} onPaired={reload} onClose={() => setPairing(false)} /> : null}
     </>
   );
 }
@@ -130,14 +157,10 @@ function PairDialog({ link, known, onPaired, onClose }: { link: Link; known: rea
       <ModalPanel onClose={close} title="Pair the Office add-in" description="Enter this code in the Docket pane in Excel, Word or PowerPoint." size="sm">
         <ModalBody>
           <div className="flex items-baseline justify-between gap-3">
-            {code ? (
-              <span className="font-mono text-base font-medium leading-6 text-foreground tabular-nums">{code.code}</span>
-            ) : error ? null : (
-              // The code's own 24px line, a bone its width: nothing moves when it lands (the LifeOS code's, settings.tsx).
-              <div role="status" aria-label="Asking for a code" data-code-bone className="flex h-6 items-center">
-                <Skeleton className="h-4 w-20" />
-              </div>
-            )}
+            {/* The code's own 24px line, drawn from a sample code: nothing moves when it lands. */}
+            <Region inline loading={!code && !error} label="Asking for a code" bones={<CodeLine code="R4T8W2NB" />}>
+              {code ? <CodeLine code={code.code} /> : null}
+            </Region>
             {code ? (
               <span className="text-xs text-muted-foreground tabular-nums">
                 {left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "Expired"}
@@ -150,4 +173,9 @@ function PairDialog({ link, known, onPaired, onClose }: { link: Link; known: rea
       </ModalPanel>
     </Dialog>
   );
+}
+
+/** A pairing code on its 24px line. */
+function CodeLine({ code }: { code: string }) {
+  return <span className="font-mono text-base font-medium leading-6 text-foreground tabular-nums">{code}</span>;
 }
